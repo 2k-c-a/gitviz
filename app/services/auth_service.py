@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import User
+from app.models.user import User
 
 # ── 환경변수 ──────────────────────────────────────────────────────────────────
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")

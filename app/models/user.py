@@ -3,6 +3,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 import uuid
 
+# auth 서비스는 비동기(asyncpg)를 사용하므로 app.database 의 비동기 Base 사용
 from app.database import Base
 
 

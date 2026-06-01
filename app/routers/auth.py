@@ -128,7 +128,7 @@ async def get_me(request: Request, db: AsyncSession = Depends(get_db)):
     로그인하지 않은 경우 401 반환.
     """
     from sqlalchemy import select
-    from app.models import User
+    from app.models.user import User
 
     user_id = _get_session_user_id(request)
     if not user_id:
