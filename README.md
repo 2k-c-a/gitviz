@@ -1,4 +1,8 @@
- git pull origin main
+ git clone https://github.com/2k-c-a/gitviz.git
+cd gitviz
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 
 
 cd gitviz
