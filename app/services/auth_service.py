@@ -126,7 +126,7 @@ async def upsert_user(db: AsyncSession, github_user: dict, access_token: str) ->
         user = User(
             github_id=github_id,
             github_login=github_user.get("login", ""),
-            display_name=github_user.get("name"),
+            display_name=github_user.get("name") or github_user.get("login", ""),
             avatar_url=github_user.get("avatar_url"),
             email=github_user.get("email"),
             access_token_encrypted=encrypted,
@@ -135,7 +135,7 @@ async def upsert_user(db: AsyncSession, github_user: dict, access_token: str) ->
         db.add(user)
     else:
         user.github_login = github_user.get("login", user.github_login)
-        user.display_name = github_user.get("name", user.display_name)
+        user.display_name = github_user.get("name") or github_user.get("login", user.display_name)
         user.avatar_url = github_user.get("avatar_url", user.avatar_url)
         user.email = github_user.get("email", user.email)
         user.access_token_encrypted = encrypted
