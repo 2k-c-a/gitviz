@@ -1,16 +1,35 @@
+import os
+
 from fastapi import FastAPI
+from starlette.middleware.sessions import SessionMiddleware
+
+# ── data-col 팀: 동기 DB / repositories 라우터 ────────────────────────────────
 from app.core.database import Base, engine
-
-from app.models import repository
-from app.models import analysis_job
-
+from app.models import repository      # noqa: F401  (테이블 등록용 import)
+from app.models import analysis_job    # noqa: F401
 from app.api.repositories import router as repository_router
 
-app = FastAPI()
+# ── feat/login 팀: 비동기 auth 라우터 ────────────────────────────────────────
+from app.routers import auth as auth_router
 
+app = FastAPI(title="GitViz API", version="0.1.0")
+
+# ── 세션 미들웨어 (HttpOnly 서명 쿠키, auth 로그인에 필요) ────────────────────
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET_KEY", "change-me-in-production"),
+    session_cookie="gitviz_session",
+    max_age=60 * 60 * 24 * 7,   # 7일
+    https_only=False,             # 개발환경 False; 프로덕션은 True
+    same_site="lax",
+)
+
+# ── 테이블 생성 (동기 엔진 기준) ───────────────────────────────────────────────
 Base.metadata.create_all(bind=engine)
 
+# ── 라우터 등록 ───────────────────────────────────────────────────────────────
 app.include_router(repository_router)
+app.include_router(auth_router.router)
 
 
 @app.get("/")
