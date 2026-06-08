@@ -1,13 +1,157 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+
+    <title>GitViz</title>
+
+    <!-- Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="./css/index.css" />
   </head>
+
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <!-- Navbar -->
+    <div id="navbar-container"></div>
+    <!-- modal -->
+    <div id="modal-container"></div>
+
+    <!-- ═══════════ LANDING ═══════════ -->
+    <div class="page active" id="page-landing">
+      <div class="landing-hero">
+        <h1>Git 프로젝트, 한눈에 파악하세요</h1>
+
+        <p>
+          GitHub 레포지토리 URL 하나만 입력하면 협업 구조, 핵심 인력 리스크,
+          코드 변경 영향도를 자동 분석합니다.
+        </p>
+
+        <div class="url-form" id="url-form">
+          <div class="url-row">
+            <input
+              type="text"
+              placeholder="https://github.com/owner/repo"
+              id="url-input"
+            />
+
+            <button
+              class="btn-primary"
+              id="btn-analyze"
+              onclick="handleAnalyze()"
+            >
+              분석 시작 →
+            </button>
+          </div>
+
+          <div class="url-feedback" id="url-feedback"></div>
+        </div>
+
+        <div class="chips-row">
+          <div
+            class="chip"
+            style="cursor: pointer"
+            onclick="fillUrl('https://github.com/facebook/react')"
+          >
+            facebook/react
+          </div>
+
+          <div
+            class="chip"
+            style="cursor: pointer"
+            onclick="fillUrl('https://github.com/tiangolo/fastapi')"
+          >
+            tiangolo/fastapi
+          </div>
+
+          <div
+            class="chip"
+            style="cursor: pointer"
+            onclick="fillUrl('https://github.com/django/django')"
+          >
+            django/django
+          </div>
+
+          <div class="chip">Bus Factor</div>
+          <div class="chip">PR 리뷰 분석</div>
+        </div>
+      </div>
+
+      <!-- 최근 분석 -->
+      <div class="recent-section">
+        <h3>최근 분석한 레포지토리</h3>
+
+        <div
+          class="repo-item"
+          onclick="location.href = './pages/timeline.html'"
+        >
+          <div>
+            <div class="repo-name">facebook/react</div>
+
+            <div class="repo-meta">
+              커밋 18,432개 · 기여자 1,683명 · 2시간 전 분석
+            </div>
+          </div>
+
+          <div class="repo-item-right">
+            <span class="badge badge-green">
+              <span class="status-dot" style="background: var(--green)"></span>
+              완료
+            </span>
+          </div>
+        </div>
+
+        <div class="repo-item pending" id="fastapi-item">
+          <div>
+            <div class="repo-name">tiangolo/fastapi</div>
+
+            <div class="repo-meta">
+              커밋 3,201개 · 기여자 412명 · 분석 중...
+            </div>
+          </div>
+
+          <div class="repo-item-right">
+            <span class="badge badge-blue">
+              <span class="status-dot" style="background: var(--blue)"></span>
+              처리 중
+            </span>
+
+            <span class="pending-link" onclick="openJobModal()">
+              진행 상황 보기
+            </span>
+          </div>
+        </div>
+
+        <div
+          class="repo-item"
+          onclick="location.href = './pages/timeline.html'"
+        >
+          <div>
+            <div class="repo-name">django/django</div>
+
+            <div class="repo-meta">
+              커밋 32,811개 · 기여자 2,104명 · 4일 전 분석
+            </div>
+          </div>
+
+          <div class="repo-item-right">
+            <span class="badge badge-green">
+              <span class="status-dot" style="background: var(--green)"></span>
+              완료
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+<footer>
+    <p><strong>GitViz</strong> - Git Repository Visualization Platform 
+      (Timeline · Collaboration Network · Risk Analysis · Code Impact · Bus Factor)</p>
+    <p>© 2026 Capstone Design Project | Team 거북목</p>
+</footer>
+
+    <!-- JS -->
+    <script type="module" src="./js/main.js"></script>
   </body>
 </html>
