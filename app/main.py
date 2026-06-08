@@ -1,7 +1,7 @@
 import os
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 # ── data-col 팀: 동기 DB / repositories 라우터 ────────────────────────────────
@@ -14,15 +14,6 @@ from app.api.repositories import router as repository_router
 from app.routers import auth as auth_router
 
 app = FastAPI(title="GitViz API", version="0.1.0")
-
-# ── CORS (프론트엔드 localhost:3000 허용) ─────────────────────────────────────
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # ── 세션 미들웨어 (HttpOnly 서명 쿠키, auth 로그인에 필요) ────────────────────
 app.add_middleware(
@@ -41,7 +32,5 @@ Base.metadata.create_all(bind=engine)
 app.include_router(repository_router)
 app.include_router(auth_router.router)
 
-
-@app.get("/")
-def root():
-    return {"message": "GitViz API Running"}
+# ── 프론트엔드 정적 파일 서빙 (API 라우터 이후 마지막에 위치) ─────────────────
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
