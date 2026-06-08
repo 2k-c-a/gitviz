@@ -11,7 +11,7 @@ git pull origin main
 
 
 
-
+.env 에 FRONTEND_URL=http://localhost:8000 로 수정
 
 
 
