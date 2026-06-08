@@ -97,8 +97,10 @@ export const textC  = dark ? '#888780' : '#9c9a94';
 export const tooltipBg = dark ? '#272725' : '#ffffff';
 export const tooltipBorder = dark ? '#444441' : '#e0ded8';
 
-Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-Chart.defaults.font.size   = 11;
+if (typeof Chart !== 'undefined') {
+  Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  Chart.defaults.font.size   = 11;
+}
 
 
 window.fillUrl = fillUrl;
