@@ -13,6 +13,9 @@ import secrets
 import uuid
 from urllib.parse import urlencode
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +32,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # ── 환경변수 ──────────────────────────────────────────────────────────────────
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8000")
 
 GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 GITHUB_SCOPES = "read:user,repo"
