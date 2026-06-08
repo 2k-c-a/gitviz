@@ -1,4 +1,5 @@
-git clone https://github.com/2k-c-a/gitviz.git      
+git clone https://github.com/2k-c-a/gitviz.git       
+.env  만들기                          
 cd gitviz             
 python -m venv venv            
 .\venv\Scripts\Activate.ps1                 
