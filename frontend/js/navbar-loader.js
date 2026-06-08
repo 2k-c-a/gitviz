@@ -46,4 +46,4 @@ window.goHome = function(){
            : './index.html';
 };
 
-loadNavbar();
+/* loadNavbar() 는 main.js 에서 await 로 호출하므로 자동 실행 제거 */

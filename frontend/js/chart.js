@@ -6,6 +6,11 @@ import {
   tooltipBorder
 } from './utils.js';
 
+/* Chart.js 로드 실패 시 조용히 종료 */
+if (typeof Chart === 'undefined') {
+  console.warn('[chart.js] Chart.js 미로드 — 차트 렌더링 건너뜀');
+}
+
 /* ── TIMELINE CHART ── */
 const tlMonths = ['22.01','22.04','22.07','22.10','23.01','23.04','23.07','23.10','24.01','24.04','24.07','24.10','25.01','25.04'];
 const tlCommits     = [180,210,195,240,310,280,390,420,360,470,510,480,540,420];
