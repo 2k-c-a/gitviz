@@ -16,11 +16,8 @@ git pull origin main
 
 
 
-백엔드 실행
-cd gitviz           
+백엔드 실행    
 venv\Scripts\activate               
-python -m uvicorn app.main:app --reload
+python -m uvicorn app.main:app --reload --port 8000
 
-프론트엔드 실행
-cd gitviz\frontend                 
-python -m http.server 3000
+
