@@ -24,5 +24,5 @@ python -m uvicorn app.main:app --reload --port 8000
 
 
 git switch feat/frontend           
-git add frontend/pages/components/modal.html
-git pull origin feat/frontend
+git add frontend/pages/components/modal.html                   
+git push origin feat/frontend
