@@ -2,12 +2,10 @@
 export let isLoggedIn = false;
 export let currentUser = null;
 
-const API_BASE = 'http://localhost:8000';
-
 /* 앱 시작 시 /api/auth/me 호출해 로그인 상태 확인 */
 export async function initAuth() {
   try {
-    const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: 'include' });
+    const res = await fetch('/api/auth/me', { credentials: 'include' });
     if (res.ok) {
       currentUser = await res.json();
       isLoggedIn = true;
@@ -34,12 +32,12 @@ export function closeLoginModal() {
 
 /* GitHub OAuth 로그인 페이지로 이동 */
 export function githubLogin() {
-  window.location.href = `${API_BASE}/api/auth/github`;
+  window.location.href = '/api/auth/github';
 }
 
 /* 로그아웃 */
 export async function logout() {
-  await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+  await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
   isLoggedIn = false;
   currentUser = null;
   closeUserMenu();
