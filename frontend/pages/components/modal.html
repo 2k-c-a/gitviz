@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="../css/index.css">
+    <title>GitViz</title>
+</head>
+<body>
+  <div id="navbar-container"></div>
+ <!-- ═══════════ JOB STATUS MODAL ═══════════ -->
+<div class="modal-overlay" id="job-modal">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">분석 진행 중</div>
+    <div class="modal-repo" id="modal-repo">tiangolo/fastapi</div>
+
+    <!-- progress bar -->
+    <div class="prog-wrap"><div class="prog-fill" id="modal-prog" style="width:60%;"></div></div>
+    <div class="prog-info">
+      <span id="modal-prog-label">데이터 수집 중...</span>
+      <span id="modal-prog-pct">60%</span>
+    </div>
+
+    <!-- pipeline steps -->
+    <div class="pipeline" id="modal-pipeline">
+      <div class="pipe-step">
+        <div class="pipe-icon done">✓</div>
+        <div><div class="pipe-label done">데이터 수집</div><div class="pipe-sub">커밋 3,201개 · PR 284개</div></div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-icon active">⋯</div>
+        <div><div class="pipe-label active">기여자 식별</div><div class="pipe-sub active">Alias Resolution 진행 중 (412명 중 298명 완료)</div></div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-icon wait">3</div>
+        <div><div class="pipe-label wait">파생 분석 계산</div><div class="pipe-sub">Risk Score · Bus Factor · Centrality</div></div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-icon wait">4</div>
+        <div><div class="pipe-label wait">스냅샷 저장</div><div class="pipe-sub">Timeline · Risk Score 추이</div></div>
+      </div>
+    </div>
+
+    <!-- 에러 박스 (기본 숨김) -->
+    <div class="modal-error-box" id="modal-error-box" style="display:none;">
+      <div class="modal-error-title" id="modal-error-title">분석 실패</div>
+      <div class="modal-error-body" id="modal-error-body"></div>
+      <div class="modal-error-time" id="modal-error-time"></div>
+    </div>
+
+    <div class="modal-footer" id="modal-footer">
+      <button class="btn-secondary" onclick="closeJobModal()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ LOGIN MODAL ═══════════ -->
+<div class="modal-overlay" id="login-modal">
+  <div class="modal" style="text-align:center;max-width:360px;">
+    <div style="width:44px;height:44px;border-radius:50%;background:var(--bg3);border:0.5px solid var(--border2);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+      <svg width="22" height="22" viewBox="0 0 16 16" fill="var(--text2)"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    </div>
+    <div class="modal-title" style="margin-bottom:8px;">GitHub으로 로그인</div>
+    <div style="font-size:13px;color:var(--text2);line-height:1.65;margin-bottom:24px;">분석 요청 및 프로젝트 관리를 위해<br>GitHub 계정 인증이 필요합니다.</div>
+    <button class="btn-primary" style="width:100%;justify-content:center;display:flex;align-items:center;gap:8px;font-size:14px;padding:11px 20px;" onclick="simulateLogin()">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub 계정으로 계속하기
+    </button>
+    <button class="btn-secondary" style="width:100%;margin-top:8px;font-size:14px;padding:11px 20px;" onclick="closeLoginModal()">취소</button>
+    <div style="font-size:11px;color:var(--text3);margin-top:18px;padding-top:14px;border-top:0.5px solid var(--border);line-height:1.6;">
+      로그인 없이도 이미 분석된 레포지토리는<br>자유롭게 조회할 수 있습니다.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ REANALYZE TOAST ═══════════ -->
+<div class="toast" id="reanalyze-toast">
+  <div class="toast-body">마지막 분석 이후 새 커밋만 수집합니다(증분 방식). 재분석을 시작하시겠어요?</div>
+  <div class="toast-footer">
+    <button class="btn-secondary" style="font-size:13px;padding:7px 14px;" onclick="closeToast()">취소</button>
+    <button class="btn-primary"   style="font-size:13px;padding:7px 14px;" onclick="startReanalyze()">재분석 시작</button>
+  </div>
+</div>
+
+<!-- ═══════════ ISOLATED PANEL (사이드 드로어) ═══════════ -->
+<div class="modal-overlay" id="isolated-modal">
+  <div class="modal" style="width:340px;">
+    <div class="modal-title" style="margin-bottom:16px;">고립 기여자 목록 <span class="badge badge-red" style="font-size:10px;">303명</span></div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px;">협업 엣지가 없는 기여자입니다. 단독 커밋만 존재합니다.</div>
+    <div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;">
+      <div class="c-row"><div class="avatar" style="background:var(--gray-light);color:var(--text2);">김</div><div class="c-info"><div class="c-name">kim-minseok</div><div class="c-meta">커밋 3개 · 마지막 활동 8개월 전</div></div></div>
+      <div class="c-row"><div class="avatar" style="background:var(--gray-light);color:var(--text2);">L</div><div class="c-info"><div class="c-name">l-chen-42</div><div class="c-meta">커밋 1개 · 마지막 활동 1년 전</div></div></div>
+      <div class="c-row"><div class="avatar" style="background:var(--gray-light);color:var(--text2);">A</div><div class="c-info"><div class="c-name">anon-contributor</div><div class="c-meta">커밋 2개 · 마지막 활동 2년 전</div></div></div>
+      <div class="c-row"><div class="avatar" style="background:var(--gray-light);color:var(--text2);">R</div><div class="c-info"><div class="c-name">random-dev-99</div><div class="c-meta">커밋 1개 · 마지막 활동 1년 전</div></div></div>
+      <div style="padding:10px 0;font-size:11px;color:var(--text3);text-align:center;">외 299명…</div>
+    </div>
+    <div class="modal-footer" style="margin-top:16px;">
+      <button class="btn-secondary" onclick="closeIsolatedPanel()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ REMOVE REPO MODAL ═══════════ -->
+<div class="modal-overlay" id="remove-repo-modal">
+  <div class="modal" style="max-width:380px;text-align:center;">
+    <div class="modal-title" style="margin-bottom:8px;">목록에서 제거</div>
+    <div style="margin-bottom:8px;">
+      <code id="remove-repo-name" style="font-size:13px;font-family:monospace;background:var(--bg2);padding:2px 8px;border-radius:4px;">facebook/react</code>
+    </div>
+    <div style="font-size:13px;color:var(--text2);line-height:1.65;margin-bottom:24px;">
+      내 목록에서만 제거됩니다. 분석 데이터는 보존되며<br>URL 재입력 시 기존 결과를 조회할 수 있습니다.
+    </div>
+    <button class="btn-primary" style="width:100%;background:var(--red);border-color:var(--red);justify-content:center;display:flex;font-size:14px;padding:11px;" onclick="confirmRemoveRepo()" onmouseenter="this.style.background='var(--red-dark)'" onmouseleave="this.style.background='var(--red)'">목록에서 제거</button>
+    <button class="btn-secondary" style="width:100%;margin-top:8px;font-size:14px;padding:11px;" onclick="closeRemoveRepoModal()">취소</button>
+  </div>
+</div>
+</body>
+
+<script type="module" src="../js/main.js"></script>
+</html>
