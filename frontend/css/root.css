@@ -182,6 +182,7 @@
   .divider { height: 0.5px; background: var(--border); margin: 14px 0; }
 
   /* TABLE */
+  .info-table-wrap{ overflow-x: auto;}
   .info-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .info-table td { padding: 6px 0; border-bottom: 0.5px solid var(--border); }
   .info-table tr:last-child td { border-bottom: none; }
