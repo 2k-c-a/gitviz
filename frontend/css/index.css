@@ -1,3 +1,102 @@
 @import url("./main.css");
 @import url("./bar.css");
 @import url("./root.css");
+@import url("./intro.css");
+
+
+/* ==========================================
+   Responsive
+========================================== */
+
+@media (max-width: 768px) {
+
+  /* 전체 여백 */
+  .body,
+  .landing-hero,
+  .recent-section {
+    padding: 16px;
+  }
+
+   .col-2-1{
+        grid-template-columns:1fr !important;
+    }
+  /* 4개 카드 */
+  .metrics-4{
+    display:flex;
+    flex-direction:column;
+  }
+
+  /* 2:1 레이아웃 */
+  .col-2-1{
+    display:flex;
+    flex-direction:column;
+  }
+
+  /* stack도 간격 유지 */
+  .stack{
+    width:100%;
+  }
+  /* 탭 줄바꿈 */
+  .sub-tabs {
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
+  }
+
+  .sub-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 제목 크기 */
+  .dash-title {
+    font-size: 20px;
+  }
+
+  .dash-sub {
+    font-size: 12px;
+  }
+
+  /* 헤더 */
+  .dash-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  /* SVG 네트워크 */
+  .network-svg {
+    width: 100%;
+    height: auto;
+  }
+
+  /* 표 가로 스크롤 */
+  .hm-wrap {
+    overflow-x: auto;
+  }
+
+  .hm-table {
+    min-width: 700px;
+  }
+
+  .info-table,
+  .pr-table {
+    min-width: 500px;
+  }
+
+  /* 차트 높이 */
+  canvas {
+    max-width: 100%;
+  }
+
+  /* footer */
+  footer {
+    text-align: center;
+  }
+
+  .footer-social {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+  }
+}
