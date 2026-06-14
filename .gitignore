@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual environment
+venv/
+.venv/
+
+# Secrets / environment
+.env
+.env.*
+
+# Cloned repositories (수집 대상 git clone)
+storage/repos/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,6 +1,7 @@
 from git import Repo
 import os
 
+
 def clone_repository(github_url: str, repo_name: str):
 
     repo_path = f"storage/repos/{repo_name}"
@@ -8,8 +9,8 @@ def clone_repository(github_url: str, repo_name: str):
     print("CHECK PATH:", repo_path)
 
     if os.path.exists(repo_path):
-        import shutil
-        shutil.rmtree(repo_path)
+        print("REPO ALREADY EXISTS")
+        return repo_path
 
     print("START CLONE")
 
