@@ -1,25 +1,32 @@
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
-.venv/
-venv/
 *.egg-info/
+.pytest_cache/
 dist/
 build/
 
-# 환경변수 (절대 커밋 금지)
+# Virtual environment
+venv/
+.venv/
+
+# Secrets / environment (절대 커밋 금지)
 .env
+.env.*
 .env.local
 .env.*.local
 
-# Node / React
+# Node / React (frontend)
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
-# IDE
+# Cloned repositories (수집 대상 git clone)
+storage/repos/
+
+# IDE / editor
 .vscode/
 .idea/
 *.suo
