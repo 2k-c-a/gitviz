@@ -13,11 +13,11 @@
     <!-- ═══════════ NETWORK ═══════════ -->
 <div class="page active" id="page-network">
   <div class="dash-head">
-    <div><div class="dash-title">facebook/react</div><div class="dash-sub">협업 네트워크 — 방향성 가중치 그래프 (co-edit 0.6 + review 0.4)</div></div>
+    <div><div class="dash-title js-repo-title">—</div><div class="dash-sub">협업 네트워크 — 방향성 가중치 그래프 (co-edit 0.6 + review 0.4)</div></div>
     <div style="display:flex;align-items:center;gap:10px;">
       <div style="display:flex;align-items:center;gap:7px;">
-        <div class="status-dot" style="background:#639922;"></div>
-        <span style="font-size:12px;color:var(--text2);">분석 완료</span>
+        <div class="status-dot" style="background:var(--gray);"></div>
+        <span style="font-size:12px;color:var(--text2);">분석 연동 예정</span>
       </div>
       <button class="btn-secondary" data-auth="1" onclick="openReanalyzeToast()">재분석</button>
     </div>
@@ -30,146 +30,21 @@
     <div class="sub-tab" onclick="location.href='./busfactor.html'">Bus Factor</div>
   </div>
   <div class="body">
+    <!-- 분석 모듈이 채울 지표 슬롯 (현재 값은 분석 대기) -->
     <div class="metrics-4">
-      <div class="metric-card"><div class="m-label">전체 기여자</div><div class="m-val">1,683</div><div class="m-sub">총 노드 수</div></div>
-      <div class="metric-card"><div class="m-label">협업 엣지</div><div class="m-val">4,821</div><div class="m-sub">공동 수정 파일 기준</div></div>
-      <div class="metric-card"><div class="m-label">클러스터 수</div><div class="m-val">7</div><div class="m-sub">자동 탐지</div></div>
-      <div class="metric-card" style="cursor:pointer;" onclick="openIsolatedPanel()" title="고립 기여자 목록 보기 — 다른 기여자와 공동 수정한 파일이 없는 기여자 (협업 엣지 0개 기준)">
-        <div class="m-label">고립 기여자</div>
-        <div class="m-val m-dn" style="text-decoration:underline dotted;">18%</div>
-        <div class="m-sub" style="color:var(--blue);">303명 · 목록 보기 →</div>
-      </div>
+      <div class="metric-card"><div class="m-label">전체 기여자</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
+      <div class="metric-card"><div class="m-label">협업 엣지</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
+      <div class="metric-card"><div class="m-label">클러스터 수</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
+      <div class="metric-card"><div class="m-label">고립 기여자</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
     </div>
-    <div class="col-2-1">
-      <!-- Force-directed graph -->
-      <div class="panel">
-        <div class="p-head" style="margin-bottom:6px;">
-          <div class="p-title">Force-directed 협업 그래프</div>
-          <div style="display:flex;gap:6px;align-items:center;">
-            <div class="chip" style="font-size:10px;cursor:pointer;">노드: 커밋수</div>
-            <div class="chip" style="font-size:10px;cursor:pointer;">엣지: 협업빈도</div>
-          </div>
-        </div>
-        <div class="p-note">노드 크기 = 커밋 수 · 엣지 굵기 = 협업 빈도 · 색상 = 클러스터 · 노드 클릭 시 상세 표시</div>
-        <svg class="network-svg" viewBox="0 0 480 200">
-          <!-- cluster bg hints -->
-          <ellipse cx="190" cy="100" rx="90" ry="70" fill="#E6F1FB" opacity="0.5"/>
-          <ellipse cx="360" cy="90" rx="70" ry="55" fill="#E1F5EE" opacity="0.5"/>
-          <ellipse cx="90" cy="150" rx="50" ry="35" fill="#EEEDFE" opacity="0.5"/>
-          <!-- edges -->
-          <line x1="190" y1="100" x2="120" y2="65"  stroke="#B5D4F4" stroke-width="3"/>
-          <line x1="190" y1="100" x2="240" y2="60"  stroke="#B5D4F4" stroke-width="2.5"/>
-          <line x1="190" y1="100" x2="220" y2="140" stroke="#B5D4F4" stroke-width="2"/>
-          <line x1="190" y1="100" x2="150" y2="150" stroke="#B5D4F4" stroke-width="1.5"/>
-          <line x1="190" y1="100" x2="360" y2="90"  stroke="#D3D1C7" stroke-width="1"/>
-          <line x1="120" y1="65"  x2="240" y2="60"  stroke="#D3D1C7" stroke-width="1"/>
-          <line x1="360" y1="90"  x2="310" y2="55"  stroke="#9FE1CB" stroke-width="2"/>
-          <line x1="360" y1="90"  x2="410" y2="60"  stroke="#9FE1CB" stroke-width="1.5"/>
-          <line x1="360" y1="90"  x2="400" y2="130" stroke="#9FE1CB" stroke-width="1"/>
-          <line x1="90"  y1="150" x2="60"  y2="120" stroke="#AFA9EC" stroke-width="1.5"/>
-          <line x1="90"  y1="150" x2="130" y2="170" stroke="#AFA9EC" stroke-width="1"/>
-          <line x1="150" y1="150" x2="90"  y2="150" stroke="#D3D1C7" stroke-width="0.5"/>
-          <line x1="240" y1="60"  x2="310" y2="55"  stroke="#D3D1C7" stroke-width="0.5"/>
-          <!-- hub node -->
-          <circle cx="190" cy="100" r="20" fill="#B5D4F4" stroke="#378ADD" stroke-width="2"/>
-          <text x="190" y="97"  text-anchor="middle" font-size="8" fill="#0C447C" font-weight="600">gaearon</text>
-          <text x="190" y="107" text-anchor="middle" font-size="7" fill="#185FA5">0.92</text>
-          <!-- cluster 1 nodes -->
-          <circle cx="120" cy="65" r="14" fill="#E6F1FB" stroke="#B5D4F4" stroke-width="1"/>
-          <text x="120" y="69"  text-anchor="middle" font-size="8" fill="#185FA5">sophiebits</text>
-          <circle cx="240" cy="60" r="12" fill="#E6F1FB" stroke="#B5D4F4" stroke-width="1"/>
-          <text x="240" y="64"  text-anchor="middle" font-size="8" fill="#185FA5">acdlite</text>
-          <circle cx="220" cy="140" r="10" fill="#E6F1FB" stroke="#B5D4F4" stroke-width="1"/>
-          <text x="220" y="144" text-anchor="middle" font-size="7" fill="#185FA5">lunaruan</text>
-          <circle cx="150" cy="150" r="9" fill="#E6F1FB" stroke="#B5D4F4" stroke-width="1"/>
-          <text x="150" y="154" text-anchor="middle" font-size="7" fill="#185FA5">bvaughn</text>
-          <!-- cluster 2 nodes -->
-          <circle cx="360" cy="90" r="14" fill="#E1F5EE" stroke="#9FE1CB" stroke-width="1"/>
-          <text x="360" y="94"  text-anchor="middle" font-size="8" fill="#085041">trueadm</text>
-          <circle cx="310" cy="55" r="10" fill="#E1F5EE" stroke="#9FE1CB" stroke-width="1"/>
-          <text x="310" y="59"  text-anchor="middle" font-size="7" fill="#0F6E56">rickhanlonii</text>
-          <circle cx="410" cy="60" r="9"  fill="#E1F5EE" stroke="#9FE1CB" stroke-width="1"/>
-          <text x="410" y="64"  text-anchor="middle" font-size="7" fill="#0F6E56">sebmarkbage</text>
-          <circle cx="400" cy="130" r="8" fill="#E1F5EE" stroke="#9FE1CB" stroke-width="1"/>
-          <text x="400" y="134" text-anchor="middle" font-size="7" fill="#0F6E56">eps1lon</text>
-          <!-- cluster 3 nodes -->
-          <circle cx="90"  cy="150" r="10" fill="#EEEDFE" stroke="#AFA9EC" stroke-width="1"/>
-          <text x="90"  y="154" text-anchor="middle" font-size="7" fill="#534AB7">josephsavona</text>
-          <circle cx="60"  cy="120" r="7"  fill="#EEEDFE" stroke="#AFA9EC" stroke-width="1"/>
-          <text x="60"  y="124" text-anchor="middle" font-size="6" fill="#534AB7">en_js</text>
-          <circle cx="130" cy="170" r="7"  fill="#EEEDFE" stroke="#AFA9EC" stroke-width="1"/>
-          <text x="130" y="174" text-anchor="middle" font-size="6" fill="#534AB7">gnoff</text>
-          <!-- hub label -->
-          <rect x="174" y="123" width="34" height="11" rx="3" fill="#378ADD"/>
-          <text x="191" y="131" text-anchor="middle" font-size="8" fill="#fff">허브</text>
-          <!-- cluster labels -->
-          <text x="185" y="30" text-anchor="middle" font-size="9" fill="#185FA5" font-weight="500">클러스터 A · Core</text>
-          <text x="370" y="28" text-anchor="middle" font-size="9" fill="#085041" font-weight="500">클러스터 B · Renderer</text>
-          <text x="85"  y="110" text-anchor="middle" font-size="9" fill="#534AB7" font-weight="500">클러스터 C</text>
 
-          <!-- ── 고립 기여자 노드 군 (외곽 산포) ── -->
-          <g opacity="0.45" id="isolated-nodes">
-            <circle cx="448" cy="170" r="4" fill="var(--gray)" stroke="var(--border2)" stroke-width="0.5"/>
-            <circle cx="462" cy="155" r="3" fill="var(--gray)" stroke="var(--border2)" stroke-width="0.5"/>
-            <circle cx="455" cy="143" r="4" fill="var(--gray)" stroke="var(--border2)" stroke-width="0.5"/>
-            <circle cx="470" cy="130" r="3" fill="var(--gray)" stroke="var(--border2)" stroke-width="0.5"/>
-            <circle cx="468" cy="182" r="3" fill="var(--gray)" stroke="var(--border2)" stroke-width="0.5"/>
-            <circle cx="440" cy="185" r="5" fill="var(--gray)" stroke="var(--border2)" stroke-width="0.5"/>
-            <circle cx="476" cy="115" r="4" fill="var(--gray)" stroke="var(--border2)" stroke-width="0.5"/>
-            <circle cx="460" cy="104" r="3" fill="var(--gray)" stroke="var(--border2)" stroke-width="0.5"/>
-            <circle cx="14"  cy="30"  r="4" fill="var(--gray)" stroke="var(--border2)" stroke-width="0.5"/>
-            <circle cx="26"  cy="18"  r="3" fill="var(--gray)" stroke="var(--border2)" stroke-width="0.5"/>
-            <circle cx="10"  cy="52"  r="3" fill="var(--gray)" stroke="var(--border2)" stroke-width="0.5"/>
-            <circle cx="30"  cy="185" r="4" fill="var(--gray)" stroke="var(--border2)" stroke-width="0.5"/>
-            <circle cx="18"  cy="172" r="3" fill="var(--gray)" stroke="var(--border2)" stroke-width="0.5"/>
-          </g>
-          <!-- 고립 기여자 레이블 + 화살표 -->
-          <line x1="446" y1="158" x2="432" y2="148" stroke="var(--gray)" stroke-width="0.8" stroke-dasharray="2,2"/>
-          <text x="428" y="145" text-anchor="end" font-size="8" fill="var(--text3)">고립 기여자 303명</text>
-          <text x="428" y="154" text-anchor="end" font-size="7" fill="var(--text3)">(협업 이력 없음)</text>
-        </svg>
-        <div class="legend" style="margin-top:6px;">
-          <div class="leg-item"><div style="width:10px;height:10px;border-radius:50%;background:#B5D4F4;border:1.5px solid #378ADD;flex-shrink:0;"></div>허브 노드</div>
-          <div class="leg-item"><div style="width:10px;height:10px;border-radius:50%;background:#E6F1FB;border:1px solid #B5D4F4;flex-shrink:0;"></div>클러스터 A</div>
-          <div class="leg-item"><div style="width:10px;height:10px;border-radius:50%;background:#E1F5EE;border:1px solid #9FE1CB;flex-shrink:0;"></div>클러스터 B</div>
-          <div class="leg-item"><div style="width:10px;height:10px;border-radius:50%;background:#EEEDFE;border:1px solid #AFA9EC;flex-shrink:0;"></div>클러스터 C</div>
-        </div>
-      </div>
-      <!-- right column -->
-      <div class="stack">
-        <!-- 허브 기여자 -->
-        <div class="panel">
-          <div class="p-head" style="margin-bottom:12px;"><div class="p-title">허브 기여자</div><div style="font-size:11px;color:var(--text2);">중심성 지수 기준</div></div>
-          <div class="contrib-list">
-            <div class="c-row"><div class="avatar" style="background:#B5D4F4;color:#0C447C;">가</div><div class="c-info"><div class="c-name">gaearon</div><div class="c-meta">중심성 0.92 · 협업 71명</div></div></div>
-            <div class="c-row"><div class="avatar" style="background:#E6F1FB;color:#185FA5;">소</div><div class="c-info"><div class="c-name">sophiebits</div><div class="c-meta">중심성 0.78 · 협업 54명</div></div></div>
-            <div class="c-row"><div class="avatar" style="background:#E6F1FB;color:#185FA5;">아</div><div class="c-info"><div class="c-name">acdlite</div><div class="c-meta">중심성 0.61 · 협업 38명</div></div></div>
-            <div class="c-row"><div class="avatar" style="background:var(--teal-light);color:var(--teal-dark);">트</div><div class="c-info"><div class="c-name">trueadm</div><div class="c-meta">중심성 0.55 · 협업 29명</div></div></div>
-          </div>
-        </div>
-        <!-- 네트워크 지표 -->
-        <div class="panel">
-          <div class="p-title" style="margin-bottom:12px;">네트워크 지표</div>
-          <div class="info-table-wrap">
-          <table class="info-table">
-            <tr><td class="key">평균 협업 강도</td><td class="val">3.2</td></tr>
-            <tr><td class="key">네트워크 밀도</td><td class="val">0.34</td></tr>
-            <tr><td class="key">고립 기여자</td><td class="val" style="color:var(--red-dark);">303명 (18%)</td></tr>
-            <tr><td class="key">클러스터 수</td><td class="val">7개</td></tr>
-            <tr><td class="key">최대 클러스터</td><td class="val">클러스터 A · 412명</td></tr>
-          </table>
-          </div>
-        </div>
-        <!-- 협업 빈도 차트 -->
-        <div class="panel">
-          <div class="p-title" style="margin-bottom:10px;">상위 협업 쌍</div>
-          <div style="display:flex;flex-direction:column;gap:7px;">
-            <div style="font-size:11px;color:var(--text2);">gaearon ↔ sophiebits<div style="margin-top:3px;"><div style="height:4px;background:var(--blue);border-radius:2px;width:92%;"></div></div></div>
-            <div style="font-size:11px;color:var(--text2);">gaearon ↔ acdlite<div style="margin-top:3px;"><div style="height:4px;background:var(--blue);border-radius:2px;width:78%;"></div></div></div>
-            <div style="font-size:11px;color:var(--text2);">trueadm ↔ rickhanlonii<div style="margin-top:3px;"><div style="height:4px;background:var(--teal);border-radius:2px;width:61%;"></div></div></div>
-            <div style="font-size:11px;color:var(--text2);">sophiebits ↔ lunaruan<div style="margin-top:3px;"><div style="height:4px;background:var(--blue-mid);border-radius:2px;width:48%;"></div></div></div>
-          </div>
-        </div>
+    <!-- 분석 데이터 준비 중 플레이스홀더 -->
+    <div class="panel" style="text-align:center;padding:48px 20px;">
+      <div style="font-size:13px;color:var(--text2);font-weight:600;margin-bottom:6px;">협업 네트워크 분석 데이터 준비 중</div>
+      <div style="font-size:12px;color:var(--text3);line-height:1.6;">
+        Force-directed 협업 그래프 · 허브 기여자 · 네트워크 지표 · 상위 협업 쌍은<br>
+        분석 모듈(co-edit / review 기반 협업 그래프)이 산출하는 <b>파생 데이터</b>입니다.<br>
+        분석 단계가 연동되면 이 영역에 실제 데이터로 렌더링됩니다.
       </div>
     </div>
   </div>

@@ -13,15 +13,14 @@
     <!-- ═══════════ RISK ═══════════ -->
 <div class="page active" id="page-risk">
   <div class="dash-head">
-    <div><div class="dash-title">facebook/react</div><div class="dash-sub">코드 리스크 — Heuristic 기반 5-피처 Risk Ranking</div></div>
+    <div><div class="dash-title js-repo-title">—</div><div class="dash-sub">코드 리스크 — Heuristic 기반 5-피처 Risk Ranking</div></div>
     <div style="display:flex;align-items:center;gap:10px;">
       <div style="display:flex;align-items:center;gap:7px;">
-        <div class="status-dot" style="background:#639922;"></div>
-        <span style="font-size:12px;color:var(--text2);">분석 완료</span>
+        <div class="status-dot" style="background:var(--gray);"></div>
+        <span style="font-size:12px;color:var(--text2);">분석 연동 예정</span>
       </div>
       <button class="btn-secondary" data-auth="1" onclick="openReanalyzeToast()">재분석</button>
     </div>
-    
   </div>
   <div class="sub-tabs">
     <div class="sub-tab" onclick="location.href='./timeline.html'">타임라인</div>
@@ -31,103 +30,21 @@
     <div class="sub-tab" onclick="location.href='./busfactor.html'">Bus Factor</div>
   </div>
   <div class="body">
+    <!-- 분석 모듈이 채울 지표 슬롯 (현재 값은 분석 대기) -->
     <div class="metrics-4">
-      <div class="metric-card"><div class="m-label">고위험 파일</div><div class="m-val m-dn">23</div><div class="m-sub">Risk Score 0.7 이상</div></div>
-      <div class="metric-card"><div class="m-label">평균 Risk Score</div><div class="m-val">0.41</div><div class="m-sub">전체 파일 기준</div></div>
-      <div class="metric-card"><div class="m-label">Hidden Coupling</div><div class="m-val m-dn">12</div><div class="m-sub">import 관계 없는 co-change</div></div>
-      <div class="metric-card"><div class="m-label">평균 Entropy</div><div class="m-val">1.82</div><div class="m-sub">소유권 분산도</div></div>
-    </div>
-    <div class="col-2-1" style="margin-bottom:14px;">
-      <!-- 히트맵 테이블 -->
-      <div class="panel">
-        <div class="p-head" style="margin-bottom:6px;">
-          <div class="p-title">파일별 위험도 히트맵</div>
-          <select style="font-size:11px;padding:3px 8px;">
-            <option>전체 파일</option>
-            <option>패키지별</option>
-            <option>고위험만</option>
-          </select>
-        </div>
-        <div class="p-note">Risk = w₁·변경빈도 + w₂·Churn + w₃·Entropy + w₄·버그비율 + w₅·Co-change (초기 균등 0.2)</div>
-        <div class="hm-wrap">
-          <table class="hm-table">
-            <thead><tr>
-              <td class="hm-th left">파일 경로</td>
-              <td class="hm-th">변경빈도</td>
-              <td class="hm-th">Churn</td>
-              <td class="hm-th">Entropy</td>
-              <td class="hm-th">버그비율</td>
-              <td class="hm-th">Co-change</td>
-              <td class="hm-th">종합</td>
-            </tr></thead>
-            <tbody>
-              <tr><td class="hm-td file">packages/react-dom/src/ReactDOM.js</td><td class="hm-td hm-val hm-4">0.91</td><td class="hm-td hm-val hm-3">0.78</td><td class="hm-td hm-val hm-1">0.35</td><td class="hm-td hm-val hm-3">0.73</td><td class="hm-td hm-val hm-3">0.65</td><td class="hm-td hm-val hm-3"><b>0.68</b></td></tr>
-              <tr><td class="hm-td file">packages/react-reconciler/src/ReactFiberWorkLoop.js</td><td class="hm-td hm-val hm-3">0.78</td><td class="hm-td hm-val hm-3">0.65</td><td class="hm-td hm-val hm-2">0.42</td><td class="hm-td hm-val hm-4">0.82</td><td class="hm-td hm-val hm-2">0.48</td><td class="hm-td hm-val hm-3"><b>0.63</b></td></tr>
-              <tr><td class="hm-td file">packages/react/src/React.js</td><td class="hm-td hm-val hm-3">0.65</td><td class="hm-td hm-val hm-2">0.52</td><td class="hm-td hm-val hm-2">0.48</td><td class="hm-td hm-val hm-2">0.42</td><td class="hm-td hm-val hm-2">0.38</td><td class="hm-td hm-val hm-2"><b>0.49</b></td></tr>
-              <tr><td class="hm-td file">packages/react-reconciler/src/ReactFiber.js</td><td class="hm-td hm-val hm-2">0.48</td><td class="hm-td hm-val hm-2">0.41</td><td class="hm-td hm-val hm-3">0.62</td><td class="hm-td hm-val hm-2">0.39</td><td class="hm-td hm-val hm-1">0.25</td><td class="hm-td hm-val hm-2"><b>0.43</b></td></tr>
-              <tr><td class="hm-td file">packages/scheduler/src/forks/Scheduler.js</td><td class="hm-td hm-val hm-3">0.70</td><td class="hm-td hm-val hm-3">0.58</td><td class="hm-td hm-val hm-1">0.28</td><td class="hm-td hm-val hm-3">0.65</td><td class="hm-td hm-val hm-2">0.52</td><td class="hm-td hm-val hm-2"><b>0.55</b></td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div style="display:flex;gap:5px;align-items:center;margin-top:10px;">
-          <span style="font-size:10px;color:var(--text2);">낮음</span>
-          <div style="width:14px;height:10px;border-radius:2px;background:#B5D4F4;"></div>
-          <div style="width:14px;height:10px;border-radius:2px;background:#85B7EB;"></div>
-          <div style="width:14px;height:10px;border-radius:2px;background:#378ADD;"></div>
-          <div style="width:14px;height:10px;border-radius:2px;background:#185FA5;"></div>
-          <span style="font-size:10px;color:var(--text2);">높음</span>
-        </div>
-      </div>
-      <!-- 고위험 목록 -->
-      <div class="stack">
-        <div class="panel">
-          <div class="p-title" style="margin-bottom:12px;">고위험 파일 목록 <span class="badge badge-red" style="font-size:10px;margin-left:4px;">0.7 이상</span></div>
-          <div class="risk-list">
-            <div class="risk-row"><div class="risk-icon hi">!</div><div class="risk-file">ReactDOM.js</div><div class="risk-bar-wrap"><div style="height:4px;border-radius:2px;background:var(--red);width:68%;"></div></div><div class="risk-score hi">0.68</div></div>
-            <div class="risk-row"><div class="risk-icon hi">!</div><div class="risk-file">ReactFiberWorkLoop.js</div><div class="risk-bar-wrap"><div style="height:4px;border-radius:2px;background:var(--red);width:63%;"></div></div><div class="risk-score md">0.63</div></div>
-            <div class="divider" style="margin:6px 0;"></div>
-            <div class="risk-row"><div class="risk-icon md">▲</div><div class="risk-file">Scheduler.js</div><div class="risk-bar-wrap"><div style="height:4px;border-radius:2px;background:var(--amber);width:55%;"></div></div><div class="risk-score md">0.55</div></div>
-            <div class="risk-row"><div class="risk-icon md">▲</div><div class="risk-file">React.js</div><div class="risk-bar-wrap"><div style="height:4px;border-radius:2px;background:var(--amber);width:49%;"></div></div><div class="risk-score md">0.49</div></div>
-            <div class="risk-row"><div class="risk-icon lo">▼</div><div class="risk-file">ReactFiber.js</div><div class="risk-bar-wrap"><div style="height:4px;border-radius:2px;background:var(--green);width:43%;"></div></div><div class="risk-score lo">0.43</div></div>
-          </div>
-          <div style="margin-top:10px;padding-top:8px;border-top:0.5px solid var(--border);font-size:12px;color:var(--blue);cursor:pointer;">고위험 파일 외 21개 더 보기 →</div>
-          <div class="warn-box">
-            <div class="warn-title">⚠ 주의</div>
-            <div class="warn-body">ReactDOM.js는 변경빈도·Co-change 결합도가 높고 Ownership Entropy가 낮습니다 (소유권 집중).</div>
-          </div>
-        </div>
-        <!-- PR 리뷰 대기 -->
-        <div class="panel">
-          <div class="p-title" style="margin-bottom:12px;">Hidden Coupling 탐지</div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">import 관계 없이 co-change score가 높은 파일 쌍 (IDF 보정 후)</div>
-          <div class="pr-table-wrap">
-          <table class="pr-table">
-            <thead><tr><th>파일 쌍</th><th>Adj. Score</th></tr></thead>
-            <tbody>
-              <tr><td style="font-family:monospace;font-size:11px;">ReactDOM.js ↔ ReactDOMRoot.js</td><td><div class="pr-delay-bar"><div class="pr-bar-wrap"><div class="pr-bar-fill bad" style="width:85%;"></div></div><span style="font-size:11px;color:var(--red-dark);">0.65</span></div></td></tr>
-              <tr><td style="font-family:monospace;font-size:11px;">Scheduler.js ↔ ReactFiberLane.js</td><td><div class="pr-delay-bar"><div class="pr-bar-wrap"><div class="pr-bar-fill warn" style="width:58%;"></div></div><span style="font-size:11px;color:var(--amber-dark);">0.44</span></div></td></tr>
-              <tr><td style="font-family:monospace;font-size:11px;">ReactHooks.js ↔ ReactFiber.js</td><td><div class="pr-delay-bar"><div class="pr-bar-wrap"><div class="pr-bar-fill warn" style="width:46%;"></div></div><span style="font-size:11px;color:var(--amber-dark);">0.35</span></div></td></tr>
-            </tbody>
-          </table>
-          </div>
-        </div>
-      </div>
+      <div class="metric-card"><div class="m-label">고위험 파일</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
+      <div class="metric-card"><div class="m-label">평균 Risk Score</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
+      <div class="metric-card"><div class="m-label">Hidden Coupling</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
+      <div class="metric-card"><div class="m-label">평균 Entropy</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
     </div>
 
-    <!-- Risk Score 추이 차트 -->
-    <div class="panel">
-      <div class="p-head" style="margin-bottom:6px;">
-        <div class="p-title">파일별 Risk Score 추이</div>
-        <div class="range-btns"><div class="rbtn">1M</div><div class="rbtn active">3M</div><div class="rbtn">6M</div></div>
-      </div>
-      <div class="p-note">선택 파일의 Risk Score 시계열 변화 — 상승 추세 파일 조기 탐지</div>
-      <div style="position:relative;height:140px;">
-        <canvas id="chart-risk"></canvas>
-      </div>
-      <div class="legend">
-        <div class="leg-item"><div class="leg-line" style="background:var(--red);"></div>ReactDOM.js</div>
-        <div class="leg-item"><div class="leg-line" style="background:var(--amber);"></div>ReactFiberWorkLoop.js</div>
-        <div class="leg-item"><div class="leg-line" style="background:var(--teal);"></div>Scheduler.js</div>
+    <!-- 분석 데이터 준비 중 플레이스홀더 -->
+    <div class="panel" style="text-align:center;padding:48px 20px;">
+      <div style="font-size:13px;color:var(--text2);font-weight:600;margin-bottom:6px;">위험도 분석 데이터 준비 중</div>
+      <div style="font-size:12px;color:var(--text3);line-height:1.6;">
+        파일별 Risk Score 히트맵 · 고위험 파일 목록 · Hidden Coupling · Risk Score 추이는<br>
+        분석 모듈(변경빈도·Churn·Entropy·버그비율·Co-change 가중 Risk Ranking)이 산출하는 <b>파생 데이터</b>입니다.<br>
+        분석 단계가 연동되면 이 영역에 실제 데이터로 렌더링됩니다.
       </div>
     </div>
   </div>
