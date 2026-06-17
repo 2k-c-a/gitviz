@@ -24,7 +24,7 @@ export async function loadNavbar() {
   }
 }
 
-window.goPage = function(page){
+window.goPage = function(page, repoId){
 
   const isPage =
     window.location.pathname.includes('/pages/');
@@ -32,8 +32,13 @@ window.goPage = function(page){
   const ROOT =
     isPage ? './' : './pages/';
 
+  const query =
+    (repoId !== undefined && repoId !== null && repoId !== '')
+      ? '?repo=' + encodeURIComponent(repoId)
+      : '';
+
   location.href =
-    ROOT + page + '.html';
+    ROOT + page + '.html' + query;
 };
 
 window.goHome = function(){

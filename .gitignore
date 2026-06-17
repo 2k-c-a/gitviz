@@ -26,6 +26,13 @@ frontend/.vite/
 # Cloned repositories (수집 대상 git clone)
 storage/repos/
 
+# IoT (졸업작품 범위 외 — 동료 핸드오프에서 제외, 로컬에서만 유지)
+arduino/
+app/api/iot.py
+
+# 백업 잔여물
+.frontend_vite_backup.zip
+
 # IDE / editor
 .vscode/
 .idea/
