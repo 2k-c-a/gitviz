@@ -176,14 +176,56 @@
   .skel-svg { width: 100%; }
 
   /* SVG NETWORK */
-  .network-svg { width: 100%; height: 200px; }
+.network-svg{
+    width:100%;
+    height:auto;
+}
 
   /* DIVIDER */
   .divider { height: 0.5px; background: var(--border); margin: 14px 0; }
 
   /* TABLE */
+  .info-table-wrap{ overflow-x: auto;}
   .info-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .info-table td { padding: 6px 0; border-bottom: 0.5px solid var(--border); }
   .info-table tr:last-child td { border-bottom: none; }
   .info-table .key { color: var(--text2); }
   .info-table .val { text-align: right; font-weight: 500; color: var(--text); }
+
+  /* =========================
+   Mobile Responsive
+========================= */
+@media (max-width: 768px){
+
+  .body{
+    padding:12px;
+  }
+
+  .metrics-4,
+  .metrics-3,
+  .col-2-1,
+  .col-1-1,
+  .col-3{
+    grid-template-columns:1fr;
+  }
+
+  .dash-head{
+    flex-direction:column;
+    align-items:flex-start;
+    gap:10px;
+  }
+
+  .panel{
+    padding:12px;
+  }
+
+    .sub-tabs{
+    overflow-x:auto;
+    white-space:nowrap;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .sub-tab{
+    flex-shrink:0;
+  }
+}

@@ -1,7 +1,10 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.pool import NullPool
 from dotenv import load_dotenv
 import os
+import ssl
+import uuid
 
 load_dotenv()
 
@@ -13,7 +16,33 @@ DATABASE_URL = os.getenv("DATABASE_URL_ASYNC") or os.getenv("DATABASE_URL", "")
 if DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-engine = create_async_engine(DATABASE_URL, echo=False) if DATABASE_URL else None
+# ── Supabase 풀러(pgbouncer, transaction mode) + asyncpg 연결 설정 ─────────────
+#   • ssl: 명시적 컨텍스트를 주지 않으면 asyncpg가 기본 클라이언트 인증서 경로
+#          (~/.postgresql/...)를 로드하려다 비ASCII 홈 경로에서 깨진다(EILSEQ).
+#          Supabase 풀러 인증서 체인은 self-signed 이므로 검증은 끈다.
+#   • statement_cache_size / prepared_statement_*: transaction pooling에서는
+#          prepared statement가 커넥션 간 공유되지 않아 DuplicatePreparedStatement가
+#          난다 → 캐시 끄고 statement 이름을 매번 고유화.
+def _build_async_engine(url: str):
+    if not url:
+        return None
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+    return create_async_engine(
+        url,
+        echo=False,
+        poolclass=NullPool,
+        connect_args={
+            "ssl": ssl_ctx,
+            "statement_cache_size": 0,
+            "prepared_statement_cache_size": 0,
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid.uuid4()}__",
+        },
+    )
+
+
+engine = _build_async_engine(DATABASE_URL)
 
 AsyncSessionLocal = sessionmaker(
     bind=engine,

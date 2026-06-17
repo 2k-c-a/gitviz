@@ -14,8 +14,8 @@
 <div class="page active" id="page-timeline">
   <div class="dash-head">
     <div>
-      <div class="dash-title">facebook/react <span class="badge badge-blue">main</span></div>
-      <div class="dash-sub">커밋 18,432개 · 기여자 1,683명 · 마지막 분석 2시간 전</div>
+      <div class="dash-title"><span id="tl-repo-name">—</span> <span class="badge badge-blue" id="tl-branch">main</span></div>
+      <div class="dash-sub" id="tl-dash-sub">불러오는 중…</div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
       <div style="display:flex;align-items:center;gap:7px;">
@@ -34,10 +34,10 @@
   </div>
   <div class="body">
     <div class="metrics-4">
-      <div class="metric-card"><div class="m-label">총 커밋</div><div class="m-val">18,432</div><div class="m-sub m-up">▲ 최근 30일 +312</div></div>
-      <div class="metric-card"><div class="m-label">활성 기여자</div><div class="m-val">1,683</div><div class="m-sub">최근 90일 기준</div></div>
-      <div class="metric-card"><div class="m-label">릴리즈</div><div class="m-val">87</div><div class="m-sub">최신 v19.1.0</div></div>
-      <div class="metric-card"><div class="m-label">버그 픽스 비율</div><div class="m-val m-dn">14%</div><div class="m-sub m-dn">▲ 전월 대비 +2%</div></div>
+      <div class="metric-card"><div class="m-label">총 커밋</div><div class="m-val" id="tl-m-commits">—</div><div class="m-sub m-up" id="tl-m-commits-sub">&nbsp;</div></div>
+      <div class="metric-card"><div class="m-label">활성 기여자</div><div class="m-val" id="tl-m-contributors">—</div><div class="m-sub">최근 90일 기준</div></div>
+      <div class="metric-card"><div class="m-label">릴리즈</div><div class="m-val" id="tl-m-releases">—</div><div class="m-sub" id="tl-m-releases-sub">&nbsp;</div></div>
+      <div class="metric-card"><div class="m-label">버그 픽스 비율</div><div class="m-val m-dn" id="tl-m-bugfix">—</div><div class="m-sub">전체 커밋 기준</div></div>
     </div>
 
     <!-- 커밋 타임라인 차트 -->
@@ -69,10 +69,8 @@
             <div style="font-size:11px;color:var(--text2);">최근 16주</div>
           </div>
           <div class="act-hm" id="act-heatmap"></div>
-          <div style="display:flex;align-items:center;gap:5px;margin-top:8px;">
-            <span style="font-size:10px;color:var(--text2);">적음</span>
-            <div class="act-cell hm-0"></div><div class="act-cell hm-1"></div><div class="act-cell hm-2"></div><div class="act-cell hm-3"></div><div class="act-cell hm-4"></div>
-            <span style="font-size:10px;color:var(--text2);">많음</span>
+          <div style="font-size:12px;color:var(--text3);text-align:center;padding:24px 8px;">
+            기여자별 주간 활동 히트맵은 곧 실데이터로 연동됩니다.
           </div>
         </div>
         <!-- 상위 기여자 -->
@@ -81,39 +79,21 @@
             <div class="p-title">상위 기여자</div>
             <div style="font-size:11px;color:var(--text2);">커밋 수 기준</div>
           </div>
-          <div class="contrib-list">
-            <div class="c-row"><div class="avatar" style="background:#E6F1FB;color:#185FA5;">소</div><div class="c-info"><div class="c-name">sophiebits</div><div class="c-meta">주력 파일 12개 · 최근 3일 전</div></div><div class="bar-wrap"><div class="bar-fill bar-blue" style="width:100%;"></div></div><div class="c-count">2,341</div></div>
-            <div class="c-row"><div class="avatar" style="background:var(--teal-light);color:var(--teal-dark);">가</div><div class="c-info"><div class="c-name">gaearon</div><div class="c-meta">주력 파일 9개 · 최근 1일 전</div></div><div class="bar-wrap"><div class="bar-fill bar-blue" style="width:85%;"></div></div><div class="c-count">1,987</div></div>
-            <div class="c-row"><div class="avatar" style="background:var(--purple-light);color:var(--purple);">아</div><div class="c-info"><div class="c-name">acdlite</div><div class="c-meta">주력 파일 7개 · 최근 5일 전</div></div><div class="bar-wrap"><div class="bar-fill bar-blue" style="width:61%;"></div></div><div class="c-count">1,432</div></div>
-            <div class="c-row"><div class="avatar" style="background:var(--amber-light);color:var(--amber-dark);">루</div><div class="c-info"><div class="c-name">lunaruan</div><div class="c-meta">주력 파일 5개 · 최근 12일 전</div></div><div class="bar-wrap"><div class="bar-fill bar-blue" style="width:48%;"></div></div><div class="c-count">1,120</div></div>
-            <div class="c-row"><div class="avatar" style="background:var(--gray-light);color:var(--text2);">트</div><div class="c-info"><div class="c-name">trueadm</div><div class="c-meta">주력 파일 4개 · 최근 20일 전</div></div><div class="bar-wrap"><div class="bar-fill bar-blue" style="width:34%;"></div></div><div class="c-count">802</div></div>
-          </div>
+          <div class="contrib-list" id="tl-contrib-list"></div>
         </div>
       </div>
       <div class="stack">
         <!-- 릴리즈 히스토리 -->
         <div class="panel">
           <div class="p-head" style="margin-bottom:14px;"><div class="p-title">릴리즈 히스토리</div></div>
-          <div class="release-list">
-            <div class="rel-row"><div class="rel-dot-col"><div class="rel-dot major"></div><div class="rel-line"></div></div><div><div class="rel-ver">v19.1.0 <span class="badge badge-blue" style="font-size:10px;">major</span></div><div class="rel-date">2025.03.28 · 커밋 312개</div></div></div>
-            <div class="rel-row"><div class="rel-dot-col"><div class="rel-dot minor"></div><div class="rel-line"></div></div><div><div class="rel-ver">v19.0.0</div><div class="rel-date">2024.12.05 · 커밋 891개</div></div></div>
-            <div class="rel-row"><div class="rel-dot-col"><div class="rel-dot minor"></div><div class="rel-line"></div></div><div><div class="rel-ver">v18.3.1</div><div class="rel-date">2024.04.26 · 커밋 203개</div></div></div>
-            <div class="rel-row"><div class="rel-dot-col"><div class="rel-dot patch"></div><div class="rel-line"></div></div><div><div class="rel-ver">v18.3.0</div><div class="rel-date">2024.04.25 · 커밋 88개</div></div></div>
-            <div class="rel-row"><div class="rel-dot-col"><div class="rel-dot major"></div></div><div><div class="rel-ver">v18.0.0 <span class="badge badge-blue" style="font-size:10px;">major</span></div><div class="rel-date">2022.03.29 · 커밋 1,204개</div></div></div>
-          </div>
+          <div class="release-list" id="tl-release-list"></div>
         </div>
         <!-- 커밋 유형 도넛 -->
         <div class="panel">
           <div class="p-title" style="margin-bottom:12px;">커밋 유형 분포</div>
           <div class="donut-wrap">
             <canvas id="chart-donut" width="80" height="80" style="width:80px;height:80px;flex-shrink:0;"></canvas>
-            <div class="donut-legend">
-              <div class="donut-leg-row"><div class="donut-leg-label"><div class="donut-swatch" style="background:var(--blue);"></div>기능 추가</div><div class="donut-pct">33%</div></div>
-              <div class="donut-leg-row"><div class="donut-leg-label"><div class="donut-swatch" style="background:var(--amber);"></div>리팩토링</div><div class="donut-pct">19%</div></div>
-              <div class="donut-leg-row"><div class="donut-leg-label"><div class="donut-swatch" style="background:var(--teal);"></div>버그 픽스</div><div class="donut-pct">14%</div></div>
-              <div class="donut-leg-row"><div class="donut-leg-label"><div class="donut-swatch" style="background:var(--coral-mid);"></div>문서/테스트</div><div class="donut-pct">12%</div></div>
-              <div class="donut-leg-row"><div class="donut-leg-label"><div class="donut-swatch" style="background:var(--gray);"></div>기타</div><div class="donut-pct">22%</div></div>
-            </div>
+            <div class="donut-legend" id="tl-donut-legend"></div>
           </div>
         </div>
       </div>
