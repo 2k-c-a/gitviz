@@ -101,6 +101,34 @@ class GraphQLClient:
         self.on_rate_limit = on_rate_limit
         self.on_resume = on_resume
 
+        # 선제 감속(throttle): 남은 포인트가 threshold 미만이면 reset까지 시간에 맞춰 미리 페이스 조절.
+        # 한도 0에 부딪혀 멈추는 대신 에러 자체를 피해 부드럽게 지나가게 한다.
+        self.throttle_threshold = int(os.getenv("GRAPHQL_THROTTLE_THRESHOLD", "100"))
+        self.throttle_max_sleep = float(os.getenv("GRAPHQL_THROTTLE_MAX_SLEEP", "3"))
+        self.throttle_wait_seconds = 0.0
+
+    def _maybe_throttle(self, rate_limit: Optional[dict]) -> None:
+        """남은 포인트가 적으면 reset까지 남은 시간을 남은 호출 수로 나눠 미리 잠깐 쉰다."""
+        if not rate_limit:
+            return
+        remaining = rate_limit.get("remaining")
+        if remaining is None or remaining >= self.throttle_threshold or remaining <= 0:
+            return
+        import datetime
+        try:
+            reset_dt = datetime.datetime.fromisoformat(
+                (rate_limit.get("resetAt") or "").replace("Z", "+00:00")
+            )
+            secs = (reset_dt - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+        except Exception:
+            return
+        if secs <= 0:
+            return
+        wait = min(secs / remaining, self.throttle_max_sleep)
+        if wait > 0:
+            self.throttle_wait_seconds += wait
+            time.sleep(wait)
+
     def query(self, query_str: str, variables: dict) -> dict:
         attempt = 0
         max_retries = 5
@@ -191,6 +219,8 @@ class GraphQLClient:
                     continue
                 raise Exception(f"GraphQL errors: {errors}")
 
+            # 선제 감속: 남은 포인트가 적으면 미리 천천히 (한도 0 충돌 회피)
+            self._maybe_throttle(rate_limit)
             return data
 
 
