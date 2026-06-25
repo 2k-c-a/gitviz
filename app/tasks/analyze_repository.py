@@ -28,7 +28,11 @@ from app.collectors.git.commit_file_change_collector import collect_commit_file_
 from app.collectors.git.commit_classifier import classify_commit
 from app.collectors.github.github_client import GitHubClient
 from app.collectors.github.pr_collector import collect_pull_requests
-from app.collectors.github.graphql_pr_collector import GraphQLClient, collect_pr_details_graphql
+from app.collectors.github.graphql_pr_collector import (
+    GraphQLClient,
+    collect_pr_details_graphql,
+    collect_pr_details_graphql_batch,
+)
 from app.collectors.github.release_collector import collect_releases
 from app.collectors.identity.resolver import run_identity_resolution
 from app.tasks.progress import ProgressReporter
@@ -577,19 +581,24 @@ def analyze_repository(repository_id: int):
         def normalize_sha(h):
             return h.strip().lower() if h else ""
 
-        for i, (pr_id, pr_number) in enumerate(saved_prs):
-            if i % 100 == 0:
-                print(f"  PR details progress: {i}/{len(saved_prs)}")
+        def _flush_pr_rows():
+            nonlocal pr_commit_rows, pr_review_rows, pr_file_rows
+            if pr_commit_rows:
+                for chunk in chunked(pr_commit_rows, CHUNK_SIZE):
+                    db.execute(insert(PrCommit).values(chunk).on_conflict_do_nothing(
+                        index_elements=["pull_request_id", "commit_sha"]))
+                pr_commit_rows = []
+            if pr_review_rows:
+                db.add_all([PrReview(**r) for r in pr_review_rows])
+                pr_review_rows = []
+            if pr_file_rows:
+                for chunk in chunked(pr_file_rows, CHUNK_SIZE):
+                    db.execute(insert(PullRequestFile).values(chunk).on_conflict_do_nothing(
+                        index_elements=["pull_request_id", "filename"]))
+                pr_file_rows = []
+            db.commit()
 
-            if pr_id in prs_with_details:
-                continue
-
-            try:
-                details = collect_pr_details_graphql(gql_client, owner, repo_name_gh, pr_number)
-            except Exception as e:
-                print(f"  GraphQL error PR#{pr_number}: {e}")
-                continue
-
+        def _accumulate(pr_id, details):
             # PR Commits
             for sha_raw in details["commits"]:
                 sha = normalize_sha(sha_raw)
@@ -602,7 +611,6 @@ def analyze_repository(repository_id: int):
                     "commit_sha": sha,
                 })
                 existing_pr_commit_keys.add(key)
-
             # PR Reviews
             for rv in details["reviews"]:
                 rv_key = (pr_id, rv["reviewer_login"], _review_ts_key(rv["submitted_at"]))
@@ -615,7 +623,6 @@ def analyze_repository(repository_id: int):
                     "submitted_at": rv["submitted_at"],
                 })
                 existing_pr_review_keys.add(rv_key)
-
             # PR Files
             for pf in details["files"]:
                 filename = pf["filename"]
@@ -628,45 +635,35 @@ def analyze_repository(repository_id: int):
                     "change_type": pf["status"],
                 })
 
-            # Flush every 500 PRs to avoid memory buildup
-            if (i + 1) % 500 == 0:
-                if pr_commit_rows:
-                    for chunk in chunked(pr_commit_rows, CHUNK_SIZE):
-                        stmt = insert(PrCommit).values(chunk)
-                        stmt = stmt.on_conflict_do_nothing(index_elements=["pull_request_id", "commit_sha"])
-                        db.execute(stmt)
-                    pr_commit_rows = []
+        # 배치 수집: alias로 PR 여러 개를 한 요청에 묶어 왕복 횟수를 줄인다.
+        to_fetch = [(pid, num) for (pid, num) in saved_prs if pid not in prs_with_details]
+        PR_BATCH = int(os.getenv("PR_DETAILS_BATCH", "20"))
+        processed = 0
 
-                if pr_review_rows:
-                    db.add_all([PrReview(**r) for r in pr_review_rows])
-                    pr_review_rows = []
+        for batch in chunked(to_fetch, PR_BATCH):
+            numbers = [num for (_pid, num) in batch]
+            try:
+                details_map = collect_pr_details_graphql_batch(gql_client, owner, repo_name_gh, numbers)
+            except Exception as e:
+                # 배치 실패 시 per-PR 폴백 (한 PR 오류가 배치 전체를 막지 않게)
+                print(f"  batch GraphQL error (PRs {numbers[:3]}...): {e}; per-PR 폴백")
+                details_map = {}
+                for _pid, num in batch:
+                    try:
+                        details_map[num] = collect_pr_details_graphql(gql_client, owner, repo_name_gh, num)
+                    except Exception as e2:
+                        print(f"  GraphQL error PR#{num}: {e2}")
 
-                if pr_file_rows:
-                    for chunk in chunked(pr_file_rows, CHUNK_SIZE):
-                        stmt = insert(PullRequestFile).values(chunk)
-                        stmt = stmt.on_conflict_do_nothing(index_elements=["pull_request_id", "filename"])
-                        db.execute(stmt)
-                    pr_file_rows = []
+            for pr_id, pr_number in batch:
+                details = details_map.get(pr_number)
+                if details:
+                    _accumulate(pr_id, details)
 
-                db.commit()
+            processed += len(batch)
+            print(f"  PR details progress: {processed}/{len(to_fetch)}")
+            _flush_pr_rows()
 
-        # Final flush
-        if pr_commit_rows:
-            for chunk in chunked(pr_commit_rows, CHUNK_SIZE):
-                stmt = insert(PrCommit).values(chunk)
-                stmt = stmt.on_conflict_do_nothing(index_elements=["pull_request_id", "commit_sha"])
-                db.execute(stmt)
-
-        if pr_review_rows:
-            db.add_all([PrReview(**r) for r in pr_review_rows])
-
-        if pr_file_rows:
-            for chunk in chunked(pr_file_rows, CHUNK_SIZE):
-                stmt = insert(PullRequestFile).values(chunk)
-                stmt = stmt.on_conflict_do_nothing(index_elements=["pull_request_id", "filename"])
-                db.execute(stmt)
-
-        db.commit()
+        _flush_pr_rows()
         print(f"END collect_pr_details")
 
         # ---- Releases ----

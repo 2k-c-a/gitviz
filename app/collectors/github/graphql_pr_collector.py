@@ -101,6 +101,34 @@ class GraphQLClient:
         self.on_rate_limit = on_rate_limit
         self.on_resume = on_resume
 
+        # 선제 감속(throttle): 남은 포인트가 threshold 미만이면 reset까지 시간에 맞춰 미리 페이스 조절.
+        # 한도 0에 부딪혀 멈추는 대신 에러 자체를 피해 부드럽게 지나가게 한다.
+        self.throttle_threshold = int(os.getenv("GRAPHQL_THROTTLE_THRESHOLD", "100"))
+        self.throttle_max_sleep = float(os.getenv("GRAPHQL_THROTTLE_MAX_SLEEP", "3"))
+        self.throttle_wait_seconds = 0.0
+
+    def _maybe_throttle(self, rate_limit: Optional[dict]) -> None:
+        """남은 포인트가 적으면 reset까지 남은 시간을 남은 호출 수로 나눠 미리 잠깐 쉰다."""
+        if not rate_limit:
+            return
+        remaining = rate_limit.get("remaining")
+        if remaining is None or remaining >= self.throttle_threshold or remaining <= 0:
+            return
+        import datetime
+        try:
+            reset_dt = datetime.datetime.fromisoformat(
+                (rate_limit.get("resetAt") or "").replace("Z", "+00:00")
+            )
+            secs = (reset_dt - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+        except Exception:
+            return
+        if secs <= 0:
+            return
+        wait = min(secs / remaining, self.throttle_max_sleep)
+        if wait > 0:
+            self.throttle_wait_seconds += wait
+            time.sleep(wait)
+
     def query(self, query_str: str, variables: dict) -> dict:
         attempt = 0
         max_retries = 5
@@ -191,7 +219,71 @@ class GraphQLClient:
                     continue
                 raise Exception(f"GraphQL errors: {errors}")
 
+            # 선제 감속: 남은 포인트가 적으면 미리 천천히 (한도 0 충돌 회피)
+            self._maybe_throttle(rate_limit)
             return data
+
+
+def _review_obj(node: dict) -> dict:
+    return {
+        "reviewer_login": node["author"]["login"] if node.get("author") else None,
+        "state": (node.get("state") or "").lower(),
+        "submitted_at": node.get("submittedAt"),
+    }
+
+
+def _file_obj(node: dict) -> dict:
+    change_type = (node.get("changeType") or "").lower()
+    return {
+        "filename": node.get("path", ""),
+        "additions": node.get("additions", 0),
+        "deletions": node.get("deletions", 0),
+        "status": STATUS_MAP.get(change_type, change_type),
+    }
+
+
+def _parse_pr_node(
+    client: "GraphQLClient", owner: str, repo: str, number: int, pr: Optional[dict]
+) -> Dict:
+    """단일 PR 노드(첫 30개 포함) 파싱. 30개 초과 연결은 per-PR 커서로 보충."""
+    if not pr:
+        return {"commits": [], "reviews": [], "files": []}
+    variables = {"owner": owner, "repo": repo, "number": number}
+
+    # Commits
+    commits_conn = pr.get("commits") or {}
+    commits = [n["commit"]["oid"] for n in commits_conn.get("nodes", []) if n.get("commit")]
+    if commits_conn.get("pageInfo", {}).get("hasNextPage"):
+        cursor = commits_conn["pageInfo"]["endCursor"]
+        while cursor:
+            r = client.query(PR_COMMITS_NEXT_QUERY, {**variables, "cursor": cursor})
+            conn = r["data"]["repository"]["pullRequest"]["commits"]
+            commits += [n["commit"]["oid"] for n in conn.get("nodes", []) if n.get("commit")]
+            cursor = conn["pageInfo"]["endCursor"] if conn["pageInfo"]["hasNextPage"] else None
+
+    # Reviews
+    reviews_conn = pr.get("reviews") or {}
+    reviews = [_review_obj(n) for n in reviews_conn.get("nodes", [])]
+    if reviews_conn.get("pageInfo", {}).get("hasNextPage"):
+        cursor = reviews_conn["pageInfo"]["endCursor"]
+        while cursor:
+            r = client.query(PR_REVIEWS_NEXT_QUERY, {**variables, "cursor": cursor})
+            conn = r["data"]["repository"]["pullRequest"]["reviews"]
+            reviews += [_review_obj(n) for n in conn.get("nodes", [])]
+            cursor = conn["pageInfo"]["endCursor"] if conn["pageInfo"]["hasNextPage"] else None
+
+    # Files
+    files_conn = pr.get("files") or {}
+    files = [_file_obj(n) for n in files_conn.get("nodes", [])]
+    if files_conn.get("pageInfo", {}).get("hasNextPage"):
+        cursor = files_conn["pageInfo"]["endCursor"]
+        while cursor:
+            r = client.query(PR_FILES_NEXT_QUERY, {**variables, "cursor": cursor})
+            conn = r["data"]["repository"]["pullRequest"]["files"]
+            files += [_file_obj(n) for n in conn.get("nodes", [])]
+            cursor = conn["pageInfo"]["endCursor"] if conn["pageInfo"]["hasNextPage"] else None
+
+    return {"commits": commits, "reviews": reviews, "files": files}
 
 
 def collect_pr_details_graphql(
@@ -200,100 +292,49 @@ def collect_pr_details_graphql(
     repo: str,
     pr_number: int,
 ) -> Dict:
-    variables = {"owner": owner, "repo": repo, "number": pr_number}
-    data = client.query(PR_DETAILS_QUERY, variables)
-
+    """PR 1개 상세(커밋/리뷰/파일) 수집."""
+    data = client.query(PR_DETAILS_QUERY, {"owner": owner, "repo": repo, "number": pr_number})
     pr = data.get("data", {}).get("repository", {}).get("pullRequest")
-    if not pr:
-        return {"commits": [], "reviews": [], "files": []}
+    return _parse_pr_node(client, owner, repo, pr_number, pr)
 
-    # Commits
-    commits_conn = pr.get("commits", {})
-    commits = [
-        node["commit"]["oid"]
-        for node in commits_conn.get("nodes", [])
-        if node.get("commit")
-    ]
-    if commits_conn.get("pageInfo", {}).get("hasNextPage"):
-        cursor = commits_conn["pageInfo"]["endCursor"]
-        while cursor:
-            r = client.query(PR_COMMITS_NEXT_QUERY, {**variables, "cursor": cursor})
-            conn = r["data"]["repository"]["pullRequest"]["commits"]
-            commits += [
-                n["commit"]["oid"] for n in conn.get("nodes", []) if n.get("commit")
-            ]
-            cursor = (
-                conn["pageInfo"]["endCursor"]
-                if conn["pageInfo"]["hasNextPage"]
-                else None
-            )
 
-    # Reviews
-    reviews_conn = pr.get("reviews", {})
-    reviews = []
-    for node in reviews_conn.get("nodes", []):
-        reviews.append(
-            {
-                "reviewer_login": (
-                    node["author"]["login"] if node.get("author") else None
-                ),
-                "state": (node.get("state") or "").lower(),
-                "submitted_at": node.get("submittedAt"),
-            }
-        )
-    if reviews_conn.get("pageInfo", {}).get("hasNextPage"):
-        cursor = reviews_conn["pageInfo"]["endCursor"]
-        while cursor:
-            r = client.query(PR_REVIEWS_NEXT_QUERY, {**variables, "cursor": cursor})
-            conn = r["data"]["repository"]["pullRequest"]["reviews"]
-            for node in conn.get("nodes", []):
-                reviews.append(
-                    {
-                        "reviewer_login": (
-                            node["author"]["login"] if node.get("author") else None
-                        ),
-                        "state": (node.get("state") or "").lower(),
-                        "submitted_at": node.get("submittedAt"),
-                    }
-                )
-            cursor = (
-                conn["pageInfo"]["endCursor"]
-                if conn["pageInfo"]["hasNextPage"]
-                else None
-            )
+# ── 배치 수집: GraphQL alias로 PR 여러 개를 한 요청에 묶는다 ──
+_PR_DETAILS_FIELDS = """
+    commits(first: 30) { nodes { commit { oid } } pageInfo { hasNextPage endCursor } }
+    reviews(first: 30) { nodes { author { login } state submittedAt } pageInfo { hasNextPage endCursor } }
+    files(first: 30) { nodes { path additions deletions changeType } pageInfo { hasNextPage endCursor } }
+"""
 
-    # Files
-    files_conn = pr.get("files", {})
-    files = []
-    for node in files_conn.get("nodes", []):
-        change_type = node.get("changeType", "").lower()
-        files.append(
-            {
-                "filename": node.get("path", ""),
-                "additions": node.get("additions", 0),
-                "deletions": node.get("deletions", 0),
-                "status": STATUS_MAP.get(change_type, change_type),
-            }
-        )
-    if files_conn.get("pageInfo", {}).get("hasNextPage"):
-        cursor = files_conn["pageInfo"]["endCursor"]
-        while cursor:
-            r = client.query(PR_FILES_NEXT_QUERY, {**variables, "cursor": cursor})
-            conn = r["data"]["repository"]["pullRequest"]["files"]
-            for node in conn.get("nodes", []):
-                change_type = node.get("changeType", "").lower()
-                files.append(
-                    {
-                        "filename": node.get("path", ""),
-                        "additions": node.get("additions", 0),
-                        "deletions": node.get("deletions", 0),
-                        "status": STATUS_MAP.get(change_type, change_type),
-                    }
-                )
-            cursor = (
-                conn["pageInfo"]["endCursor"]
-                if conn["pageInfo"]["hasNextPage"]
-                else None
-            )
 
-    return {"commits": commits, "reviews": reviews, "files": files}
+def _build_batch_query(pr_numbers: List[int]) -> str:
+    aliases = "\n".join(
+        f"    pr{i}: pullRequest(number: {int(num)}) {{{_PR_DETAILS_FIELDS}    }}"
+        for i, num in enumerate(pr_numbers)
+    )
+    return (
+        "query($owner: String!, $repo: String!) {\n"
+        "  rateLimit { remaining resetAt cost }\n"
+        "  repository(owner: $owner, name: $repo) {\n"
+        f"{aliases}\n"
+        "  }\n"
+        "}\n"
+    )
+
+
+def collect_pr_details_graphql_batch(
+    client: GraphQLClient,
+    owner: str,
+    repo: str,
+    pr_numbers: List[int],
+) -> Dict[int, Dict]:
+    """여러 PR 상세를 alias로 한 요청에 묶어 수집.
+    반환: {pr_number: {commits, reviews, files}}. 30개 초과 연결은 _parse_pr_node가 보충."""
+    if not pr_numbers:
+        return {}
+    query = _build_batch_query(pr_numbers)
+    data = client.query(query, {"owner": owner, "repo": repo})
+    repo_node = (data.get("data") or {}).get("repository") or {}
+    out: Dict[int, Dict] = {}
+    for i, num in enumerate(pr_numbers):
+        out[num] = _parse_pr_node(client, owner, repo, num, repo_node.get(f"pr{i}"))
+    return out
