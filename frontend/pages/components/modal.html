@@ -15,22 +15,20 @@
     <div class="modal-title" id="modal-title">분석 진행 중</div>
     <div class="modal-repo" id="modal-repo">tiangolo/fastapi</div>
 
-    <!-- progress bar -->
-    <div class="prog-wrap"><div class="prog-fill" id="modal-prog" style="width:60%;"></div></div>
-    <div class="prog-info">
-      <span id="modal-prog-label">데이터 수집 중...</span>
-      <span id="modal-prog-pct">60%</span>
+    <!-- status label -->
+    <div class="prog-info" style="margin-bottom:12px;">
+      <span id="modal-prog-label" style="font-size:13px;color:var(--text2);">분석 요청 중...</span>
     </div>
 
     <!-- pipeline steps -->
     <div class="pipeline" id="modal-pipeline">
       <div class="pipe-step">
-        <div class="pipe-icon done">✓</div>
-        <div><div class="pipe-label done">데이터 수집</div><div class="pipe-sub">커밋 3,201개 · PR 284개</div></div>
+        <div class="pipe-icon" id="pipe-icon-collect">⋯</div>
+        <div><div class="pipe-label" id="pipe-label-collect">데이터 수집</div><div class="pipe-sub" id="pipe-sub-collect">대기 중...</div></div>
       </div>
       <div class="pipe-step">
-        <div class="pipe-icon active">⋯</div>
-        <div><div class="pipe-label active">기여자 식별</div><div class="pipe-sub active">Alias Resolution 진행 중 (412명 중 298명 완료)</div></div>
+        <div class="pipe-icon wait" id="pipe-icon-identity">2</div>
+        <div><div class="pipe-label wait" id="pipe-label-identity">기여자 식별</div><div class="pipe-sub" id="pipe-sub-identity">-</div></div>
       </div>
       <div class="pipe-step">
         <div class="pipe-icon wait">3</div>
