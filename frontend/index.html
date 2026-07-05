@@ -80,70 +80,10 @@
         </div>
       </div>
 
-      <!-- 최근 분석 -->
+      <!-- 최근 분석 요청된 레포지토리 -->
       <div class="recent-section">
-        <h3>최근 분석한 레포지토리</h3>
-
-        <div
-          class="repo-item"
-          onclick="location.href = './pages/timeline.html'"
-        >
-          <div>
-            <div class="repo-name">facebook/react</div>
-
-            <div class="repo-meta">
-              커밋 18,432개 · 기여자 1,683명 · 2시간 전 분석
-            </div>
-          </div>
-
-          <div class="repo-item-right">
-            <span class="badge badge-green">
-              <span class="status-dot" style="background: var(--green)"></span>
-              완료
-            </span>
-          </div>
-        </div>
-
-        <div class="repo-item pending" id="fastapi-item">
-          <div>
-            <div class="repo-name">tiangolo/fastapi</div>
-
-            <div class="repo-meta">
-              커밋 3,201개 · 기여자 412명 · 분석 중...
-            </div>
-          </div>
-
-          <div class="repo-item-right">
-            <span class="badge badge-blue">
-              <span class="status-dot" style="background: var(--blue)"></span>
-              처리 중
-            </span>
-
-            <span class="pending-link" onclick="openJobModal()">
-              진행 상황 보기
-            </span>
-          </div>
-        </div>
-
-        <div
-          class="repo-item"
-          onclick="location.href = './pages/timeline.html'"
-        >
-          <div>
-            <div class="repo-name">django/django</div>
-
-            <div class="repo-meta">
-              커밋 32,811개 · 기여자 2,104명 · 4일 전 분석
-            </div>
-          </div>
-
-          <div class="repo-item-right">
-            <span class="badge badge-green">
-              <span class="status-dot" style="background: var(--green)"></span>
-              완료
-            </span>
-          </div>
-        </div>
+        <h3>최근 분석 요청된 레포지토리</h3>
+        <div id="recent-repo-list"><div class="repo-meta" style="padding:16px 0;">불러오는 중...</div></div>
       </div>
     </div>
 <footer>

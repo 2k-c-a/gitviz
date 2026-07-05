@@ -21,36 +21,50 @@ const ERROR_CONFIGS = {
 
 /* 폴링 상태 */
 let _pollTimer = null;
-let _pollPct = 5;            // 총량 정보가 없어 시간 기반 의사 진행률(최대 90%)
 let _currentRepoId = null;
 
-export function openJobModal(mode) {
+export function openJobModal(mode, repoId) {
   _jobState = 'running';
   _stopPolling();
-  _pollPct = 5;
-  _currentRepoId = null;   // 이전 분석 잔재 방지
+  _currentRepoId = repoId || null;
 
   const repoName =
-    (mode === 'new' && urlInput && urlInput.value) ? parseRepoName(urlInput.value) : 'tiangolo/fastapi';
+    (mode === 'new' && urlInput && urlInput.value) ? parseRepoName(urlInput.value) : '레포지토리';
 
   // 모달 초기화
   document.getElementById('modal-title').textContent = '분석 진행 중';
   document.getElementById('modal-repo').textContent = repoName;
-  document.getElementById('modal-prog').className = 'prog-fill';
-  document.getElementById('modal-prog').style.width = '5%';
   document.getElementById('modal-prog-label').textContent = '분석 요청 중...';
-  document.getElementById('modal-prog-pct').textContent = '5%';
   document.getElementById('modal-error-box').style.display = 'none';
   document.getElementById('modal-footer').innerHTML =
     '<button class="btn-secondary" onclick="closeJobModal()">닫기</button>';
+  // pipeline 초기화
+  const oldDetail = document.getElementById('modal-collect-detail');
+  if (oldDetail) oldDetail.remove();
+  ['collect', 'identity'].forEach(key => {
+    const icon = document.getElementById(`pipe-icon-${key}`);
+    const label = document.getElementById(`pipe-label-${key}`);
+    const sub = document.getElementById(`pipe-sub-${key}`);
+    if (icon) { icon.className = 'pipe-icon wait'; icon.textContent = key === 'collect' ? '1' : '2'; }
+    if (label) label.className = 'pipe-label wait';
+    if (sub) sub.textContent = '대기 중...';
+  });
 
   document.getElementById('job-modal').classList.add('open');
 
   if (mode === 'new') {
-    // 실제 분석 시작 (백엔드 연동)
     _startAnalysis(urlInput.value.trim());
+  } else if (mode === 'poll' && repoId) {
+    // 홈에서 "진행 상황 보기" → 이미 존재하는 job을 바로 폴링
+    document.getElementById('modal-prog-label').textContent = '상태 확인 중...';
+    fetch(`${API_BASE}/repositories/${repoId}`).then(r => r.json()).then(d => {
+      if (d.url) {
+        const name = d.url.replace('https://github.com/', '');
+        document.getElementById('modal-repo').textContent = name;
+      }
+    }).catch(() => {});
+    _startPolling(repoId);
   } else {
-    // 데모/와이어프레임 모드: 시뮬레이션 버튼 부착
     _attachSimButtons();
   }
 }
@@ -131,19 +145,45 @@ function _renderStatus(s) {
     return;
   }
 
-  // pending / running / rate_limited → 진행 중 표시
-  _pollPct = Math.min(90, _pollPct + 4);
-  const prog = document.getElementById('modal-prog');
-  prog.className = 'prog-fill';
-  prog.style.width = _pollPct + '%';
-  document.getElementById('modal-prog-pct').textContent = _pollPct + '%';
+  // DB 실제값 우선, fallback은 progress_detail
+  const commits = s.commit_count ?? detail.commits_collected ?? 0;
+  const prs = s.pr_count ?? detail.prs_collected ?? 0;
+  const contTotal = s.contributors_total ?? 0;
 
-  const commits = detail.commits_collected ?? 0;
-  const prs = detail.prs_collected ?? 0;
   let label = detail.status_message || (status === 'pending' ? '분석 대기 중...' : '데이터 수집 중...');
-  if (commits || prs) label += `  (커밋 ${commits} · PR ${prs})`;
   if (status === 'rate_limited') label = detail.status_message || 'GitHub API 한도 — 대기 중...';
   document.getElementById('modal-prog-label').textContent = label;
+
+  // pipeline step 1: 데이터 수집
+  const collectIcon = document.getElementById('pipe-icon-collect');
+  const collectLabel = document.getElementById('pipe-label-collect');
+  const collectSub = document.getElementById('pipe-sub-collect');
+  if (collectIcon && collectSub) {
+    const parts = [];
+    if (commits) parts.push(`커밋 ${commits.toLocaleString()}개`);
+    if (prs) parts.push(`PR ${prs.toLocaleString()}개`);
+    if (contTotal) parts.push(`기여자 ${contTotal.toLocaleString()}명`);
+    collectSub.textContent = parts.length ? parts.join(' · ') : '수집 중...';
+
+    // 커밋이 들어오기 시작하면 '진행 중' 표시
+    const isDone = status === 'done';
+    const isCollecting = commits > 0 || prs > 0;
+    collectIcon.className = `pipe-icon${isDone ? ' done' : isCollecting ? ' active' : ''}`;
+    collectIcon.textContent = isDone ? '✓' : isCollecting ? '⋯' : '1';
+    if (collectLabel) collectLabel.className = `pipe-label${isDone ? ' done' : isCollecting ? ' active' : ' wait'}`;
+  }
+
+  // pipeline step 2: 기여자 식별 — 수집 완료 후 시작
+  const identIcon = document.getElementById('pipe-icon-identity');
+  const identLabel = document.getElementById('pipe-label-identity');
+  const identSub = document.getElementById('pipe-sub-identity');
+  if (identIcon && identSub) {
+    const isResolvingOrDone = status === 'done' || (detail.status_message || '').includes('신원');
+    identIcon.className = `pipe-icon${status === 'done' ? ' done' : isResolvingOrDone ? ' active' : ' wait'}`;
+    identIcon.textContent = status === 'done' ? '✓' : isResolvingOrDone ? '⋯' : '2';
+    if (identLabel) identLabel.className = `pipe-label${status === 'done' ? ' done' : isResolvingOrDone ? ' active' : ' wait'}`;
+    identSub.textContent = contTotal ? `기여자 ${contTotal.toLocaleString()}명` : '-';
+  }
 }
 
 /* 와이어프레임용 시뮬레이션 버튼 (데모 모드에서만) */
@@ -161,17 +201,12 @@ function _attachSimButtons() {
 
 export function simulateJobState(state) {
   _jobState = state;
-  const prog = document.getElementById('modal-prog');
   const progLabel = document.getElementById('modal-prog-label');
-  const progPct = document.getElementById('modal-prog-pct');
   const errBox = document.getElementById('modal-error-box');
   const footer = document.getElementById('modal-footer');
 
   if (state === 'done') {
-    prog.className = 'prog-fill done-fill';
-    prog.style.width = '100%';
     progLabel.textContent = '분석 완료';
-    progPct.textContent = '100%';
     document.getElementById('modal-title').textContent = '분석 완료';
     errBox.style.display = 'none';
     footer.innerHTML = `<button class="btn-secondary" onclick="closeJobModal()">닫기</button>
@@ -180,7 +215,6 @@ export function simulateJobState(state) {
   }
 
   // 에러 상태
-  prog.className = 'prog-fill fail-fill';
   const cfg = ERROR_CONFIGS[state];
   document.getElementById('modal-title').textContent = '분석 실패';
   document.getElementById('modal-error-title').textContent = cfg.title;

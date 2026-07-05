@@ -65,3 +65,71 @@ window.saveNoiseFilter    = saveNoiseFilter;
 await loadNavbar();
 await loadModal();
 await initAuth();
+await loadRecentRepos();
+
+/* ── 최근 분석 요청된 레포지토리 목록 ── */
+async function loadRecentRepos() {
+  const container = document.getElementById('recent-repo-list');
+  if (!container) return;
+
+  let repos;
+  try {
+    const res = await fetch('/repositories');
+    if (!res.ok) throw new Error(res.status);
+    repos = await res.json();
+  } catch {
+    container.innerHTML = '<div class="repo-meta" style="padding:16px 0;">목록을 불러올 수 없습니다.</div>';
+    return;
+  }
+
+  if (!repos.length) {
+    container.innerHTML = '<div class="repo-meta" style="padding:16px 0;">아직 분석 요청된 레포지토리가 없습니다.</div>';
+    return;
+  }
+
+  container.innerHTML = repos.map(repo => {
+    const repoName = repo.url.replace('https://github.com/', '');
+    const meta = _buildMeta(repo);
+    const badge = _buildBadge(repo.status);
+    const isActive = ['pending', 'running', 'rate_limited'].includes(repo.status);
+    const progressLink = isActive
+      ? `<span class="pending-link" onclick="openJobModal('poll', ${repo.id})">진행 상황 보기</span>`
+      : '';
+    const clickAttr = repo.status === 'done'
+      ? `onclick="window.goPage && window.goPage('timeline', ${repo.id})"` : '';
+
+    return `
+      <div class="repo-item${isActive ? ' pending' : ''}" ${clickAttr} style="${repo.status === 'done' ? 'cursor:pointer' : ''}">
+        <div>
+          <div class="repo-name">${repoName}</div>
+          <div class="repo-meta">${meta}</div>
+        </div>
+        <div class="repo-item-right">
+          ${badge}
+          ${progressLink}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function _buildMeta(repo) {
+  const parts = [];
+  if (repo.commit_count) parts.push(`커밋 ${repo.commit_count.toLocaleString()}개`);
+  if (repo.pr_count) parts.push(`PR ${repo.pr_count.toLocaleString()}개`);
+  if (repo.contributor_count) parts.push(`기여자 ${repo.contributor_count.toLocaleString()}명`);
+  if (!parts.length) parts.push('수집 중...');
+  return parts.join(' · ');
+}
+
+function _buildBadge(status) {
+  const map = {
+    done:         ['badge-green', 'var(--green)',  '완료'],
+    running:      ['badge-blue',  'var(--blue)',   '수집 중'],
+    pending:      ['badge-blue',  'var(--blue)',   '대기 중'],
+    rate_limited: ['badge-blue',  'var(--blue)',   'Rate Limit 대기'],
+    failed:       ['badge-red',   'var(--red)',    '실패'],
+    unknown:      ['badge-gray',  'var(--text3)',  '알 수 없음'],
+  };
+  const [cls, color, label] = map[status] || map.unknown;
+  return `<span class="badge ${cls}"><span class="status-dot" style="background:${color}"></span>${label}</span>`;
+}

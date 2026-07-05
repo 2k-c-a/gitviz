@@ -7,7 +7,7 @@ export async function loadModal() {
     ? './components/modal.html'
     : './pages/components/modal.html';
 
-  const response = await fetch(modalPath);
+  const response = await fetch(modalPath + '?v=' + Date.now());
 
   const html = await response.text();
 
