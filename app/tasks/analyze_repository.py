@@ -64,17 +64,50 @@ def chunked(iterable: List, size: int):
         yield iterable[i : i + size]
 
 
+def _resolve_github_token(db, user_id: Optional[str]) -> Optional[str]:
+    """분석을 요청한 사용자의 GitHub 토큰을 우선 사용하고, 없거나 실패하면
+    공용 GITHUB_TOKEN으로 폴백한다. 사용자별 토큰을 쓰면 공용 토큰 하나를
+    여러 분석이 나눠 쓰지 않고 각자 시간당 5000회 한도를 따로 가진다.
+
+    users 테이블은 app/database.py의 별도 async Base가 관리하므로 여기(sync 태스크)
+    에서는 ORM이 아니라 raw SQL로 직접 조회한다.
+    """
+    shared_token = os.getenv("GITHUB_TOKEN")
+    if not user_id:
+        return shared_token
+
+    try:
+        row = db.execute(
+            text("SELECT access_token_encrypted FROM users WHERE id = CAST(:uid AS uuid)"),
+            {"uid": user_id},
+        ).first()
+        if not row or not row[0]:
+            print(f"⚠️ user_id={user_id} 토큰 없음 — 공용 토큰으로 폴백")
+            return shared_token
+
+        from app.services.auth_service import decrypt_token
+        token = decrypt_token(row[0])
+        print(f"🔑 user_id={user_id} 개인 GitHub 토큰 사용")
+        return token
+    except Exception as e:
+        print(f"⚠️ 사용자 토큰 조회/복호화 실패({e}) — 공용 토큰으로 폴백")
+        return shared_token
+
+
 # -----------------------
 # 메인 태스크
 # -----------------------
 @celery.task
-def analyze_repository(repository_id: int):
+def analyze_repository(repository_id: int, user_id: str | None = None):
     """
     Repository 분석 태스크
     - clone repository
     - collect commits, files, changes
     - normalize, dedupe, upsert (ON CONFLICT DO NOTHING)
     - commit_file_changes 저장 (upsert)
+
+    user_id가 있으면 그 사용자의 GitHub OAuth 토큰(개인 rate limit)으로 수집하고,
+    없거나 조회/복호화에 실패하면 공용 GITHUB_TOKEN으로 폴백한다.
     """
     print("🔥 TASK STARTED:", repository_id)
 
@@ -468,7 +501,7 @@ def analyze_repository(repository_id: int):
         # -----------------------
         # 8) GitHub API 수집
         # -----------------------
-        github_token = os.getenv("GITHUB_TOKEN")
+        github_token = _resolve_github_token(db, user_id)
         url_parts = repository.url.rstrip("/").split("/")
         owner = url_parts[-2]
         repo_name_gh = url_parts[-1].removesuffix(".git")
