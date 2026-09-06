@@ -52,15 +52,31 @@ class ProgressReporter:
         self.detail[key] = value
 
     def on_rate_limit(self, wait_seconds: int):
-        """GitHub 제한 발생 시: 카운터 증가 + status='rate_limited'."""
+        """GitHub 제한 발생 시: 카운터 증가 + status='rate_limited'.
+
+        대기 시간을 문자열 메시지로 한 번만 박아두면(예: "3531초 대기 중") 실제로는
+        긴 time.sleep() 한 번이 도는 동안 그 숫자가 그대로 굳어버려, 정상 대기 중인지
+        워커가 죽어서 멈춘 건지 화면만 봐서 구분이 안 된다. 그래서 절대 시각
+        resume_at을 저장해두고, 조회 시점(app/api/repositories.py)에 남은 시간을
+        매번 다시 계산한다 — 폴링마다 자연스럽게 카운트다운되고, resume_at이 한참
+        지나도 여전히 rate_limited면 "멈춘 작업"으로 판정할 수 있다.
+        """
+        from datetime import datetime, timezone, timedelta
+
+        now = datetime.now(timezone.utc)
         self.detail["github_rate_limit_hits"] += 1
         self.detail["total_wait_seconds"] += wait_seconds
-        self.detail["status_message"] = f"GitHub rate limit. {wait_seconds}초 대기 중..."
+        self.detail["status_message"] = "GitHub rate limit — 대기 중"
+        self.detail["wait_seconds"] = wait_seconds
+        self.detail["rate_limited_at"] = now.isoformat()
+        self.detail["resume_at"] = (now + timedelta(seconds=wait_seconds)).isoformat()
         self._flush(status="rate_limited")
 
     def on_resume(self):
         """대기 종료 후 running 복귀."""
         self.detail["status_message"] = "수집 재개"
+        self.detail.pop("resume_at", None)
+        self.detail.pop("wait_seconds", None)
         self._flush(status="running")
 
 

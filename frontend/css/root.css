@@ -155,7 +155,7 @@
 
 
   /* ACTIVITY HEATMAP */
-  
+  .act-hm { overflow-x: auto; }
   .act-months { display: flex; gap: 3px; padding-left: 50px; margin-bottom: 3px; }
   .act-m { font-size: 9px; color: var(--text3); width: 14px; text-align: center; white-space: nowrap; overflow: visible; }
   .act-row { display: flex; align-items: center; gap: 3px; margin-bottom: 3px; }

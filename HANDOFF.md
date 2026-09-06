@@ -31,6 +31,10 @@
 
 # 2) Redis (Docker)
 docker run -d --name gitviz-redis -p 6379:6379 redis:7-alpine
+# Docker Desktop이 죽어있으면(WSL2 백엔드 stale socket 이슈 등) 대안으로 포터블 Redis 사용:
+#   winget install --id taizod1024.redis-windows-fork -e   (MSI 설치 없이 zip 압축 해제만 함, 서비스 등록 X)
+#   설치 후: <winget 패키지 경로>/redis-server.exe redis.conf --port 6379
+#   (PATH가 갱신 안 됐으면 새 셸을 열거나 winget이 알려준 전체 경로로 직접 실행)
 
 # 3) Celery 워커 (Windows는 --pool=solo 필수)
 python -m celery -A app.core.celery_app:celery worker --loglevel=info --pool=solo
@@ -100,6 +104,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 - 분석 모달 진행률은 **완료(done) 전까지 90%에서 고정**(총량 미상). 멈춘 게 아님.
 - 테스트는 **작은 레포**(Hello-World, Spoon-Knife 등)로.
 - IoT(`arduino/`, `app/api/iot.py`)는 졸업작품 범위 외 — gitignore로 제외됨(로컬 전용).
+- **GitHub 토큰**: 로그인한 사용자가 분석을 요청하면 공용 `GITHUB_TOKEN` 대신 그 사용자의 OAuth 토큰(`users.access_token_encrypted`, 로그인 시 자동 저장)으로 수집한다 — 사용자마다 별도의 시간당 5000회 한도를 쓰게 되어 여러 분석이 공용 토큰 하나를 나눠 쓰며 rate limit에 자주 걸리는 문제가 줄어든다. 비로그인 요청은 기존처럼 공용 토큰 사용. 관련: `app/tasks/analyze_repository.py`의 `_resolve_github_token()`, `app/api/repositories.py`.
 
 ---
 

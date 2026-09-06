@@ -7,7 +7,8 @@ import {
   fetchTimeline,
   fetchCommitTypes,
   fetchReleases,
-  fetchTopContributors
+  fetchTopContributors,
+  fetchContributorHeatmap
 } from './api.js';
 
 const timelineCanvas = document.getElementById('chart-timeline');
@@ -41,15 +42,17 @@ const TYPE_META = {
   other:    { label: '기타',      color: '#B4B2A9' },
 };
 const RELEASE_DOT = { major: 'major', minor: 'minor', patch: 'patch' };
+const HEAT_COLORS = ['var(--bg2)', '#B5D4F4', '#85B7EB', '#378ADD', '#185FA5'];
 
 async function initTimelinePage() {
   const id = getRepoId();
-  const [summary, timeline, types, releases, contributors] = await Promise.all([
+  const [summary, timeline, types, releases, contributors, heatmap] = await Promise.all([
     fetchSummary(id),
     fetchTimeline(id, 36),
     fetchCommitTypes(id),
     fetchReleases(id, 5),
     fetchTopContributors(id, 5),
+    fetchContributorHeatmap(id, 16, 8),
   ]);
 
   if (summary.error) throw new Error(summary.error);
@@ -59,6 +62,7 @@ async function initTimelinePage() {
   renderDonut(types);
   renderReleases(releases.releases || []);
   renderContributors(contributors.contributors || []);
+  renderHeatmap(heatmap);
 }
 
 /* ── 헤더 + 지표 카드 ── */
@@ -168,6 +172,52 @@ function renderContributors(contributors) {
       + `<div class="bar-wrap"><div class="bar-fill bar-blue" style="width:${pct}%;"></div></div>`
       + `<div class="c-count">${num(c.commit_count)}</div></div>`;
   }).join('');
+}
+
+/* ── 기여자별 활동 히트맵 ── */
+function heatLevel(count, max) {
+  if (!count) return 0;
+  const ratio = count / max;
+  if (ratio > 0.75) return 4;
+  if (ratio > 0.5) return 3;
+  if (ratio > 0.25) return 2;
+  return 1;
+}
+
+function renderHeatmap(data) {
+  const wrap = document.getElementById('act-heatmap');
+  if (!wrap) return;
+
+  const weeks = data.weeks || [];
+  const contributors = data.contributors || [];
+
+  if (!weeks.length || !contributors.length) {
+    wrap.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:24px 8px;">활동 데이터가 없습니다.</div>';
+    return;
+  }
+
+  const max = Math.max(1, ...contributors.flatMap(c => c.counts));
+
+  let lastMonth = null;
+  const monthsRow = weeks.map(w => {
+    const d = new Date(w);
+    const m = d.getMonth();
+    const label = m !== lastMonth ? `${m + 1}월` : '';
+    lastMonth = m;
+    return `<div class="act-m">${label}</div>`;
+  }).join('');
+
+  const rows = contributors.map(c => {
+    const cells = c.counts.map((count, i) => {
+      const level = heatLevel(count, max);
+      const d = new Date(weeks[i]);
+      const dateLabel = `${d.getMonth() + 1}.${d.getDate()}`;
+      return `<div class="act-cell" style="background:${HEAT_COLORS[level]};" title="${esc(c.name)} · ${dateLabel} 주 · 커밋 ${num(count)}개"></div>`;
+    }).join('');
+    return `<div class="act-row"><div class="act-label" title="${esc(c.name)}">${esc(c.name)}</div>${cells}</div>`;
+  }).join('');
+
+  wrap.innerHTML = `<div class="act-months">${monthsRow}</div>${rows}`;
 }
 
 function setText(id, text) {
