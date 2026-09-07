@@ -16,8 +16,8 @@
     <div><div class="dash-title js-repo-title">—</div><div class="dash-sub">코드 리스크 — Heuristic 기반 5-피처 Risk Ranking</div></div>
     <div style="display:flex;align-items:center;gap:10px;">
       <div style="display:flex;align-items:center;gap:7px;">
-        <div class="status-dot" style="background:var(--gray);"></div>
-        <span style="font-size:12px;color:var(--text2);">분석 연동 예정</span>
+        <div class="status-dot" style="background:#639922;"></div>
+        <span style="font-size:12px;color:var(--text2);">분석 완료</span>
       </div>
       <button class="btn-secondary" data-auth="1" onclick="openReanalyzeToast()">재분석</button>
     </div>
@@ -30,21 +30,34 @@
     <div class="sub-tab" onclick="location.href='./busfactor.html'">Bus Factor</div>
   </div>
   <div class="body">
-    <!-- 분석 모듈이 채울 지표 슬롯 (현재 값은 분석 대기) -->
     <div class="metrics-4">
-      <div class="metric-card"><div class="m-label">고위험 파일</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
-      <div class="metric-card"><div class="m-label">평균 Risk Score</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
-      <div class="metric-card"><div class="m-label">Hidden Coupling</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
-      <div class="metric-card"><div class="m-label">평균 Entropy</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
+      <div class="metric-card"><div class="m-label">고위험 파일</div><div class="m-val" id="risk-m-high">—</div><div class="m-sub">Risk Score ≥ 0.7</div></div>
+      <div class="metric-card"><div class="m-label">평균 Risk Score</div><div class="m-val" id="risk-m-avg">—</div><div class="m-sub">전체 파일 기준</div></div>
+      <div class="metric-card"><div class="m-label">Hidden Coupling</div><div class="m-val" id="risk-m-coupling">—</div><div class="m-sub">Co-change ≥ 0.3</div></div>
+      <div class="metric-card"><div class="m-label">평균 Entropy</div><div class="m-val" id="risk-m-entropy">—</div><div class="m-sub">소유권 분산도</div></div>
     </div>
 
-    <!-- 분석 데이터 준비 중 플레이스홀더 -->
-    <div class="panel" style="text-align:center;padding:48px 20px;">
-      <div style="font-size:13px;color:var(--text2);font-weight:600;margin-bottom:6px;">위험도 분석 데이터 준비 중</div>
-      <div style="font-size:12px;color:var(--text3);line-height:1.6;">
-        파일별 Risk Score 히트맵 · 고위험 파일 목록 · Hidden Coupling · Risk Score 추이는<br>
-        분석 모듈(변경빈도·Churn·Entropy·버그비율·Co-change 가중 Risk Ranking)이 산출하는 <b>파생 데이터</b>입니다.<br>
-        분석 단계가 연동되면 이 영역에 실제 데이터로 렌더링됩니다.
+    <div class="panel">
+      <div class="p-head" style="margin-bottom:6px;">
+        <div class="p-title">파일별 Risk Score</div>
+        <div style="font-size:11px;color:var(--text2);">Risk Score 내림차순 · 상위 파일</div>
+      </div>
+      <div class="p-note">변경빈도·Churn·Entropy·버그비율·Co-change 5개 지표를 Min-Max 정규화 후 균등 가중합(w=0.2)한 값입니다. <span style="border-bottom:1px dotted var(--text3);cursor:help;" title="Bus Factor는 Ownership Entropy와 같은 소유권 분포에서 파생되지만 위험의 방향이 반대(집중=결함 위험↓·승계 위험↑)라 산식에서 제외했습니다. BF=1인 고위험 파일은 배지로 별도 표시합니다.">Bus Factor는 왜 빠졌나요?</span></div>
+      <div class="hm-wrap" style="margin-top:10px;">
+        <table class="hm-table">
+          <thead>
+            <tr>
+              <th class="hm-th left">파일</th>
+              <th class="hm-th">변경빈도</th>
+              <th class="hm-th">Churn</th>
+              <th class="hm-th">Entropy</th>
+              <th class="hm-th">버그비율</th>
+              <th class="hm-th">Co-change</th>
+              <th class="hm-th">Risk Score</th>
+            </tr>
+          </thead>
+          <tbody id="risk-table-body"></tbody>
+        </table>
       </div>
     </div>
   </div>

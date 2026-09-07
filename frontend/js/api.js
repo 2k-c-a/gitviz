@@ -34,3 +34,5 @@ export const fetchTimeline        = (id, months = 36) => getJSON(`${base(id)}/ti
 export const fetchCommitTypes     = (id) => getJSON(`${base(id)}/commit-types`);
 export const fetchReleases        = (id, limit = 5) => getJSON(`${base(id)}/releases?limit=${limit}`);
 export const fetchTopContributors = (id, limit = 5) => getJSON(`${base(id)}/top-contributors?limit=${limit}`);
+export const fetchContributorHeatmap = (id, weeks = 16, limit = 8) => getJSON(`${base(id)}/contributor-heatmap?weeks=${weeks}&limit=${limit}`);
+export const fetchRiskScores = (id, limit = 50) => getJSON(`${base(id)}/risk-scores?limit=${limit}`);

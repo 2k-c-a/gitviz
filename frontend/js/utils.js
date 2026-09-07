@@ -90,6 +90,16 @@ document.querySelectorAll('.range-btns').forEach(group => {
   });
 });
 
+/* ── 시간 표시 ── */
+export function fmtDuration(totalSeconds) {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}시간 ${m % 60}분`;
+  if (m > 0) return `${m}분 ${s % 60}초`;
+  return `${s}초`;
+}
+
 /* ── color helpers ── */
 export const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 export const gridC  = dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';

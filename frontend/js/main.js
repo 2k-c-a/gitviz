@@ -13,7 +13,7 @@ import {
 } from './login.js';
 
 import { showPage } from './routing.js';
-import { handleAnalyze, fillUrl } from './utils.js';
+import { handleAnalyze, fillUrl, fmtDuration } from './utils.js';
 
 import {
   openJobModal,
@@ -33,6 +33,7 @@ import {
 } from './modal.js';
 
 import './timeline.js';
+import './risk.js';
 import './repoHeader.js';
 
 /* ── 전역 등록 (await 전에 먼저 등록해야 onclick에서 바로 사용 가능) ── */
@@ -90,10 +91,15 @@ async function loadRecentRepos() {
   container.innerHTML = repos.map(repo => {
     const repoName = repo.url.replace('https://github.com/', '');
     const meta = _buildMeta(repo);
-    const badge = _buildBadge(repo.status);
+    const badge = _buildBadge(repo.status, repo.is_stale);
     const isActive = ['pending', 'running', 'rate_limited'].includes(repo.status);
+    const hasCountdown = repo.status === 'rate_limited' && !repo.is_stale && repo.remaining_seconds != null;
+    const linkText = repo.is_stale
+      ? '재시작 필요 — 자세히 보기'
+      : hasCountdown ? `${fmtDuration(repo.remaining_seconds)} 후 재개` : '진행 상황 보기';
+    const countdownAttr = hasCountdown ? ` data-countdown-id="${repo.id}" data-remaining="${repo.remaining_seconds}"` : '';
     const progressLink = isActive
-      ? `<span class="pending-link" onclick="openJobModal('poll', ${repo.id})">진행 상황 보기</span>`
+      ? `<span class="pending-link"${countdownAttr} onclick="openJobModal('poll', ${repo.id})">${linkText}</span>`
       : '';
     const clickAttr = repo.status === 'done'
       ? `onclick="window.goPage && window.goPage('timeline', ${repo.id})"` : '';
@@ -121,7 +127,10 @@ function _buildMeta(repo) {
   return parts.join(' · ');
 }
 
-function _buildBadge(status) {
+function _buildBadge(status, isStale) {
+  if (isStale) {
+    return `<span class="badge badge-red"><span class="status-dot" style="background:var(--red)"></span>재시작 필요</span>`;
+  }
   const map = {
     done:         ['badge-green', 'var(--green)',  '완료'],
     running:      ['badge-blue',  'var(--blue)',   '수집 중'],
@@ -133,3 +142,23 @@ function _buildBadge(status) {
   const [cls, color, label] = map[status] || map.unknown;
   return `<span class="badge ${cls}"><span class="status-dot" style="background:${color}"></span>${label}</span>`;
 }
+
+/* 홈 화면 레포 목록의 "N분 M초 후 재개" 카운트다운을 1초마다 로컬에서 줄인다
+   (서버를 매초 두드리지 않고, 값이 dataset에 남아있는 요소만 갱신).
+   0에 도달하면 실제 상태가 바뀌었는지 목록을 한 번 다시 불러와 동기화한다. */
+setInterval(() => {
+  const els = document.querySelectorAll('[data-countdown-id]');
+  let hitZero = false;
+  els.forEach(el => {
+    const remaining = parseInt(el.dataset.remaining, 10);
+    if (Number.isNaN(remaining)) return;
+    const next = Math.max(0, remaining - 1);
+    el.dataset.remaining = String(next);
+    el.textContent = next > 0 ? `${fmtDuration(next)} 후 재개` : '재개 확인 중...';
+    if (next === 0) hitZero = true;
+  });
+  if (hitZero) loadRecentRepos();
+}, 1000);
+
+/* 카운트다운이 없는 상태 변화(수집 중 → 완료, 멈춤 감지 등)도 놓치지 않도록 주기적으로 재동기화 */
+setInterval(() => loadRecentRepos(), 20000);
