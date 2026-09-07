@@ -1,6 +1,6 @@
 
 import { isLoggedIn, openLoginModal } from './login.js';
-import { parseRepoName, urlInput } from './utils.js';
+import { parseRepoName, urlInput, fmtDuration } from './utils.js';
 import { showPage } from './routing.js';
 import { setRepoId } from './api.js';
 
@@ -22,6 +22,8 @@ const ERROR_CONFIGS = {
 /* 폴링 상태 */
 let _pollTimer = null;
 let _currentRepoId = null;
+let _currentRepoUrl = null;
+let _staleHandled = false;
 
 export function openJobModal(mode, repoId) {
   _jobState = 'running';
@@ -56,9 +58,11 @@ export function openJobModal(mode, repoId) {
     _startAnalysis(urlInput.value.trim());
   } else if (mode === 'poll' && repoId) {
     // 홈에서 "진행 상황 보기" → 이미 존재하는 job을 바로 폴링
+    _staleHandled = false;
     document.getElementById('modal-prog-label').textContent = '상태 확인 중...';
     fetch(`${API_BASE}/repositories/${repoId}`).then(r => r.json()).then(d => {
       if (d.url) {
+        _currentRepoUrl = d.url;
         const name = d.url.replace('https://github.com/', '');
         document.getElementById('modal-repo').textContent = name;
       }
@@ -151,8 +155,16 @@ function _renderStatus(s) {
   const contTotal = s.contributors_total ?? 0;
 
   let label = detail.status_message || (status === 'pending' ? '분석 대기 중...' : '데이터 수집 중...');
-  if (status === 'rate_limited') label = detail.status_message || 'GitHub API 한도 — 대기 중...';
+  if (status === 'rate_limited') {
+    // remaining_seconds는 서버가 매 폴링(2초)마다 절대 시각(resume_at) 기준으로
+    // 다시 계산해서 주는 값이라 — 메시지를 한 번 박아두는 게 아니라 실제로 줄어든다.
+    label = s.remaining_seconds != null
+      ? `GitHub API 한도 — ${fmtDuration(s.remaining_seconds)} 후 재개`
+      : (detail.status_message || 'GitHub API 한도 — 대기 중...');
+  }
   document.getElementById('modal-prog-label').textContent = label;
+
+  _renderStaleWarning(s);
 
   // pipeline step 1: 데이터 수집
   const collectIcon = document.getElementById('pipe-icon-collect');
@@ -185,6 +197,51 @@ function _renderStatus(s) {
     identSub.textContent = contTotal ? `기여자 ${contTotal.toLocaleString()}명` : '-';
   }
 }
+
+/* resume_at을 한참 지났는데도 rate_limited/running이면 워커가 죽어서 멈춘 것 —
+   정상 대기처럼 계속 폴링만 하지 말고 사용자에게 재시작을 안내한다. */
+function _renderStaleWarning(s) {
+  if (!s.is_stale || _staleHandled) return;
+  _staleHandled = true;
+  _stopPolling();
+
+  document.getElementById('modal-title').textContent = '분석이 멈춘 것 같습니다';
+  document.getElementById('modal-error-title').textContent = '진행이 멈췄습니다';
+  document.getElementById('modal-error-body').textContent =
+    '예상 대기 시간이 한참 지났는데도 상태가 바뀌지 않았습니다. 수집 작업(Celery worker)이 중간에 멈췄을 가능성이 높습니다. 지금까지 수집된 데이터는 남아있으니 재시작하면 이어서 진행됩니다.';
+  document.getElementById('modal-error-time').textContent =
+    s.stale_seconds != null ? `${fmtDuration(s.stale_seconds)}째 응답 없음` : '';
+  document.getElementById('modal-error-box').style.display = 'block';
+  document.getElementById('modal-footer').innerHTML =
+    '<button class="btn-secondary" onclick="closeJobModal()">닫기</button>' +
+    '<button class="btn-primary" onclick="_restartStaleJob()">재시작</button>';
+}
+
+/* 멈춘 작업 재시작: 동일 URL로 다시 POST → 이미 수집된 커밋/PR은 upsert로 스킵되고
+   중단된 지점(주로 PR 상세 수집)부터 이어서 진행된다. */
+async function _restartStaleJob() {
+  if (!_currentRepoUrl) { closeJobModal(); return; }
+  document.getElementById('modal-error-box').style.display = 'none';
+  document.getElementById('modal-title').textContent = '분석 진행 중';
+  document.getElementById('modal-prog-label').textContent = '재시작 요청 중...';
+  document.getElementById('modal-footer').innerHTML =
+    '<button class="btn-secondary" onclick="closeJobModal()">닫기</button>';
+
+  try {
+    const res = await fetch(`${API_BASE}/repositories?github_url=${encodeURIComponent(_currentRepoUrl)}`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error(String(res.status));
+  } catch {
+    simulateJobState('error-unreachable');
+    return;
+  }
+
+  _staleHandled = false;
+  _startPolling(_currentRepoId);
+}
+window._restartStaleJob = _restartStaleJob;
 
 /* 와이어프레임용 시뮬레이션 버튼 (데모 모드에서만) */
 function _attachSimButtons() {
