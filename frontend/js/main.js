@@ -35,6 +35,7 @@ import {
 import './timeline.js';
 import './risk.js';
 import './repoHeader.js';
+import './drilldown.js';
 
 /* ── 전역 등록 (await 전에 먼저 등록해야 onclick에서 바로 사용 가능) ── */
 window.openLoginModal  = openLoginModal;
@@ -107,7 +108,7 @@ async function loadRecentRepos() {
     return `
       <div class="repo-item${isActive ? ' pending' : ''}" ${clickAttr} style="${repo.status === 'done' ? 'cursor:pointer' : ''}">
         <div>
-          <div class="repo-name">${repoName}</div>
+          <a class="repo-name" href="${repo.url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" title="GitHub에서 열기">${repoName}</a>
           <div class="repo-meta">${meta}</div>
         </div>
         <div class="repo-item-right">
@@ -118,12 +119,29 @@ async function loadRecentRepos() {
   }).join('');
 }
 
+function _fmtCompletedAt(iso) {
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, '0');
+  const dateStr = `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+  const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+  let rel;
+  if (days <= 0) rel = '오늘';
+  else if (days === 1) rel = '어제';
+  else rel = `${days}일 전`;
+
+  return `${dateStr} (${rel})`;
+}
+
 function _buildMeta(repo) {
   const parts = [];
   if (repo.commit_count) parts.push(`커밋 ${repo.commit_count.toLocaleString()}개`);
   if (repo.pr_count) parts.push(`PR ${repo.pr_count.toLocaleString()}개`);
   if (repo.contributor_count) parts.push(`기여자 ${repo.contributor_count.toLocaleString()}명`);
   if (!parts.length) parts.push('수집 중...');
+  if (repo.status === 'done' && repo.last_analyzed_at) {
+    parts.push(`완료: ${_fmtCompletedAt(repo.last_analyzed_at)}`);
+  }
   return parts.join(' · ');
 }
 

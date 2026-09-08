@@ -45,29 +45,41 @@ function riskLevel(score) {
   return 0;
 }
 
+function fmtMonth(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 function renderTable(files) {
   if (!tableBody) return;
 
   if (!files.length) {
-    tableBody.innerHTML = '<tr><td class="hm-td" colspan="7" style="text-align:center;color:var(--text3);padding:24px;">위험도 데이터가 없습니다.</td></tr>';
+    tableBody.innerHTML = '<tr><td class="hm-td" colspan="9" style="text-align:center;color:var(--text3);padding:24px;">위험도 데이터가 없습니다.</td></tr>';
     return;
   }
 
-  const maxFreq = Math.max(1, ...files.map(f => f.change_freq));
-  const maxChurn = Math.max(1, ...files.map(f => f.churn));
-  const maxEntropy = Math.max(1, ...files.map(f => f.entropy));
+  const maxFreqRate = Math.max(1e-9, ...files.map(f => f.change_freq_rate));
+  const maxChurnRate = Math.max(1e-9, ...files.map(f => f.churn_rate));
+  const maxEntropy = Math.max(1e-9, ...files.map(f => f.entropy));
 
   tableBody.innerHTML = files.map(f => {
     const bfBadge = f.is_bus_factor_risk
       ? '<span class="badge badge-red" title="Bus Factor = 1 — 이 파일을 아는 사람이 한 명뿐입니다">BF=1</span>'
       : '';
-    return `<tr>
-      <td class="hm-td file" title="${esc(f.path)}">${esc(f.path)}${bfBadge}</td>
-      <td class="hm-td"><span class="hm-val hm-${relLevel(f.change_freq, maxFreq)}">${num(f.change_freq)}</span></td>
-      <td class="hm-td"><span class="hm-val hm-${relLevel(f.churn, maxChurn)}">${num(Math.round(f.churn))}</span></td>
+    const refactorMonth = fmtMonth(f.last_refactor_at);
+    const refactorBadge = refactorMonth
+      ? `<span class="badge badge-blue" style="font-size:9px;" title="가장 최근 refactor 커밋 — CurrentRisk는 이 시점 이후 데이터로만 계산됨">♻ ${refactorMonth}</span>`
+      : '';
+    return `<tr style="cursor:pointer;" onclick="window.openFileDrilldown(${f.file_id})" title="수정한 사람·영향 파일 보기">
+      <td class="hm-td file" title="${esc(f.path)}">${esc(f.path)}${bfBadge}${refactorBadge}</td>
+      <td class="hm-td"><span class="hm-val hm-${relLevel(f.change_freq_rate, maxFreqRate)}">${fmt2(f.change_freq_rate)}</span></td>
+      <td class="hm-td"><span class="hm-val hm-${relLevel(f.churn_rate, maxChurnRate)}">${fmt2(f.churn_rate)}</span></td>
       <td class="hm-td"><span class="hm-val hm-${relLevel(f.entropy, maxEntropy)}">${fmt2(f.entropy)}</span></td>
       <td class="hm-td"><span class="hm-val hm-${relLevel(f.bug_ratio, 1)}">${Math.round(f.bug_ratio * 100)}%</span></td>
       <td class="hm-td"><span class="hm-val hm-${relLevel(f.co_change, 1)}">${fmt2(f.co_change)}</span></td>
+      <td class="hm-td"><span class="hm-val hm-${riskLevel(f.current_risk)}" title="리팩토링 이후 구간 기준 결함 위험">${fmt2(f.current_risk)}</span></td>
+      <td class="hm-td"><span class="hm-val hm-${riskLevel(f.structural_risk)}" title="전체 기간 기준 구조적 불안정성">${fmt2(f.structural_risk)}</span></td>
       <td class="hm-td"><span class="hm-val hm-${riskLevel(f.risk_score)}" style="font-weight:600;">${fmt2(f.risk_score)}</span></td>
     </tr>`;
   }).join('');
