@@ -175,12 +175,19 @@ def stage1_noreply(db: Session, repository_id: int) -> Dict[str, int]:
 
 def stage2_email_search(db: Session, repository_id: int, client,
                         limit: Optional[int] = None,
-                        sleep_seconds: float = 2.2) -> Dict[str, int]:
+                        sleep_seconds: float = 2.2,
+                        retry_cooldown_days: int = 30) -> Dict[str, int]:
     """GitHub Search API로 일반 이메일 → 계정 매핑.
 
     Search API는 인증 시 30회/분 제한이라 호출 사이에 proactive sleep을 둔다
     (한도 초과 시에도 client.get이 헤더 기반으로 자동 대기).
     커밋 수가 많은 기여자부터 처리해 제한된 호출 수로 커버리지를 최대화한다.
+
+    검색에 실패해도(계정 못 찾음) resolution_status는 계속 'unresolved'로 남는다 —
+    "시도했지만 못 찾음"과 "아직 시도 안 함"을 구분하려고 identity_search_attempted_at에
+    시도 시각을 남기고, retry_cooldown_days 안에 이미 시도한 사람은 건너뛴다. 이게 없으면
+    재분석할 때마다(신규 커밋이 몇 개뿐이어도) 커밋 수 상위 `limit`명이 매번 똑같이 뽑혀서
+    지난번에 이미 실패했던 검색을 그대로 반복하며 몇 분씩 낭비하게 된다.
     """
     rows = db.execute(text("""
         SELECT c.id, c.primary_email, c.display_name, COUNT(cm.id) AS commit_count
@@ -190,9 +197,13 @@ def stage2_email_search(db: Session, repository_id: int, client,
           AND c.resolution_status = 'unresolved'
           AND c.primary_email IS NOT NULL AND c.primary_email <> ''
           AND c.primary_email NOT LIKE '%users.noreply.github.com'
-        GROUP BY c.id, c.primary_email, c.display_name
+          AND (
+              c.identity_search_attempted_at IS NULL
+              OR c.identity_search_attempted_at < NOW() - (:cooldown || ' days')::interval
+          )
+        GROUP BY c.id, c.primary_email, c.display_name, c.identity_search_attempted_at
         ORDER BY commit_count DESC, c.id
-    """), {"rid": repository_id}).fetchall()
+    """), {"rid": repository_id, "cooldown": retry_cooldown_days}).fetchall()
 
     if limit is not None:
         rows = rows[:limit]
@@ -208,6 +219,10 @@ def stage2_email_search(db: Session, repository_id: int, client,
             print(f"  search error for {email}: {e}")
             time.sleep(sleep_seconds)
             continue
+
+        db.execute(text(
+            "UPDATE contributors SET identity_search_attempted_at = NOW() WHERE id = :cid"
+        ), {"cid": cid})
 
         if data.get("total_count") == 1 and data.get("items"):
             login = data["items"][0]["login"].lower()
@@ -228,7 +243,8 @@ def stage2_email_search(db: Session, repository_id: int, client,
                 """), {"login": login, "cid": cid})
                 _add_alias(db, cid, email, name, "github", "github_api")
             resolved += 1
-            db.commit()
+
+        db.commit()
 
         if searched % 50 == 0:
             print(f"  stage2 progress: {searched}/{len(rows)} (resolved={resolved})")
