@@ -42,3 +42,13 @@ export const fetchContributorCollaborators = (id, contributorId, limit = 20) =>
   getJSON(`${base(id)}/contributors/${contributorId}/collaborators?limit=${limit}`);
 export const fetchFileDetail = (id, fileId, limit = 20) =>
   getJSON(`${base(id)}/files/${fileId}/detail?limit=${limit}`);
+export const fetchBusFactor = (id, limit = 50) =>
+  getJSON(`${base(id)}/bus-factor?limit=${limit}`);
+export const fetchCoupling = (id, limit = 100, minScore = 0) =>
+  getJSON(`${base(id)}/coupling?limit=${limit}&min_score=${minScore}`);
+export const fetchFileCoupling = (id, fileId, limit = 20) =>
+  getJSON(`${base(id)}/coupling/${fileId}?limit=${limit}`);
+export const fetchNetwork = (id, limitNodes = 50, minEdgeWeight = 0) =>
+  getJSON(`${base(id)}/network?limit_nodes=${limitNodes}&min_edge_weight=${minEdgeWeight}`);
+export const fetchNetworkTopPairs = (id, limit = 5) =>
+  getJSON(`${base(id)}/network/top-pairs?limit=${limit}`);

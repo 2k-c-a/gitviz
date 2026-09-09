@@ -36,6 +36,9 @@ import './timeline.js';
 import './risk.js';
 import './repoHeader.js';
 import './drilldown.js';
+import './busfactor.js';
+import './coupling.js';
+import './network.js';
 
 /* ── 전역 등록 (await 전에 먼저 등록해야 onclick에서 바로 사용 가능) ── */
 window.openLoginModal  = openLoginModal;
