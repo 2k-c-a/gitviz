@@ -800,11 +800,14 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
         # -----------------------
         print("START identity_resolution")
         _report("기여자 신원 정리 중...")
-        # 2단계(이메일 검색)는 Search API 30회/분 제한이라 태스크 안에서는 상한을 둔다.
-        # 전체 실행은 scripts/run_identity_resolution.py --stage2-full 사용.
+        # 커밋 API(core 5000/시)로 email→login을 먼저 빠르게 수집하고(owner/repo 전달),
+        # 남는 소수만 Search API(30회/분, 상한 있음)로 처리한다.
+        # 전체 Search 실행은 scripts/run_identity_resolution.py --stage2-full 사용.
         stage2_limit = int(os.getenv("IDENTITY_STAGE2_LIMIT", "200"))
+        commit_login_limit = int(os.getenv("IDENTITY_COMMIT_LOGIN_LIMIT", "0")) or None
         resolution = run_identity_resolution(
-            db, repository.id, client=client, stage2_limit=stage2_limit
+            db, repository.id, client=client, stage2_limit=stage2_limit,
+            owner=owner, repo=repo_name_gh, commit_login_limit=commit_login_limit,
         )
         print("identity_resolution:", resolution)
         print("END identity_resolution")
