@@ -99,6 +99,21 @@
   </div>
 </div>
 
+<!-- ═══════════ DRILLDOWN MODAL (기여자 ↔ 파일 상세, 스택형 뒤로가기) ═══════════ -->
+<div class="modal-overlay" id="drilldown-modal">
+  <div class="modal" style="width:460px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+      <button id="dd-back-btn" class="btn-secondary" style="display:none;padding:4px 8px;font-size:12px;" onclick="drilldownBack()">← 뒤로</button>
+      <div class="modal-title" id="dd-title" style="margin-bottom:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">-</div>
+    </div>
+    <div class="modal-repo" id="dd-subtitle" style="font-family:monospace;word-break:break-all;">-</div>
+    <div id="dd-body"></div>
+    <div class="modal-footer" style="margin-top:16px;">
+      <button class="btn-secondary" onclick="closeDrilldown()">닫기</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════ REMOVE REPO MODAL ═══════════ -->
 <div class="modal-overlay" id="remove-repo-modal">
   <div class="modal" style="max-width:380px;text-align:center;">

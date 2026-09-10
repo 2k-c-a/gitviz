@@ -699,6 +699,26 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
         _flush_pr_rows()
         print(f"END collect_pr_details")
 
+        # PR 목록 API(list endpoint, collect_pull_requests에서 사용)는 changed_files 필드를
+        # 아예 안 줘서(GitHub는 단건 조회 GET /pulls/{number}에서만 이 필드를 내려줌) 위에서
+        # 계산한 is_large_pr이 항상 file_count=0 기준으로 잘못 판정돼 있었다(대형/머지 PR이
+        # 전혀 안 걸러지고 Coupling·Network의 co-change 신호를 오염시킴). 방금 GraphQL로
+        # pull_request_files에 실제 파일 목록이 다 채워졌으니, 그 실제 개수 기준으로
+        # changed_file_count·is_large_pr을 다시 계산해 덮어쓴다.
+        db.execute(text("""
+            UPDATE pull_requests pr SET
+                changed_file_count = sub.cnt,
+                is_large_pr = (sub.cnt > :thr OR (:total > 0 AND sub.cnt > :total * :pct))
+            FROM (
+                SELECT pull_request_id, COUNT(*) AS cnt
+                FROM pull_request_files
+                GROUP BY pull_request_id
+            ) sub
+            WHERE sub.pull_request_id = pr.id AND pr.repository_id = :rid
+        """), {"rid": repository.id, "thr": LARGE_PR_THRESHOLD, "total": total_files_count, "pct": LARGE_PR_PCT})
+        db.commit()
+        print("END recompute is_large_pr from real pull_request_files counts")
+
         # ---- Releases ----
         print("START collect_releases")
         _report("릴리스 수집 중...")

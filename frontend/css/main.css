@@ -74,7 +74,8 @@
   .repo-item:hover { background: var(--bg2); }
   .repo-item.pending { cursor: default; }
   .repo-item.pending:hover { background: var(--bg); }
-  .repo-name { font-size: 14px; font-weight: 500; color: var(--text); }
+  .repo-name { display: block; font-size: 14px; font-weight: 500; color: var(--text); text-decoration: none; }
+  .repo-name:hover { text-decoration: underline; color: var(--blue); }
   .repo-meta { font-size: 12px; color: var(--text2); margin-top: 2px; }
   .repo-item-right { display: flex; align-items: center; gap: 8px; }
   .pending-link { font-size: 12px; color: var(--blue); text-decoration: underline; cursor: pointer; white-space: nowrap; }

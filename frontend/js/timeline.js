@@ -167,7 +167,8 @@ function renderContributors(contributors) {
     const name = c.github_login || c.display_name || '익명';
     const pct = Math.round(100 * c.commit_count / max);
     const recent = c.last_commit_at ? ` · 최근 ${daysAgo(c.last_commit_at)}` : '';
-    return `<div class="c-row"><div class="avatar" style="background:#E6F1FB;color:#185FA5;">${esc(name[0].toUpperCase())}</div>`
+    return `<div class="c-row" style="cursor:pointer;" onclick="window.openContributorDrilldown(${c.id})" title="소유 파일·협업자 보기">`
+      + `<div class="avatar" style="background:#E6F1FB;color:#185FA5;">${esc(name[0].toUpperCase())}</div>`
       + `<div class="c-info"><div class="c-name">${esc(name)}</div><div class="c-meta">커밋 ${num(c.commit_count)}개${recent}</div></div>`
       + `<div class="bar-wrap"><div class="bar-fill bar-blue" style="width:${pct}%;"></div></div>`
       + `<div class="c-count">${num(c.commit_count)}</div></div>`;
