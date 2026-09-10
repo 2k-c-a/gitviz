@@ -36,3 +36,9 @@ export const fetchReleases        = (id, limit = 5) => getJSON(`${base(id)}/rele
 export const fetchTopContributors = (id, limit = 5) => getJSON(`${base(id)}/top-contributors?limit=${limit}`);
 export const fetchContributorHeatmap = (id, weeks = 16, limit = 8) => getJSON(`${base(id)}/contributor-heatmap?weeks=${weeks}&limit=${limit}`);
 export const fetchRiskScores = (id, limit = 50) => getJSON(`${base(id)}/risk-scores?limit=${limit}`);
+export const fetchContributorOwnedFiles = (id, contributorId, limit = 20) =>
+  getJSON(`${base(id)}/contributors/${contributorId}/owned-files?limit=${limit}`);
+export const fetchContributorCollaborators = (id, contributorId, limit = 20) =>
+  getJSON(`${base(id)}/contributors/${contributorId}/collaborators?limit=${limit}`);
+export const fetchFileDetail = (id, fileId, limit = 20) =>
+  getJSON(`${base(id)}/files/${fileId}/detail?limit=${limit}`);
