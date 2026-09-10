@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
    <link rel="stylesheet" href="../css/index.css">
    <title>GitViz</title>
 </head>
@@ -28,24 +29,33 @@
     <div class="sub-tab" onclick="location.href='./risk.html'">위험도</div>
     <div class="sub-tab active">코드 영향도</div>
     <div class="sub-tab" onclick="location.href='./busfactor.html'">Bus Factor</div>
+    <div class="sub-tab" onclick="location.href='./treemap.html'">BF 트리맵</div>
   </div>
   <div class="body">
-    <!-- 분석 모듈이 채울 지표 슬롯 (현재 값은 분석 대기) -->
     <div class="metrics-4">
-      <div class="metric-card"><div class="m-label">분석된 파일 쌍</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
-      <div class="metric-card"><div class="m-label">강결합 쌍</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
-      <div class="metric-card"><div class="m-label">평균 결합도</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
-      <div class="metric-card"><div class="m-label">제외된 커밋</div><div class="m-val">—</div><div class="m-sub">분석 대기</div></div>
+      <div class="metric-card"><div class="m-label">분석된 파일 쌍</div><div class="m-val" id="coup-m-pairs">—</div><div class="m-sub" id="coup-m-unit">&nbsp;</div></div>
+      <div class="metric-card"><div class="m-label">강결합 쌍</div><div class="m-val" id="coup-m-high">—</div><div class="m-sub">결합도 ≥ 0.7</div></div>
+      <div class="metric-card"><div class="m-label">평균 결합도</div><div class="m-val" id="coup-m-avg">—</div><div class="m-sub">IDF 보정값</div></div>
+      <div class="metric-card"><div class="m-label">제외된 단위</div><div class="m-val" id="coup-m-excluded">—</div><div class="m-sub">대규모 변경 제외</div></div>
     </div>
 
-    <!-- 분석 데이터 준비 중 플레이스홀더 -->
-    <div class="panel" style="text-align:center;padding:48px 20px;">
-      <div style="font-size:13px;color:var(--text2);font-weight:600;margin-bottom:6px;">코드 영향도 분석 데이터 준비 중</div>
-      <div style="font-size:12px;color:var(--text3);line-height:1.6;">
-        영향도 그래프 · 함께 변경되는 파일 목록 · 결합도 분포는<br>
-        분석 모듈(Co-change + IDF 보정 + Hidden Coupling 탐지)이 산출하는 <b>파생 데이터</b>입니다.<br>
-        분석 단계가 연동되면 이 영역에 실제 데이터로 렌더링됩니다.
+    <!-- 영향도 그래프 -->
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="p-head" style="margin-bottom:6px;">
+        <div class="p-title">영향도 그래프</div>
+        <div style="font-size:11px;color:var(--text2);">결합도 상위 파일 쌍 · 선 굵기 = adjusted score</div>
       </div>
+      <svg class="coup-svg" id="coup-graph-svg"></svg>
+    </div>
+
+    <!-- 강결합 파일 쌍 -->
+    <div class="panel">
+      <div class="p-head" style="margin-bottom:6px;">
+        <div class="p-title">강결합 파일 쌍</div>
+        <div style="font-size:11px;color:var(--text2);">adjusted score 내림차순</div>
+      </div>
+      <div class="p-note">파일을 클릭하면 수정한 사람과 영향 파일을 볼 수 있습니다.</div>
+      <div id="coup-pairs-list"></div>
     </div>
   </div>
 </div>
