@@ -142,9 +142,12 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
 
         _report("저장소 복제 중...")
 
-        # 2) Clone repo
+        # 개인 토큰을 먼저 해석 (private repo 클론 인증 + 이후 GitHub API 공용 사용)
+        github_token = _resolve_github_token(db, user_id)
+
+        # 2) Clone repo (private 이면 토큰으로 인증)
         repo_name = repository.url.rstrip("/").split("/")[-1].removesuffix(".git")
-        repo_path = clone_repository(repository.url, repo_name)
+        repo_path = clone_repository(repository.url, repo_name, token=github_token)
         print("📁 repo_path:", repo_path)
 
         # 증분 커서 결정: 이미 저장된 커밋 중 가장 최근 committed_at.
@@ -501,7 +504,7 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
         # -----------------------
         # 8) GitHub API 수집
         # -----------------------
-        github_token = _resolve_github_token(db, user_id)
+        # github_token 은 클론 전에 이미 _resolve_github_token 으로 해석해 둠
         url_parts = repository.url.rstrip("/").split("/")
         owner = url_parts[-2]
         repo_name_gh = url_parts[-1].removesuffix(".git")
