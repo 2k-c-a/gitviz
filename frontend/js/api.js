@@ -52,3 +52,4 @@ export const fetchNetwork = (id, limitNodes = 50, minEdgeWeight = 0) =>
   getJSON(`${base(id)}/network?limit_nodes=${limitNodes}&min_edge_weight=${minEdgeWeight}`);
 export const fetchNetworkTopPairs = (id, limit = 5) =>
   getJSON(`${base(id)}/network/top-pairs?limit=${limit}`);
+export const fetchRepoTree = (id) => getJSON(`${base(id)}/tree`);
