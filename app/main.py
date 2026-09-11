@@ -3,6 +3,17 @@ import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.types import Scope
+
+
+class NoCacheStaticFiles(StaticFiles):
+    """정적 파일에 캐시 방지 헤더를 붙여, 프론트엔드 수정 후 브라우저가
+    이전 버전의 HTML/JS/CSS를 계속 캐시해 보여주는 문제를 막는다."""
+
+    async def get_response(self, path: str, scope: Scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
 
 # ── data-col 팀: 동기 DB / repositories 라우터 ────────────────────────────────
 from app.core.database import Base, engine
@@ -47,4 +58,4 @@ app.include_router(analytics_router)
 app.include_router(auth_router.router)
 
 # ── 프론트엔드 정적 파일 서빙 (API 라우터 이후 마지막에 위치) ─────────────────
-app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+app.mount("/", NoCacheStaticFiles(directory="frontend", html=True), name="frontend")

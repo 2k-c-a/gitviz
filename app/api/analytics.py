@@ -343,9 +343,10 @@ def _months_between(start, end) -> float:
     return max(_MIN_MONTHS, days / 30.44)
 
 
-@router.get("/risk-scores")
-def get_risk_scores(repository_id: int, limit: int = 50, db: Session = Depends(get_db)):
-    """파일별 Risk Score = 0.5·CurrentRisk + 0.5·StructuralRisk.
+def _compute_risk_scores(db: Session, repository_id: int) -> list[dict]:
+    """파일별 Risk Score = 0.5·CurrentRisk + 0.5·StructuralRisk. 레포 전체 파일에 대해
+    (정렬·limit 없이) 계산한 결과를 그대로 반환한다 — /risk-scores와 /tree가 공유하는
+    핵심 로직이라, 정렬·limit·summary 조립은 호출부(엔드포인트)에서 각자 한다.
 
     정의(결함/유지보수 위험도)는 그대로 두되, 산식은 두 축으로 나눈다.
 
@@ -431,8 +432,7 @@ def get_risk_scores(repository_id: int, limit: int = 50, db: Session = Depends(g
     ).mappings().all()
 
     if not rows:
-        return {"files": [], "summary": {"high_risk_count": 0, "avg_risk_score": None,
-                                          "hidden_coupling_count": 0, "avg_entropy": None}}
+        return []
 
     # 2) 파일별 "최근"(리팩토링 이후, 없으면 첫 커밋 이후) 구간 기여자 분포 —
     #    Entropy + Bus Factor에 사용. Bus Factor 전용 엔드포인트와 동일한 소스를 공유한다.
@@ -548,14 +548,26 @@ def get_risk_scores(repository_id: int, limit: int = 50, db: Session = Depends(g
             "is_bus_factor_risk": v["bus_factor"] == 1,
         })
 
+    return files
+
+
+@router.get("/risk-scores")
+def get_risk_scores(repository_id: int, limit: int = 50, db: Session = Depends(get_db)):
+    """레포 전체 파일의 Risk Score를 계산해(_compute_risk_scores) 상위 limit개만 반환한다.
+    산식 설명은 _compute_risk_scores 문서 참고."""
+    files = _compute_risk_scores(db, repository_id)
+    if not files:
+        return {"files": [], "summary": {"high_risk_count": 0, "avg_risk_score": None,
+                                          "hidden_coupling_count": 0, "avg_entropy": None}}
+
     files.sort(key=lambda x: x["risk_score"], reverse=True)
     top_files = files[:limit]
 
-    entropies = [v["entropy"] for v in raw.values()]
+    entropies = [f["entropy"] for f in files]
     summary = {
         "high_risk_count": sum(1 for f in files if f["risk_score"] >= 0.7),
         "avg_risk_score": round(sum(f["risk_score"] for f in files) / len(files), 4) if files else None,
-        "hidden_coupling_count": sum(1 for v in raw.values() if v["co_change"] >= 0.3),
+        "hidden_coupling_count": sum(1 for f in files if f["co_change"] >= 0.3),
         "avg_entropy": round(sum(entropies) / len(entropies), 4) if entropies else None,
     }
 
@@ -821,6 +833,23 @@ def _compute_coupling(db, repository_id: int) -> dict:
         "excluded_unit_count": excluded_units,
         "pairs": pairs,
     }
+
+
+def _per_file_coupling_summary(coupling_result: dict) -> dict[int, dict]:
+    """_compute_coupling() 결과를 파일 하나당 스칼라 두 개로 압축한다 (트리 뷰처럼 파일별로
+    "영향도 순" 정렬·색상 인코딩을 해야 하는데 쌍(pair) 단위 리스트는 그대로 쓸 수 없는 곳용).
+
+        max_coupling_score  — 이 파일과 가장 강하게 결합된 파트너의 coupling_score([0,1])
+        coupled_file_count  — coupling_score >= 0.7(강결합 기준, /coupling의 high_coupling_count와 동일 임계값)인 파트너 수
+    """
+    summary: dict[int, dict] = {}
+    for p in coupling_result["pairs"]:
+        for fid in (p["file_a_id"], p["file_b_id"]):
+            s = summary.setdefault(fid, {"max_coupling_score": 0.0, "coupled_file_count": 0})
+            s["max_coupling_score"] = max(s["max_coupling_score"], p["coupling_score"])
+            if p["coupling_score"] >= 0.7:
+                s["coupled_file_count"] += 1
+    return summary
 
 
 @router.get("/coupling")
@@ -1283,4 +1312,94 @@ def get_file_detail(repository_id: int, file_id: int, limit: int = 20, db: Sessi
         ],
         "co_change_unit": coupling_result["co_change_unit"],
         "coupled_files": coupled[:limit],
+    }
+
+
+def _build_tree(files: list[dict]) -> dict:
+    """path 문자열(예: "app/api/analytics.py")들을 "/" 기준으로 중첩 디렉토리 트리로 접는다.
+    디렉토리 노드는 {name, children}, 파일(leaf) 노드는 {name, children 없음, ...metrics}.
+    프론트 트리맵(treemap.js의 MOCK_TREE)과 동일한 모양(name/children/file_id/value/
+    bus_factor/entropy)에 risk_score·coupling_score를 추가한 형태 — 디렉토리 집계(평균 BF 등)는
+    지금처럼 프론트에서 계산하는 쪽을 그대로 둔다(트리는 원본 값만 실어준다)."""
+    root: dict = {"name": "root", "children": []}
+    for f in files:
+        parts = f["path"].split("/")
+        cur = root
+        for part in parts[:-1]:
+            nxt = next((c for c in cur["children"] if c["name"] == part and "children" in c), None)
+            if nxt is None:
+                nxt = {"name": part, "children": []}
+                cur["children"].append(nxt)
+            cur = nxt
+        cur["children"].append({
+            "name": parts[-1],
+            "file_id": f["file_id"],
+            "path": f["path"],
+            "value": 1,
+            "risk_score": f["risk_score"],
+            "bus_factor": f["bus_factor"],
+            "entropy": f["entropy"],
+            "is_bus_factor_risk": f["is_bus_factor_risk"],
+            "coupling_score": f["coupling_score"],
+            "coupled_file_count": f["coupled_file_count"],
+        })
+    return root
+
+
+@router.get("/tree")
+def get_repo_tree(repository_id: int, db: Session = Depends(get_db)):
+    """코드분석 탭(트리맵) 데이터 계약 — 디렉토리 트리의 파일(leaf)마다 Risk Score·Bus
+    Factor·코드 영향도(코드 결합도) 3개 지표를 한 번에 실어서 반환한다. 프론트가 트리
+    렌더링 + 위험도/영향도/BF 정렬 토글을 API 한 번으로 전부 처리할 수 있게 하는 게 목적
+    (treemap.html의 warn-box에 있던 "전체 파일 목록 + 중첩 트리" 요청에 대응).
+
+    세 지표는 각각 기존 엔드포인트와 완전히 같은 계산 로직을 공유한다 — 같은 파일이라도
+    화면마다 값이 어긋나는 일이 없도록 새로 계산하지 않고 전부 재사용:
+        risk_score  → _compute_risk_scores (=/risk-scores와 동일)
+        bus_factor  → 위와 동일 소스(_fetch_recent_ownership) 재사용
+        coupling    → _compute_coupling (=/coupling와 동일) → _per_file_coupling_summary로 파일당 1개 값으로 압축
+
+    파일 수가 적은(커밋을 아직 안 남긴) 레포는 risk_score/bus_factor가 없는 파일도
+    trees에 포함될 수 있다 — 그런 경우 해당 필드는 null.
+    """
+    file_rows = db.execute(
+        text(
+            "SELECT id AS file_id, path FROM files "
+            "WHERE repository_id = :rid AND COALESCE(is_deleted, false) = false"
+        ),
+        {"rid": repository_id},
+    ).mappings().all()
+
+    if not file_rows:
+        return {"tree": {"name": "root", "children": []}, "files": [], "file_count": 0}
+
+    risk_by_file = {f["file_id"]: f for f in _compute_risk_scores(db, repository_id)}
+    coupling_result = _compute_coupling(db, repository_id)
+    coupling_by_file = _per_file_coupling_summary(coupling_result)
+
+    files = []
+    for r in file_rows:
+        fid, path = r["file_id"], r["path"]
+        risk = risk_by_file.get(fid)
+        coup = coupling_by_file.get(fid, {"max_coupling_score": 0.0, "coupled_file_count": 0})
+        files.append({
+            "file_id": fid,
+            "path": path,
+            "risk_score": risk["risk_score"] if risk else None,
+            "bus_factor": risk["bus_factor"] if risk else None,
+            "entropy": round(risk["entropy"], 4) if risk else None,
+            "is_bus_factor_risk": risk["is_bus_factor_risk"] if risk else False,
+            "coupling_score": round(coup["max_coupling_score"], 4),
+            "coupled_file_count": coup["coupled_file_count"],
+        })
+
+    # 종합 리스트(위험도순 기본) — 프론트가 트리 아래 랭킹에 바로 쓸 수 있게 정렬해서 같이 내려준다.
+    # 영향도순/BF순 재정렬은 프론트에서 이 배열을 그대로 다시 sort하면 됨(추가 호출 불필요).
+    files.sort(key=lambda f: f["risk_score"] if f["risk_score"] is not None else -1, reverse=True)
+
+    return {
+        "tree": _build_tree(files),
+        "files": files,
+        "file_count": len(files),
+        "co_change_unit": coupling_result["co_change_unit"],
     }
