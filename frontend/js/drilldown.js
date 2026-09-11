@@ -27,8 +27,11 @@ export function openContributorDrilldown(contributorId) {
   renderTop();
 }
 
-export function openFileDrilldown(fileId) {
-  _stack = [{ type: 'file', id: fileId }];
+/* extra: 코드분석 트리(/tree)에서 이미 가져와 둔 risk_score/coupling_score 등 —
+   있으면 API 재호출 없이 "왜 위험한지" 설명에 바로 쓴다. 없는 호출부(중첩 드릴다운 등)는
+   그냥 생략된다. */
+export function openFileDrilldown(fileId, extra) {
+  _stack = [{ type: 'file', id: fileId, extra }];
   renderTop();
 }
 
@@ -61,7 +64,7 @@ async function renderTop() {
 
   try {
     if (frame.type === 'contributor') await renderContributor(frame.id);
-    else await renderFile(frame.id);
+    else await renderFile(frame.id, frame.extra);
   } catch (err) {
     console.error('[drilldown] 로드 실패:', err);
     bodyEl().innerHTML = '<div style="padding:24px;text-align:center;color:var(--red-dark);font-size:12px;">불러오지 못했습니다.</div>';
@@ -108,7 +111,22 @@ async function renderContributor(contributorId) {
   `;
 }
 
-async function renderFile(fileId) {
+/* extra(선택)에 risk_score/coupling_score가 있으면 "왜 위험한지"를 한두 문장으로 요약한다. */
+function buildRiskExplanation(extra, detail) {
+  if (!extra || extra.risk_score == null) return null;
+  const reasons = [];
+  if (extra.risk_score >= 0.7) reasons.push('Risk Score가 상위권으로 결함 위험이 높습니다');
+  else if (extra.risk_score >= 0.5) reasons.push('Risk Score가 중간 이상으로 주의가 필요합니다');
+  if (detail.bus_factor === 1) reasons.push('이 파일을 아는 사람이 한 명뿐입니다(BF=1)');
+  if (extra.coupling_score >= 0.7) {
+    const cnt = extra.coupled_file_count ?? 0;
+    reasons.push(`결합도가 높아 다른 파일 ${cnt}개에 영향을 줄 수 있습니다`);
+  }
+  if (!reasons.length) reasons.push('현재 특별한 위험 신호는 없습니다');
+  return reasons.join(' · ');
+}
+
+async function renderFile(fileId, extra) {
   const repoId = getRepoId();
   const detail = await fetchFileDetail(repoId, fileId, 20);
   if (detail.error) throw new Error(detail.error);
@@ -120,6 +138,11 @@ async function renderFile(fileId) {
   subEl().textContent = detail.file.path;
 
   const bfBadge = detail.is_bus_factor_risk ? ' <span class="badge badge-red" style="font-size:10px;">BF=1</span>' : '';
+  const riskExplanation = buildRiskExplanation(extra, detail);
+  const riskHtml = riskExplanation
+    ? `<div style="font-size:11px;color:var(--text2);margin-top:4px;">Risk Score <span style="font-weight:600;color:var(--text);">${extra.risk_score.toFixed(2)}</span>${extra.coupling_score != null ? ` · 결합도 ${extra.coupling_score.toFixed(2)}` : ''}</div>
+       <div class="rec-box" style="margin-top:6px;">${esc(riskExplanation)}</div>`
+    : '';
 
   const editors = detail.editors || [];
   const editorsHtml = editors.length
@@ -142,6 +165,7 @@ async function renderFile(fileId) {
 
   bodyEl().innerHTML = `
     <div style="font-size:11px;color:var(--text2);margin-top:6px;">Bus Factor ${detail.bus_factor ?? '—'}${bfBadge} · Entropy ${detail.entropy.toFixed(2)}</div>
+    ${riskHtml}
     <div style="font-size:12px;font-weight:600;color:var(--text2);margin:14px 0 6px;">수정한 사람 (지분 순)</div>
     <div style="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto;">${editorsHtml}</div>
     <div style="font-size:12px;font-weight:600;color:var(--text2);margin:16px 0 6px;">영향을 끼칠 수 있는 파일 (co-change 순)</div>
