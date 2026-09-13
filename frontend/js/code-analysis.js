@@ -116,25 +116,29 @@ function renderSortToggle() {
 function renderBreadcrumb() {
   const wrap = document.getElementById('cx-breadcrumb');
   if (!wrap) return;
+  const goTo = (depth) => { path = path.slice(0, depth + 1); renderTree(); };
+
   wrap.innerHTML = path.map((n, i) => {
     const isLast = i === path.length - 1;
     const label = esc(n.name);
     return isLast
-      ? `<span style="color:var(--text);font-weight:600;">${label}</span>`
-      : `<span style="cursor:pointer;text-decoration:underline;" data-depth="${i}">${label}</span> <span style="color:var(--text3);">/</span> `;
+      ? `<button class="crumb-pill current">${label}</button>`
+      : `<button class="crumb-pill" data-depth="${i}">${label}</button><span class="crumb-sep">/</span>`;
   }).join('');
   wrap.querySelectorAll('[data-depth]').forEach(el => {
-    el.addEventListener('click', () => {
-      const depth = parseInt(el.dataset.depth, 10);
-      path = path.slice(0, depth + 1);
-      renderTree();
-    });
+    el.addEventListener('click', () => goTo(parseInt(el.dataset.depth, 10)));
   });
+
+  const rootBtn = document.getElementById('cx-root-btn');
+  const upBtn = document.getElementById('cx-up-btn');
+  if (rootBtn) rootBtn.onclick = () => goTo(0);
+  if (upBtn) { upBtn.disabled = path.length <= 1; upBtn.onclick = () => goTo(Math.max(0, path.length - 2)); }
 }
 
 function renderTree() {
   if (!svgEl) return;
   renderBreadcrumb();
+  showDetail(null);
 
   const current = path[path.length - 1];
   const width = svgEl.clientWidth || 900;
@@ -167,7 +171,9 @@ function renderTree() {
       } else if (d.data.file_id != null && window.openFileDrilldown) {
         window.openFileDrilldown(d.data.file_id, d.data);
       }
-    });
+    })
+    .on('mouseenter', (_, d) => showDetail(d))
+    .on('mouseleave', () => showDetail(null));
 
   cell.append('rect')
     .attr('width', d => Math.max(0, d.x1 - d.x0))
@@ -187,22 +193,22 @@ function renderTree() {
       return parts.join(' · ');
     });
 
-  cell.filter(d => (d.x1 - d.x0) > 34 && (d.y1 - d.y0) > 16)
+  cell.filter(d => (d.x1 - d.x0) > 48 && (d.y1 - d.y0) > 22)
     .append('text')
-    .attr('x', 5).attr('y', 15)
-    .style('font-size', '10px')
+    .attr('x', 5).attr('y', 18)
+    .style('font-size', '15px')
     .style('fill', d => d.data.children ? 'var(--text)' : '#fff')
     .style('pointer-events', 'none')
     .text(d => {
       const w = d.x1 - d.x0;
-      const maxChars = Math.max(3, Math.floor(w / 6));
+      const maxChars = Math.max(3, Math.floor(w / 8.5));
       return d.data.name.length > maxChars ? d.data.name.slice(0, maxChars - 1) + '…' : d.data.name;
     });
 
-  cell.filter(d => d.data.children && (d.y1 - d.y0) > 30)
+  cell.filter(d => d.data.children && (d.y1 - d.y0) > 38)
     .append('text')
-    .attr('x', 5).attr('y', 28)
-    .style('font-size', '9px')
+    .attr('x', 5).attr('y', 33)
+    .style('font-size', '10px')
     .style('fill', 'var(--text2)')
     .style('pointer-events', 'none')
     .text(d => `${d.leaves().length}개 파일`);
@@ -219,16 +225,52 @@ function renderLegend() {
   ).join('');
 }
 
+/* 트리 노드에 마우스를 올리면 우측 카드에 Risk/BF/결합도를 한번에 보여준다 */
+function showDetail(d) {
+  const pathEl = document.getElementById('cx-detail-path');
+  const metricsEl = document.getElementById('cx-detail-metrics');
+  if (!pathEl || !metricsEl) return;
+
+  if (!d) {
+    pathEl.className = 'cx-detail-empty';
+    pathEl.textContent = '노드에 마우스를 올려보세요';
+    metricsEl.innerHTML = '';
+    return;
+  }
+
+  pathEl.className = 'cx-detail-path';
+  pathEl.textContent = d.data.path || d.data.name;
+
+  const chip = (val, color) => `<span class="hm-val" style="padding:2px 8px;background:${color}22;color:${color};font-weight:600;">${esc(val)}</span>`;
+  const row = (label, html) => `<div class="cx-detail-row"><span>${esc(label)}</span>${html}</div>`;
+
+  if (!d.data.children) {
+    metricsEl.innerHTML = [
+      row('Risk Score', chip(d.data.risk_score != null ? fmt2(d.data.risk_score) : '—', riskColor(d.data.risk_score))),
+      row('Bus Factor', chip(d.data.bus_factor ?? '—', bfColor(d.data.bus_factor)) + (d.data.is_bus_factor_risk ? '<span class="badge badge-red" style="margin-left:4px;">승계위험</span>' : '')),
+      row('결합도', chip(d.data.coupling_score != null ? fmt2(d.data.coupling_score) : '—', couplingColor(d.data.coupling_score))),
+      row('결합 파일 수', `<span>${num(d.data.coupled_file_count)}</span>`),
+    ].join('');
+  } else {
+    metricsEl.innerHTML = [
+      row('평균 Risk', chip(d.data.avgRisk != null ? fmt2(d.data.avgRisk) : '—', riskColor(d.data.avgRisk))),
+      row('평균 Bus Factor', chip(d.data.avgBF != null ? fmt2(d.data.avgBF) : '—', bfColor(d.data.avgBF))),
+      row('평균 결합도', chip(d.data.avgCoupling != null ? fmt2(d.data.avgCoupling) : '—', couplingColor(d.data.avgCoupling))),
+      row('하위 파일 수', `<span>${num(d.leaves().length)}개</span>`),
+    ].join('');
+  }
+}
+
 function renderList() {
   const tbody = document.getElementById('cx-list-tbody');
   const note = document.getElementById('cx-list-note');
   if (!tbody) return;
 
   const metric = METRICS[currentMetric];
-  if (note) note.textContent = `${metric.label} · 상위 100개`;
+  if (note) note.textContent = `${metric.label} · 상위 20개`;
 
   if (!FILES.length) {
-    tbody.innerHTML = '<tr><td class="hm-td" colspan="6" style="text-align:center;color:var(--text3);padding:24px;">파일 데이터가 없습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td class="hm-td" colspan="5" style="text-align:center;color:var(--text3);padding:24px;">파일 데이터가 없습니다.</td></tr>';
     return;
   }
 
@@ -238,7 +280,7 @@ function renderList() {
     if (av == null) return 1;
     if (bv == null) return -1;
     return metric.dir === 'asc' ? av - bv : bv - av;
-  }).slice(0, 100);
+  }).slice(0, 20);
 
   const byId = new Map(sorted.map(f => [f.file_id, f]));
 
@@ -251,7 +293,6 @@ function renderList() {
       <td class="hm-td file" title="${esc(f.path)}">${esc(f.path)}${bfBadge}${couplingBadge}</td>
       <td class="hm-td"><span class="hm-val" style="background:${riskColor(f.risk_score)}22;color:${riskColor(f.risk_score)};font-weight:600;">${f.risk_score != null ? fmt2(f.risk_score) : '—'}</span></td>
       <td class="hm-td" style="text-align:center;">${f.bus_factor ?? '—'}</td>
-      <td class="hm-td" style="text-align:center;">${f.entropy != null ? fmt2(f.entropy) : '—'}</td>
       <td class="hm-td"><span class="hm-val" style="background:${couplingColor(f.coupling_score)}22;color:${couplingColor(f.coupling_score)};">${f.coupling_score != null ? fmt2(f.coupling_score) : '—'}</span></td>
       <td class="hm-td" style="text-align:center;">${num(f.coupled_file_count)}</td>
     </tr>`;
