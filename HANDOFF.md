@@ -25,9 +25,16 @@
 ## 2. 로컬 실행
 
 ```bash
-# 1) .env 준비 (gitignore — 저장소에 없음. 직접 작성)
-#    DATABASE_URL, REDIS_URL, GITHUB_TOKEN, GITHUB_CLIENT_ID/SECRET,
-#    SESSION_SECRET_KEY, FRONTEND_URL(=http://localhost:8000)
+# 0) 의존성 설치 (venv가 requirements와 어긋나면 networkx 등이 없어 서버가 안 뜬다)
+pip install -r requirements.txt
+
+# 1) .env 준비 (gitignore — 저장소에 없음. .env.example 복사해서 작성)
+#    자세한 항목·주의는 .env.example 주석 참고. 요약:
+#    [공유] DATABASE_URL, DATABASE_URL_ASYNC, GITHUB_CLIENT_ID/SECRET, TOKEN_ENCRYPTION_KEY
+#    [개인] REDIS_URL, GITHUB_TOKEN, SESSION_SECRET_KEY, FRONTEND_URL
+
+# 1-1) 스키마 최신화 (새 DB거나 오래 된 DB면 필수)
+python -m alembic upgrade head
 
 # 2) Redis (Docker)
 docker run -d --name gitviz-redis -p 6379:6379 redis:7-alpine
@@ -105,6 +112,17 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 - 테스트는 **작은 레포**(Hello-World, Spoon-Knife 등)로.
 - IoT(`arduino/`, `app/api/iot.py`)는 졸업작품 범위 외 — gitignore로 제외됨(로컬 전용).
 - **GitHub 토큰**: 로그인한 사용자가 분석을 요청하면 공용 `GITHUB_TOKEN` 대신 그 사용자의 OAuth 토큰(`users.access_token_encrypted`, 로그인 시 자동 저장)으로 수집한다 — 사용자마다 별도의 시간당 5000회 한도를 쓰게 되어 여러 분석이 공용 토큰 하나를 나눠 쓰며 rate limit에 자주 걸리는 문제가 줄어든다. 비로그인 요청은 기존처럼 공용 토큰 사용. 관련: `app/tasks/analyze_repository.py`의 `_resolve_github_token()`, `app/api/repositories.py`.
+
+### ⚠️ 자격증명 함정 두 가지 (둘 다 조용히 실패한다)
+
+**1. `GITHUB_TOKEN`은 classic PAT을 써라.**
+fine-grained PAT은 소유자가 개인 계정이면 **조직(`2k-c-a`) 레포에 404**가 난다. 우리 레포(`2k-c-a/gitviz`)가 private이라 private repo 기능이 "구현이 잘못된 것처럼" 보인다.
+→ 발급: <https://github.com/settings/tokens/new?scopes=repo&description=GitViz> (`repo` 스코프)
+굳이 fine-grained를 쓰려면 Resource owner를 `2k-c-a`로 두고 해당 레포 선택 + Contents: Read (조직 관리자 승인이 필요할 수 있음).
+
+**2. `TOKEN_ENCRYPTION_KEY`는 DB와 한 세트다 — 반드시 팀에서 같은 값을 써라.**
+이 키로 암호화한 OAuth 토큰이 **공유 DB**의 `users.access_token_encrypted`에 저장된다. 키가 다르면 복호화가 `InvalidTag`로 깨지고, `_resolve_github_token()`이 예외를 잡아 **말없이 공용 토큰으로 폴백**한다. 에러도 로그도 눈에 띄지 않아서 "개인 토큰으로 rate limit 분산" 기능이 꺼진 줄 아무도 모른다.
+→ DB를 갈아끼울 때는 `TOKEN_ENCRYPTION_KEY`도 같이 가져와야 한다. 못 가져오면 `UPDATE users SET access_token_encrypted = NULL` 후 전원 재로그인.
 
 ---
 
