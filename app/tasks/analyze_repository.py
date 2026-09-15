@@ -24,7 +24,7 @@ from app.models.release import Release
 
 from app.collectors.git.clone_manager import clone_repository
 from app.collectors.git.commit_collector import collect_commits
-from app.collectors.git.file_collector import collect_files
+from app.collectors.git.file_collector import collect_files, collect_existing_paths
 from app.collectors.git.commit_file_change_collector import collect_commit_file_changes
 from app.collectors.git.commit_classifier import classify_commit
 from app.collectors.github.github_client import GitHubClient
@@ -513,6 +513,32 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
             WHERE repository_id = :rid
         """), {"thr": large_threshold, "total": total_files, "pct": large_pct, "rid": repository.id})
         db.commit()
+
+        # files.is_deleted 갱신
+        # collect_files()는 git log --all 기준이라 '한 번이라도 존재했던' 경로를 모은다.
+        # 현재 HEAD 트리에 없는 경로 = 삭제된 파일. 양방향으로 맞춰 두면 재실행해도
+        # 같은 결과가 나오고, 삭제됐다 되살아난 파일도 자동으로 풀린다.
+        existing_paths = collect_existing_paths(repo_path)
+        if existing_paths is None:
+            # 조회 실패 — 전량 삭제 마킹 사고를 막기 위해 건너뛴다(위에서 경고 출력됨).
+            print("SKIP is_deleted 갱신 (HEAD 조회 실패)")
+        else:
+            path_list = list(existing_paths)
+            deleted_cnt = db.execute(text("""
+                UPDATE files SET is_deleted = true
+                WHERE repository_id = :rid
+                  AND NOT (path = ANY(:paths))
+                  AND is_deleted IS DISTINCT FROM true
+            """), {"rid": repository.id, "paths": path_list}).rowcount
+            restored_cnt = db.execute(text("""
+                UPDATE files SET is_deleted = false
+                WHERE repository_id = :rid
+                  AND path = ANY(:paths)
+                  AND is_deleted IS DISTINCT FROM false
+            """), {"rid": repository.id, "paths": path_list}).rowcount
+            db.commit()
+            print(f"is_deleted 갱신: HEAD 존재 {len(path_list)}개 / "
+                  f"새로 삭제표시 {deleted_cnt} / 삭제해제 {restored_cnt}")
 
         # -----------------------
         # 8) GitHub API 수집
