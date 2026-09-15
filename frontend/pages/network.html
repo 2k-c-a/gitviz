@@ -26,10 +26,7 @@
   <div class="sub-tabs">
     <div class="sub-tab" onclick="location.href='./timeline.html'">타임라인</div>
     <div class="sub-tab active">협업 네트워크</div>
-    <div class="sub-tab" onclick="location.href='./risk.html'">위험도</div>
-    <div class="sub-tab" onclick="location.href='./coupling.html'">코드 영향도</div>
-    <div class="sub-tab" onclick="location.href='./busfactor.html'">Bus Factor</div>
-    <div class="sub-tab" onclick="location.href='./treemap.html'">BF 트리맵</div>
+    <div class="sub-tab" onclick="location.href='./code-analysis.html'">코드분석</div>
   </div>
   <div class="body">
     <div class="metrics-4">
@@ -45,7 +42,7 @@
         <div class="p-title">협업 네트워크</div>
         <div style="font-size:11px;color:var(--text2);">노드 크기 = 커밋 수 · 색 = 클러스터 · 굵은 테두리 = 허브(betweenness 상위)</div>
       </div>
-      <svg class="network-svg" id="net-graph-svg" style="height:420px;"></svg>
+      <svg class="network-svg" id="net-graph-svg"></svg>
     </div>
 
     <!-- 상위 협업 쌍 -->

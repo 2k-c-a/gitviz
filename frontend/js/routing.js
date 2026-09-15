@@ -1,12 +1,12 @@
 import { currentUser } from './login.js';
 
 /* ── page routing ── */
-const PAGES = { index:'index', myprojects:'myprojects', timeline:'timeline', network:'network', risk:'risk', coupling:'coupling', busfactor:'bus' };
+const PAGES = { index:'index', myprojects:'myprojects', timeline:'timeline', network:'network', 'code-analysis':'code-analysis' };
 export function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
-  const navId = 'nav-' + (id === 'busfactor' ? 'bus' : id);
+  const navId = 'nav-' + id;
   const el = document.getElementById(navId);
   if (el) el.classList.add('active');
   if (id === 'myprojects') syncMyProjectsHeader();
