@@ -38,9 +38,11 @@ function renderMetrics(m) {
 }
 
 function renderGraph(nodes, edges) {
-  const width = svgEl.clientWidth || 700;
+  /* 시뮬레이션 좌표계를 실제 픽셀 폭과 분리 — viewBox 스케일링만으로 반응형 크기 조정,
+     브라우저 창 크기와 무관하게 항상 동일한 상대 배치를 유지한다. */
+  const width = 700;
   const height = 420;
-  const svg = d3.select(svgEl).attr('viewBox', `0 0 ${width} ${height}`);
+  const svg = d3.select(svgEl).attr('viewBox', `0 0 ${width} ${height}`).attr('preserveAspectRatio', 'xMidYMid meet');
   svg.selectAll('*').remove();
 
   if (!nodes.length) {
@@ -50,7 +52,7 @@ function renderGraph(nodes, edges) {
   }
 
   const maxCommit = Math.max(1, ...nodes.map(n => n.commit_count || 0));
-  const radius = (n) => 4 + 14 * Math.sqrt((n.commit_count || 0) / maxCommit);
+  const radius = (n) => 3 + 8 * Math.sqrt((n.commit_count || 0) / maxCommit);
 
   const hubThreshold = [...nodes].map(n => n.betweenness_centrality || 0).sort((a, b) => b - a)[Math.max(0, Math.ceil(nodes.length * 0.15) - 1)] || Infinity;
 
@@ -60,11 +62,35 @@ function renderGraph(nodes, edges) {
     .map(e => ({ ...e }));
   const maxWeight = Math.max(0.001, ...links.map(l => l.edge_weight || 0));
 
+  /* 엣지가 하나도 없는(고립) 기여자는 허브 클러스터 안에서 다른 노드에 가려지기 쉬우므로,
+     중심 인력 대신 바깥 링에 고르게 배치해 항상 개별적으로 보이게 한다. */
+  const degree = new Map(nodes.map(n => [n.id, 0]));
+  links.forEach(l => {
+    const s = typeof l.source === 'object' ? l.source.id : l.source;
+    const t = typeof l.target === 'object' ? l.target.id : l.target;
+    degree.set(s, (degree.get(s) || 0) + 1);
+    degree.set(t, (degree.get(t) || 0) + 1);
+  });
+  nodes.forEach(n => { n.__isolated = (degree.get(n.id) || 0) === 0; });
+
+  const cx = width / 2, cy = height / 2;
+  const ringRadius = Math.min(width, height) / 2 - 55;
+
+  /* 고립 노드는 겹치지 않도록 링 모양으로 고르게 흩어진 위치에서 출발시키되,
+     완전히 고정하지 않고 약한 구심력으로 서서히 중앙 쪽으로 끌려오게 한다. */
+  const isolatedNodes = nodes.filter(n => n.__isolated);
+  isolatedNodes.forEach((n, i) => {
+    const angle = (i / isolatedNodes.length) * Math.PI * 2 - Math.PI / 2;
+    n.x = cx + ringRadius * Math.cos(angle);
+    n.y = cy + ringRadius * Math.sin(angle);
+  });
+
   const sim = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(links).id(d => d.id).distance(70).strength(l => 0.15 + 0.5 * (l.edge_weight / maxWeight)))
-    .force('charge', d3.forceManyBody().strength(-140))
-    .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collide', d3.forceCollide(d => radius(d) + 6));
+    .force('link', d3.forceLink(links).id(d => d.id).distance(34).strength(l => 0.1 + 0.35 * (l.edge_weight / maxWeight)))
+    .force('charge', d3.forceManyBody().strength(d => d.__isolated ? -6 : -85))
+    .force('x', d3.forceX(cx).strength(d => d.__isolated ? 0.05 : 0.12))
+    .force('y', d3.forceY(cy).strength(d => d.__isolated ? 0.05 : 0.12))
+    .force('collide', d3.forceCollide(d => radius(d) + 5));
 
   const linkSel = svg.append('g').selectAll('line').data(links).join('line')
     .style('stroke', '#378ADD')
@@ -84,7 +110,24 @@ function renderGraph(nodes, edges) {
 
   nodeSel.append('title').text(d => `${d.name} · 커밋 ${num(d.commit_count)}개${(d.betweenness_centrality || 0) >= hubThreshold ? ' · 허브' : ''}`);
 
+  const pad = 8;
+  const hubMaxRadius = ringRadius - 25; /* 연결된(허브) 노드가 반발력으로 링 쪽까지 밀려나지 않도록 상한을 둔다 */
   sim.on('tick', () => {
+    nodes.forEach(d => {
+      /* 고립 노드끼리의 반발력이 누적되면 약한 구심력을 이기고 링 밖으로 서서히 번질 수 있으므로,
+         두 그룹 모두 각자의 최대 반경을 넘지 않도록 매 틱마다 다시 끌어당긴다. */
+      const maxR = d.__isolated ? ringRadius : hubMaxRadius;
+      const dx = d.x - cx, dy = d.y - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > maxR) {
+        const k = maxR / dist;
+        d.x = cx + dx * k;
+        d.y = cy + dy * k;
+      }
+      const r = radius(d) + pad;
+      d.x = Math.max(r, Math.min(width - r, d.x));
+      d.y = Math.max(r, Math.min(height - r, d.y));
+    });
     linkSel
       .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
       .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
