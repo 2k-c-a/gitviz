@@ -3,6 +3,7 @@ from bisect import bisect_right
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional
 
+from cryptography.exceptions import InvalidTag
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 
@@ -86,7 +87,19 @@ def _resolve_github_token(db, user_id: Optional[str]) -> Optional[str]:
             return shared_token
 
         from app.services.auth_service import decrypt_token
-        token = decrypt_token(row[0])
+        try:
+            token = decrypt_token(row[0])
+        except InvalidTag:
+            # 토큰은 있는데 못 연다 = TOKEN_ENCRYPTION_KEY가 이 DB와 다르다.
+            # 데이터 문제가 아니라 설정 사고이므로 조용히 넘기지 않는다.
+            print(
+                "❌ TOKEN_ENCRYPTION_KEY 불일치 — users.access_token_encrypted를 복호화할 수 없다.\n"
+                "   이 DB의 토큰은 다른 키로 암호화돼 있다. 개인 토큰(사용자별 5000req/h) 기능이\n"
+                "   꺼진 채 공용 GITHUB_TOKEN으로 폴백한다. private 레포는 공용 토큰 권한에 따라\n"
+                "   실패할 수 있다. 조치: 팀의 키를 .env에 맞추거나, 해당 컬럼을 NULL로 비우고\n"
+                "   재로그인. 자세한 내용은 HANDOFF.md '자격증명 함정' 참고."
+            )
+            return shared_token
         print(f"🔑 user_id={user_id} 개인 GitHub 토큰 사용")
         return token
     except Exception as e:
