@@ -1,6 +1,8 @@
 import subprocess
 import os
 
+from app.utils.normalize import resolve_rename_path
+
 def normalize_hash(h: str) -> str:
     if not h:
         return ""
@@ -33,7 +35,7 @@ def collect_commit_file_changes(repo_path: str, since: str = None):
 
     print("ENTER collect_commit_file_changes")
 
-    cmd = ["git", "log", "--all", "--numstat", "--pretty=format:COMMIT:%H"]
+    cmd = ["git", "-c", "core.quotePath=false", "log", "--all", "--numstat", "--pretty=format:COMMIT:%H"]
     if since:
         cmd.append(f"--since={since}")
 
@@ -85,7 +87,7 @@ def collect_commit_file_changes(repo_path: str, since: str = None):
         except ValueError:
             deletions = 0
 
-        path = normalize_path(path_raw)
+        path = normalize_path(resolve_rename_path(path_raw))
 
         # skip empty path entries
         if not path or not current_commit:

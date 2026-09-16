@@ -21,9 +21,9 @@ from app.models.pr_review import PrReview
 from app.models.pull_request_file import PullRequestFile
 from app.models.release import Release
 
-from app.collectors.git.clone_manager import clone_repository
+from app.collectors.git.clone_manager import clone_repository, get_default_branch
 from app.collectors.git.commit_collector import collect_commits
-from app.collectors.git.file_collector import collect_files
+from app.collectors.git.file_collector import collect_files, collect_current_tree_paths
 from app.collectors.git.commit_file_change_collector import collect_commit_file_changes
 from app.collectors.git.commit_classifier import classify_commit
 from app.collectors.github.github_client import GitHubClient
@@ -146,6 +146,23 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
         repo_name = repository.url.rstrip("/").split("/")[-1].removesuffix(".git")
         repo_path = clone_repository(repository.url, repo_name)
         print("📁 repo_path:", repo_path)
+
+        default_branch = get_default_branch(repo_path)
+        if default_branch and repository.default_branch != default_branch:
+            repository.default_branch = default_branch
+            db.commit()
+        print("🌿 default_branch:", repository.default_branch)
+
+        # collect_files()는 --all(전체 이력)이라 이미 삭제/이동된 경로도 섞여 있다.
+        # 기본 브랜치 HEAD 기준 실제 존재 경로 집합을 구해 files.is_deleted에 반영한다
+        # (그래야 "디렉토리 트리"/GitHub 링크가 더 이상 없는 경로를 가리키지 않는다).
+        live_paths = set()
+        if repository.default_branch:
+            try:
+                live_paths = collect_current_tree_paths(repo_path, repository.default_branch)
+            except Exception as e:
+                print("⚠️ collect_current_tree_paths 실패, is_deleted 갱신 건너뜀:", e)
+        print("🌳 live_paths:", len(live_paths))
 
         # 증분 커서 결정: 이미 저장된 커밋 중 가장 최근 committed_at.
         # git --since는 committer date 근사 필터라 누락 방지 버퍼를 빼서 넉넉히 읽고,
@@ -348,6 +365,23 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
                 stmt = stmt.on_conflict_do_nothing(index_elements=["repository_id", "path"])
                 db.execute(stmt)
         db.commit()
+
+        # file_map 조회에 앞서 is_deleted를 현재 기본 브랜치 기준으로 갱신한다.
+        # (신규/기존 행 모두 대상 — 삭제된 경로가 되살아난 경우까지 한 번에 맞춰준다)
+        if live_paths:
+            all_files = db.query(File.id, File.path, File.is_deleted).filter(
+                File.repository_id == repository.id
+            ).all()
+            deleted_ids = [fid for fid, p, _ in all_files if normalize_path(p) not in live_paths]
+            revived_ids = [fid for fid, p, d in all_files if normalize_path(p) in live_paths and d]
+            if deleted_ids:
+                for chunk in chunked(deleted_ids, CHUNK_SIZE):
+                    db.execute(text("UPDATE files SET is_deleted = true WHERE id = ANY(:ids)"), {"ids": chunk})
+            if revived_ids:
+                for chunk in chunked(revived_ids, CHUNK_SIZE):
+                    db.execute(text("UPDATE files SET is_deleted = false WHERE id = ANY(:ids)"), {"ids": chunk})
+            db.commit()
+            print(f"🗑️ is_deleted 갱신: deleted={len(deleted_ids)} revived={len(revived_ids)}")
 
         # file_map: (path → id) 정수 매핑만 조회 (ORM expire 비용 제거)
         file_map: Dict[str, int] = {
