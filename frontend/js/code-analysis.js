@@ -3,6 +3,7 @@
    뼈대로 삼고, risk.js/coupling.js/busfactor.js에 있던 렌더 로직 중 재사용할 부분만 옮겨왔다.
    기존 4개 페이지(위험도/코드영향도/Bus Factor/BF 트리맵)를 이 한 페이지로 통합한다. */
 import { getRepoId, fetchRepoTree } from './api.js';
+import { getRepoGithubInfo, githubFileUrl as ghFileUrl, githubFolderUrl as ghFolderUrl } from './github.js';
 
 const svgEl = document.getElementById('cx-svg');
 
@@ -47,20 +48,34 @@ let TREE = { name: 'root', children: [] };
 let FILES = [];
 let path = [TREE]; // 브레드크럼 스택 — path[path.length-1]이 현재 보고 있는 디렉토리
 
+/* 폴더명/파일명 클릭 → GitHub 이동에 필요한 레포 정보 (summary에서 가져옴) */
+let GH_INFO = null;
+
 async function initCodeAnalysisPage() {
   renderSortToggle();
 
   const id = getRepoId();
-  const data = await fetchRepoTree(id);
+  const [data, ghInfo] = await Promise.all([fetchRepoTree(id), getRepoGithubInfo(id)]);
   TREE = data.tree || { name: 'root', children: [] };
   FILES = data.files || [];
   computeAverages(TREE);
   path = [TREE];
 
+  GH_INFO = ghInfo;
+
   renderSummary();
   renderTree();
   renderList();
   window.addEventListener('resize', renderTree);
+}
+
+const githubFolderUrl = (folderPath) => ghFolderUrl(GH_INFO, folderPath);
+const githubFileUrl = (filePath) => ghFileUrl(GH_INFO, filePath);
+
+/* 트리맵의 디렉토리 노드는 name/children만 갖고 있어(경로 미포함) 브레드크럼 스택으로 역산 */
+function dirFullPath(d) {
+  const ancestors = path.slice(1).map(n => n.name); // path[0]은 가상의 'root'
+  return [...ancestors, d.data.name].join('/');
 }
 
 /* 디렉토리 노드의 평균 Risk/BF/Coupling을 자식들로부터 post-order로 역산해 채운다
@@ -195,14 +210,20 @@ function renderTree() {
 
   cell.filter(d => (d.x1 - d.x0) > 48 && (d.y1 - d.y0) > 22)
     .append('text')
+    .attr('class', 'cx-name-link')
     .attr('x', 5).attr('y', 18)
     .style('font-size', '15px')
     .style('fill', d => d.data.children ? 'var(--text)' : '#fff')
-    .style('pointer-events', 'none')
+    .style('cursor', 'pointer')
     .text(d => {
       const w = d.x1 - d.x0;
       const maxChars = Math.max(3, Math.floor(w / 8.5));
       return d.data.name.length > maxChars ? d.data.name.slice(0, maxChars - 1) + '…' : d.data.name;
+    })
+    .on('click', (event, d) => {
+      event.stopPropagation();
+      const url = d.data.children ? githubFolderUrl(dirFullPath(d)) : githubFileUrl(d.data.path);
+      if (url) window.open(url, '_blank', 'noopener');
     });
 
   cell.filter(d => d.data.children && (d.y1 - d.y0) > 38)
@@ -289,14 +310,22 @@ function renderList() {
       ? '<span class="badge badge-red" title="이 파일을 아는 사람이 한 명뿐입니다">BF=1</span>' : '';
     const couplingBadge = f.coupling_score >= 0.7
       ? '<span class="badge badge-amber" style="margin-left:4px;" title="강결합 파일">강결합</span>' : '';
+    const fileUrl = githubFileUrl(f.path);
+    const pathHtml = fileUrl
+      ? `<a href="${esc(fileUrl)}" target="_blank" rel="noopener" class="cx-file-link" title="GitHub에서 열기">${esc(f.path)}</a>`
+      : esc(f.path);
     return `<tr style="cursor:pointer;" data-file-id="${f.file_id}" title="수정한 사람·영향 파일 보기">
-      <td class="hm-td file" title="${esc(f.path)}">${esc(f.path)}${bfBadge}${couplingBadge}</td>
+      <td class="hm-td file" title="${esc(f.path)}">${pathHtml}${bfBadge}${couplingBadge}</td>
       <td class="hm-td"><span class="hm-val" style="background:${riskColor(f.risk_score)}22;color:${riskColor(f.risk_score)};font-weight:600;">${f.risk_score != null ? fmt2(f.risk_score) : '—'}</span></td>
       <td class="hm-td" style="text-align:center;">${f.bus_factor ?? '—'}</td>
       <td class="hm-td"><span class="hm-val" style="background:${couplingColor(f.coupling_score)}22;color:${couplingColor(f.coupling_score)};">${f.coupling_score != null ? fmt2(f.coupling_score) : '—'}</span></td>
       <td class="hm-td" style="text-align:center;">${num(f.coupled_file_count)}</td>
     </tr>`;
   }).join('');
+
+  tbody.querySelectorAll('.cx-file-link').forEach(a => {
+    a.addEventListener('click', (e) => e.stopPropagation());
+  });
 
   tbody.querySelectorAll('[data-file-id]').forEach(row => {
     row.addEventListener('click', () => {
