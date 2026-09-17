@@ -90,7 +90,7 @@ function actionButtons(repo, repoName, cardId) {
   if (repo.status === 'done') {
     return `
       <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="goPage('code-analysis', ${repo.id})">결과 보기</button>
-      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" onclick="openReanalyzeToast()">재분석</button>
+      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" onclick="openReanalyzeToast(${repo.id})">재분석</button>
       <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" onclick="openRemoveRepoModal('${esc(repoName)}','${cardId}')">제거</button>`;
   }
   if (['running', 'pending', 'rate_limited'].includes(repo.status)) {
@@ -98,7 +98,7 @@ function actionButtons(repo, repoName, cardId) {
   }
   if (repo.status === 'failed') {
     return `
-      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" onclick="openReanalyzeToast()">재시도</button>
+      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" onclick="openReanalyzeToast(${repo.id})">재시도</button>
       <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" onclick="openRemoveRepoModal('${esc(repoName)}','${cardId}')">제거</button>`;
   }
   return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" onclick="openRemoveRepoModal('${esc(repoName)}','${cardId}')">제거</button>`;
@@ -211,4 +211,6 @@ async function initMyProjectsPage() {
 
 if (listEl) {
   initMyProjectsPage();
+  // 재분석 진행 모달을 닫을 때(modal.js) 목록을 다시 불러와 뱃지/메트릭을 갱신하기 위한 훅
+  window.refreshMyProjects = initMyProjectsPage;
 }
