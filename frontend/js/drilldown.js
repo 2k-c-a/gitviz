@@ -8,12 +8,14 @@ import {
   fetchContributorCollaborators,
   fetchFileDetail,
 } from './api.js';
+import { getRepoGithubInfo, githubFileUrl } from './github.js';
 
 const overlay  = () => document.getElementById('drilldown-modal');
 const titleEl  = () => document.getElementById('dd-title');
 const subEl    = () => document.getElementById('dd-subtitle');
 const bodyEl   = () => document.getElementById('dd-body');
 const backBtn  = () => document.getElementById('dd-back-btn');
+const codeBtn  = () => document.getElementById('dd-code-btn');
 
 const num = (n) => (n ?? 0).toLocaleString('en-US');
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -58,6 +60,7 @@ async function renderTop() {
   if (!el) return;
   el.classList.add('open');
   backBtn().style.display = _stack.length > 1 ? '' : 'none';
+  codeBtn().style.display = 'none';
 
   const frame = _stack[_stack.length - 1];
   bodyEl().innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px;">불러오는 중...</div>';
@@ -136,6 +139,15 @@ async function renderFile(fileId, extra) {
   titleEl().title = detail.file.path;
   subEl().style.fontFamily = 'monospace';
   subEl().textContent = detail.file.path;
+
+  const ghInfo = await getRepoGithubInfo(repoId);
+  const codeUrl = githubFileUrl(ghInfo, detail.file.path);
+  if (codeUrl) {
+    codeBtn().href = codeUrl;
+    codeBtn().style.display = '';
+  } else {
+    codeBtn().style.display = 'none';
+  }
 
   const bfBadge = detail.is_bus_factor_risk ? ' <span class="badge badge-red" style="font-size:10px;">BF=1</span>' : '';
   const riskExplanation = buildRiskExplanation(extra, detail);

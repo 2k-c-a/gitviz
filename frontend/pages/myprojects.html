@@ -28,163 +28,18 @@
 
   <div class="body">
     <!-- 요약 지표 -->
-    <div class="metrics-4">
-      <div class="metric-card"><div class="m-label">총 분석 프로젝트</div><div class="m-val">4</div><div class="m-sub">내 레포지토리 목록</div></div>
-      <div class="metric-card"><div class="m-label">고위험 프로젝트</div><div class="m-val m-dn">1</div><div class="m-sub">Bus Factor=1 파일 보유</div></div>
-      <div class="metric-card"><div class="m-label">분석 중</div><div class="m-val" style="color:var(--blue);">1</div><div class="m-sub">작업 진행 중</div></div>
-      <div class="metric-card"><div class="m-label">분석 실패</div><div class="m-val m-dn">1</div><div class="m-sub">재시도 필요</div></div>
+    <div class="metrics-4" id="myproj-metrics">
+      <div class="metric-card"><div class="m-label">총 분석 프로젝트</div><div class="m-val">—</div></div>
+      <div class="metric-card"><div class="m-label">고위험 프로젝트</div><div class="m-val">—</div></div>
+      <div class="metric-card"><div class="m-label">분석 중</div><div class="m-val">—</div></div>
+      <div class="metric-card"><div class="m-label">분석 실패</div><div class="m-val">—</div></div>
     </div>
 
-    <!-- 검색 · 필터 행 -->
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-      <div style="flex:1;position:relative;">
-        <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--text3)" stroke-width="2"><circle cx="6.5" cy="6.5" r="5"/><path d="M11 11l3 3" stroke-linecap="round"/></svg>
-        <input type="text" placeholder="레포지토리 검색..." style="width:100%;padding:7px 12px 7px 30px;font-size:13px;border:0.5px solid var(--border2);border-radius:var(--r-md);background:var(--bg2);color:var(--text);outline:none;" onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--border2)'"/>
-      </div>
-      <select style="font-size:12px;padding:7px 10px;">
-        <option>전체 상태</option>
-        <option>완료</option>
-        <option>분석 중</option>
-        <option>실패</option>
-      </select>
-      <select style="font-size:12px;padding:7px 10px;">
-        <option>최근 분석순</option>
-        <option>위험도 높은순</option>
-        <option>이름순</option>
-        <option>커밋 많은순</option>
-      </select>
-    </div>
-
-    <!-- 레포 카드 목록 -->
-    <div id="myproj-list" style="display:flex;flex-direction:column;gap:8px;">
-
-      <!-- 카드 1: facebook/react — 완료, 고위험 -->
-      <div class="panel" id="myproj-card-react" style="padding:16px 20px;">
-        <div style="display:flex;align-items:flex-start;gap:14px;">
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="var(--text3)"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-              <span style="font-size:15px;font-weight:600;color:var(--text);">facebook/react</span>
-              <span class="badge badge-gray">main</span>
-              <span class="badge badge-blue">JavaScript</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:16px;font-size:12px;color:var(--text2);margin-bottom:10px;">
-              <span>커밋 18,432개</span><span>·</span><span>기여자 1,683명</span><span>·</span><span>파일 2,847개</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--coral-light);border:0.5px solid var(--coral-mid);border-radius:var(--r-md);font-size:12px;color:var(--coral-dark);">
-              ⚠ 고위험 파일 <strong style="margin:0 2px;">23개</strong> · Bus Factor=1 파일 <strong style="margin:0 2px;">4개</strong> · 프로젝트 Bus Factor 중앙값 <strong style="margin:0 2px;">3.2</strong>
-            </div>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;flex-shrink:0;">
-            <span class="badge badge-green"><span class="status-dot" style="background:var(--green);display:inline-block;margin-right:4px;"></span>완료</span>
-            <div style="font-size:11px;color:var(--text3);white-space:nowrap;">마지막 분석 2시간 전</div>
-            <div style="display:flex;gap:6px;">
-              <button class="btn-secondary" style="font-size:12px;padding:5px 10px;"  onclick="goPage('timeline')">결과 보기</button>
-              <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" onclick="openReanalyzeToast()">재분석</button>
-              <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" onclick="openRemoveRepoModal('facebook/react','myproj-card-react')">제거</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 카드 2: tiangolo/fastapi — 분석 중 -->
-      <div class="panel" id="myproj-card-fastapi" style="padding:16px 20px;">
-        <div style="display:flex;align-items:flex-start;gap:14px;">
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="var(--text3)"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-              <span style="font-size:15px;font-weight:600;color:var(--text);">tiangolo/fastapi</span>
-              <span class="badge badge-gray">main</span>
-              <span class="badge badge-blue">Python</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:16px;font-size:12px;color:var(--text2);margin-bottom:10px;">
-              <span>커밋 3,201개</span><span>·</span><span>기여자 412명</span><span>·</span><span>파일 수집 중...</span>
-            </div>
-            <div>
-              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:5px;">
-                <span>기여자 식별 진행 중 (298 / 412명 완료)</span>
-                <span>60%</span>
-              </div>
-              <div class="prog-wrap" style="margin-bottom:0;"><div class="prog-fill" style="width:60%;"></div></div>
-            </div>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;flex-shrink:0;">
-            <span class="badge badge-blue"><span class="status-dot" style="background:var(--blue);display:inline-block;margin-right:4px;"></span>분석 중</span>
-            <div style="font-size:11px;color:var(--text3);white-space:nowrap;">시작 5분 전</div>
-            <div style="display:flex;gap:6px;">
-              <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="openJobModal()">진행 확인</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 카드 3: django/django — 완료, 안전 -->
-      <div class="panel" id="myproj-card-django" style="padding:16px 20px;">
-        <div style="display:flex;align-items:flex-start;gap:14px;">
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="var(--text3)"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-              <span style="font-size:15px;font-weight:600;color:var(--text);">django/django</span>
-              <span class="badge badge-gray">main</span>
-              <span class="badge badge-blue">Python</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:16px;font-size:12px;color:var(--text2);margin-bottom:10px;">
-              <span>커밋 32,811개</span><span>·</span><span>기여자 2,104명</span><span>·</span><span>파일 5,312개</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--teal-light);border:0.5px solid var(--teal-mid);border-radius:var(--r-md);font-size:12px;color:var(--teal-dark);">
-              ✓ Bus Factor=1 파일 <strong style="margin:0 2px;">없음</strong> · Bus Factor 중앙값 <strong style="margin:0 2px;">4.1</strong> · 전반적으로 안정적인 협업 구조
-            </div>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;flex-shrink:0;">
-            <span class="badge badge-green"><span class="status-dot" style="background:var(--green);display:inline-block;margin-right:4px;"></span>완료</span>
-            <div style="font-size:11px;color:var(--text3);white-space:nowrap;">마지막 분석 4일 전</div>
-            <div style="display:flex;gap:6px;">
-              <button class="btn-secondary" style="font-size:12px;padding:5px 10px;"  onclick="goPage('timeline')">결과 보기</button>
-              <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" onclick="openReanalyzeToast()">재분석</button>
-              <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" onclick="openRemoveRepoModal('django/django','myproj-card-django')">제거</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 카드 4: psf/requests — 실패 -->
-      <div class="panel" id="myproj-card-requests" style="padding:16px 20px;">
-        <div style="display:flex;align-items:flex-start;gap:14px;">
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="var(--text3)"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-              <span style="font-size:15px;font-weight:600;color:var(--text);">psf/requests</span>
-              <span class="badge badge-gray">main</span>
-              <span class="badge badge-blue">Python</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:16px;font-size:12px;color:var(--text2);margin-bottom:10px;">
-              <span>데이터 수집 실패 — 분석 불완전</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--red-light);border:0.5px solid var(--red-mid);border-radius:var(--r-md);font-size:12px;color:var(--red-dark);">
-              ✕ GitHub 서버 연결 오류 (502 GITHUB_UNREACHABLE) — 재시도 횟수 소진
-            </div>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;flex-shrink:0;">
-            <span class="badge badge-red"><span class="status-dot" style="background:var(--red);display:inline-block;margin-right:4px;"></span>실패</span>
-            <div style="font-size:11px;color:var(--text3);white-space:nowrap;">마지막 시도 1일 전</div>
-            <div style="display:flex;gap:6px;">
-              <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" onclick="openJobModal()">재시도</button>
-              <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" onclick="openRemoveRepoModal('psf/requests','myproj-card-requests')">제거</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-    </div><!-- /myproj-list -->
+    <!-- 레포 카드 목록 (실데이터는 myprojects.js가 채운다) -->
+    <div id="myproj-list" style="display:flex;flex-direction:column;gap:8px;"></div>
   </div>
 </div>
 </body>
-
-<script type="module">
-import { requireLogin } from '../js/login.js';
-
-requireLogin();
-</script>
 
 <script type="module" src="../js/main.js"></script>
 </html>
