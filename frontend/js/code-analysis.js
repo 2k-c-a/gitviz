@@ -3,6 +3,7 @@
    뼈대로 삼고, risk.js/coupling.js/busfactor.js에 있던 렌더 로직 중 재사용할 부분만 옮겨왔다.
    기존 4개 페이지(위험도/코드영향도/Bus Factor/BF 트리맵)를 이 한 페이지로 통합한다. */
 import { getRepoId, fetchRepoTree } from './api.js';
+import { getRepoGithubInfo, githubFileUrl as ghFileUrl, githubFolderUrl as ghFolderUrl } from './github.js';
 
 const svgEl = document.getElementById('cx-svg');
 
@@ -47,20 +48,34 @@ let TREE = { name: 'root', children: [] };
 let FILES = [];
 let path = [TREE]; // 브레드크럼 스택 — path[path.length-1]이 현재 보고 있는 디렉토리
 
+/* 폴더명/파일명 클릭 → GitHub 이동에 필요한 레포 정보 (summary에서 가져옴) */
+let GH_INFO = null;
+
 async function initCodeAnalysisPage() {
   renderSortToggle();
 
   const id = getRepoId();
-  const data = await fetchRepoTree(id);
+  const [data, ghInfo] = await Promise.all([fetchRepoTree(id), getRepoGithubInfo(id)]);
   TREE = data.tree || { name: 'root', children: [] };
   FILES = data.files || [];
   computeAverages(TREE);
   path = [TREE];
 
+  GH_INFO = ghInfo;
+
   renderSummary();
   renderTree();
   renderList();
   window.addEventListener('resize', renderTree);
+}
+
+const githubFolderUrl = (folderPath) => ghFolderUrl(GH_INFO, folderPath);
+const githubFileUrl = (filePath) => ghFileUrl(GH_INFO, filePath);
+
+/* 트리맵의 디렉토리 노드는 name/children만 갖고 있어(경로 미포함) 브레드크럼 스택으로 역산 */
+function dirFullPath(d) {
+  const ancestors = path.slice(1).map(n => n.name); // path[0]은 가상의 'root'
+  return [...ancestors, d.data.name].join('/');
 }
 
 /* 디렉토리 노드의 평균 Risk/BF/Coupling을 자식들로부터 post-order로 역산해 채운다
@@ -116,25 +131,29 @@ function renderSortToggle() {
 function renderBreadcrumb() {
   const wrap = document.getElementById('cx-breadcrumb');
   if (!wrap) return;
+  const goTo = (depth) => { path = path.slice(0, depth + 1); renderTree(); };
+
   wrap.innerHTML = path.map((n, i) => {
     const isLast = i === path.length - 1;
     const label = esc(n.name);
     return isLast
-      ? `<span style="color:var(--text);font-weight:600;">${label}</span>`
-      : `<span style="cursor:pointer;text-decoration:underline;" data-depth="${i}">${label}</span> <span style="color:var(--text3);">/</span> `;
+      ? `<button class="crumb-pill current">${label}</button>`
+      : `<button class="crumb-pill" data-depth="${i}">${label}</button><span class="crumb-sep">/</span>`;
   }).join('');
   wrap.querySelectorAll('[data-depth]').forEach(el => {
-    el.addEventListener('click', () => {
-      const depth = parseInt(el.dataset.depth, 10);
-      path = path.slice(0, depth + 1);
-      renderTree();
-    });
+    el.addEventListener('click', () => goTo(parseInt(el.dataset.depth, 10)));
   });
+
+  const rootBtn = document.getElementById('cx-root-btn');
+  const upBtn = document.getElementById('cx-up-btn');
+  if (rootBtn) rootBtn.onclick = () => goTo(0);
+  if (upBtn) { upBtn.disabled = path.length <= 1; upBtn.onclick = () => goTo(Math.max(0, path.length - 2)); }
 }
 
 function renderTree() {
   if (!svgEl) return;
   renderBreadcrumb();
+  showDetail(null);
 
   const current = path[path.length - 1];
   const width = svgEl.clientWidth || 900;
@@ -167,7 +186,9 @@ function renderTree() {
       } else if (d.data.file_id != null && window.openFileDrilldown) {
         window.openFileDrilldown(d.data.file_id, d.data);
       }
-    });
+    })
+    .on('mouseenter', (_, d) => showDetail(d))
+    .on('mouseleave', () => showDetail(null));
 
   cell.append('rect')
     .attr('width', d => Math.max(0, d.x1 - d.x0))
@@ -187,22 +208,28 @@ function renderTree() {
       return parts.join(' · ');
     });
 
-  cell.filter(d => (d.x1 - d.x0) > 34 && (d.y1 - d.y0) > 16)
+  cell.filter(d => (d.x1 - d.x0) > 48 && (d.y1 - d.y0) > 22)
     .append('text')
-    .attr('x', 5).attr('y', 15)
-    .style('font-size', '10px')
+    .attr('class', 'cx-name-link')
+    .attr('x', 5).attr('y', 18)
+    .style('font-size', '15px')
     .style('fill', d => d.data.children ? 'var(--text)' : '#fff')
-    .style('pointer-events', 'none')
+    .style('cursor', 'pointer')
     .text(d => {
       const w = d.x1 - d.x0;
-      const maxChars = Math.max(3, Math.floor(w / 6));
+      const maxChars = Math.max(3, Math.floor(w / 8.5));
       return d.data.name.length > maxChars ? d.data.name.slice(0, maxChars - 1) + '…' : d.data.name;
+    })
+    .on('click', (event, d) => {
+      event.stopPropagation();
+      const url = d.data.children ? githubFolderUrl(dirFullPath(d)) : githubFileUrl(d.data.path);
+      if (url) window.open(url, '_blank', 'noopener');
     });
 
-  cell.filter(d => d.data.children && (d.y1 - d.y0) > 30)
+  cell.filter(d => d.data.children && (d.y1 - d.y0) > 38)
     .append('text')
-    .attr('x', 5).attr('y', 28)
-    .style('font-size', '9px')
+    .attr('x', 5).attr('y', 33)
+    .style('font-size', '10px')
     .style('fill', 'var(--text2)')
     .style('pointer-events', 'none')
     .text(d => `${d.leaves().length}개 파일`);
@@ -219,16 +246,52 @@ function renderLegend() {
   ).join('');
 }
 
+/* 트리 노드에 마우스를 올리면 우측 카드에 Risk/BF/결합도를 한번에 보여준다 */
+function showDetail(d) {
+  const pathEl = document.getElementById('cx-detail-path');
+  const metricsEl = document.getElementById('cx-detail-metrics');
+  if (!pathEl || !metricsEl) return;
+
+  if (!d) {
+    pathEl.className = 'cx-detail-empty';
+    pathEl.textContent = '노드에 마우스를 올려보세요';
+    metricsEl.innerHTML = '';
+    return;
+  }
+
+  pathEl.className = 'cx-detail-path';
+  pathEl.textContent = d.data.path || d.data.name;
+
+  const chip = (val, color) => `<span class="hm-val" style="padding:2px 8px;background:${color}22;color:${color};font-weight:600;">${esc(val)}</span>`;
+  const row = (label, html) => `<div class="cx-detail-row"><span>${esc(label)}</span>${html}</div>`;
+
+  if (!d.data.children) {
+    metricsEl.innerHTML = [
+      row('Risk Score', chip(d.data.risk_score != null ? fmt2(d.data.risk_score) : '—', riskColor(d.data.risk_score))),
+      row('Bus Factor', chip(d.data.bus_factor ?? '—', bfColor(d.data.bus_factor)) + (d.data.is_bus_factor_risk ? '<span class="badge badge-red" style="margin-left:4px;">승계위험</span>' : '')),
+      row('결합도', chip(d.data.coupling_score != null ? fmt2(d.data.coupling_score) : '—', couplingColor(d.data.coupling_score))),
+      row('결합 파일 수', `<span>${num(d.data.coupled_file_count)}</span>`),
+    ].join('');
+  } else {
+    metricsEl.innerHTML = [
+      row('평균 Risk', chip(d.data.avgRisk != null ? fmt2(d.data.avgRisk) : '—', riskColor(d.data.avgRisk))),
+      row('평균 Bus Factor', chip(d.data.avgBF != null ? fmt2(d.data.avgBF) : '—', bfColor(d.data.avgBF))),
+      row('평균 결합도', chip(d.data.avgCoupling != null ? fmt2(d.data.avgCoupling) : '—', couplingColor(d.data.avgCoupling))),
+      row('하위 파일 수', `<span>${num(d.leaves().length)}개</span>`),
+    ].join('');
+  }
+}
+
 function renderList() {
   const tbody = document.getElementById('cx-list-tbody');
   const note = document.getElementById('cx-list-note');
   if (!tbody) return;
 
   const metric = METRICS[currentMetric];
-  if (note) note.textContent = `${metric.label} · 상위 100개`;
+  if (note) note.textContent = `${metric.label} · 상위 20개`;
 
   if (!FILES.length) {
-    tbody.innerHTML = '<tr><td class="hm-td" colspan="6" style="text-align:center;color:var(--text3);padding:24px;">파일 데이터가 없습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td class="hm-td" colspan="5" style="text-align:center;color:var(--text3);padding:24px;">파일 데이터가 없습니다.</td></tr>';
     return;
   }
 
@@ -238,7 +301,7 @@ function renderList() {
     if (av == null) return 1;
     if (bv == null) return -1;
     return metric.dir === 'asc' ? av - bv : bv - av;
-  }).slice(0, 100);
+  }).slice(0, 20);
 
   const byId = new Map(sorted.map(f => [f.file_id, f]));
 
@@ -247,15 +310,22 @@ function renderList() {
       ? '<span class="badge badge-red" title="이 파일을 아는 사람이 한 명뿐입니다">BF=1</span>' : '';
     const couplingBadge = f.coupling_score >= 0.7
       ? '<span class="badge badge-amber" style="margin-left:4px;" title="강결합 파일">강결합</span>' : '';
+    const fileUrl = githubFileUrl(f.path);
+    const pathHtml = fileUrl
+      ? `<a href="${esc(fileUrl)}" target="_blank" rel="noopener" class="cx-file-link" title="GitHub에서 열기">${esc(f.path)}</a>`
+      : esc(f.path);
     return `<tr style="cursor:pointer;" data-file-id="${f.file_id}" title="수정한 사람·영향 파일 보기">
-      <td class="hm-td file" title="${esc(f.path)}">${esc(f.path)}${bfBadge}${couplingBadge}</td>
+      <td class="hm-td file" title="${esc(f.path)}">${pathHtml}${bfBadge}${couplingBadge}</td>
       <td class="hm-td"><span class="hm-val" style="background:${riskColor(f.risk_score)}22;color:${riskColor(f.risk_score)};font-weight:600;">${f.risk_score != null ? fmt2(f.risk_score) : '—'}</span></td>
       <td class="hm-td" style="text-align:center;">${f.bus_factor ?? '—'}</td>
-      <td class="hm-td" style="text-align:center;">${f.entropy != null ? fmt2(f.entropy) : '—'}</td>
       <td class="hm-td"><span class="hm-val" style="background:${couplingColor(f.coupling_score)}22;color:${couplingColor(f.coupling_score)};">${f.coupling_score != null ? fmt2(f.coupling_score) : '—'}</span></td>
       <td class="hm-td" style="text-align:center;">${num(f.coupled_file_count)}</td>
     </tr>`;
   }).join('');
+
+  tbody.querySelectorAll('.cx-file-link').forEach(a => {
+    a.addEventListener('click', (e) => e.stopPropagation());
+  });
 
   tbody.querySelectorAll('[data-file-id]').forEach(row => {
     row.addEventListener('click', () => {
