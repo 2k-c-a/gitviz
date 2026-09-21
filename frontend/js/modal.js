@@ -2,7 +2,7 @@
 import { isLoggedIn, openLoginModal } from './login.js';
 import { parseRepoName, urlInput, fmtDuration } from './utils.js';
 import { showPage } from './routing.js';
-import { setRepoId } from './api.js';
+import { getRepoId, setRepoId } from './api.js';
 
 /* ── 잡 상태 모달 ── */
 // state: 'running' | 'done' | 'error-rate-limit' | 'error-not-found' | 'error-unreachable'
@@ -56,28 +56,37 @@ export function openJobModal(mode, repoId) {
 
   if (mode === 'new') {
     _startAnalysis(urlInput.value.trim());
+  } else if (mode === 'reanalyze' && repoId) {
+    // 헤더/카드의 "재분석" → 기존 repo에 대해 증분 재분석을 큐잉하고 바로 폴링
+    document.getElementById('modal-prog-label').textContent = '재분석 요청 중...';
+    _fillRepoName(repoId);
+    _startReanalysis(repoId);
   } else if (mode === 'poll' && repoId) {
     // 홈에서 "진행 상황 보기" → 이미 존재하는 job을 바로 폴링
     _staleHandled = false;
     document.getElementById('modal-prog-label').textContent = '상태 확인 중...';
-    fetch(`${API_BASE}/repositories/${repoId}`).then(r => r.json()).then(d => {
-      if (d.url) {
-        _currentRepoUrl = d.url;
-        const name = d.url.replace('https://github.com/', '');
-        document.getElementById('modal-repo').textContent = name;
-      }
-    }).catch(() => {});
+    _fillRepoName(repoId);
     _startPolling(repoId);
   } else {
     _attachSimButtons();
   }
 }
 
-/* POST /repositories 로 분석을 시작하고 상태 폴링을 건다 */
-async function _startAnalysis(url) {
+/* 모달 상단에 실제 repo 이름을 채운다 (reanalyze/poll 모드는 URL 입력값이 없어서 별도 조회 필요) */
+function _fillRepoName(repoId) {
+  fetch(`${API_BASE}/repositories/${repoId}`).then(r => r.json()).then(d => {
+    if (d.url) {
+      _currentRepoUrl = d.url;
+      document.getElementById('modal-repo').textContent = d.url.replace('https://github.com/', '');
+    }
+  }).catch(() => {});
+}
+
+/* POST 요청 후 응답의 repository_id로 상태 폴링을 건다 (신규 분석/재분석 공용) */
+async function _postAndStartPolling(path) {
   let res;
   try {
-    res = await fetch(`${API_BASE}/repositories?github_url=${encodeURIComponent(url)}`, {
+    res = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
       credentials: 'include',
     });
@@ -104,6 +113,16 @@ async function _startAnalysis(url) {
   _currentRepoId = data.repository_id;
   document.getElementById('modal-prog-label').textContent = '분석 대기 중...';
   _startPolling(data.repository_id);
+}
+
+/* POST /repositories 로 신규 분석을 시작 */
+function _startAnalysis(url) {
+  return _postAndStartPolling(`/repositories?github_url=${encodeURIComponent(url)}`);
+}
+
+/* POST /repositories/{id}/reanalyze 로 기존 repo의 증분 재분석을 시작 */
+function _startReanalysis(repoId) {
+  return _postAndStartPolling(`/repositories/${repoId}/reanalyze`);
 }
 
 /* GET /repositories/{id}/status 를 2초마다 폴링 */
@@ -293,30 +312,29 @@ export function closeJobModal() {
   document.getElementById('job-modal').classList.remove('open');
   // 시뮬레이션 div 제거 (열 때마다 appendChild로 추가되므로 닫을 때 전부 제거)
   document.querySelectorAll('#job-modal .modal > div[data-sim]').forEach(el => el.remove());
+  // 내 프로젝트 페이지에서 재분석/진행확인 모달을 닫으면 카드 상태(뱃지·메트릭)를 새로 반영
+  if (typeof window.refreshMyProjects === 'function') window.refreshMyProjects();
 }
 
-/* ── 재분석 토스트 ── */
-export function openReanalyzeToast() {
+/* ── 재분석 토스트 ──
+   repoId를 안 넘기면(타임라인/네트워크/코드분석 헤더 버튼) 현재 보고 있는 repo(getRepoId())를 쓰고,
+   myprojects 카드처럼 특정 repo를 지정해야 하면 openReanalyzeToast(repo.id)로 호출한다. */
+let _reanalyzeTargetId = null;
+export function openReanalyzeToast(repoId) {
   if (!isLoggedIn) { openLoginModal(); return; }
+  _reanalyzeTargetId = (repoId !== undefined && repoId !== null) ? repoId : null;
   document.getElementById('reanalyze-toast').classList.add('open');
 }
 export function closeToast() {
   document.getElementById('reanalyze-toast').classList.remove('open');
 }
+
+/* 재분석 시작 → 진행 모달을 'reanalyze' 모드로 열면 POST + 폴링 + pipeline UI/에러 처리를
+   openJobModal/_startReanalysis가 전부 맡는다(신규 분석과 동일한 인프라 재사용). */
 export function startReanalyze() {
+  const repoId = _reanalyzeTargetId ?? getRepoId();
   closeToast();
-  // 재분석 시작 → 헤더 상태 변경 시뮬레이션
-  document.querySelectorAll('#btn-reanalyze').forEach(b => {
-    b.disabled = true;
-    b.textContent = '분석 중...';
-  });
-  // 진행 모달은 이미 openJobModal()로 띄울 수 있지만 헤더 버튼 피드백만 보여줌
-  setTimeout(() => {
-    document.querySelectorAll('#btn-reanalyze').forEach(b => {
-      b.disabled = false;
-      b.textContent = '재분석';
-    });
-  }, 3000);
+  openJobModal('reanalyze', repoId);
 }
 
 /* ── 내 프로젝트 제거 모달 ── */

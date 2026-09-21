@@ -227,6 +227,22 @@ def list_my_repositories(request: Request, db: Session = Depends(get_db)):
     return result
 
 
+def _trigger_analysis(db: Session, repository_id: int, user_id) -> None:
+    """기존 레포의 AnalysisJob을 pending으로 되돌리고 analyze_repository task를 큐잉한다.
+    analyze_repository()는 마지막으로 저장된 커밋 이후만 증분 수집하므로 재분석 비용이 적다."""
+    job = db.query(AnalysisJob).filter(AnalysisJob.repository_id == repository_id).first()
+    if job:
+        job.status = "pending"
+        job.triggered_by_user_id = user_id
+    else:
+        db.add(AnalysisJob(
+            repository_id=repository_id, status="pending", triggered_by="api",
+            triggered_by_user_id=user_id,
+        ))
+    db.commit()
+    analyze_repository.delay(repository_id, user_id=str(user_id) if user_id else None)
+
+
 @router.post("/repositories")
 def create_repository(github_url: str, request: Request, db: Session = Depends(get_db)):
     github_url = github_url.rstrip("/").removesuffix(".git")
@@ -234,7 +250,6 @@ def create_repository(github_url: str, request: Request, db: Session = Depends(g
     # 로그인한 사용자가 요청했으면 그 사용자의 GitHub 토큰으로 수집한다(공용 토큰 대신
     # 개인 rate limit 사용). 비로그인 요청은 기존처럼 공용 GITHUB_TOKEN으로 폴백.
     user_id = _get_session_user_id(request)
-    user_id_str = str(user_id) if user_id else None
 
     existing = (
         db.query(Repository)
@@ -243,17 +258,7 @@ def create_repository(github_url: str, request: Request, db: Session = Depends(g
         .first()
     )
     if existing:
-        job = db.query(AnalysisJob).filter(AnalysisJob.repository_id == existing.id).first()
-        if job:
-            job.status = "pending"
-            job.triggered_by_user_id = user_id
-        else:
-            db.add(AnalysisJob(
-                repository_id=existing.id, status="pending", triggered_by="api",
-                triggered_by_user_id=user_id,
-            ))
-        db.commit()
-        analyze_repository.delay(existing.id, user_id=user_id_str)
+        _trigger_analysis(db, existing.id, user_id)
         return {
             "message": "Repository re-analysis started",
             "repository_id": existing.id,
@@ -275,10 +280,26 @@ def create_repository(github_url: str, request: Request, db: Session = Depends(g
     db.add(job)
     db.commit()
 
-    analyze_repository.delay(repository.id, user_id=user_id_str)
+    analyze_repository.delay(repository.id, user_id=str(user_id) if user_id else None)
 
     return {
         "message": "Repository analysis started",
+        "repository_id": repository.id,
+    }
+
+
+@router.post("/repositories/{repository_id}/reanalyze")
+def reanalyze_repository(repository_id: int, request: Request, db: Session = Depends(get_db)):
+    """헤더의 '재분석' 버튼용: repository_id를 직접 받아 증분 재분석을 큐잉한다."""
+    repository = db.query(Repository).filter(Repository.id == repository_id).first()
+    if not repository:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    user_id = _get_session_user_id(request)
+    _trigger_analysis(db, repository.id, user_id)
+
+    return {
+        "message": "Repository re-analysis started",
         "repository_id": repository.id,
     }
 
