@@ -234,6 +234,11 @@ def _trigger_analysis(db: Session, repository_id: int, user_id) -> None:
     if job:
         job.status = "pending"
         job.triggered_by_user_id = user_id
+        # 이전 작업의 progress_detail(stage='done' 등)이 남아있으면 새 작업이 시작되기
+        # 전 첫 폴링에서 모달이 잠깐 "완료" 상태로 잘못 표시된다 — 큐잉 시점에 초기화한다.
+        job.progress_detail = {}
+        job.error_message = None
+        job.completed_at = None
     else:
         db.add(AnalysisJob(
             repository_id=repository_id, status="pending", triggered_by="api",

@@ -25,6 +25,48 @@ let _currentRepoId = null;
 let _currentRepoUrl = null;
 let _staleHandled = false;
 
+/* 파이프라인 4단계 — 순서가 곧 진행 순서(백엔드 progress_detail.stage와 대응).
+   app/tasks/analyze_repository.py가 각 단계 진입 시 stage를 이 값으로 갱신한다. */
+const PIPE_STEPS = [
+  { key: 'collect',  num: '1', defaultSub: '대기 중...' },
+  { key: 'identity', num: '2', defaultSub: '-' },
+  { key: 'derived',  num: '3', defaultSub: 'Risk Score · Bus Factor · Centrality' },
+  { key: 'snapshot', num: '4', defaultSub: 'Timeline · Risk Score 추이' },
+];
+const PIPE_STAGE_ORDER = [...PIPE_STEPS.map(p => p.key), 'done'];
+
+/* 파이프라인 한 단계의 아이콘/라벨/서브텍스트를 state('wait'|'active'|'done')로 갱신 */
+function _setPipeState(key, state, subText) {
+  const step = PIPE_STEPS.find(p => p.key === key);
+  const icon = document.getElementById(`pipe-icon-${key}`);
+  const label = document.getElementById(`pipe-label-${key}`);
+  const sub = document.getElementById(`pipe-sub-${key}`);
+  if (icon) {
+    icon.className = `pipe-icon ${state}`;
+    icon.textContent = state === 'done' ? '✓' : state === 'active' ? '⋯' : (step ? step.num : '');
+  }
+  if (label) label.className = `pipe-label ${state}`;
+  if (sub && subText !== undefined) sub.textContent = subText;
+}
+
+/* status가 'done'으로 확인된 시점 — 폴링 타이밍상 중간 단계를 못 봤더라도
+   4단계를 전부 완료 상태로 확정 렌더링한다(그래야 일부만 불 켜진 채로
+   바로 "분석 완료"로 건너뛰는 것처럼 보이지 않는다). */
+function _markPipelineAllDone(s) {
+  const commits = s.commit_count ?? 0;
+  const prs = s.pr_count ?? 0;
+  const contTotal = s.contributors_total ?? 0;
+  const parts = [];
+  if (commits) parts.push(`커밋 ${commits.toLocaleString()}개`);
+  if (prs) parts.push(`PR ${prs.toLocaleString()}개`);
+  if (contTotal) parts.push(`기여자 ${contTotal.toLocaleString()}명`);
+
+  _setPipeState('collect', 'done', parts.length ? parts.join(' · ') : '완료');
+  _setPipeState('identity', 'done', contTotal ? `기여자 ${contTotal.toLocaleString()}명` : '완료');
+  _setPipeState('derived', 'done', 'Risk Score · Bus Factor · Centrality');
+  _setPipeState('snapshot', 'done', 'Timeline · Risk Score 추이');
+}
+
 export function openJobModal(mode, repoId) {
   _jobState = 'running';
   _stopPolling();
@@ -43,14 +85,7 @@ export function openJobModal(mode, repoId) {
   // pipeline 초기화
   const oldDetail = document.getElementById('modal-collect-detail');
   if (oldDetail) oldDetail.remove();
-  ['collect', 'identity'].forEach(key => {
-    const icon = document.getElementById(`pipe-icon-${key}`);
-    const label = document.getElementById(`pipe-label-${key}`);
-    const sub = document.getElementById(`pipe-sub-${key}`);
-    if (icon) { icon.className = 'pipe-icon wait'; icon.textContent = key === 'collect' ? '1' : '2'; }
-    if (label) label.className = 'pipe-label wait';
-    if (sub) sub.textContent = '대기 중...';
-  });
+  PIPE_STEPS.forEach(({ key, defaultSub }) => _setPipeState(key, 'wait', defaultSub));
 
   document.getElementById('job-modal').classList.add('open');
 
@@ -155,6 +190,7 @@ function _renderStatus(s) {
   if (status === 'done') {
     _stopPolling();
     if (_currentRepoId) setRepoId(_currentRepoId);   // 결과 페이지가 이 repo를 보도록 기억
+    _markPipelineAllDone(s);
     simulateJobState('done');
     return;
   }
@@ -185,36 +221,25 @@ function _renderStatus(s) {
 
   _renderStaleWarning(s);
 
-  // pipeline step 1: 데이터 수집
-  const collectIcon = document.getElementById('pipe-icon-collect');
-  const collectLabel = document.getElementById('pipe-label-collect');
-  const collectSub = document.getElementById('pipe-sub-collect');
-  if (collectIcon && collectSub) {
-    const parts = [];
-    if (commits) parts.push(`커밋 ${commits.toLocaleString()}개`);
-    if (prs) parts.push(`PR ${prs.toLocaleString()}개`);
-    if (contTotal) parts.push(`기여자 ${contTotal.toLocaleString()}명`);
-    collectSub.textContent = parts.length ? parts.join(' · ') : '수집 중...';
-
-    // 커밋이 들어오기 시작하면 '진행 중' 표시
-    const isDone = status === 'done';
-    const isCollecting = commits > 0 || prs > 0;
-    collectIcon.className = `pipe-icon${isDone ? ' done' : isCollecting ? ' active' : ''}`;
-    collectIcon.textContent = isDone ? '✓' : isCollecting ? '⋯' : '1';
-    if (collectLabel) collectLabel.className = `pipe-label${isDone ? ' done' : isCollecting ? ' active' : ' wait'}`;
-  }
-
-  // pipeline step 2: 기여자 식별 — 수집 완료 후 시작
-  const identIcon = document.getElementById('pipe-icon-identity');
-  const identLabel = document.getElementById('pipe-label-identity');
-  const identSub = document.getElementById('pipe-sub-identity');
-  if (identIcon && identSub) {
-    const isResolvingOrDone = status === 'done' || (detail.status_message || '').includes('신원');
-    identIcon.className = `pipe-icon${status === 'done' ? ' done' : isResolvingOrDone ? ' active' : ' wait'}`;
-    identIcon.textContent = status === 'done' ? '✓' : isResolvingOrDone ? '⋯' : '2';
-    if (identLabel) identLabel.className = `pipe-label${status === 'done' ? ' done' : isResolvingOrDone ? ' active' : ' wait'}`;
-    identSub.textContent = contTotal ? `기여자 ${contTotal.toLocaleString()}명` : '-';
-  }
+  // pipeline: progress_detail.stage(collect/identity/derived/snapshot)를 기준으로
+  // 4단계 각각의 상태(wait/active/done)를 결정한다. 백엔드가 각 단계 진입 시점마다
+  // stage를 갱신하므로(app/tasks/analyze_repository.py) 문자열 메시지 추측 없이
+  // 정확히 몇 단계까지 끝났는지 알 수 있다.
+  const curStageIdx = Math.max(0, PIPE_STAGE_ORDER.indexOf(detail.stage || 'collect'));
+  const collectParts = [];
+  if (commits) collectParts.push(`커밋 ${commits.toLocaleString()}개`);
+  if (prs) collectParts.push(`PR ${prs.toLocaleString()}개`);
+  if (contTotal) collectParts.push(`기여자 ${contTotal.toLocaleString()}명`);
+  const subByKey = {
+    collect: collectParts.length ? collectParts.join(' · ') : '수집 중...',
+    identity: contTotal ? `기여자 ${contTotal.toLocaleString()}명` : '-',
+    derived: 'Risk Score · Bus Factor · Centrality',
+    snapshot: 'Timeline · Risk Score 추이',
+  };
+  PIPE_STEPS.forEach(({ key }, idx) => {
+    const state = idx < curStageIdx ? 'done' : idx === curStageIdx ? 'active' : 'wait';
+    _setPipeState(key, state, subByKey[key]);
+  });
 }
 
 /* resume_at을 한참 지났는데도 rate_limited/running이면 워커가 죽어서 멈춘 것 —
