@@ -20,6 +20,9 @@ class ProgressReporter:
             "status_message": "",
             "github_rate_limit_hits": 0,
             "total_wait_seconds": 0,
+            # 'collect' | 'identity' | 'derived' | 'snapshot' | 'done' — 프론트 모달
+            # 파이프라인(4단계) 표시가 이 값을 기준으로 각 단계의 불을 켠다.
+            "stage": "collect",
         }
 
     def _flush(self, status: str = None):
