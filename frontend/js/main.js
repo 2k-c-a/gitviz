@@ -37,6 +37,7 @@ import './repoHeader.js';
 import './drilldown.js';
 import './network.js';
 import './code-analysis.js';
+import './myprojects.js';
 
 /* ── 전역 등록 (await 전에 먼저 등록해야 onclick에서 바로 사용 가능) ── */
 window.openLoginModal  = openLoginModal;

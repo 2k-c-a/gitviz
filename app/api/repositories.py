@@ -1,8 +1,9 @@
+import statistics
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 from app.core.database import get_db
 from app.models.repository import Repository
@@ -10,10 +11,29 @@ from app.models.analysis_job import AnalysisJob
 from app.models.contributor import Contributor
 from app.models.commit import Commit
 from app.models.pull_request import PullRequest
+from app.models.file import File
 from app.tasks.analyze_repository import analyze_repository
 from app.routers.auth import _get_session_user_id
+from app.api.analytics import _compute_risk_scores
 
 router = APIRouter()
+
+# 확장자 → 표시용 언어 이름 (배지 표시용, 간단한 휴리스틱).
+# "대표 언어" 판단은 이 중 실제 프로그래밍 언어(_PRIMARY_LANGUAGE_EXTS)만 후보로 삼는다 —
+# 안 그러면 번역 문서가 많은 레포(예: fastapi의 docs/*.md)가 그냥 파일 수만으로
+# "Markdown 프로젝트"로 잘못 표시된다.
+_EXT_LANGUAGE = {
+    "py": "Python", "js": "JavaScript", "jsx": "JavaScript", "mjs": "JavaScript",
+    "ts": "TypeScript", "tsx": "TypeScript", "java": "Java", "go": "Go",
+    "rb": "Ruby", "php": "PHP", "c": "C", "h": "C", "cpp": "C++", "hpp": "C++",
+    "cs": "C#", "rs": "Rust", "kt": "Kotlin", "swift": "Swift", "scala": "Scala",
+    "html": "HTML", "css": "CSS", "scss": "SCSS", "vue": "Vue", "sh": "Shell",
+    "sql": "SQL", "md": "Markdown", "json": "JSON", "yml": "YAML", "yaml": "YAML",
+}
+_PRIMARY_LANGUAGE_EXTS = {
+    "py", "js", "jsx", "mjs", "ts", "tsx", "java", "go", "rb", "php",
+    "c", "h", "cpp", "hpp", "cs", "rs", "kt", "swift", "scala", "vue",
+}
 
 # rate_limited 상태에서 resume_at을 이만큼(초) 넘겨도 여전히 rate_limited면
 # 정상 대기가 아니라 워커가 죽어서 멈춘 것으로 간주한다(폴링/시계 오차 여유분).
@@ -112,6 +132,117 @@ def list_repositories(limit: int = 20, db: Session = Depends(get_db)):
     return result
 
 
+@router.get("/repositories/mine")
+def list_my_repositories(request: Request, db: Session = Depends(get_db)):
+    """로그인한 사용자가 직접 분석 요청(신규/재분석)한 레포지토리 목록 — "내 분석
+    프로젝트" 페이지용. 레포는 소유 개념이 없는 전역 리소스라, analysis_jobs.
+    triggered_by_user_id(이 사용자가 트리거한 job)로 "내가 분석한 레포"를 역산한다.
+    정렬은 내가 마지막으로 그 레포 분석을 요청한 시각 기준(최근순)이다."""
+    user_id = _get_session_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
+
+    my_repos = db.execute(
+        text(
+            """
+            SELECT repository_id, MAX(created_at) AS my_last_triggered_at
+            FROM analysis_jobs
+            WHERE triggered_by_user_id = :uid
+            GROUP BY repository_id
+            ORDER BY my_last_triggered_at DESC
+            """
+        ),
+        {"uid": str(user_id)},
+    ).mappings().all()
+
+    result = []
+    for row in my_repos:
+        repo = db.query(Repository).filter(Repository.id == row["repository_id"]).first()
+        if not repo:
+            continue
+
+        latest_job = (
+            db.query(AnalysisJob)
+            .filter(AnalysisJob.repository_id == repo.id)
+            .order_by(AnalysisJob.id.desc())
+            .first()
+        )
+        status = latest_job.status if latest_job else "unknown"
+
+        commit_count = db.query(func.count(Commit.id)).filter(Commit.repository_id == repo.id).scalar() or 0
+        contributor_count = db.query(func.count(Contributor.id)).filter(Contributor.repository_id == repo.id).scalar() or 0
+
+        live_files = (
+            db.query(File.id, File.extension)
+            .filter(File.repository_id == repo.id, func.coalesce(File.is_deleted, False) == False)
+            .all()
+        )
+        file_count = len(live_files)
+
+        high_risk_count = bf1_count = 0
+        median_bus_factor = None
+        if status == "done" and file_count:
+            live_ids = {fid for fid, _ in live_files}
+            risk_rows = [r for r in _compute_risk_scores(db, repo.id) if r["file_id"] in live_ids]
+            high_risk_count = sum(1 for r in risk_rows if r["risk_score"] is not None and r["risk_score"] >= 0.7)
+            bf1_count = sum(1 for r in risk_rows if r["is_bus_factor_risk"])
+            bf_values = [r["bus_factor"] for r in risk_rows if r["bus_factor"] is not None]
+            median_bus_factor = round(statistics.median(bf_values), 1) if bf_values else None
+
+        ext_counts: dict[str, int] = {}
+        for _, ext in live_files:
+            ext = (ext or "").lower()
+            if ext in _PRIMARY_LANGUAGE_EXTS:
+                ext_counts[ext] = ext_counts.get(ext, 0) + 1
+        top_ext = max(ext_counts, key=ext_counts.get) if ext_counts else None
+        language = _EXT_LANGUAGE.get(top_ext) if top_ext else None
+
+        staleness = _compute_staleness(latest_job) if latest_job else {
+            "is_stale": False, "stale_seconds": None, "remaining_seconds": None,
+        }
+
+        result.append({
+            "id": repo.id,
+            "url": repo.url,
+            "name": repo.name,
+            "default_branch": repo.default_branch,
+            "language": language,
+            "status": status,
+            "error_message": latest_job.error_message if latest_job else None,
+            "progress_detail": latest_job.progress_detail if latest_job else None,
+            "started_at": latest_job.started_at if latest_job else None,
+            "my_last_triggered_at": row["my_last_triggered_at"],
+            "last_analyzed_at": repo.last_analyzed_at,
+            "commit_count": commit_count,
+            "contributor_count": contributor_count,
+            "file_count": file_count,
+            "high_risk_count": high_risk_count,
+            "bus_factor_1_count": bf1_count,
+            "median_bus_factor": median_bus_factor,
+            "is_stale": staleness["is_stale"],
+            "stale_seconds": staleness["stale_seconds"],
+            "remaining_seconds": staleness["remaining_seconds"],
+        })
+
+    return result
+
+
+def _trigger_analysis(db: Session, repository_id: int, user_id) -> None:
+    """기존 레포의 AnalysisJob을 pending으로 되돌리고 analyze_repository task를 큐잉한다.
+    analyze_repository()는 마지막으로 저장된 커밋 이후만 증분 수집하므로 재분석 비용이 적다."""
+    job = db.query(AnalysisJob).filter(AnalysisJob.repository_id == repository_id).first()
+    if job:
+        job.status = "pending"
+        job.triggered_by_user_id = user_id
+    else:
+        db.add(AnalysisJob(
+            repository_id=repository_id, status="pending", triggered_by="api",
+            triggered_by_user_id=user_id,
+        ))
+    db.commit()
+    analyze_repository.delay(repository_id, user_id=str(user_id) if user_id else None)
+
+
 @router.post("/repositories")
 def create_repository(github_url: str, request: Request, db: Session = Depends(get_db)):
     github_url = github_url.rstrip("/").removesuffix(".git")
@@ -119,7 +250,6 @@ def create_repository(github_url: str, request: Request, db: Session = Depends(g
     # 로그인한 사용자가 요청했으면 그 사용자의 GitHub 토큰으로 수집한다(공용 토큰 대신
     # 개인 rate limit 사용). 비로그인 요청은 기존처럼 공용 GITHUB_TOKEN으로 폴백.
     user_id = _get_session_user_id(request)
-    user_id_str = str(user_id) if user_id else None
 
     existing = (
         db.query(Repository)
@@ -128,17 +258,7 @@ def create_repository(github_url: str, request: Request, db: Session = Depends(g
         .first()
     )
     if existing:
-        job = db.query(AnalysisJob).filter(AnalysisJob.repository_id == existing.id).first()
-        if job:
-            job.status = "pending"
-            job.triggered_by_user_id = user_id
-        else:
-            db.add(AnalysisJob(
-                repository_id=existing.id, status="pending", triggered_by="api",
-                triggered_by_user_id=user_id,
-            ))
-        db.commit()
-        analyze_repository.delay(existing.id, user_id=user_id_str)
+        _trigger_analysis(db, existing.id, user_id)
         return {
             "message": "Repository re-analysis started",
             "repository_id": existing.id,
@@ -160,10 +280,26 @@ def create_repository(github_url: str, request: Request, db: Session = Depends(g
     db.add(job)
     db.commit()
 
-    analyze_repository.delay(repository.id, user_id=user_id_str)
+    analyze_repository.delay(repository.id, user_id=str(user_id) if user_id else None)
 
     return {
         "message": "Repository analysis started",
+        "repository_id": repository.id,
+    }
+
+
+@router.post("/repositories/{repository_id}/reanalyze")
+def reanalyze_repository(repository_id: int, request: Request, db: Session = Depends(get_db)):
+    """헤더의 '재분석' 버튼용: repository_id를 직접 받아 증분 재분석을 큐잉한다."""
+    repository = db.query(Repository).filter(Repository.id == repository_id).first()
+    if not repository:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    user_id = _get_session_user_id(request)
+    _trigger_analysis(db, repository.id, user_id)
+
+    return {
+        "message": "Repository re-analysis started",
         "repository_id": repository.id,
     }
 
