@@ -153,7 +153,7 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
             if progress:
                 progress.update(message=msg, **fields)
 
-        _report("저장소 복제 중...")
+        _report("저장소 복제 중...", stage="collect")
 
         # 개인 토큰을 먼저 해석 (private repo 클론 인증 + 이후 GitHub API 공용 사용)
         github_token = _resolve_github_token(db, user_id)
@@ -846,7 +846,7 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
         # 8.5) Contributor Identity Resolution 1~2단계 (업무지시서 3-6)
         # -----------------------
         print("START identity_resolution")
-        _report("기여자 신원 정리 중...")
+        _report("기여자 신원 정리 중...", stage="identity")
         # 커밋 API(core 5000/시)로 email→login을 먼저 빠르게 수집하고(owner/repo 전달),
         # 남는 소수만 Search API(30회/분, 상한 있음)로 처리한다.
         # 전체 Search 실행은 scripts/run_identity_resolution.py --stage2-full 사용.
@@ -862,7 +862,11 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
         # -----------------------
         # 9) 완료 처리
         # -----------------------
-        # PR review_duration_hours 갱신 (merged - opened, 시간 단위)
+        # 파생 지표 계산: PR review_duration_hours 갱신 (merged - opened, 시간 단위)
+        # (changed_file_count/is_large_commit/is_large_pr 등 나머지 파생 지표는 수집
+        #  단계에서 이미 계산됨 — 여기서는 identity resolution 이후에만 가능한
+        #  review duration을 마저 채운다)
+        _report("파생 지표 계산 중...", stage="derived")
         db.execute(text("""
             UPDATE pull_requests
             SET review_duration_hours = FLOOR(EXTRACT(EPOCH FROM (merged_at - opened_at)) / 3600)
@@ -871,6 +875,8 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
               AND review_duration_hours IS NULL
         """), {"rid": repository.id})
 
+        # 분석 결과 스냅샷 저장: job/repository의 완료 상태를 확정 커밋한다
+        _report("분석 결과 저장 중...", stage="snapshot")
         now = datetime.now(timezone.utc)
         repository.last_analyzed_at = now
         if job:
@@ -887,7 +893,7 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
             if last_commit:
                 job.last_commit_sha, job.last_commit_at = last_commit
         db.commit()
-        _report("분석 완료")
+        _report("분석 완료", stage="done")
         print("✅ TASK COMPLETED")
 
     except Exception as e:
