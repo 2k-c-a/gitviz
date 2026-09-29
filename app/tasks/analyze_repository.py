@@ -3,6 +3,7 @@ from bisect import bisect_right
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional
 
+from cryptography.exceptions import InvalidTag
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 
@@ -86,7 +87,19 @@ def _resolve_github_token(db, user_id: Optional[str]) -> Optional[str]:
             return shared_token
 
         from app.services.auth_service import decrypt_token
-        token = decrypt_token(row[0])
+        try:
+            token = decrypt_token(row[0])
+        except InvalidTag:
+            # 토큰은 있는데 못 연다 = TOKEN_ENCRYPTION_KEY가 이 DB와 다르다.
+            # 데이터 문제가 아니라 설정 사고이므로 조용히 넘기지 않는다.
+            print(
+                "❌ TOKEN_ENCRYPTION_KEY 불일치 — users.access_token_encrypted를 복호화할 수 없다.\n"
+                "   이 DB의 토큰은 다른 키로 암호화돼 있다. 개인 토큰(사용자별 5000req/h) 기능이\n"
+                "   꺼진 채 공용 GITHUB_TOKEN으로 폴백한다. private 레포는 공용 토큰 권한에 따라\n"
+                "   실패할 수 있다. 조치: 팀의 키를 .env에 맞추거나, 해당 컬럼을 NULL로 비우고\n"
+                "   재로그인. 자세한 내용은 HANDOFF.md '자격증명 함정' 참고."
+            )
+            return shared_token
         print(f"🔑 user_id={user_id} 개인 GitHub 토큰 사용")
         return token
     except Exception as e:
@@ -142,9 +155,12 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
 
         _report("저장소 복제 중...", stage="collect")
 
-        # 2) Clone repo
+        # 개인 토큰을 먼저 해석 (private repo 클론 인증 + 이후 GitHub API 공용 사용)
+        github_token = _resolve_github_token(db, user_id)
+
+        # 2) Clone repo (private 이면 토큰으로 인증)
         repo_name = repository.url.rstrip("/").split("/")[-1].removesuffix(".git")
-        repo_path = clone_repository(repository.url, repo_name)
+        repo_path = clone_repository(repository.url, repo_name, token=github_token)
         print("📁 repo_path:", repo_path)
 
         default_branch = get_default_branch(repo_path)
@@ -535,7 +551,7 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
         # -----------------------
         # 8) GitHub API 수집
         # -----------------------
-        github_token = _resolve_github_token(db, user_id)
+        # github_token 은 클론 전에 이미 _resolve_github_token 으로 해석해 둠
         url_parts = repository.url.rstrip("/").split("/")
         owner = url_parts[-2]
         repo_name_gh = url_parts[-1].removesuffix(".git")
@@ -831,11 +847,14 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
         # -----------------------
         print("START identity_resolution")
         _report("기여자 신원 정리 중...", stage="identity")
-        # 2단계(이메일 검색)는 Search API 30회/분 제한이라 태스크 안에서는 상한을 둔다.
-        # 전체 실행은 scripts/run_identity_resolution.py --stage2-full 사용.
+        # 커밋 API(core 5000/시)로 email→login을 먼저 빠르게 수집하고(owner/repo 전달),
+        # 남는 소수만 Search API(30회/분, 상한 있음)로 처리한다.
+        # 전체 Search 실행은 scripts/run_identity_resolution.py --stage2-full 사용.
         stage2_limit = int(os.getenv("IDENTITY_STAGE2_LIMIT", "200"))
+        commit_login_limit = int(os.getenv("IDENTITY_COMMIT_LOGIN_LIMIT", "0")) or None
         resolution = run_identity_resolution(
-            db, repository.id, client=client, stage2_limit=stage2_limit
+            db, repository.id, client=client, stage2_limit=stage2_limit,
+            owner=owner, repo=repo_name_gh, commit_login_limit=commit_login_limit,
         )
         print("identity_resolution:", resolution)
         print("END identity_resolution")
