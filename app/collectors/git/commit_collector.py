@@ -1,5 +1,22 @@
+import subprocess
+
 from git import Repo
 from app.utils.normalize import normalize_hash
+
+
+def collect_default_branch_shas(repo_path: str, branch: str) -> set[str]:
+    """<branch>에서 도달 가능한(=GitHub 커밋 수에 포함되는) 커밋 SHA 전체.
+
+    collect_commits()는 --all(모든 브랜치)을 읽어 stable/* 백포트처럼 기본 브랜치에
+    없는 커밋까지 저장한다. 이 집합으로 commits.on_default_branch를 채워,
+    화면의 커밋 수를 GitHub 표시값(기본 브랜치 기준)과 맞춘다.
+    증분 수집이어도 전체를 읽는다 — 예전 커밋이 나중에 merge로 기본 브랜치에 들어올 수 있다.
+    """
+    result = subprocess.run(
+        ["git", "rev-list", branch],
+        cwd=repo_path, capture_output=True, text=True, check=True,
+    )
+    return {normalize_hash(line) for line in result.stdout.splitlines() if line.strip()}
 
 
 def collect_commits(repo_path: str, since: str = None):

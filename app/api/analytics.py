@@ -29,8 +29,10 @@ def get_summary(repository_id: int, db: Session = Depends(get_db)):
         text(
             """
             SELECT
-                COUNT(*)                                              AS total_commits,
-                COUNT(*) FILTER (WHERE committed_at >= now() - interval '30 days')  AS commits_30d,
+                -- 커밋 수는 GitHub 표시값과 맞추려 기본 브랜치 커밋만 (NULL = 판정 전 → 포함)
+                COUNT(*) FILTER (WHERE on_default_branch IS NOT FALSE)  AS total_commits,
+                COUNT(*) FILTER (WHERE on_default_branch IS NOT FALSE
+                                   AND committed_at >= now() - interval '30 days')  AS commits_30d,
                 COUNT(DISTINCT contributor_id)                       AS total_contributors,
                 COUNT(DISTINCT contributor_id) FILTER (
                     WHERE committed_at >= now() - interval '90 days') AS active_contributors_90d,

@@ -23,7 +23,7 @@ from app.models.pull_request_file import PullRequestFile
 from app.models.release import Release
 
 from app.collectors.git.clone_manager import clone_repository, get_default_branch
-from app.collectors.git.commit_collector import collect_commits
+from app.collectors.git.commit_collector import collect_commits, collect_default_branch_shas
 from app.collectors.git.file_collector import collect_files, collect_current_tree_paths
 from app.collectors.git.commit_file_change_collector import collect_commit_file_changes
 from app.collectors.git.commit_classifier import classify_commit
@@ -179,6 +179,15 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
             except Exception as e:
                 print("⚠️ collect_current_tree_paths 실패, is_deleted 갱신 건너뜀:", e)
         print("🌳 live_paths:", len(live_paths))
+
+        # 기본 브랜치 커밋 집합 → commits.on_default_branch (GitHub 커밋 수와 맞추는 용도)
+        default_branch_shas = None
+        if repository.default_branch:
+            try:
+                default_branch_shas = collect_default_branch_shas(repo_path, repository.default_branch)
+            except Exception as e:
+                print("⚠️ collect_default_branch_shas 실패, on_default_branch 갱신 건너뜀:", e)
+        print("🌿 default_branch_shas:", len(default_branch_shas) if default_branch_shas is not None else None)
 
         # 증분 커서 결정: 이미 저장된 커밋 중 가장 최근 committed_at.
         # git --since는 committer date 근사 필터라 누락 방지 버퍼를 빼서 넉넉히 읽고,
@@ -343,6 +352,24 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
             "commit_map_keys=",
             len(commit_map),
         )
+
+        # on_default_branch 갱신: 신규/기존 행 모두 대상 (feature 브랜치 커밋이 나중에 merge되거나,
+        # force-push로 빠지는 경우까지 맞춘다). 값이 바뀌는 행만 UPDATE.
+        if default_branch_shas is not None:
+            current_flags = dict(
+                db.query(Commit.id, Commit.on_default_branch)
+                .filter(Commit.repository_id == repository.id)
+                .all()
+            )
+            to_true = [cid for h, cid in commit_map.items() if h in default_branch_shas and current_flags.get(cid) is not True]
+            to_false = [cid for h, cid in commit_map.items() if h not in default_branch_shas and current_flags.get(cid) is not False]
+            for chunk in chunked(to_true, CHUNK_SIZE):
+                db.execute(text("UPDATE commits SET on_default_branch = true WHERE id = ANY(:ids)"), {"ids": chunk})
+            for chunk in chunked(to_false, CHUNK_SIZE):
+                db.execute(text("UPDATE commits SET on_default_branch = false WHERE id = ANY(:ids)"), {"ids": chunk})
+            db.commit()
+            print(f"🌿 on_default_branch 갱신: true={len(to_true)} false={len(to_false)}")
+
         print("END SAVE COMMITS")
         _report(f"커밋 {len(commit_map)}개 저장 완료", commits_collected=len(commit_map))
 
