@@ -103,7 +103,7 @@ def list_repositories(limit: int = 20, db: Session = Depends(get_db)):
         )
         commit_count = (
             db.query(func.count(Commit.id))
-            .filter(Commit.repository_id == repo.id)
+            .filter(Commit.repository_id == repo.id, Commit.on_default_branch.isnot(False))
             .scalar() or 0
         )
         contributor_count = (
@@ -173,7 +173,9 @@ def list_my_repositories(request: Request, db: Session = Depends(get_db)):
         )
         status = latest_job.status if latest_job else "unknown"
 
-        commit_count = db.query(func.count(Commit.id)).filter(Commit.repository_id == repo.id).scalar() or 0
+        commit_count = db.query(func.count(Commit.id)).filter(
+            Commit.repository_id == repo.id, Commit.on_default_branch.isnot(False)
+        ).scalar() or 0
         contributor_count = db.query(func.count(Contributor.id)).filter(Contributor.repository_id == repo.id).scalar() or 0
 
         live_files = (
@@ -449,7 +451,7 @@ def get_repository_status(repository_id: int, db: Session = Depends(get_db)):
     )
     commit_count = (
         db.query(func.count(Commit.id))
-        .filter(Commit.repository_id == repository_id)
+        .filter(Commit.repository_id == repository_id, Commit.on_default_branch.isnot(False))
         .scalar() or 0
     )
     pr_count = (
