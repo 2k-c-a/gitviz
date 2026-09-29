@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../css/index.css">
+    <title>GitViz · 저장소 검색</title>
+</head>
+<body>
+  <div id="navbar-container"></div>
+  <div id="modal-container"></div>
+
+  <!-- ═══════════ REPO SEARCH ═══════════ -->
+  <div class="page active" id="page-search">
+    <div class="dash-head">
+      <div>
+        <div class="dash-title">저장소 검색</div>
+        <div class="dash-sub">GitHub 레포지토리를 검색하고, 클론 없이 예비 점수로 먼저 훑어보세요</div>
+      </div>
+    </div>
+
+    <div class="body">
+      <div class="panel" style="margin-bottom:14px;">
+        <div class="search-bar">
+          <input type="text" id="search-input" placeholder="레포지토리 이름 또는 키워드로 검색 (예: fastapi)">
+          <select id="search-sort">
+            <option value="stars">Stars 많은순</option>
+            <option value="updated">최근 업데이트순</option>
+          </select>
+          <button class="btn-primary" id="search-btn">검색</button>
+        </div>
+        <div class="p-note" style="margin-top:10px;margin-bottom:0;">
+          점수 배지는 GitHub 메타데이터만으로 계산한 <strong>예비 점수(빠른 추정)</strong>입니다. 클론 후 커밋·PR 이력까지 분석하는 상세 Risk Score와는 다른 척도이니 참고용으로만 사용해 주세요.
+        </div>
+        <div class="search-examples" id="search-examples">
+          <span style="font-size:11px;color:var(--text3);">예시:</span>
+          <div class="chip search-example-chip" data-q="fastapi">fastapi</div>
+          <div class="chip search-example-chip" data-q="react">react</div>
+          <div class="chip search-example-chip" data-q="django">django</div>
+        </div>
+      </div>
+
+      <div id="search-summary" class="search-summary" style="display:none;"></div>
+      <div id="search-results" class="search-results">
+        <div class="panel" style="padding:40px 20px;text-align:center;color:var(--text3);font-size:13px;">
+          검색어를 입력하고 검색해 보세요.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- "분석 시작" 흐름은 홈 화면과 동일한 진행 모달(main.js/modal.js)을 그대로 재사용한다.
+       modal.js가 참조하는 url-input/url-feedback을 숨김 요소로 대신 제공한다. -->
+  <input type="hidden" id="url-input">
+  <div id="url-feedback" style="display:none;"></div>
+</body>
+
+<script type="module" src="../js/main.js"></script>
+</html>
