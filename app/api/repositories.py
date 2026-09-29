@@ -1,6 +1,9 @@
+import os
 import statistics
 from datetime import datetime, timezone
 
+import requests
+from requests.exceptions import RequestException
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
@@ -15,6 +18,7 @@ from app.models.file import File
 from app.tasks.analyze_repository import analyze_repository
 from app.routers.auth import _get_session_user_id
 from app.api.analytics import _compute_risk_scores
+from app.services.lightweight_score import compute_lightweight_score
 
 router = APIRouter()
 
@@ -248,17 +252,29 @@ def _trigger_analysis(db: Session, repository_id: int, user_id) -> None:
     analyze_repository.delay(repository_id, user_id=str(user_id) if user_id else None)
 
 
+def _normalize_github_url(url: str) -> str:
+    """두 URL이 같은 레포를 가리키는지 비교할 때만 쓰는 정규화값(trim → 끝 슬래시
+    제거 → .git 제거 → 소문자 — GitHub URL은 대소문자를 구분하지 않는다).
+    저장에는 쓰지 않는다 — 레포는 사용자가 입력한 원래 표기 그대로 저장한다."""
+    normalized = (url or "").strip().rstrip("/")
+    if normalized.lower().endswith(".git"):
+        normalized = normalized[: -len(".git")]
+    return normalized.lower()
+
+
 @router.post("/repositories")
 def create_repository(github_url: str, request: Request, db: Session = Depends(get_db)):
-    github_url = github_url.rstrip("/").removesuffix(".git")
+    github_url = github_url.strip().rstrip("/").removesuffix(".git")
 
     # 로그인한 사용자가 요청했으면 그 사용자의 GitHub 토큰으로 수집한다(공용 토큰 대신
     # 개인 rate limit 사용). 비로그인 요청은 기존처럼 공용 GITHUB_TOKEN으로 폴백.
     user_id = _get_session_user_id(request)
 
+    # 대소문자만 다른 URL도 같은 레포로 인식해야 한다 (예: 조직 이전 등으로 owner
+    # 표기가 바뀐 경우도 있었음 — fastapi/fastapi 사례).
     existing = (
         db.query(Repository)
-        .filter(Repository.url == github_url)
+        .filter(func.lower(Repository.url) == _normalize_github_url(github_url))
         .order_by(Repository.id)
         .first()
     )
@@ -290,6 +306,88 @@ def create_repository(github_url: str, request: Request, db: Session = Depends(g
     return {
         "message": "Repository analysis started",
         "repository_id": repository.id,
+    }
+
+
+_GITHUB_SEARCH_URL = "https://api.github.com/search/repositories"
+_SEARCH_TIMEOUT_SECONDS = 8
+_SEARCH_SORT_VALUES = {"stars", "forks", "help-wanted-issues", "updated"}
+
+
+@router.get("/search/github-repositories")
+def search_github_repositories(
+    q: str, sort: str = "", per_page: int = 20, db: Session = Depends(get_db),
+):
+    """GitHub Search API로 레포를 검색해 메타데이터 + is_registered만 반환한다.
+    경량 예비 점수(scores)는 Track 02 몫이라 아직 없으면 null로 내려간다 — 프론트
+    (search.js)는 scores가 null이어도 안전하게 처리하도록 이미 만들어져 있다.
+
+    기존 GitHubClient.get()은 rate limit에 걸리면 내부에서 블로킹 대기하는 구조라
+    화면에서 사용자가 기다리는 이 검색 요청엔 못 쓴다. 여기서는 재시도 없이 1회만
+    호출하고, 제한에 걸리면 즉시 429로 응답한다(프론트가 상태 코드만 보고 분기).
+    """
+    q = q.strip()
+    if not q:
+        raise HTTPException(status_code=422, detail="검색어(q)가 필요합니다.")
+
+    params = {"q": q, "per_page": max(1, min(per_page, 100))}
+    if sort in _SEARCH_SORT_VALUES:
+        params["sort"] = sort
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    token = os.getenv("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    try:
+        response = requests.get(
+            _GITHUB_SEARCH_URL, params=params, headers=headers, timeout=_SEARCH_TIMEOUT_SECONDS,
+        )
+    except RequestException:
+        raise HTTPException(status_code=502, detail="GitHub에 연결할 수 없습니다.")
+
+    if response.status_code in (403, 429):
+        raise HTTPException(status_code=429, detail="GitHub 검색 API 한도에 도달했습니다.")
+    if not response.ok:
+        raise HTTPException(status_code=502, detail=f"GitHub 검색에 실패했습니다 ({response.status_code}).")
+
+    payload = response.json()
+    registered_urls = {
+        _normalize_github_url(url) for (url,) in db.query(Repository.url).all()
+    }
+    now = datetime.now(timezone.utc)
+
+    results = []
+    for item in payload.get("items", []):
+        owner = item.get("owner") or {}
+        html_url = item.get("html_url", "")
+        metadata = {
+            "language": item.get("language"),
+            "stars": item.get("stargazers_count", 0),
+            "open_issues": item.get("open_issues_count", 0),
+            "pushed_at": item.get("pushed_at"),
+        }
+        results.append({
+            "owner": owner.get("login"),
+            "repo_name": item.get("name"),
+            "url": html_url,
+            "description": item.get("description"),
+            "language": metadata["language"],
+            "stars": metadata["stars"],
+            "forks": item.get("forks_count", 0),
+            "open_issues": metadata["open_issues"],
+            "pushed_at": metadata["pushed_at"],
+            "is_registered": _normalize_github_url(html_url) in registered_urls,
+            "scores": compute_lightweight_score(metadata, now=now),
+        })
+
+    return {
+        "query": q,
+        "total_count": payload.get("total_count", 0),
+        "results": results,
     }
 
 
