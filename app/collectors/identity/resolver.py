@@ -360,13 +360,88 @@ def resolution_stats(db: Session, repository_id: int) -> Dict[str, float]:
     }
 
 
+def stage_commit_author_login(db: Session, repository_id: int, client,
+                              owner: str, repo: str,
+                              limit: Optional[int] = None,
+                              retry_cooldown_days: int = 30) -> Dict[str, int]:
+    """GitHub 커밋 API로 email→login 매핑. Search(30회/분) 대신 core 한도(5000회/시)를 써서
+    훨씬 빠르다. 각 미해결 기여자의 커밋 SHA 하나를 조회해 GitHub 계정(author.login)을 얻는다.
+    GitHub가 커밋을 계정에 연결해 둔 경우(대부분의 활성 기여자)에 잡히며, 못 잡은 소수만
+    이후 stage2 Search가 처리한다. identity_search_attempted_at로 재실행 시 재조회를 막는다."""
+    rows = db.execute(text("""
+        SELECT c.id, c.primary_email, c.display_name,
+               MIN(cm.sha) AS sample_sha, COUNT(cm.id) AS commit_count
+        FROM contributors c
+        JOIN commits cm ON cm.contributor_id = c.id AND cm.repository_id = :rid
+        WHERE c.repository_id = :rid
+          AND c.resolution_status = 'unresolved'
+          AND (
+              c.identity_search_attempted_at IS NULL
+              OR c.identity_search_attempted_at < NOW() - (:cooldown || ' days')::interval
+          )
+        GROUP BY c.id, c.primary_email, c.display_name, c.identity_search_attempted_at
+        ORDER BY commit_count DESC, c.id
+    """), {"rid": repository_id, "cooldown": retry_cooldown_days}).fetchall()
+
+    if limit is not None:
+        rows = rows[:limit]
+
+    checked = resolved = merged = 0
+    for cid, email, name, sha, _count in rows:
+        if not sha:
+            continue
+        checked += 1
+        try:
+            resp = client.get(f"{client.BASE_URL}/repos/{owner}/{repo}/commits/{sha}")
+            data = resp.json()
+        except Exception as e:
+            print(f"  commit lookup error {str(sha)[:8]}: {e}")
+            continue
+
+        db.execute(text(
+            "UPDATE contributors SET identity_search_attempted_at = NOW() WHERE id = :cid"
+        ), {"cid": cid})
+
+        author = data.get("author") or {}  # 커밋에 연결된 GitHub 계정 (없으면 null)
+        login = author.get("login", "").lower() if author.get("login") else None
+        if login:
+            existing = db.execute(text("""
+                SELECT id FROM contributors
+                WHERE repository_id = :rid AND lower(github_login) = :login AND id <> :cid
+            """), {"rid": repository_id, "login": login, "cid": cid}).fetchone()
+            if existing:
+                _add_alias(db, existing[0], email, name, "github", "commit_api")
+                _merge_contributor(db, existing[0], cid, "commit_api")
+                merged += 1
+            else:
+                db.execute(text("""
+                    UPDATE contributors SET github_login = :login, resolution_status = 'auto'
+                    WHERE id = :cid
+                """), {"login": login, "cid": cid})
+                _add_alias(db, cid, email, name, "github", "commit_api")
+            resolved += 1
+        db.commit()
+
+        if checked % 100 == 0:
+            print(f"  commit-login progress: {checked}/{len(rows)} (resolved={resolved})")
+
+    db.commit()
+    return {"checked": checked, "resolved": resolved, "merged": merged}
+
+
 def run_identity_resolution(db: Session, repository_id: int, client=None,
-                            stage2_limit: Optional[int] = 0) -> Dict:
-    """전체 파이프라인. stage2_limit=0이면 2단계 생략, None이면 무제한."""
+                            stage2_limit: Optional[int] = 0,
+                            owner: Optional[str] = None, repo: Optional[str] = None,
+                            commit_login_limit: Optional[int] = None) -> Dict:
+    """전체 파이프라인. stage2_limit=0이면 2단계 생략, None이면 무제한.
+    owner/repo가 주어지면 커밋 API 기반 login 수집(빠름)을 Search 앞단에서 먼저 돌린다."""
     out = {}
     out["commits_linked"] = link_commits_by_email(db, repository_id)
     out["stage1"] = stage1_noreply(db, repository_id)
     out["pr_authorship"] = stage_pr_authorship(db, repository_id)
+    if client is not None and owner and repo:
+        out["commit_login"] = stage_commit_author_login(
+            db, repository_id, client, owner, repo, limit=commit_login_limit)
     if client is not None and stage2_limit != 0:
         out["stage2"] = stage2_email_search(db, repository_id, client, limit=stage2_limit)
     out["commits_linked_by_alias"] = link_commits_by_alias(db, repository_id)
