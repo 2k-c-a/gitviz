@@ -148,18 +148,41 @@
   .hm-td.file { font-family: monospace; font-size: 11px; color: var(--text2); max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cx-file-link { color: inherit; text-decoration: none; }
   .cx-file-link:hover { color: var(--blue); text-decoration: underline; }
-  .cx-name-link:hover { text-decoration: underline; }
   .hm-val { text-align: center; border-radius: 3px; font-size: 11px; }
-  .crumb-pills { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-  .crumb-pill { font-size: 12px; padding: 4px 11px; border: 0.5px solid var(--border); border-radius: var(--r-md); background: var(--bg2); color: var(--text2); cursor: pointer; }
-  .crumb-pill:hover { background: var(--bg3); color: var(--text); }
-  .crumb-pill.current { background: var(--blue); color: #fff; border-color: var(--blue); cursor: default; font-weight: 600; }
-  .crumb-sep { color: var(--text3); font-size: 11px; }
   .cx-detail-empty { font-size: 12px; color: var(--text3); font-family: monospace; min-height: 34px; }
   .cx-detail-path { font-family: monospace; font-size: 12px; color: var(--text); word-break: break-all; margin-bottom: 8px; min-height: 34px; }
   .cx-detail-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 0.5px solid var(--border); font-size: 12px; }
   .cx-detail-row:first-child { border-top: none; }
   .cx-detail-row span:first-child { color: var(--text2); }
+
+  /* CODE ANALYSIS — 디렉토리 트리 다이어그램 */
+  .cx-canvas-wrap { position: relative; }
+  .coup-svg.cx-canvas { display: block; height: 560px; background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--r-md); cursor: grab; user-select: none; -webkit-user-select: none; }
+  .cx-canvas:active { cursor: grabbing; }
+  .cx-zoom-ctrl { position: absolute; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
+  .cx-zoom-ctrl button { width: 28px; height: 28px; font-size: 15px; line-height: 1; color: var(--text2); background: var(--bg); border: 0.5px solid var(--border2); border-radius: var(--r-md); cursor: pointer; }
+  .cx-zoom-ctrl button:hover { background: var(--bg3); color: var(--text); }
+  .cx-link { stroke: var(--text3); stroke-width: 1.8px; opacity: 0.55; transition: stroke 0.15s, opacity 0.15s; }
+  .cx-link.is-hot { stroke: var(--blue); stroke-width: 2.6px; opacity: 1; }
+  .cx-node { cursor: pointer; }
+  .cx-dot { stroke: var(--bg); stroke-width: 2.5px; transition: stroke 0.15s; }
+  .cx-node:hover .cx-dot { stroke: var(--text); }
+  .cx-halo { fill: none; stroke-width: 2px; stroke-dasharray: 3 3; pointer-events: none; transition: opacity 0.2s; }
+  .cx-ring { fill: none; stroke: var(--blue); stroke-width: 2.5px; opacity: 0; pointer-events: none; }
+  .cx-node.is-selected .cx-ring { opacity: 1; }
+  .cx-count { fill: #fff; font-size: 13px; font-weight: 700; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .cx-name { cursor: pointer; }
+  .cx-name-hit { fill: transparent; }
+  .cx-leader { stroke: var(--text3); stroke-width: 1px; stroke-dasharray: 2 2; opacity: 0.6; pointer-events: none; }
+  .cx-label { fill: var(--text2); font-size: 13px; text-anchor: middle; paint-order: stroke; stroke: var(--bg2); stroke-width: 4px; stroke-linejoin: round; }
+  .cx-label.is-dir { fill: var(--text); font-weight: 600; }
+  .cx-name:hover .cx-label { fill: var(--blue); text-decoration: underline; }
+  .cx-canvas.cx-zoomed-out .cx-name { display: none; }
+  .leg-shape { display: inline-block; flex-shrink: 0; border-radius: 50%; background: var(--text3); }
+  .leg-shape.dir { width: 16px; height: 16px; }
+  .leg-shape.file { width: 11px; height: 11px; }
+  .leg-shape.folded { width: 16px; height: 16px; background: transparent; border: 1.5px dashed var(--text3); }
+
   .hm-0 { background: var(--bg2); color: var(--text3); }
   .hm-1 { background: #B5D4F4; color: #0C447C; }
   .hm-2 { background: #85B7EB; color: #0C447C; }
