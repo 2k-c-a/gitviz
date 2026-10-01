@@ -42,15 +42,21 @@
         <div class="range-btns" id="cx-sort-toggle"></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-        <button class="rbtn" id="cx-root-btn" title="맨 위 디렉토리로 이동">⌂ 처음으로</button>
-        <button class="rbtn" id="cx-up-btn" title="상위 디렉토리로 이동">↑ 상위로</button>
-        <div class="crumb-pills" id="cx-breadcrumb"></div>
+        <button class="rbtn" id="cx-root-btn" title="펼친 폴더를 모두 접고 처음 상태로 되돌리기">⌂ 처음으로</button>
+        <button class="rbtn" id="cx-expand-btn" title="모든 폴더 펼치기">모두 펼치기</button>
       </div>
-      <div class="p-note">폴더/파일 이름을 클릭하면 GitHub에서 해당 위치를 바로 확인할 수 있습니다. 이름 외의 영역을 클릭하면 하위 폴더 탐색 또는 상세 정보를 볼 수 있습니다.</div>
+      <div class="p-note">폴더(큰 원)를 클릭하면 하위 폴더·파일이 펼쳐지고, 다시 클릭하면 접힙니다. 파일(작은 원)을 클릭하면 상세 정보를 볼 수 있고, 이름을 클릭하면 GitHub에서 해당 위치를 확인할 수 있습니다. 드래그로 화면을 옮기고, Ctrl+휠 또는 오른쪽 아래 버튼으로 확대·축소하세요.</div>
 
       <div style="display:grid;grid-template-columns:1fr 300px;gap:14px;align-items:start;">
         <div>
-          <svg class="coup-svg" id="cx-svg" style="height:440px;"></svg>
+          <div class="cx-canvas-wrap">
+            <svg class="coup-svg cx-canvas" id="cx-svg"></svg>
+            <div class="cx-zoom-ctrl">
+              <button id="cx-zoom-in" title="확대">+</button>
+              <button id="cx-zoom-out" title="축소">−</button>
+              <button id="cx-zoom-fit" title="화면에 맞추기">⤢</button>
+            </div>
+          </div>
           <div class="legend" id="cx-legend" style="margin-top:10px;"></div>
         </div>
         <div class="metric-card">
