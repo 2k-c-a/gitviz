@@ -62,11 +62,11 @@ function statusCallout(repo) {
     const bfText = repo.median_bus_factor != null ? `<strong style="margin:0 2px;">${repo.median_bus_factor}</strong>` : '<strong style="margin:0 2px;">—</strong>';
     if (repo.high_risk_count > 0 || repo.bus_factor_1_count > 0) {
       return `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--coral-light);border:0.5px solid var(--coral-mid);border-radius:var(--r-md);font-size:12px;color:var(--coral-dark);">
-        ⚠ 고위험 파일 <strong style="margin:0 2px;">${num(repo.high_risk_count)}개</strong> · Bus Factor=1 파일 <strong style="margin:0 2px;">${num(repo.bus_factor_1_count)}개</strong> · 프로젝트 Bus Factor 중앙값 ${bfText}
+        ⚠ 높은 분석 점수 파일 <strong style="margin:0 2px;">${num(repo.high_risk_count)}개</strong> · BF 추정치=1 파일 <strong style="margin:0 2px;">${num(repo.bus_factor_1_count)}개</strong> · 파일별 BF 추정치 중앙값 ${bfText}
       </div>`;
     }
     return `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--teal-light);border:0.5px solid var(--teal-mid);border-radius:var(--r-md);font-size:12px;color:var(--teal-dark);">
-      ✓ Bus Factor=1 파일 <strong style="margin:0 2px;">없음</strong> · Bus Factor 중앙값 ${bfText} · 전반적으로 안정적인 협업 구조
+      BF 추정치=1 파일 <strong style="margin:0 2px;">없음</strong> · 파일별 BF 추정치 중앙값 ${bfText} · 관측 이력 기준이며 실제 지식 분포와 다를 수 있습니다
     </div>`;
   }
 
@@ -144,7 +144,7 @@ function renderSummary(repos) {
   if (!metricsEl) return;
   metricsEl.innerHTML = `
     <div class="metric-card"><div class="m-label">총 분석 프로젝트</div><div class="m-val">${num(total)}</div><div class="m-sub">내 레포지토리 목록</div></div>
-    <div class="metric-card"><div class="m-label">고위험 프로젝트</div><div class="m-val${highRisk ? ' m-dn' : ''}">${num(highRisk)}</div><div class="m-sub">Bus Factor=1 또는 고위험 파일 보유</div></div>
+    <div class="metric-card"><div class="m-label">검토 신호가 있는 프로젝트</div><div class="m-val${highRisk ? ' m-dn' : ''}">${num(highRisk)}</div><div class="m-sub">BF 추정치=1 또는 높은 분석 점수 파일 보유</div></div>
     <div class="metric-card"><div class="m-label">분석 중</div><div class="m-val" style="color:var(--blue);">${num(inProgress)}</div><div class="m-sub">작업 진행 중</div></div>
     <div class="metric-card"><div class="m-label">분석 실패</div><div class="m-val${failed ? ' m-dn' : ''}">${num(failed)}</div><div class="m-sub">재시도 필요</div></div>`;
 }

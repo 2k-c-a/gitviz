@@ -21,10 +21,49 @@ export function getRepoId() {
   return 1;
 }
 
+const snapshots = new Map();
+export function resetSnapshot(id) {
+  sessionStorage.removeItem(`gitviz_snapshot_${id}`);
+  snapshots.delete(Number(id));
+}
+async function readJSON(url) {
+  const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.detail || `분석 결과 조회 실패 (${res.status})`);
+  return body;
+}
 async function getJSON(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${url} → ${res.status}`);
-  return res.json();
+  const match = url.match(/^\/repositories\/(\d+)\/analytics/);
+  if (!match) return readJSON(url);
+  const id = Number(match[1]);
+  if (!snapshots.has(id)) {
+    const requested = new URLSearchParams(location.search).get('snapshot') || sessionStorage.getItem(`gitviz_snapshot_${id}`);
+    snapshots.set(id, readJSON(`/repositories/${id}/analytics/snapshot${requested ? `?snapshot_id=${encodeURIComponent(requested)}` : ''}`)
+      .then(data => {
+        sessionStorage.setItem(`gitviz_snapshot_${id}`, String(data.snapshot.id));
+        const current = new URL(location.href);
+        current.searchParams.set('repo', String(id));
+        current.searchParams.set('snapshot', String(data.snapshot.id));
+        history.replaceState(null, '', current);
+        showAnalysisContext(data);
+        return data.snapshot.id;
+      }));
+  }
+  const sid = await snapshots.get(id);
+  return readJSON(`${url}${url.includes('?') ? '&' : '?'}snapshot_id=${sid}`);
+}
+function showAnalysisContext(data) {
+  const container = document.querySelector('main') || document.querySelector('.page.active');
+  if (!container) return;
+  let el = document.getElementById('analysis-context');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'analysis-context';
+    el.style.cssText = 'padding:12px 16px;margin:12px 0;border:1px solid var(--border);border-radius:8px;font-size:12px;line-height:1.7;color:var(--text2)';
+    container.prepend(el);
+  }
+  const s = data.snapshot || data._snapshot, q = data.data_quality || {};
+  el.textContent = `저장 결과 #${s.id} · SHA ${s.target_sha.slice(0, 12)} · 분석 구간 ${s.window_start || '전체 이력'} ~ ${s.window_end} (종료 제외) · ${s.formula_version}\n관측 커밋 ${q.commit_count ?? 0}개 · 작성자 미식별 ${q.unidentified_commits ?? 0}개 · GitHub 계정 미연결 ${q.github_account_unlinked ?? 0}명 · 병합 PR의 커밋 연결 ${q.prs_with_linked_commits ?? 0}/${q.merged_pr_count ?? 0} · 기준 SHA 파일 수집 ${q.collected_target_file_count ?? 0}/${q.target_tree_file_count ?? 0}. ${q.coverage_scope || ''}. 5건 미만 표시는 데이터 부족 안내이며 통계적 신뢰수준을 뜻하지 않습니다.`;
+  el.style.whiteSpace = 'pre-wrap';
 }
 
 const base = (id) => `/repositories/${id}/analytics`;

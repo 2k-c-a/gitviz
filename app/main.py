@@ -28,12 +28,15 @@ from app.routers import auth as auth_router
 app = FastAPI(title="GitViz API", version="0.1.0")
 
 # ── 세션 미들웨어 (HttpOnly 서명 쿠키, auth 로그인에 필요) ────────────────────
+session_secret = os.getenv("SESSION_SECRET_KEY", "")
+if not session_secret or session_secret == "change-me-in-production":
+    raise RuntimeError("SESSION_SECRET_KEY에 고유한 비밀키를 설정해야 합니다.")
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.getenv("SESSION_SECRET_KEY", "change-me-in-production"),
+    secret_key=session_secret,
     session_cookie="gitviz_session",
     max_age=60 * 60 * 24 * 7,   # 7일
-    https_only=False,
+    https_only=os.getenv("SESSION_COOKIE_SECURE", "0") == "1",
     same_site="lax",
 )
 
