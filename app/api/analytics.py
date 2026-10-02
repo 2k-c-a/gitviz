@@ -14,8 +14,16 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.repository import Repository
+from app.api.snapshot_route import SnapshotAnalyticsRoute
 
-router = APIRouter(prefix="/repositories/{repository_id}/analytics", tags=["analytics"])
+router = APIRouter(prefix="/repositories/{repository_id}/analytics", tags=["analytics"], route_class=SnapshotAnalyticsRoute)
+
+
+@router.get("/snapshot")
+def get_snapshot_metadata(repository_id: int):
+    """HTTP 라우트는 저장된 최신 또는 지정 스냅샷 메타데이터를 반환한다."""
+    # 실제 응답은 SnapshotAnalyticsRoute가 처리한다.
+    raise RuntimeError("HTTP snapshot route only")
 
 
 @router.get("/summary")
@@ -260,7 +268,9 @@ def get_top_contributors(repository_id: int, limit: int = 5, db: Session = Depen
 
 def _ownership_analysis(owners: list[dict]) -> dict:
     """파일 하나의 기여자 목록([{contributor_id, name, cnt}, ...])에서 Ownership Entropy·
-    Bus Factor·기여자별 지분(shares, 내림차순)을 한 번에 계산한다. 셋 다 같은 분포에서
+    변경 기여 기반 BF 추정치·기여자별 지분(shares, 내림차순)을 한 번에 계산한다.
+    BF는 변경 커밋 수의 누적 80%를 차지하는 최소 인원이며 실제 지식 인원이 아니다.
+    셋 다 같은 분포에서
     파생되므로 한 번에 계산해 재사용한다(Risk Score용 entropy/BF, Bus Factor 전용
     엔드포인트의 소유권 상세·독점 파일 집계 모두 이 결과를 쓴다)."""
     total = sum(o["cnt"] for o in owners)
@@ -275,11 +285,12 @@ def _ownership_analysis(owners: list[dict]) -> dict:
 
     entropy = -sum(s["share"] * math.log2(s["share"]) for s in shares if s["share"] > 0)
 
-    cum = 0.0
+    cumulative_count = 0
     bus_factor = len(shares)
-    for i, s in enumerate(shares, start=1):
-        cum += s["share"]
-        if cum >= 0.8:
+    for i, owner in enumerate(sorted_owners, start=1):
+        cumulative_count += owner["cnt"]
+        # 정수 비교로 정확히 80%인 경우의 부동소수점 누적 오차를 피한다.
+        if cumulative_count * 5 >= total * 4:
             bus_factor = i
             break
 
@@ -350,7 +361,9 @@ def _compute_risk_scores(db: Session, repository_id: int) -> list[dict]:
     (정렬·limit 없이) 계산한 결과를 그대로 반환한다 — /risk-scores와 /tree가 공유하는
     핵심 로직이라, 정렬·limit·summary 조립은 호출부(엔드포인트)에서 각자 한다.
 
-    정의(결함/유지보수 위험도)는 그대로 두되, 산식은 두 축으로 나눈다.
+    저장소 내 상대 분석 점수이며 결함 발생 확률이 아니다. Min-Max 정규화는
+    값이 모두 같거나 비교 파일이 하나이면 0을 반환하므로 낮은 값은 안전을
+    보장하지 않는다. 산식은 두 축으로 나눈다.
 
     CurrentRisk — "리팩토링(있었다면) 이후로 다시 문제가 쌓이고 있는가".
     이 파일의 가장 최근 refactor 커밋 시점(없으면 첫 커밋 시점) 이후 데이터만으로
@@ -373,14 +386,15 @@ def _compute_risk_scores(db: Session, repository_id: int) -> list[dict]:
 
     Bus Factor는 여전히 이 산식에 포함하지 않는다. Bus Factor와 Ownership Entropy는
     같은 파일별 기여 비율 분포에서 파생되는 지표라(소유권이 집중될수록 BF·Entropy 둘 다
-    낮아짐) 값 자체는 강하게 상관되지만 "위험"의 방향은 반대다 — Entropy가 낮다(집중)는
-    건 결함 위험이 낮다는 뜻이고[Bird et al., 2011], BF가 낮다(집중)는 건 승계 위험이
-    높다는 뜻이다. 같은 산식에 함께 넣으면 같은 원인(소유권 집중)에 대해 서로 반대
+    낮아짐) 두 값은 소유권 집중의 같은 신호를 담는다. 현재 휴리스틱은 높은
+    Entropy를 변경 기여 분산 신호로 가산하고, 낮은 BF는 인수인계 검토 신호로
+    따로 표시한다. Entropy만으로 결함 위험의 방향을 단정할 수 없으며 실험 검증이
+    필요하다. 같은 산식에 함께 넣으면 같은 원인(소유권 집중)에 대해 서로 반대
     부호로 상쇄된다. Bus Factor는 별도 승계 리스크로 분리해 고위험 파일에 교차 배지
     (is_bus_factor_risk)로만 표시하며, 이 값도 CurrentRisk와 같은 "최근" 구간 기준으로
     계산해 리팩토링 이후 실제 소유자가 누구인지를 반영한다.
     """
-    now = datetime.now(timezone.utc)
+    now = getattr(db, "info", {}).get("analysis_as_of") or datetime.now(timezone.utc)
 
     # 1) 파일별 관측 구간(첫 커밋 시점 · 가장 최근 refactor 시점) + 전체 기간 원시 지표
     rows = db.execute(
@@ -480,6 +494,8 @@ def _compute_risk_scores(db: Session, repository_id: int) -> list[dict]:
     # 4) 파일별 원시 지표 조립 (CurrentRisk 원시값 + StructuralRisk 원시값)
     raw: dict[int, dict] = {}
     for r in rows:
+        if r["first_commit_at"] is None:
+            continue  # 이력이 없는 파일은 0점으로 정규화하거나 안전한 파일로 집계하지 않는다.
         fid = r["file_id"]
         first_commit_at = r["first_commit_at"]
         last_refactor_at = r["last_refactor_at"]
@@ -632,7 +648,7 @@ def get_bus_factor_analysis(repository_id: int, limit: int = 50, db: Session = D
         for k in sorted(dist_counter)
     ]
 
-    # 2) 기여자별 독점 파일 수 — BF=1인 파일에서 혼자 80%를 넘긴 그 기여자
+    # 2) 기여 집중 파일 수 — BF=1인 파일에서 변경 기여 80% 이상을 차지한 기여자
     exclusive_counter: dict[int, dict] = {}
     for v in analysis_by_file.values():
         if v["bus_factor"] == 1 and v["shares"]:
@@ -681,6 +697,7 @@ def get_bus_factor_analysis(repository_id: int, limit: int = 50, db: Session = D
     bf_values = sorted(v["bus_factor"] for v in analysis_by_file.values())
     entropies = [v["entropy"] for v in analysis_by_file.values()]
     summary = {
+        # 호환용 필드명. 프로젝트 전체 인력 이탈 시뮬레이션이 아닌 파일별 BF 중앙값.
         "project_bus_factor": statistics.median(bf_values),
         "high_risk_file_count": sum(1 for v in analysis_by_file.values() if v["bus_factor"] == 1),
         "avg_entropy": round(sum(entropies) / len(entropies), 4) if entropies else None,
@@ -766,7 +783,7 @@ def _compute_coupling(db, repository_id: int) -> dict:
     coupling/adjusted score는 그 후보 신호일 뿐, 확정 판정이 아니다.
     """
     pr_count = db.execute(
-        text("SELECT COUNT(*) FROM pull_requests WHERE repository_id = :rid"),
+        text("SELECT COUNT(DISTINCT p.id) FROM pull_requests p JOIN pull_request_files f ON f.pull_request_id=p.id WHERE p.repository_id = :rid AND COALESCE(p.is_large_pr,false)=false"),
         {"rid": repository_id},
     ).scalar()
     unit = "pr" if pr_count else "commit"
@@ -824,10 +841,15 @@ def _compute_coupling(db, repository_id: int) -> dict:
             "file_a_id": r["file_a"], "file_a_path": paths.get(r["file_a"], "?"),
             "file_b_id": r["file_b"], "file_b_path": paths.get(r["file_b"], "?"),
             "co_change_count": r["co_count"],
+            "change_count_a": r["total_a"],
+            "change_count_b": r["total_b"],
+            "a_to_b_ratio": round(r["co_count"] / r["total_a"], 4),
+            "b_to_a_ratio": round(r["co_count"] / r["total_b"], 4),
+            "low_support": r["co_count"] < 5,
             "coupling_score": round(coupling_score, 4),
             "adjusted_score": round(adjusted_score, 4),
         })
-    pairs.sort(key=lambda p: p["adjusted_score"], reverse=True)
+    pairs.sort(key=lambda p: (-p["adjusted_score"], p["file_a_id"], p["file_b_id"]))
 
     return {
         "co_change_unit": unit,
@@ -847,7 +869,9 @@ def _per_file_coupling_summary(coupling_result: dict) -> dict[int, dict]:
     summary: dict[int, dict] = {}
     for p in coupling_result["pairs"]:
         for fid in (p["file_a_id"], p["file_b_id"]):
-            s = summary.setdefault(fid, {"max_coupling_score": 0.0, "coupled_file_count": 0})
+            s = summary.setdefault(fid, {"max_coupling_score": 0.0, "coupled_file_count": 0, "coupling_support": 0})
+            if p["coupling_score"] >= s["max_coupling_score"]:
+                s["coupling_support"] = max(s["coupling_support"] if p["coupling_score"] == s["max_coupling_score"] else 0, p["co_change_count"])
             s["max_coupling_score"] = max(s["max_coupling_score"], p["coupling_score"])
             if p["coupling_score"] >= 0.7:
                 s["coupled_file_count"] += 1
@@ -881,11 +905,17 @@ def _coupled_files_for(result: dict, file_id: int) -> list[dict]:
         if p["file_a_id"] == file_id:
             coupled.append({"file_id": p["file_b_id"], "path": p["file_b_path"],
                              "co_change_count": p["co_change_count"],
-                             "coupling_score": p["coupling_score"], "adjusted_score": p["adjusted_score"]})
+                             "coupling_score": p["coupling_score"], "adjusted_score": p["adjusted_score"],
+                             "selected_change_count": p["change_count_a"], "other_change_count": p["change_count_b"],
+                             "selected_to_other_ratio": p["a_to_b_ratio"], "other_to_selected_ratio": p["b_to_a_ratio"],
+                             "low_support": p["low_support"]})
         elif p["file_b_id"] == file_id:
             coupled.append({"file_id": p["file_a_id"], "path": p["file_a_path"],
                              "co_change_count": p["co_change_count"],
-                             "coupling_score": p["coupling_score"], "adjusted_score": p["adjusted_score"]})
+                             "coupling_score": p["coupling_score"], "adjusted_score": p["adjusted_score"],
+                             "selected_change_count": p["change_count_b"], "other_change_count": p["change_count_a"],
+                             "selected_to_other_ratio": p["b_to_a_ratio"], "other_to_selected_ratio": p["a_to_b_ratio"],
+                             "low_support": p["low_support"]})
     coupled.sort(key=lambda c: c["adjusted_score"], reverse=True)
     return coupled
 
@@ -945,7 +975,10 @@ def _fetch_network_edges(db, repository_id: int) -> dict:
                     JOIN pull_requests pr ON pr.id = prf.pull_request_id
                     JOIN pr_commits pc ON pc.pull_request_id = prf.pull_request_id
                     JOIN commits c ON c.id = pc.commit_id
+                    JOIN commit_file_changes cfc
+                      ON cfc.commit_id = c.id AND cfc.file_id = prf.file_id
                     WHERE pr.repository_id = :rid AND COALESCE(pr.is_large_pr, false) = false
+                      AND c.repository_id = :rid
                       AND c.contributor_id IS NOT NULL
                 )
                 SELECT a.contributor_id AS contributor_a, b.contributor_id AS contributor_b,
@@ -1006,27 +1039,37 @@ def _fetch_network_edges(db, repository_id: int) -> dict:
             continue
         edges.append({
             "source": a, "target": b,
-            "co_edit_raw": round(v["co_edit_raw"], 4),
-            "review_directed": round(v["review"], 4),
-            "edge_weight": round(weight, 4),
+            "co_edit_raw": v["co_edit_raw"],
+            "review_directed": v["review"],
+            # 작은 양의 강도가 0으로 반올림되면 거리 계산과 고립 판정이 깨진다.
+            "edge_weight": weight,
         })
 
     return {"edges": edges, "total_prs": total_prs, "total_reviews": total_reviews}
 
 
 def _compute_network_metrics(edges: list[dict], contributor_ids: list[int]) -> dict:
-    """Betweenness Centrality(방향성 그래프) + Louvain 군집(무방향 그래프로 변환해 계산)."""
-    G = nx.DiGraph()
-    G.add_nodes_from(contributor_ids)
-    for e in edges:
-        G.add_edge(e["source"], e["target"], weight=e["edge_weight"])
+    """협업 강도의 역수를 거리로 사용한 매개 중심성 + 강도 기반 Louvain 군집.
 
-    betweenness = nx.betweenness_centrality(G, weight="weight") if G.number_of_edges() else {n: 0.0 for n in G.nodes}
+    NetworkX의 최단 경로 weight는 거리다. 강도와 거리를 별도로 저장하여
+    협업이 강할수록 가까워지게 한다. 양수가 아닌 엣지는 관계에서 제외한다.
+    """
+    G = nx.DiGraph()
+    G.add_nodes_from(sorted(contributor_ids))
+    for e in sorted(edges, key=lambda e: (e["source"], e["target"])):
+        strength = e["edge_weight"]
+        if strength <= 0:
+            continue
+        G.add_edge(e["source"], e["target"], weight=strength, distance=1.0 / strength)
+
+    betweenness = nx.betweenness_centrality(G, weight="distance") if G.number_of_edges() else {n: 0.0 for n in G.nodes}
 
     UG = nx.Graph()
     UG.add_nodes_from(contributor_ids)
     for e in edges:
         a, b, w = e["source"], e["target"], e["edge_weight"]
+        if w <= 0:
+            continue
         if UG.has_edge(a, b):
             UG[a][b]["weight"] += w
         else:
@@ -1287,8 +1330,8 @@ def get_contributor_collaborators(
 
 @router.get("/files/{file_id}/detail")
 def get_file_detail(repository_id: int, file_id: int, limit: int = 20, db: Session = Depends(get_db)):
-    """위험도 탭 파일 클릭 팝업(2번)용 — 이 파일을 수정한 사람(editors) + 이 파일이 영향을
-    끼칠 수 있는 파일(coupled_files)을 한 번에 묶어서 반환한다. Bus Factor·Coupling과 같은
+    """파일 클릭 팝업용 — 수정한 사람(editors) + 공동 변경 후보(coupled_files).
+    공동 변경 신호는 실제 의존성 또는 영향 관계의 확정 판정이 아니다. BF·Coupling과 같은
     소스(_fetch_recent_ownership, _compute_coupling)를 재사용해 값이 어긋나지 않는다."""
     file_row = db.execute(
         text("SELECT id, path FROM files WHERE repository_id = :rid AND id = :fid"),
@@ -1344,6 +1387,9 @@ def _build_tree(files: list[dict]) -> dict:
             "is_bus_factor_risk": f["is_bus_factor_risk"],
             "coupling_score": f["coupling_score"],
             "coupled_file_count": f["coupled_file_count"],
+            "coupling_support": f["coupling_support"],
+            "observation_count": f["observation_count"],
+            "evidence_status": f["evidence_status"],
         })
     return root
 
@@ -1393,6 +1439,9 @@ def get_repo_tree(repository_id: int, db: Session = Depends(get_db)):
             "is_bus_factor_risk": risk["is_bus_factor_risk"] if risk else False,
             "coupling_score": round(coup["max_coupling_score"], 4),
             "coupled_file_count": coup["coupled_file_count"],
+            "coupling_support": coup.get("coupling_support", 0),
+            "observation_count": risk["change_freq"] if risk else 0,
+            "evidence_status": "no_history" if not risk or not risk["change_freq"] else ("low_support" if risk["change_freq"] < 5 else "observed"),
         })
 
     # 종합 리스트(위험도순 기본) — 프론트가 트리 아래 랭킹에 바로 쓸 수 있게 정렬해서 같이 내려준다.

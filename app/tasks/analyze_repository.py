@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 
 from app.core.celery_app import celery
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, engine
 
 from app.models.repository import Repository
 from app.models.analysis_job import AnalysisJob
@@ -22,7 +22,9 @@ from app.models.pr_review import PrReview
 from app.models.pull_request_file import PullRequestFile
 from app.models.release import Release
 
-from app.collectors.git.clone_manager import clone_repository, get_default_branch
+from app.collectors.git.clone_manager import clone_repository, get_default_branch, snapshot_target
+from app.services.analysis_snapshots import build_snapshot, analysis_parameters, utc_datetime
+from app.services.repository_access import verify_repository_access, user_github_token, remember_access
 from app.collectors.git.commit_collector import collect_commits, collect_default_branch_shas
 from app.collectors.git.file_collector import collect_files, collect_current_tree_paths
 from app.collectors.git.commit_file_change_collector import collect_commit_file_changes
@@ -65,53 +67,19 @@ def chunked(iterable: List, size: int):
         yield iterable[i : i + size]
 
 
-def _resolve_github_token(db, user_id: Optional[str]) -> Optional[str]:
-    """분석을 요청한 사용자의 GitHub 토큰을 우선 사용하고, 없거나 실패하면
-    공용 GITHUB_TOKEN으로 폴백한다. 사용자별 토큰을 쓰면 공용 토큰 하나를
-    여러 분석이 나눠 쓰지 않고 각자 시간당 5000회 한도를 따로 가진다.
-
-    users 테이블은 app/database.py의 별도 async Base가 관리하므로 여기(sync 태스크)
-    에서는 ORM이 아니라 raw SQL로 직접 조회한다.
-    """
-    shared_token = os.getenv("GITHUB_TOKEN")
-    if not user_id:
-        return shared_token
-
-    try:
-        row = db.execute(
-            text("SELECT access_token_encrypted FROM users WHERE id = CAST(:uid AS uuid)"),
-            {"uid": user_id},
-        ).first()
-        if not row or not row[0]:
-            print(f"⚠️ user_id={user_id} 토큰 없음 — 공용 토큰으로 폴백")
-            return shared_token
-
-        from app.services.auth_service import decrypt_token
-        try:
-            token = decrypt_token(row[0])
-        except InvalidTag:
-            # 토큰은 있는데 못 연다 = TOKEN_ENCRYPTION_KEY가 이 DB와 다르다.
-            # 데이터 문제가 아니라 설정 사고이므로 조용히 넘기지 않는다.
-            print(
-                "❌ TOKEN_ENCRYPTION_KEY 불일치 — users.access_token_encrypted를 복호화할 수 없다.\n"
-                "   이 DB의 토큰은 다른 키로 암호화돼 있다. 개인 토큰(사용자별 5000req/h) 기능이\n"
-                "   꺼진 채 공용 GITHUB_TOKEN으로 폴백한다. private 레포는 공용 토큰 권한에 따라\n"
-                "   실패할 수 있다. 조치: 팀의 키를 .env에 맞추거나, 해당 컬럼을 NULL로 비우고\n"
-                "   재로그인. 자세한 내용은 HANDOFF.md '자격증명 함정' 참고."
-            )
-            return shared_token
-        print(f"🔑 user_id={user_id} 개인 GitHub 토큰 사용")
-        return token
-    except Exception as e:
-        print(f"⚠️ 사용자 토큰 조회/복호화 실패({e}) — 공용 토큰으로 폴백")
-        return shared_token
+def _resolve_github_token(db, user_id: Optional[str], is_private=False) -> Optional[str]:
+    # 비공개 수집에는 반드시 요청자의 토큰을 사용한다. 복호화 실패 시 폴백하지 않는다.
+    token = user_github_token(db,user_id) if user_id else None
+    if is_private and not token:
+        raise RuntimeError("비공개 저장소를 수집하려면 요청자의 GitHub 인증이 필요합니다.")
+    return token or os.getenv("GITHUB_TOKEN")
 
 
 # -----------------------
 # 메인 태스크
 # -----------------------
 @celery.task
-def analyze_repository(repository_id: int, user_id: str | None = None):
+def analyze_repository(repository_id: int, user_id: str | None = None, job_id: int | None = None):
     """
     Repository 분석 태스크
     - clone repository
@@ -120,13 +88,20 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
     - commit_file_changes 저장 (upsert)
 
     user_id가 있으면 그 사용자의 GitHub OAuth 토큰(개인 rate limit)으로 수집하고,
-    없거나 조회/복호화에 실패하면 공용 GITHUB_TOKEN으로 폴백한다.
+    비공개 저장소에는 요청자의 토큰만 사용하며 복호화 실패 시 작업을 중단한다.
     """
     print("🔥 TASK STARTED:", repository_id)
 
     db = SessionLocal()
+    lock_connection = None
+    locked = False
 
     try:
+        lock_connection = engine.connect()
+        locked = lock_connection.execute(text("SELECT pg_try_advisory_lock(1735289201, :rid)"), {"rid": repository_id}).scalar()
+        if not locked:
+            return  # 같은 저장소를 이미 수집 중인 워커가 있다.
+
         # 1) Repository load
         repository = db.query(Repository).filter(Repository.id == repository_id).first()
         if not repository:
@@ -135,15 +110,22 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
 
         print("📦 repository:", repository.url)
 
-        job = (
-            db.query(AnalysisJob)
-            .filter(AnalysisJob.repository_id == repository_id)
-            .order_by(AnalysisJob.id.desc())
-            .first()
-        )
-        if job:
-            job.status = "running"
-            job.started_at = datetime.now(timezone.utc)
+        job_query = db.query(AnalysisJob).filter(AnalysisJob.repository_id == repository_id)
+        if job_id is not None:
+            job_query = job_query.filter(AnalysisJob.id == job_id)
+        job = job_query.order_by(AnalysisJob.id.desc()).first()
+        if not job:
+            raise RuntimeError("분석 작업이 존재하지 않습니다.")
+        if job.status == "done":
+            return  # 중복 전달된 완료 작업은 다시 수집하지 않는다.
+        if str(job.triggered_by_user_id or "") != str(user_id or ""):
+            raise RuntimeError("작업 요청자와 수집 인증 사용자가 일치하지 않습니다.")
+        repository, metadata = verify_repository_access(db,repository_id,user_id)
+        remember_access(db,repository,metadata,job.triggered_by_user_id)
+        existing_parameters = job.parameters or {}
+        job.parameters = {**existing_parameters, **analysis_parameters(existing_parameters.get('window_start'), existing_parameters.get('window_end'))}
+        job.status = "running"
+        job.started_at = datetime.now(timezone.utc)
         db.commit()
 
         # 진행 상황 보고기 (analysis_jobs.progress_detail 실시간 갱신)
@@ -156,11 +138,11 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
         _report("저장소 복제 중...", stage="collect")
 
         # 개인 토큰을 먼저 해석 (private repo 클론 인증 + 이후 GitHub API 공용 사용)
-        github_token = _resolve_github_token(db, user_id)
+        github_token = _resolve_github_token(db, user_id, repository.is_private)
 
         # 2) Clone repo (private 이면 토큰으로 인증)
         repo_name = repository.url.rstrip("/").split("/")[-1].removesuffix(".git")
-        repo_path = clone_repository(repository.url, repo_name, token=github_token)
+        repo_path = clone_repository(repository.url, repository.id, token=github_token)
         print("📁 repo_path:", repo_path)
 
         default_branch = get_default_branch(repo_path)
@@ -902,23 +884,21 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
               AND review_duration_hours IS NULL
         """), {"rid": repository.id})
 
-        # 분석 결과 스냅샷 저장: job/repository의 완료 상태를 확정 커밋한다
         _report("분석 결과 저장 중...", stage="snapshot")
+        db.commit()
+        # 한 시점의 DB 입력을 읽고 결과 저장/완료 상태를 같은 트랜잭션에 확정한다.
+        db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+        parameters = dict(job.parameters)
+        target_sha, target_paths, reachable_shas = snapshot_target(repo_path,utc_datetime(parameters["window_end"]))
+        snapshot = build_snapshot(db,repository,job,target_sha=target_sha,live_paths=target_paths,
+                                  reachable_shas=reachable_shas,parameters=parameters)
         now = datetime.now(timezone.utc)
         repository.last_analyzed_at = now
-        if job:
-            job = db.merge(job)
-            job.status = "done"
-            job.completed_at = now
-            job.last_api_fetched_at = now
-            last_commit = (
-                db.query(Commit.sha, Commit.committed_at)
-                .filter(Commit.repository_id == repository.id)
-                .order_by(Commit.committed_at.desc())
-                .first()
-            )
-            if last_commit:
-                job.last_commit_sha, job.last_commit_at = last_commit
+        job.status = "done"
+        job.completed_at = now
+        job.last_api_fetched_at = now
+        job.last_commit_sha = target_sha
+        job.parameters = {**parameters,"snapshot_id":snapshot.id}
         db.commit()
         _report("분석 완료", stage="done")
         print("✅ TASK COMPLETED")
@@ -933,6 +913,7 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
             failed_job = (
                 db.query(AnalysisJob)
                 .filter(AnalysisJob.repository_id == repository_id)
+                .filter(AnalysisJob.id == job_id if job_id is not None else True)
                 .order_by(AnalysisJob.id.desc())
                 .first()
             )
@@ -946,5 +927,11 @@ def analyze_repository(repository_id: int, user_id: str | None = None):
     finally:
         try:
             db.close()
-        except Exception:
-            pass
+        finally:
+            if lock_connection is not None:
+                try:
+                    if locked:
+                        lock_connection.execute(text("SELECT pg_advisory_unlock(1735289201,:rid)"),{"rid":repository_id})
+                        lock_connection.commit()
+                finally:
+                    lock_connection.close()

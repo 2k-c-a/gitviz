@@ -2,7 +2,7 @@
 import { isLoggedIn, openLoginModal } from './login.js';
 import { parseRepoName, urlInput, fmtDuration } from './utils.js';
 import { showPage } from './routing.js';
-import { getRepoId, setRepoId } from './api.js';
+import { getRepoId, setRepoId, resetSnapshot } from './api.js';
 
 /* ── 잡 상태 모달 ── */
 // state: 'running' | 'done' | 'error-rate-limit' | 'error-not-found' | 'error-unreachable'
@@ -189,7 +189,7 @@ function _renderStatus(s) {
 
   if (status === 'done') {
     _stopPolling();
-    if (_currentRepoId) setRepoId(_currentRepoId);   // 결과 페이지가 이 repo를 보도록 기억
+    if (_currentRepoId) { setRepoId(_currentRepoId); resetSnapshot(_currentRepoId); }
     _markPipelineAllDone(s);
     simulateJobState('done');
     return;
