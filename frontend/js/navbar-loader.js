@@ -1,3 +1,5 @@
+import { nextQuery } from './viz-state.js';
+
 export async function loadNavbar() {
 
   const isPage =
@@ -24,7 +26,11 @@ export async function loadNavbar() {
   }
 }
 
-window.goPage = function(page, repoId){
+/* 화면 이동.
+   - goPage('network')            : 같은 저장소의 탭 이동 → 지금 주소의 repo·snapshot·정렬 정책을 유지
+   - goPage('timeline', repoId)   : 그 저장소로 이동. 저장소가 바뀌면 이전 snapshot은 가져가지 않는다
+   - goPage('timeline', repoId, snapshotId) : 그 저장소의 특정 결과(예: 방금 끝난 분석)로 이동 */
+window.goPage = function(page, repoId, snapshotId){
 
   const isPage =
     window.location.pathname.includes('/pages/');
@@ -32,13 +38,8 @@ window.goPage = function(page, repoId){
   const ROOT =
     isPage ? './' : './pages/';
 
-  const query =
-    (repoId !== undefined && repoId !== null && repoId !== '')
-      ? '?repo=' + encodeURIComponent(repoId)
-      : '';
-
   location.href =
-    ROOT + page + '.html' + query;
+    ROOT + page + '.html' + nextQuery(location.search, repoId, snapshotId);
 };
 
 window.goHome = function(){

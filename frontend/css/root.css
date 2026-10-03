@@ -153,7 +153,9 @@
   .cx-detail-path { font-family: monospace; font-size: 12px; color: var(--text); word-break: break-all; margin-bottom: 8px; min-height: 34px; }
   .cx-detail-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 0.5px solid var(--border); font-size: 12px; }
   .cx-detail-row:first-child { border-top: none; }
-  .cx-detail-row span:first-child { color: var(--text2); }
+  .cx-detail-row > span:first-child { color: var(--text2); }
+  .cx-detail-val { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px; text-align: right; }
+  .cx-detail-val small { color: var(--text3); }
 
   /* CODE ANALYSIS — 디렉토리 트리 다이어그램 */
   .cx-canvas-wrap { position: relative; }

@@ -724,10 +724,19 @@ def get_coupling(repository_id: int, limit: int = 100, min_score: float = 0.0, d
     return {"meta": meta, "pairs": pairs[:limit]}
 
 
-def _coupled_files_for(result: dict, file_id: int) -> list[dict]:
+COUPLED_SORT_KEYS = {"coupling": "coupling_score", "idf": "adjusted_score"}
+
+
+def _coupled_files_for(result: dict, file_id: int, sort_by: str | None = None) -> list[dict]:
     """_compute_coupling() 결과에서 file_id가 걸린 쌍만 뽑아 상대 파일 기준으로 펼치고
     선택 파일에서 상대 파일로의 과거 동반 비율·표본 수 순으로 정렬한다. /coupling/{file_id}와 파일 상세 팝업(files/{file_id}/detail)
-    양쪽에서 공유하는 로직 — 계산 결과가 어긋나지 않게 한 곳에 모아둔다."""
+    양쪽에서 공유하는 로직 — 계산 결과가 어긋나지 않게 한 곳에 모아둔다.
+
+    sort_by(coupling | idf)를 주면 /coupling과 같은 기준(점수 → 공동 변경 횟수 → file_id)으로
+    **전체 후보를 정렬**한다. 호출부는 이 정렬이 끝난 뒤에 limit으로 잘라야 한다 —
+    잘린 목록을 다시 정렬하면 전체 최상위 후보가 빠질 수 있다."""
+    if sort_by is not None and sort_by not in COUPLED_SORT_KEYS:
+        raise ValueError("sort_by must be coupling or idf")
     coupled = []
     for p in result["pairs"]:
         if p["file_a_id"] == file_id:
@@ -744,7 +753,11 @@ def _coupled_files_for(result: dict, file_id: int) -> list[dict]:
                              "selected_change_count": p["change_count_b"], "other_change_count": p["change_count_a"],
                              "selected_to_other_ratio": p["b_to_a_ratio"], "other_to_selected_ratio": p["a_to_b_ratio"],
                              "low_support": p["low_support"]})
-    coupled.sort(key=lambda c: (-c["selected_to_other_ratio"], -c["co_change_count"], c["file_id"]))
+    if sort_by is None:
+        coupled.sort(key=lambda c: (-c["selected_to_other_ratio"], -c["co_change_count"], c["file_id"]))
+    else:
+        key = COUPLED_SORT_KEYS[sort_by]
+        coupled.sort(key=lambda c: (-c[key], -c["co_change_count"], c["file_id"]))
     return coupled
 
 
@@ -1157,10 +1170,11 @@ def get_contributor_collaborators(
 
 
 @router.get("/files/{file_id}/detail")
-def get_file_detail(repository_id: int, file_id: int, limit: int = 20, db: Session = Depends(get_db)):
+def get_file_detail(repository_id: int, file_id: int, limit: int = 20, db: Session = Depends(get_db), sort_by: str | None = None):
     """파일 클릭 팝업용 — 수정한 사람(editors) + 공동 변경 후보(coupled_files).
     공동 변경 신호는 실제 의존성 또는 영향 관계의 확정 판정이 아니다. BF·Coupling과 같은
-    소스(_fetch_recent_ownership, _compute_coupling)를 재사용해 값이 어긋나지 않는다."""
+    소스(_fetch_recent_ownership, _compute_coupling)를 재사용해 값이 어긋나지 않는다.
+    sort_by를 주면 전체 후보를 그 기준으로 정렬한 뒤 limit으로 자르고, coupled_total에 전체 후보 수를 싣는다."""
     file_row = db.execute(
         text("SELECT id, path FROM files WHERE repository_id = :rid AND id = :fid"),
         {"rid": repository_id, "fid": file_id},
@@ -1172,7 +1186,7 @@ def get_file_detail(repository_id: int, file_id: int, limit: int = 20, db: Sessi
     oa = _ownership_analysis(ownership_by_file.get(file_id, []))
 
     coupling_result = _compute_coupling(db, repository_id)
-    coupled = _coupled_files_for(coupling_result, file_id)
+    coupled = _coupled_files_for(coupling_result, file_id, sort_by)
 
     return {
         "file": {"id": file_row["id"], "path": file_row["path"]},
@@ -1187,6 +1201,8 @@ def get_file_detail(repository_id: int, file_id: int, limit: int = 20, db: Sessi
             for s in oa["shares"]
         ],
         "co_change_unit": coupling_result["co_change_unit"],
+        "sort_by": sort_by,
+        "coupled_total": len(coupled),
         "coupled_files": coupled[:limit],
     }
 

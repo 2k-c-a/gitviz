@@ -39,6 +39,7 @@ import './network.js';
 import './code-analysis.js';
 import './myprojects.js';
 import './search.js';
+import './history.js';
 
 /* ── 전역 등록 (await 전에 먼저 등록해야 onclick에서 바로 사용 가능) ── */
 window.openLoginModal  = openLoginModal;
@@ -138,7 +139,8 @@ function _fmtCompletedAt(iso) {
 
 function _buildMeta(repo) {
   const parts = [];
-  if (repo.commit_count) parts.push(`커밋 ${repo.commit_count.toLocaleString()}개`);
+  // 수집한 기본 브랜치의 누적 커밋 수 — 결과 화면의 '관측 구간 커밋'과 다를 수 있다
+  if (repo.commit_count) parts.push(`수집 커밋 ${repo.commit_count.toLocaleString()}개`);
   if (repo.pr_count) parts.push(`PR ${repo.pr_count.toLocaleString()}개`);
   if (repo.contributor_count) parts.push(`기여자 ${repo.contributor_count.toLocaleString()}명`);
   if (!parts.length) parts.push('수집 중...');
@@ -158,6 +160,7 @@ function _buildBadge(status, isStale) {
     pending:      ['badge-blue',  'var(--blue)',   '대기 중'],
     rate_limited: ['badge-blue',  'var(--blue)',   'Rate Limit 대기'],
     failed:       ['badge-red',   'var(--red)',    '실패'],
+    cancelled:    ['badge-gray',  'var(--text3)',  '교체됨'],
     unknown:      ['badge-gray',  'var(--text3)',  '알 수 없음'],
   };
   const [cls, color, label] = map[status] || map.unknown;

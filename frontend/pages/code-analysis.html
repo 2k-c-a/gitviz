@@ -10,10 +10,10 @@
 <body>
     <div id="navbar-container"></div>
     <div id="modal-container"></div>
-    <!-- ═══════════ CODE ANALYSIS (Risk · Bus Factor · Coupling 통합) ═══════════ -->
+    <!-- ═══════════ CODE ANALYSIS (점검 우선순위 · BF80 · 변경 결합 통합) ═══════════ -->
 <div class="page active" id="page-code-analysis">
   <div class="dash-head">
-    <div><div class="dash-title js-repo-title">—</div><div class="dash-sub">코드 분석 — 상대 분석 점수 · BF 추정치 · 공동 변경 결합도</div></div>
+    <div><div class="dash-title js-repo-title">—</div><div class="dash-sub" id="cx-dash-sub">코드 분석 — 점수 · BF80 · 공동 변경 결합도</div></div>
     <div style="display:flex;align-items:center;gap:10px;">
       <div style="display:flex;align-items:center;gap:7px;">
         <div class="status-dot" style="background:#639922;"></div>
@@ -23,19 +23,22 @@
     </div>
   </div>
   <div class="sub-tabs">
-    <div class="sub-tab" onclick="location.href='./timeline.html'">타임라인</div>
-    <div class="sub-tab" onclick="location.href='./network.html'">협업 네트워크</div>
+    <div class="sub-tab" onclick="goPage('timeline')">타임라인</div>
+    <div class="sub-tab" onclick="goPage('network')">협업 네트워크</div>
     <div class="sub-tab active">코드분석</div>
+    <div class="sub-tab" onclick="goPage('history')">분석 이력·비교</div>
   </div>
   <div class="body">
     <div class="metrics-4">
-      <div class="metric-card"><div class="m-label">높은 분석 점수 파일</div><div class="m-val" id="cx-m-highrisk">—</div><div class="m-sub">Risk Score ≥ 0.7</div></div>
-      <div class="metric-card"><div class="m-label">평균 Risk Score</div><div class="m-val" id="cx-m-avgrisk">—</div><div class="m-sub">점수가 있는 현재 파일 기준</div></div>
-      <div class="metric-card"><div class="m-label">BF 추정치 = 1</div><div class="m-val" id="cx-m-bf1">—</div><div class="m-sub">한 명의 변경 기여 ≥ 80%</div></div>
-      <div class="metric-card"><div class="m-label">강결합 파일</div><div class="m-val" id="cx-m-coupling">—</div><div class="m-sub">결합도 ≥ 0.7</div></div>
+      <div class="metric-card"><div class="m-label" id="cx-l-high">점수 ≥ 0.7 파일</div><div class="m-val" id="cx-m-highrisk">—</div><div class="m-sub" id="cx-s-high">표시 임계값 기준이며 상위 30%를 뜻하지 않음</div></div>
+      <div class="metric-card"><div class="m-label" id="cx-l-avg">평균 점수</div><div class="m-val" id="cx-m-avgrisk">—</div><div class="m-sub" id="cx-s-avg">점수가 있는 파일 기준</div></div>
+      <div class="metric-card"><div class="m-label" id="cx-l-bf">BF80 = 1 파일</div><div class="m-val" id="cx-m-bf1">—</div><div class="m-sub" id="cx-s-bf">한 명에게 변경 기여 80% 이상 집중</div></div>
+      <div class="metric-card"><div class="m-label" id="cx-l-cp">강결합 후보 파일</div><div class="m-val" id="cx-m-coupling">—</div><div class="m-sub" id="cx-s-cp">공동 변경 결합도 ≥ 0.7 (실제 의존성 아님)</div></div>
     </div>
 
-    <div class="p-note">Risk Score는 저장소 내 지표를 정규화한 상대 점수이며 결함 확률이 아닙니다. 다른 저장소와 직접 비교하거나 낮은 점수를 안전으로 해석하지 마세요. 비교 파일이 하나이거나 지표값이 모두 같으면 정규화값은 0입니다. 폴더는 값이 있는 하위 파일의 평균을 표시합니다. BF는 변경 기여 80%를 차지하는 최소 인원 추정치이고, 결합도는 실제 의존성이 아닌 공동 변경 신호입니다.</div>
+    <div class="cx-evidence" id="cx-evidence"></div>
+
+    <div class="p-note" id="cx-policy-note">지표 설명을 불러오는 중입니다.</div>
 
     <!-- 디렉토리 트리 -->
     <div class="panel" style="margin-bottom:14px;">
@@ -70,26 +73,47 @@
     </div>
 
     <!-- 전체 파일 종합 리스트 -->
-    <div class="panel">
+    <div class="panel" style="margin-bottom:14px;">
       <div class="p-head" style="margin-bottom:6px;">
         <div class="p-title">전체 파일 종합 리스트</div>
-        <div style="font-size:11px;color:var(--text2);" id="cx-list-note">위험도순 · 상위 20개</div>
+        <div style="font-size:11px;color:var(--text2);" id="cx-list-note">정렬 기준을 불러오는 중</div>
       </div>
-      <div class="p-note">파일 경로를 클릭하면 GitHub에서 열리고, 행의 나머지 영역을 클릭하면 수정한 사람과 함께 변경된 파일을 볼 수 있습니다.</div>
+      <div class="p-note">파일 경로를 클릭하면 GitHub에서 열리고, 행의 나머지 영역을 클릭하면 점수 구성·기여 분포·함께 변경된 파일을 볼 수 있습니다. 점수가 없는 파일(—)은 0이 아니라 관측 변경 없음 또는 자료 부족이며 항상 순위 뒤에 둡니다.</div>
+      <input type="search" id="cx-search" class="cx-search" placeholder="파일 경로 검색 (예: api/, analytics)" autocomplete="off" aria-label="파일 경로 검색">
       <div class="hm-wrap">
         <table class="hm-table">
           <thead>
             <tr>
               <th class="hm-th left">파일</th>
-              <th class="hm-th">Risk Score</th>
-              <th class="hm-th">BF 추정치</th>
-              <th class="hm-th">결합도</th>
-              <th class="hm-th">결합 파일 수</th>
+              <th class="hm-th" id="cx-th-score">점수</th>
+              <th class="hm-th" id="cx-th-bf">BF80</th>
+              <th class="hm-th" id="cx-th-cp">결합도</th>
+              <th class="hm-th">강결합 후보 수</th>
             </tr>
           </thead>
           <tbody id="cx-list-tbody"></tbody>
         </table>
       </div>
+    </div>
+
+    <!-- 기여 분포 -->
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="p-head" style="margin-bottom:6px;">
+        <div class="p-title">기여 분포 (BF80)</div>
+        <div style="font-size:11px;color:var(--text2);">관측 구간의 파일 변경 기여 집중도</div>
+      </div>
+      <div class="p-note">BF80은 관측 구간에서 파일 변경 커밋의 80%를 차지하는 최소 기여자 수입니다(식별된 기여 기준). 1은 한 명에게 관측 변경 기여가 집중되었다는 뜻이며 실제 지식 보유 인원이 아닙니다. 엔트로피가 높다고 위험하다는 뜻은 아니어서 색을 붙이지 않았습니다. 기여자가 1명이면 정규화 엔트로피는 0, 식별된 기여가 없으면 값이 없습니다(—).</div>
+      <div id="cx-bf-body"><div class="cx-empty">불러오는 중...</div></div>
+    </div>
+
+    <!-- 변경 결합 -->
+    <div class="panel">
+      <div class="p-head" style="margin-bottom:6px;">
+        <div class="p-title">변경 결합 (함께 변경된 파일 후보)</div>
+        <div class="range-btns" id="cx-cp-toggle"></div>
+      </div>
+      <div class="p-note">결합도 = 공동 변경 횟수 ÷ min(두 파일의 변경 횟수)입니다. A → B는 A가 바뀐 변경 중 B도 함께 바뀐 과거 비율이고 B → A는 그 반대입니다. 미래 영향 확률이나 실제 의존성(import)이 아니며, 공동 변경 2건 이상인 쌍만 후보가 됩니다. 기본 정렬은 결합도·공동 변경 횟수이고, IDF 보정은 자주 바뀌는 파일의 비중을 낮추는 실험 정렬로, 직접 선택해야 적용됩니다. 선택은 주소에 저장되어 탭을 옮기거나 뒤로 가도 유지됩니다.</div>
+      <div id="cx-cp-body"><div class="cx-empty">불러오는 중...</div></div>
     </div>
   </div>
 </div>

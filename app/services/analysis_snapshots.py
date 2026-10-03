@@ -252,6 +252,26 @@ def bounded(query, key, default, lo=0, hi=10000, integer=True):
     return value
 
 
+FILE_METRIC_FIELDS = ("maintenance_priority", "risk_score", "priority_components", "unidentified_share",
+                      "window_start", "window_end", "evidence_status", "change_freq", "churn", "bugfix_count",
+                      "current_risk", "structural_risk")
+
+
+def file_metric_fields(payload, file_id):
+    """파일 상세에 싣는 점수 구성과 근거 상태.
+
+    risk-scores는 관측 구간에 변경이 있는 파일을 전부 담는다(HTTP 응답만 limit으로 자른다).
+    거기 없는 파일은 트리(현재 기준 SHA의 파일 전체)에 기록된 상태를 쓴다. 둘 다 없으면 상태를
+    만들어 내지 않는다 — 호출부(화면)가 '상위 N개에 없다'는 이유로 상태를 추정하지 않게 하려는 것이다."""
+    scored = next((f for f in payload.get("risk-scores", {}).get("files", []) if f["file_id"] == file_id), None)
+    if scored is not None:
+        return {k: scored[k] for k in FILE_METRIC_FIELDS if k in scored}
+    in_tree = next((f for f in payload.get("tree", {}).get("files", []) if f["file_id"] == file_id), None)
+    if in_tree is None:
+        return {}
+    return {k: in_tree[k] for k in ("maintenance_priority", "risk_score", "evidence_status") if k in in_tree}
+
+
 def serve_snapshot(snapshot, route, query):
     """저장된 값만 선택/필터링한다. 지표 재계산이나 원본 DB 조회 없음."""
     p = snapshot.payload
@@ -308,17 +328,21 @@ def serve_snapshot(snapshot, route, query):
             file = next((f for f in p["file_index"] if f["id"]==fid),None)
             if not file:
                 raise HTTPException(404,"파일이 해당 스냅샷에 없습니다.")
-            from app.api.analytics import _coupled_files_for
+            from app.api.analytics import _coupled_files_for, COUPLED_SORT_KEYS
+            sort_by = query.get("sort_by")
+            if sort_by is not None and sort_by not in COUPLED_SORT_KEYS:
+                raise HTTPException(422,"sort_by는 coupling 또는 idf입니다.")
             ownership = p["ownership"].get(str(fid), {"entropy":None,"bus_factor":None,"shares":[]})
-            coupled = _coupled_files_for({"pairs":p["coupling"]["pairs"]},fid)
-            result = {"file":file,"co_change_unit":p["coupling"]["meta"]["co_change_unit"],"coupled_files":coupled[:bounded(query,"limit",20)],
+            # 정렬은 전체 후보에 대해 먼저 하고 그 뒤에 limit으로 자른다
+            coupled = _coupled_files_for({"pairs":p["coupling"]["pairs"]},fid,sort_by)
+            result = {"file":file,"co_change_unit":p["coupling"]["meta"]["co_change_unit"],
+                      "sort_by":sort_by,"coupled_total":len(coupled),"coupled_files":coupled[:bounded(query,"limit",20)],
                       "entropy":round(ownership["entropy"],4) if ownership["entropy"] is not None else None,"bus_factor":ownership["bus_factor"],
                       "is_bus_factor_risk":ownership["bus_factor"]==1,
                       "editors":[{**s,"share":round(s["share"],4)} for s in ownership["shares"]]}
             result.update({k:ownership.get(k) for k in ("entropy_normalized","top_owner_share","contributor_count","observation_count","low_support")})
             result["bf80"] = ownership["bus_factor"]
-            metrics = next((f for f in p.get("risk-scores",{}).get("files",[]) if f["file_id"]==fid),{})
-            result.update({k:metrics.get(k) for k in ("maintenance_priority","priority_components","unidentified_share","window_start","window_end")})
+            result.update(file_metric_fields(p,fid))
         elif len(parts)==3 and parts[0]=="contributors" and parts[2] in {"owned-files","collaborators"}:
             cid = int(parts[1])
             contributor = next((c for c in p["contributor_index"] if c["id"]==cid),None)

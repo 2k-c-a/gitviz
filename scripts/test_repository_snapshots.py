@@ -89,6 +89,53 @@ class Regression(unittest.TestCase):
         a=_coupled_files_for({'pairs':[pair]},1)[0];b=_coupled_files_for({'pairs':[pair]},2)[0]
         self.assertEqual(a['selected_to_other_ratio'],.02);self.assertEqual(b['selected_to_other_ratio'],1)
         self.assertTrue(a['low_support'])
+    @staticmethod
+    def _detail_snapshot():
+        """파일 5에 후보 601개: 선택→상대 동반 비율 순으로는 최상위 결합도 후보가 맨 뒤(601번째)에 놓인다."""
+        from types import SimpleNamespace
+        now=datetime(2026,1,1,tzinfo=timezone.utc)
+        def pair(other,score,adjusted,ratio):
+            return {'file_a_id':5,'file_a_path':'a.py','file_b_id':other,'file_b_path':f'f{other}.py','co_change_count':3,
+                'change_count_a':10,'change_count_b':10,'a_to_b_ratio':ratio,'b_to_a_ratio':ratio,
+                'coupling_score':score,'adjusted_score':adjusted,'low_support':True}
+        pairs=[pair(100+i,0.2,0.1,0.5) for i in range(600)]
+        pairs.append(pair(900,0.95,0.2,0.01))      # 결합도 최상위지만 동반 비율은 최하위
+        pairs.append(pair(901,0.25,9.0,0.02))      # IDF 보정 최상위
+        payload={'data_quality':{},'file_index':[{'id':i,'path':f'f{i}.py'} for i in (5,6,7,8)],'ownership':{},
+            'coupling':{'meta':{'co_change_unit':'pr'},'pairs':pairs},
+            'risk-scores':{'files':[{'file_id':5,'path':'a.py','maintenance_priority':0.4,'risk_score':0.4,'evidence_status':'observed',
+                'change_freq':12,'churn':30.0,'bugfix_count':1,'priority_components':{'change_freq':0.5,'churn':0.4,'bugfix_count':0.3},
+                'unidentified_share':0.0,'window_start':'s','window_end':'e'}]},
+            'tree':{'files':[{'file_id':5,'maintenance_priority':0.4,'risk_score':0.4,'evidence_status':'observed'},
+                {'file_id':6,'maintenance_priority':None,'risk_score':None,'evidence_status':'no_history'}]}}
+        return SimpleNamespace(id=9,target_sha='a'*40,analyzed_at=now,window_start=None,window_end=now,
+            formula_version='gitviz-2026.10-priority-v3',parameters={},payload=payload,payload_sha256='x')
+    def test_coupled_candidates_are_sorted_before_limit(self):
+        snapshot=self._detail_snapshot()
+        default=serve_snapshot(snapshot,'files/5/detail',{'limit':'500'})
+        self.assertNotIn(900,[c['file_id'] for c in default['coupled_files']],'기본 순서에서는 500개 안에 못 들어오는 후보')
+        for sort_by,top in (('coupling',900),('idf',901)):
+            result=serve_snapshot(snapshot,'files/5/detail',{'sort_by':sort_by,'limit':'3'})
+            self.assertEqual(result['coupled_files'][0]['file_id'],top,f'{sort_by}: 전체 후보 기준 최상위가 먼저')
+            self.assertEqual(len(result['coupled_files']),3)
+            self.assertEqual(result['coupled_total'],602,'자르기 전 전체 후보 수')
+            self.assertEqual(result['sort_by'],sort_by)
+        ties=serve_snapshot(snapshot,'files/5/detail',{'sort_by':'coupling','limit':'5'})['coupled_files']
+        self.assertEqual([c['file_id'] for c in ties],[900,901,100,101,102],'점수 순, 동률(0.2)은 공동 변경 횟수 → file_id 순')
+        with self.assertRaises(HTTPException) as error:serve_snapshot(snapshot,'files/5/detail',{'sort_by':'bogus'})
+        self.assertEqual(error.exception.status_code,422)
+        self.assertIsNone(serve_snapshot(snapshot,'files/5/detail',{})['sort_by'],'sort_by를 주지 않으면 기존 순서·기존 응답 형태')
+    def test_file_detail_reports_the_files_own_evidence_status(self):
+        snapshot=self._detail_snapshot()
+        scored=serve_snapshot(snapshot,'files/5/detail',{'limit':'1'})
+        self.assertEqual((scored['evidence_status'],scored['change_freq'],scored['churn'],scored['bugfix_count']),('observed',12,30.0,1))
+        self.assertEqual(scored['priority_components']['churn'],0.4)
+        quiet=serve_snapshot(snapshot,'files/6/detail',{'limit':'1'})
+        self.assertEqual(quiet['evidence_status'],'no_history','점수 목록에 없고 트리에 no_history로 기록된 파일')
+        self.assertIsNone(quiet['maintenance_priority'])
+        unknown=serve_snapshot(snapshot,'files/7/detail',{'limit':'1'})
+        self.assertNotIn('evidence_status',unknown,'점수 목록에도 트리에도 없으면 상태를 만들어 내지 않는다')
+        self.assertEqual(unknown['file']['id'],7)
     def test_reads_do_not_modify_persisted_payload(self):
         with self.Session() as db:
             snapshot=db.get(AnalysisSnapshot,1)
