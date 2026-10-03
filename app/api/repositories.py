@@ -22,6 +22,7 @@ from app.services.analysis_snapshots import analysis_parameters, load_snapshot
 from app.services.repository_access import (canonical_github_url, github_metadata, user_github_token,
     visible_repository_query, verify_repository_access, remember_access)
 from app.services.lightweight_score import compute_lightweight_score
+from app.services.job_lifecycle import job_staleness, ACTIVE_STATUSES, LOCK_NAMESPACE
 
 router = APIRouter()
 
@@ -42,49 +43,9 @@ _PRIMARY_LANGUAGE_EXTS = {
     "c", "h", "cpp", "hpp", "cs", "rs", "kt", "swift", "scala", "vue",
 }
 
-# rate_limited 상태에서 resume_at을 이만큼(초) 넘겨도 여전히 rate_limited면
-# 정상 대기가 아니라 워커가 죽어서 멈춘 것으로 간주한다(폴링/시계 오차 여유분).
-_STALE_GRACE_SECONDS = 120
-# resume_at 정보가 없는(구버전) 작업은 started_at 이후 이만큼 지나도 안 끝나면 멈춘 것으로 간주.
-_STALE_FALLBACK_SECONDS = 6 * 3600
-
-
 def _compute_staleness(job: AnalysisJob) -> dict:
-    """진행 중인 작업의 실시간 대기 상태를 계산한다 (DB에 저장하지 않고 조회 시점에 계산).
-
-    - remaining_seconds: rate_limited 상태일 때 남은 대기 시간(라이브 카운트다운용).
-    - is_stale / stale_seconds: 대기가 끝났어야 할 시각을 한참 지났는데도 상태가
-      안 바뀌었으면(=워커가 죽어서 멈춤) True. resume_at이 없는 구버전 데이터는
-      started_at 기준 장시간 미완료로 폴백 판정한다.
-    """
-    result = {"remaining_seconds": None, "is_stale": False, "stale_seconds": None}
-    if job.status not in ("running", "rate_limited"):
-        return result
-
-    now = datetime.now(timezone.utc)
-    detail = job.progress_detail or {}
-    resume_at_str = detail.get("resume_at")
-
-    if resume_at_str:
-        try:
-            resume_at = datetime.fromisoformat(resume_at_str)
-            overdue = (now - resume_at).total_seconds()
-            if job.status == "rate_limited":
-                result["remaining_seconds"] = max(0, int(-overdue))
-            if overdue > _STALE_GRACE_SECONDS:
-                result["is_stale"] = True
-                result["stale_seconds"] = int(overdue)
-            return result
-        except (ValueError, TypeError):
-            pass
-
-    if job.started_at:
-        elapsed = (now - job.started_at).total_seconds()
-        if elapsed > _STALE_FALLBACK_SECONDS:
-            result["is_stale"] = True
-            result["stale_seconds"] = int(elapsed)
-
-    return result
+    """시간상 복구 후보를 표시한다. 실제 재시작은 워커 잠금을 확인한 뒤 허용한다."""
+    return job_staleness(job)
 
 
 @router.get("/repositories")
@@ -254,10 +215,21 @@ def list_my_repositories(request: Request, db: Session = Depends(get_db)):
 def _trigger_analysis(db: Session, repository_id: int, user_id, parameters=None):
     # 요청마다 새 작업을 만든다. 같은 저장소의 진행 중인 작업은 중복 큐잉하지 않는다.
     db.query(Repository).filter_by(id=repository_id).with_for_update().one()
-    active = db.query(AnalysisJob).filter(AnalysisJob.repository_id == repository_id,
-        AnalysisJob.status.in_(["pending", "running", "rate_limited"])).order_by(AnalysisJob.id.desc()).first()
-    if active:
-        raise HTTPException(409, "진행 중인 분석이 있습니다. 완료 후 원하는 기간으로 다시 요청해 주세요.")
+    active_jobs = db.query(AnalysisJob).filter(AnalysisJob.repository_id == repository_id,
+        AnalysisJob.status.in_(ACTIVE_STATUSES)).order_by(AnalysisJob.id.desc()).all()
+    if active_jobs:
+        if any(not job_staleness(active)["is_stale"] for active in active_jobs):
+            raise HTTPException(409, "진행 중인 분석이 있습니다. 완료 후 원하는 기간으로 다시 요청해 주세요.")
+        # 워커가 장시간 정상 실행 중이면 나이와 무관하게 교체하지 않는다.
+        # 수집 워커의 session advisory lock과 같은 키를 transaction 범위로 획득한다.
+        unlocked = db.execute(text("SELECT pg_try_advisory_xact_lock(:namespace, :rid)"),
+                              {"namespace": LOCK_NAMESPACE, "rid": repository_id}).scalar()
+        if not unlocked:
+            raise HTTPException(409, "수집 워커가 아직 실행 중입니다. 종료 후 다시 시도해 주세요.")
+        for active in active_jobs:
+            active.status = "cancelled"
+            active.completed_at = datetime.now(timezone.utc)
+            active.error_message = "응답이 없는 작업을 새 분석 요청으로 교체했습니다."
     job = AnalysisJob(repository_id=repository_id, status="pending", triggered_by="api",
                       triggered_by_user_id=user_id, parameters=parameters or analysis_parameters())
     db.add(job)
@@ -463,6 +435,7 @@ def get_repository_status(repository_id: int, request: Request, db: Session = De
     return {
         "repository_id": repository_id,
         "job_id": job.id,
+        "snapshot_id": (job.parameters or {}).get("snapshot_id"),
         "status": job.status,
         "progress_detail": job.progress_detail or {},
         "error_message": job.error_message,

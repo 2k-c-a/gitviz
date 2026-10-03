@@ -8,8 +8,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import text
 from app.models.analysis_snapshot import AnalysisSnapshot
 
-FORMULA_VERSION = "gitviz-2026.10-snapshot-v2"
-LOW_SUPPORT_THRESHOLD = 5  # 표시 정책. 통계적 신뢰수준/검증된 정확도를 뜻하지 않음.
+from app.services.metric_policy import FORMULA_VERSION, LOW_SUPPORT_THRESHOLD, DEFAULT_WINDOW_DAYS, large_change_threshold
 
 
 def canonical_payload(value):
@@ -34,14 +33,18 @@ def utc_datetime(value):
 
 def analysis_parameters(start=None, end=None):
     end = utc_datetime(end) if end else datetime.now(timezone.utc)
-    start = utc_datetime(start) if start else None
+    start = utc_datetime(start) if start else end - timedelta(days=DEFAULT_WINDOW_DAYS)
     if start and start >= end:
         raise ValueError("분석 시작 시각은 종료 시각보다 이전이어야 합니다.")
     if end > datetime.now(timezone.utc) + timedelta(seconds=5):
         raise ValueError("미래 시각으로 분석할 수 없습니다.")
     return {"window_start": start.isoformat() if start else None,
             "window_end": end.isoformat(), "formula_version": FORMULA_VERSION,
-            "interval": "[start,end)", "low_support_threshold": LOW_SUPPORT_THRESHOLD}
+            "interval": "[start,end)", "low_support_threshold": LOW_SUPPORT_THRESHOLD,
+            "score_kind": "maintenance_priority", "normalization": "percentile_midrank",
+            "priority_weights": {"change_freq": 1/3, "churn": 1/3, "bugfix_count": 1/3},
+            "large_change_policy": "max(15,ceil(0.1*target_tree_files))",
+            "large_change_size_basis": "target_tree_proxy"}
 
 
 class SnapshotInput:
@@ -53,13 +56,16 @@ class SnapshotInput:
     def __init__(self, db, repository_id, parameters, live_paths, reachable_shas):
         self.db = db
         self.cache = {}
-        self.info = {"analysis_as_of": utc_datetime(parameters["window_end"])}
+        end = utc_datetime(parameters["window_end"])
+        start = utc_datetime(parameters["window_start"]) if parameters.get("window_start") else end - timedelta(days=DEFAULT_WINDOW_DAYS)
+        self.info = {"analysis_as_of": end, "analysis_window_start": start}
         self.params = {
             "snapshot_rid": repository_id,
-            "snapshot_start": utc_datetime(parameters["window_start"]) if parameters["window_start"] else datetime(1, 1, 1, tzinfo=timezone.utc),
+            "snapshot_start": start,
             "snapshot_end": self.info["analysis_as_of"],
             "snapshot_paths": live_paths,
             "snapshot_shas": reachable_shas,
+            "snapshot_large_threshold": large_change_threshold(len(live_paths)),
         }
 
     def query(self, model):
@@ -77,7 +83,8 @@ class SnapshotInput:
             commits AS (
                 SELECT id,repository_id,contributor_id,sha,author_name,author_email,message,
                     commit_type,commit_type_source,commit_type_confidence,changed_file_count,
-                    is_large_commit,committed_at,true AS on_default_branch
+                    COALESCE(changed_file_count,(SELECT COUNT(DISTINCT f.file_id) FROM public.commit_file_changes f WHERE f.commit_id=public.commits.id)) >= :snapshot_large_threshold AS is_large_commit,
+                    committed_at,true AS on_default_branch
                 FROM public.commits WHERE repository_id = :snapshot_rid
                 AND committed_at >= :snapshot_start AND committed_at < :snapshot_end
                 AND sha = ANY(:snapshot_shas)
@@ -86,7 +93,11 @@ class SnapshotInput:
                 SELECT f.* FROM public.commit_file_changes f JOIN commits c ON c.id=f.commit_id
             ),
             pull_requests AS (
-                SELECT * FROM public.pull_requests WHERE repository_id = :snapshot_rid
+                SELECT p.id,p.repository_id,p.pr_number,p.title,p.state,p.author_login,p.author_contributor_id,
+                    p.opened_at,p.merged_at,p.closed_at,p.changed_file_count,
+                    p.base_branch,p.head_branch,p.review_duration_hours,p.merged_commit_sha,
+                    COALESCE(p.changed_file_count,(SELECT COUNT(DISTINCT f.file_id) FROM public.pull_request_files f WHERE f.pull_request_id=p.id)) >= :snapshot_large_threshold AS is_large_pr
+                FROM public.pull_requests p WHERE repository_id = :snapshot_rid
                 AND merged_at >= :snapshot_start AND merged_at < :snapshot_end
                 AND state = 'merged'
             ),
@@ -166,7 +177,7 @@ def data_quality(db, rid):
 
 
 def build_snapshot(db, repo, job, *, target_sha, live_paths, reachable_shas, parameters, persist=True):
-    parameters = {**parameters, 'formula_version': FORMULA_VERSION}
+    parameters = {**parameters, **analysis_parameters(parameters.get('window_start'), parameters['window_end'])}
     from app.api import analytics as a
     scoped = SnapshotInput(db, repo.id, parameters, live_paths, reachable_shas)
     unlimited = 2_147_483_647
@@ -266,7 +277,13 @@ def serve_snapshot(snapshot, route, query):
             result[key] = result[key][:limit]
     elif route == "coupling":
         minimum = bounded(query, "min_score", 0, hi=1, integer=False)
-        result = {"meta": p[route]["meta"], "pairs": [x for x in p[route]["pairs"] if x["coupling_score"] >= minimum][:bounded(query,"limit",100)]}
+        sort_by = query.get("sort_by", "coupling")
+        if sort_by not in {"coupling", "idf"}:
+            raise HTTPException(422,"sort_by는 coupling 또는 idf입니다.")
+        pairs = [x for x in p[route]["pairs"] if x["coupling_score"] >= minimum]
+        key = "adjusted_score" if sort_by == "idf" else "coupling_score"
+        pairs = sorted(pairs,key=lambda x:(-x[key],-x['co_change_count'],x['file_a_id'],x['file_b_id']))
+        result = {"meta": {**p[route]["meta"],"sort_by":sort_by}, "pairs": pairs[:bounded(query,"limit",100)]}
     elif route == "network":
         count = bounded(query, "limit_nodes", 50, lo=1, hi=1000)
         minimum = bounded(query, "min_edge_weight", 0, integer=False)
@@ -292,12 +309,16 @@ def serve_snapshot(snapshot, route, query):
             if not file:
                 raise HTTPException(404,"파일이 해당 스냅샷에 없습니다.")
             from app.api.analytics import _coupled_files_for
-            ownership = p["ownership"].get(str(fid), {"entropy":0,"bus_factor":None,"shares":[]})
+            ownership = p["ownership"].get(str(fid), {"entropy":None,"bus_factor":None,"shares":[]})
             coupled = _coupled_files_for({"pairs":p["coupling"]["pairs"]},fid)
             result = {"file":file,"co_change_unit":p["coupling"]["meta"]["co_change_unit"],"coupled_files":coupled[:bounded(query,"limit",20)],
-                      "entropy":round(ownership["entropy"],4),"bus_factor":ownership["bus_factor"],
+                      "entropy":round(ownership["entropy"],4) if ownership["entropy"] is not None else None,"bus_factor":ownership["bus_factor"],
                       "is_bus_factor_risk":ownership["bus_factor"]==1,
                       "editors":[{**s,"share":round(s["share"],4)} for s in ownership["shares"]]}
+            result.update({k:ownership.get(k) for k in ("entropy_normalized","top_owner_share","contributor_count","observation_count","low_support")})
+            result["bf80"] = ownership["bus_factor"]
+            metrics = next((f for f in p.get("risk-scores",{}).get("files",[]) if f["file_id"]==fid),{})
+            result.update({k:metrics.get(k) for k in ("maintenance_priority","priority_components","unidentified_share","window_start","window_end")})
         elif len(parts)==3 and parts[0]=="contributors" and parts[2] in {"owned-files","collaborators"}:
             cid = int(parts[1])
             contributor = next((c for c in p["contributor_index"] if c["id"]==cid),None)

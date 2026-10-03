@@ -27,6 +27,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    from migrations.schema_20261002 import reconcile
+    reconcile()
     op.execute("""
         ALTER TABLE contributors
             ADD COLUMN IF NOT EXISTS resolution_status VARCHAR DEFAULT 'unresolved'

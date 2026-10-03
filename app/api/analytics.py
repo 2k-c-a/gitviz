@@ -5,7 +5,8 @@
 """
 import math
 import statistics
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from app.services.metric_policy import percentile_rank, DEFAULT_WINDOW_DAYS
 
 import networkx as nx
 from fastapi import APIRouter, Depends
@@ -270,12 +271,11 @@ def _ownership_analysis(owners: list[dict]) -> dict:
     """파일 하나의 기여자 목록([{contributor_id, name, cnt}, ...])에서 Ownership Entropy·
     변경 기여 기반 BF 추정치·기여자별 지분(shares, 내림차순)을 한 번에 계산한다.
     BF는 변경 커밋 수의 누적 80%를 차지하는 최소 인원이며 실제 지식 인원이 아니다.
-    셋 다 같은 분포에서
-    파생되므로 한 번에 계산해 재사용한다(Risk Score용 entropy/BF, Bus Factor 전용
-    엔드포인트의 소유권 상세·독점 파일 집계 모두 이 결과를 쓴다)."""
+    같은 분포에서 한 번에 계산해 재사용하며 우선순위 점수에는 가산하지 않는다."""
     total = sum(o["cnt"] for o in owners)
     if total == 0 or not owners:
-        return {"entropy": 0.0, "bus_factor": None, "shares": []}
+        return {"entropy": None, "entropy_normalized": None, "bus_factor": None, "shares": [],
+                "top_owner_share": None, "contributor_count": 0, "observation_count": 0, "low_support": True}
 
     sorted_owners = sorted(owners, key=lambda o: o["cnt"], reverse=True)
     shares = [
@@ -294,278 +294,86 @@ def _ownership_analysis(owners: list[dict]) -> dict:
             bus_factor = i
             break
 
-    return {"entropy": entropy, "bus_factor": bus_factor, "shares": shares}
+    return {"entropy": entropy, "entropy_normalized": entropy / math.log2(len(shares)) if len(shares)>1 else 0.0,
+            "bus_factor": bus_factor, "shares": shares, "top_owner_share": shares[0]["share"],
+            "contributor_count":len(shares), "observation_count":total, "low_support":total<5}
+
+
+def _metric_window(db):
+    info = getattr(db, "info", {})
+    end = info.get("analysis_as_of") or datetime.now(timezone.utc)
+    return info.get("analysis_window_start") or end - timedelta(days=DEFAULT_WINDOW_DAYS), end
 
 
 def _fetch_recent_ownership(db, repository_id: int) -> dict[int, list[dict]]:
-    """파일별 '최근'(가장 최근 refactor 커밋 이후, 없으면 첫 커밋 이후) 구간의 기여자별
-    커밋 수 + 이름. Risk Score의 Entropy/Bus Factor와 Bus Factor 전용 엔드포인트가
-    공유하는 단일 소스 — 두 곳에서 같은 파일에 다른 값이 나오는 걸 방지한다."""
-    rows = db.execute(
-        text(
-            """
-            WITH file_windows AS (
-                SELECT cfc.file_id,
-                       MIN(c.committed_at) AS first_commit_at,
-                       MAX(c.committed_at) FILTER (WHERE c.commit_type = 'refactor') AS last_refactor_at
-                FROM commit_file_changes cfc
-                JOIN commits c ON c.id = cfc.commit_id
-                WHERE c.repository_id = :rid
-                GROUP BY cfc.file_id
-            )
-            SELECT cfc.file_id, c.contributor_id, co.display_name, co.github_login,
-                   COUNT(DISTINCT c.id) AS cnt
-            FROM commit_file_changes cfc
-            JOIN commits c ON c.id = cfc.commit_id
-            JOIN contributors co ON co.id = c.contributor_id
-            JOIN file_windows fw ON fw.file_id = cfc.file_id
-            WHERE c.repository_id = :rid AND c.contributor_id IS NOT NULL
-              AND c.committed_at >= COALESCE(fw.last_refactor_at, fw.first_commit_at)
-            GROUP BY cfc.file_id, c.contributor_id, co.display_name, co.github_login
-            """
-        ),
-        {"rid": repository_id},
-    ).mappings().all()
-
-    by_file: dict[int, list[dict]] = {}
+    """Fixed observation window, no reset at a refactor message."""
+    start, end = _metric_window(db)
+    rows = db.execute(text("""
+        SELECT cfc.file_id, c.contributor_id, co.display_name, co.github_login,
+               COUNT(DISTINCT c.id) AS cnt
+        FROM commit_file_changes cfc JOIN commits c ON c.id=cfc.commit_id
+        JOIN contributors co ON co.id=c.contributor_id
+        WHERE c.repository_id=:rid AND c.contributor_id IS NOT NULL
+          AND c.committed_at >= :start AND c.committed_at < :end
+        GROUP BY cfc.file_id,c.contributor_id,co.display_name,co.github_login
+    """), {"rid":repository_id,"start":start,"end":end}).mappings().all()
+    by_file = {}
     for r in rows:
         by_file.setdefault(r["file_id"], []).append({
-            "contributor_id": r["contributor_id"],
-            "name": r["github_login"] or r["display_name"] or "익명",
-            "cnt": r["cnt"],
-        })
+            "contributor_id":r["contributor_id"],
+            "name":r["github_login"] or r["display_name"] or "익명", "cnt":r["cnt"]})
     return by_file
 
 
-def _minmax_norm(values: dict[int, float]) -> dict[int, float]:
-    if not values:
-        return {}
-    lo, hi = min(values.values()), max(values.values())
-    if hi == lo:
-        return {k: 0.0 for k in values}
-    return {k: (v - lo) / (hi - lo) for k, v in values.items()}
-
-
-_MIN_MONTHS = 1.0  # 관측 기간이 너무 짧으면(리팩토링 직후 등) rate가 튀는 것을 막는 하한
-
-
-def _months_between(start, end) -> float:
-    if start is None:
-        return _MIN_MONTHS
-    days = (end - start).total_seconds() / 86400
-    return max(_MIN_MONTHS, days / 30.44)
-
-
 def _compute_risk_scores(db: Session, repository_id: int) -> list[dict]:
-    """파일별 Risk Score = 0.5·CurrentRisk + 0.5·StructuralRisk. 레포 전체 파일에 대해
-    (정렬·limit 없이) 계산한 결과를 그대로 반환한다 — /risk-scores와 /tree가 공유하는
-    핵심 로직이라, 정렬·limit·summary 조립은 호출부(엔드포인트)에서 각자 한다.
+    """Equal-weight percentile ranks of frequency/churn/weak bugfix counts.
 
-    저장소 내 상대 분석 점수이며 결함 발생 확률이 아니다. Min-Max 정규화는
-    값이 모두 같거나 비교 파일이 하나이면 0을 반환하므로 낮은 값은 안전을
-    보장하지 않는다. 산식은 두 축으로 나눈다.
-
-    CurrentRisk — "리팩토링(있었다면) 이후로 다시 문제가 쌓이고 있는가".
-    이 파일의 가장 최근 refactor 커밋 시점(없으면 첫 커밋 시점) 이후 데이터만으로
-    5개 지표를 계산한다. 그래야 오래전에 끝난 리팩토링의 diff가 영원히 churn/변경빈도에
-    남아 파일을 계속 고위험으로 잡아두는 문제가 없다 — 그 스파이크는애초에 "최근" 구간
-    밖에 있으므로 시간이 지나길 기다릴 필요 없이 바로 반영된다.
-        CurrentRisk = 0.2·norm(변경빈도_rate) + 0.2·norm(churn_rate) + 0.2·norm(Entropy)
-                    + 0.2·norm(버그비율) + 0.2·norm(Co-change)
-
-    StructuralRisk — "이 파일이 역사적으로 얼마나 말썽이었는가" (전체 기간 기준).
-    반복적으로 리팩토링해야 했던 파일(=구조가 계속 불안정한 파일)은 CurrentRisk만으로는
-    보이지 않는다 — 리팩토링 직후엔 항상 "최근" 구간이 깨끗하게 리셋되기 때문. 이 축이
-    그 역사를 담는다.
-        StructuralRisk = (1/3)·norm(refactor_rate) + (1/3)·norm(bugfix_rate_전체)
-                        + (1/3)·norm(churn_rate_전체)
-
-    변경빈도·churn·refactor·버그수정 "횟수"는 관측 기간이 파일마다 다르므로(오래전에
-    리팩토링된 파일 vs 어제 리팩토링된 파일) 그대로 비교하면 안 된다 — 월 단위 rate로
-    바꿔서 비교한다. Entropy·버그비율은 원래부터 비율이라 rate 변환이 필요 없다.
-
-    Bus Factor는 여전히 이 산식에 포함하지 않는다. Bus Factor와 Ownership Entropy는
-    같은 파일별 기여 비율 분포에서 파생되는 지표라(소유권이 집중될수록 BF·Entropy 둘 다
-    낮아짐) 두 값은 소유권 집중의 같은 신호를 담는다. 현재 휴리스틱은 높은
-    Entropy를 변경 기여 분산 신호로 가산하고, 낮은 BF는 인수인계 검토 신호로
-    따로 표시한다. Entropy만으로 결함 위험의 방향을 단정할 수 없으며 실험 검증이
-    필요하다. 같은 산식에 함께 넣으면 같은 원인(소유권 집중)에 대해 서로 반대
-    부호로 상쇄된다. Bus Factor는 별도 승계 리스크로 분리해 고위험 파일에 교차 배지
-    (is_bus_factor_risk)로만 표시하며, 이 값도 CurrentRisk와 같은 "최근" 구간 기준으로
-    계산해 리팩토링 이후 실제 소유자가 누구인지를 반영한다.
+    Current live files with observed changes form the comparison population.
+    Ownership and coupling are explanatory metrics, not score components.
+    risk_score remains a compatibility alias for maintenance_priority.
     """
-    now = getattr(db, "info", {}).get("analysis_as_of") or datetime.now(timezone.utc)
-
-    # 1) 파일별 관측 구간(첫 커밋 시점 · 가장 최근 refactor 시점) + 전체 기간 원시 지표
-    rows = db.execute(
-        text(
-            """
-            WITH file_windows AS (
-                SELECT cfc.file_id,
-                       MIN(c.committed_at) AS first_commit_at,
-                       MAX(c.committed_at) FILTER (WHERE c.commit_type = 'refactor') AS last_refactor_at
-                FROM commit_file_changes cfc
-                JOIN commits c ON c.id = cfc.commit_id
-                WHERE c.repository_id = :rid
-                GROUP BY cfc.file_id
-            ),
-            alltime AS (
-                SELECT cfc.file_id,
-                       COUNT(DISTINCT cfc.commit_id)                                          AS change_freq_alltime,
-                       COALESCE(SUM(cfc.additions + cfc.deletions), 0)                        AS churn_alltime,
-                       COUNT(DISTINCT cfc.commit_id) FILTER (WHERE c.commit_type = 'bugfix')  AS bugfix_alltime,
-                       COUNT(DISTINCT cfc.commit_id) FILTER (WHERE c.commit_type = 'refactor') AS refactor_alltime
-                FROM commit_file_changes cfc
-                JOIN commits c ON c.id = cfc.commit_id
-                WHERE c.repository_id = :rid
-                GROUP BY cfc.file_id
-            ),
-            recent AS (
-                SELECT cfc.file_id,
-                       COUNT(DISTINCT cfc.commit_id)                                         AS change_freq_recent,
-                       COALESCE(SUM(cfc.additions + cfc.deletions), 0)                       AS churn_recent,
-                       COUNT(DISTINCT cfc.commit_id) FILTER (WHERE c.commit_type = 'bugfix') AS bugfix_recent
-                FROM commit_file_changes cfc
-                JOIN commits c ON c.id = cfc.commit_id
-                JOIN file_windows fw ON fw.file_id = cfc.file_id
-                WHERE c.repository_id = :rid
-                  AND c.committed_at >= COALESCE(fw.last_refactor_at, fw.first_commit_at)
-                GROUP BY cfc.file_id
-            )
-            SELECT
-                fw.file_id, f.path, fw.first_commit_at, fw.last_refactor_at,
-                a.change_freq_alltime, a.churn_alltime, a.bugfix_alltime, a.refactor_alltime,
-                COALESCE(r.change_freq_recent, 0) AS change_freq_recent,
-                COALESCE(r.churn_recent, 0)       AS churn_recent,
-                COALESCE(r.bugfix_recent, 0)      AS bugfix_recent
-            FROM file_windows fw
-            JOIN files f ON f.id = fw.file_id
-            JOIN alltime a ON a.file_id = fw.file_id
-            LEFT JOIN recent r ON r.file_id = fw.file_id
-            """
-        ),
-        {"rid": repository_id},
-    ).mappings().all()
-
-    if not rows:
-        return []
-
-    # 2) 파일별 "최근"(리팩토링 이후, 없으면 첫 커밋 이후) 구간 기여자 분포 —
-    #    Entropy + Bus Factor에 사용. Bus Factor 전용 엔드포인트와 동일한 소스를 공유한다.
-    ownership_by_file = _fetch_recent_ownership(db, repository_id)
-
-    # 3) Co-change 집계 (MVP — 대규모 커밋 제외 + threshold pruning만 적용한 단순화 버전.
-    #    PR 단위 분석·IDF 보정은 코드영향도(coupling.html) 전용 기능으로 별도 구현 예정.
-    #    구조적 관계 스냅샷이라 "최근" 윈도우로 나누지 않고 기존 방식 그대로 유지한다.)
-    coupling_rows = db.execute(
-        text(
-            """
-            WITH file_changes AS (
-                SELECT cfc.commit_id, cfc.file_id
-                FROM commit_file_changes cfc
-                JOIN commits c ON c.id = cfc.commit_id
-                WHERE c.repository_id = :rid AND COALESCE(c.is_large_commit, false) = false
-            ),
-            file_totals AS (
-                SELECT file_id, COUNT(DISTINCT commit_id) AS total_changes
-                FROM file_changes
-                GROUP BY file_id
-            ),
-            pairs AS (
-                SELECT a.file_id AS file_a, b.file_id AS file_b,
-                       COUNT(DISTINCT a.commit_id) AS co_count
-                FROM file_changes a
-                JOIN file_changes b ON a.commit_id = b.commit_id AND a.file_id <> b.file_id
-                GROUP BY a.file_id, b.file_id
-                HAVING COUNT(DISTINCT a.commit_id) >= 2
-            )
-            SELECT p.file_a AS file_id,
-                   AVG(p.co_count::float / LEAST(fa.total_changes, fb.total_changes)) AS co_change_avg
-            FROM pairs p
-            JOIN file_totals fa ON fa.file_id = p.file_a
-            JOIN file_totals fb ON fb.file_id = p.file_b
-            GROUP BY p.file_a
-            """
-        ),
-        {"rid": repository_id},
-    ).mappings().all()
-    co_change_by_file = {r["file_id"]: float(r["co_change_avg"]) for r in coupling_rows}
-
-    # 4) 파일별 원시 지표 조립 (CurrentRisk 원시값 + StructuralRisk 원시값)
-    raw: dict[int, dict] = {}
-    for r in rows:
-        if r["first_commit_at"] is None:
-            continue  # 이력이 없는 파일은 0점으로 정규화하거나 안전한 파일로 집계하지 않는다.
-        fid = r["file_id"]
-        first_commit_at = r["first_commit_at"]
-        last_refactor_at = r["last_refactor_at"]
-        recent_start = last_refactor_at or first_commit_at
-
-        months_alltime = _months_between(first_commit_at, now)
-        months_recent = _months_between(recent_start, now)
-
-        change_freq_recent = r["change_freq_recent"]
-        churn_recent = float(r["churn_recent"])
-        bugfix_recent = r["bugfix_recent"]
-
-        oa = _ownership_analysis(ownership_by_file.get(fid, []))
-        entropy, bus_factor = oa["entropy"], oa["bus_factor"]
-
-        raw[fid] = {
-            "file_id": fid,
-            "path": r["path"],
-            "last_refactor_at": last_refactor_at.isoformat() if last_refactor_at else None,
-            # CurrentRisk 원시값 (리팩토링 이후 구간, rate = 개수 / 관측 개월수)
-            "change_freq": change_freq_recent,
-            "change_freq_rate": change_freq_recent / months_recent,
-            "churn": churn_recent,
-            "churn_rate": churn_recent / months_recent,
-            "entropy": entropy,
-            "bug_ratio": (bugfix_recent / change_freq_recent) if change_freq_recent else 0.0,
-            "co_change": co_change_by_file.get(fid, 0.0),
-            "bus_factor": bus_factor,
-            # StructuralRisk 원시값 (전체 기간, rate = 개수 / 파일 생애 개월수)
-            "refactor_rate": r["refactor_alltime"] / months_alltime,
-            "bugfix_rate_alltime": r["bugfix_alltime"] / months_alltime,
-            "longterm_churn_rate": float(r["churn_alltime"]) / months_alltime,
-        }
-
-    # 5) Min-Max 정규화
-    def norm(key):
-        return _minmax_norm({k: v[key] for k, v in raw.items()})
-
-    n_freq_rate = norm("change_freq_rate")
-    n_churn_rate = norm("churn_rate")
-    n_entropy = norm("entropy")
-    n_bug = norm("bug_ratio")
-    n_co = norm("co_change")
-    n_refactor_rate = norm("refactor_rate")
-    n_bugfix_rate = norm("bugfix_rate_alltime")
-    n_longterm_churn = norm("longterm_churn_rate")
-
+    start, end = _metric_window(db)
+    rows = db.execute(text("""
+        SELECT f.id AS file_id,f.path,MIN(c.committed_at) AS first_observed_at,
+               MAX(c.committed_at) FILTER (WHERE c.commit_type='refactor') AS last_refactor_at,
+               COUNT(DISTINCT c.id) AS change_freq,
+               CASE WHEN COUNT(*) FILTER (WHERE cfc.additions IS NULL OR cfc.deletions IS NULL)=0
+                    THEN SUM(cfc.additions+cfc.deletions) ELSE NULL END AS churn,
+               COUNT(DISTINCT c.id) FILTER (WHERE c.commit_type='bugfix') AS bugfix_count,
+               COUNT(DISTINCT c.id) FILTER (WHERE c.contributor_id IS NULL) AS unidentified_count
+        FROM files f JOIN commit_file_changes cfc ON cfc.file_id=f.id
+        JOIN commits c ON c.id=cfc.commit_id
+        WHERE f.repository_id=:rid AND COALESCE(f.is_deleted,false)=false
+          AND c.repository_id=:rid AND c.committed_at >= :start AND c.committed_at < :end
+        GROUP BY f.id,f.path
+    """), {"rid":repository_id,"start":start,"end":end}).mappings().all()
+    ownership = _fetch_recent_ownership(db,repository_id) if rows else {}
+    components = {key:percentile_rank({r["file_id"]:r[key] for r in rows})
+                  for key in ("change_freq","churn","bugfix_count")}
     files = []
-    for fid, v in raw.items():
-        current_risk = (
-            0.2 * n_freq_rate.get(fid, 0.0)
-            + 0.2 * n_churn_rate.get(fid, 0.0)
-            + 0.2 * n_entropy.get(fid, 0.0)
-            + 0.2 * n_bug.get(fid, 0.0)
-            + 0.2 * n_co.get(fid, 0.0)
-        )
-        structural_risk = (
-            (1 / 3) * n_refactor_rate.get(fid, 0.0)
-            + (1 / 3) * n_bugfix_rate.get(fid, 0.0)
-            + (1 / 3) * n_longterm_churn.get(fid, 0.0)
-        )
-        risk = 0.5 * current_risk + 0.5 * structural_risk
+    for r in rows:
+        fid = r["file_id"]
+        oa = _ownership_analysis(ownership.get(fid,[]))
+        ranked = {key:components[key][fid] for key in components}
+        priority = sum(ranked.values()) / 3 if all(v is not None for v in ranked.values()) else None
         files.append({
-            **v,
-            "current_risk": round(current_risk, 4),
-            "structural_risk": round(structural_risk, 4),
-            "risk_score": round(risk, 4),
-            "is_bus_factor_risk": v["bus_factor"] == 1,
+            "file_id":fid,"path":r["path"],"change_freq":r["change_freq"],
+            "churn":float(r["churn"]) if r["churn"] is not None else None,"bugfix_count":r["bugfix_count"],
+            "bug_ratio":r["bugfix_count"]/r["change_freq"],
+            "last_refactor_at":r["last_refactor_at"].isoformat() if r["last_refactor_at"] else None,
+            "first_observed_at":r["first_observed_at"].isoformat(),
+            "window_start":start.isoformat(),"window_end":end.isoformat(),
+            "priority_components":ranked,"maintenance_priority":round(priority,4) if priority is not None else None,
+            "risk_score":round(priority,4) if priority is not None else None,"current_risk":None,"structural_risk":None,
+            "entropy":oa["entropy"],"entropy_normalized":oa["entropy_normalized"],
+            "bus_factor":oa["bus_factor"],"bf80":oa["bus_factor"],
+            "top_owner_share":oa["top_owner_share"],"contributor_count":oa["contributor_count"],
+            "identified_change_count":oa["observation_count"],
+            "unidentified_share":r["unidentified_count"]/r["change_freq"],
+            "ownership_low_support":oa["low_support"],
+            "is_bus_factor_risk":oa["bus_factor"]==1,
+            "evidence_status":"metrics_missing" if priority is None else "low_support" if r["change_freq"]<5 else "observed",
         })
-
     return files
 
 
@@ -576,16 +384,19 @@ def get_risk_scores(repository_id: int, limit: int = 50, db: Session = Depends(g
     files = _compute_risk_scores(db, repository_id)
     if not files:
         return {"files": [], "summary": {"high_risk_count": 0, "avg_risk_score": None,
-                                          "hidden_coupling_count": 0, "avg_entropy": None}}
+                                          "hidden_coupling_count": None, "avg_entropy": None,
+                                          "score_kind": "maintenance_priority"}}
 
-    files.sort(key=lambda x: x["risk_score"], reverse=True)
+    files.sort(key=lambda x: x["risk_score"] if x["risk_score"] is not None else -1, reverse=True)
     top_files = files[:limit]
 
-    entropies = [f["entropy"] for f in files]
+    entropies = [f["entropy"] for f in files if f["entropy"] is not None]
+    scores = [f["risk_score"] for f in files if f["risk_score"] is not None]
     summary = {
-        "high_risk_count": sum(1 for f in files if f["risk_score"] >= 0.7),
-        "avg_risk_score": round(sum(f["risk_score"] for f in files) / len(files), 4) if files else None,
-        "hidden_coupling_count": sum(1 for f in files if f["co_change"] >= 0.3),
+        "high_risk_count": sum(1 for score in scores if score >= 0.7),
+        "avg_risk_score": round(sum(scores) / len(scores), 4) if scores else None,
+        "hidden_coupling_count": None,  # AST relation has not been measured.
+        "score_kind": "maintenance_priority",
         "avg_entropy": round(sum(entropies) / len(entropies), 4) if entropies else None,
     }
 
@@ -602,12 +413,9 @@ def _module_of(path: str) -> str:
 
 @router.get("/bus-factor")
 def get_bus_factor_analysis(repository_id: int, limit: int = 50, db: Session = Depends(get_db)):
-    """Bus Factor 전용 분석 — busfactor.html 데이터 계약(HANDOFF.md 4-4) 대응.
+    """Fixed-window contribution concentration, not actual knowledge headcount.
 
-    Risk Score 배지에 쓰는 BF/Entropy와 동일한 소스(_fetch_recent_ownership — 가장 최근
-    refactor 커밋 이후, 없으면 첫 커밋 이후 구간)를 재사용해 두 화면의 값이 어긋나지
-    않게 한다. 기여자 식별(Identity Resolution)이 끝나지 않아 contributor_id가 없는
-    파일은 BF를 정의할 수 없으므로 집계에서 제외한다.
+    Files without identified contributions are excluded from the BF distribution.
     """
     file_rows = db.execute(
         text(
@@ -618,7 +426,7 @@ def get_bus_factor_analysis(repository_id: int, limit: int = 50, db: Session = D
     ).mappings().all()
 
     empty = {
-        "summary": {"project_bus_factor": None, "high_risk_file_count": 0,
+        "summary": {"project_bus_factor": None, "file_bf80_median": None, "high_risk_file_count": 0,
                     "avg_entropy": None, "risky_module_count": 0},
         "distribution": [], "top_owners": [], "risky_modules": [], "files": [],
     }
@@ -627,6 +435,7 @@ def get_bus_factor_analysis(repository_id: int, limit: int = 50, db: Session = D
 
     paths_by_file = {r["file_id"]: r["path"] for r in file_rows}
     ownership_by_file = _fetch_recent_ownership(db, repository_id)
+    observations = {f["file_id"]:f for f in _compute_risk_scores(db,repository_id)}
 
     analysis_by_file: dict[int, dict] = {}
     for fid, path in paths_by_file.items():
@@ -683,6 +492,11 @@ def get_bus_factor_analysis(repository_id: int, limit: int = 50, db: Session = D
             "path": v["path"],
             "bus_factor": v["bus_factor"],
             "entropy": round(v["entropy"], 4),
+            "entropy_normalized":v["entropy_normalized"], "bf80":v["bus_factor"],
+            "top_owner_share":v["top_owner_share"], "contributor_count":v["contributor_count"],
+            "observation_count":v["observation_count"], "low_support":v["low_support"],
+            "total_change_count":observations.get(fid,{}).get("change_freq",0),
+            "unidentified_share":observations.get(fid,{}).get("unidentified_share"),
             "owners": [
                 {"contributor_id": s["contributor_id"], "name": s["name"], "share": round(s["share"], 4)}
                 for s in v["shares"]
@@ -699,6 +513,7 @@ def get_bus_factor_analysis(repository_id: int, limit: int = 50, db: Session = D
     summary = {
         # 호환용 필드명. 프로젝트 전체 인력 이탈 시뮬레이션이 아닌 파일별 BF 중앙값.
         "project_bus_factor": statistics.median(bf_values),
+        "file_bf80_median": statistics.median(bf_values),
         "high_risk_file_count": sum(1 for v in analysis_by_file.values() if v["bus_factor"] == 1),
         "avg_entropy": round(sum(entropies) / len(entropies), 4) if entropies else None,
         "risky_module_count": sum(1 for s in module_stats.values() if s["bf1_ratio"] >= 0.3),
@@ -764,24 +579,27 @@ _COMMIT_PAIRS_SQL = """
 
 
 def _compute_coupling(db, repository_id: int) -> dict:
-    """PR 단위(없으면 커밋 단위 fallback) co-change 쌍 + IDF 보정.
+    """PR co-change, with explicit commit fallback and observed coverage.
 
-    paper 설계 그대로: PR은 논리적 작업 단위라 신뢰도가 높아 기본으로 쓰고, PR이
-    하나도 없는 레포(직접 push만 하는 레포)는 커밋 단위로 대체한다. 대규모
-    PR/커밋(파일 10% 또는 15개 이상)은 이미 수집 단계에서 계산된 is_large_pr /
-    is_large_commit 플래그로 제외 — 리팩토링·자동화성 대량 변경의 노이즈를 막는다.
+    SnapshotInput recalculates large-change flags using max(15,ceil(0.1*N)).
+    N is currently the target tree size, not the historical tree size.
 
     coupling_score(A,B) = co_count(A,B) / min(total_A, total_B)   — [0,1] 범위
     idf(f)              = log(total_units / units_containing_f)
     adjusted_score(A,B)  = coupling_score(A,B) * idf(A) * idf(B)   — utils.py처럼
     전역적으로 자주 바뀌는 파일의 false positive를 억제. idf는 배율이라
     adjusted_score는 1을 넘을 수 있다 — "강결합(≥0.7)" 판정은 배율 영향이 없는
-    coupling_score 기준, 정렬은 신호 대 잡음비가 더 좋은 adjusted_score 기준.
+    coupling_score 기준. 기본 정렬은 결합도·표본 수이며 IDF 정렬은 선택 정책이다.
 
     한계: import 그래프(Python AST 분석)가 아직 없어 "import 관계는 없는데
     coupling만 높다"는 진짜 Hidden Coupling 검증은 불가능하다. 여기서 나가는
     coupling/adjusted score는 그 후보 신호일 뿐, 확정 판정이 아니다.
     """
+    coverage = db.execute(text("""
+        SELECT COUNT(*) AS merged_pr_count,
+          COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM pull_request_files f WHERE f.pull_request_id=p.id)) AS prs_with_files
+        FROM pull_requests p WHERE p.repository_id=:rid AND p.state='merged'
+    """), {"rid":repository_id}).mappings().one()
     pr_count = db.execute(
         text("SELECT COUNT(DISTINCT p.id) FROM pull_requests p JOIN pull_request_files f ON f.pull_request_id=p.id WHERE p.repository_id = :rid AND COALESCE(p.is_large_pr,false)=false"),
         {"rid": repository_id},
@@ -849,10 +667,14 @@ def _compute_coupling(db, repository_id: int) -> dict:
             "coupling_score": round(coupling_score, 4),
             "adjusted_score": round(adjusted_score, 4),
         })
-    pairs.sort(key=lambda p: (-p["adjusted_score"], p["file_a_id"], p["file_b_id"]))
+    pairs.sort(key=lambda p: (-p["coupling_score"], -p["co_change_count"], p["file_a_id"], p["file_b_id"]))
 
     return {
         "co_change_unit": unit,
+        "fallback_reason": None if unit == "pr" else ("no_merged_prs" if not coverage["merged_pr_count"] else
+            "pr_details_missing" if not coverage["prs_with_files"] else "all_collected_prs_filtered"),
+        "pr_file_coverage": coverage["prs_with_files"] / coverage["merged_pr_count"] if coverage["merged_pr_count"] else None,
+        "merged_pr_count": coverage["merged_pr_count"], "prs_with_files": coverage["prs_with_files"],
         "total_units": total_units,
         "excluded_unit_count": excluded_units,
         "pairs": pairs,
@@ -879,12 +701,18 @@ def _per_file_coupling_summary(coupling_result: dict) -> dict[int, dict]:
 
 
 @router.get("/coupling")
-def get_coupling(repository_id: int, limit: int = 100, min_score: float = 0.0, db: Session = Depends(get_db)):
-    """레포 전체 파일 결합도(Co-change) 목록. adjusted_score 내림차순."""
+def get_coupling(repository_id: int, limit: int = 100, min_score: float = 0.0, db: Session = Depends(get_db), sort_by: str = "coupling"):
+    """Default raw coupling/support ordering; IDF is an optional candidate."""
+    if sort_by not in {"coupling", "idf"}:
+        raise ValueError("sort_by must be coupling or idf")
     result = _compute_coupling(db, repository_id)
     pairs = [p for p in result["pairs"] if p["coupling_score"] >= min_score]
+    if sort_by == "idf":
+        pairs.sort(key=lambda p: (-p["adjusted_score"], -p["co_change_count"], p["file_a_id"], p["file_b_id"]))
 
     meta = {
+        **{k:result[k] for k in ("fallback_reason","pr_file_coverage","merged_pr_count","prs_with_files")},
+        "sort_by":sort_by,
         "co_change_unit": result["co_change_unit"],
         "total_units": result["total_units"],
         "excluded_unit_count": result["excluded_unit_count"],
@@ -898,7 +726,7 @@ def get_coupling(repository_id: int, limit: int = 100, min_score: float = 0.0, d
 
 def _coupled_files_for(result: dict, file_id: int) -> list[dict]:
     """_compute_coupling() 결과에서 file_id가 걸린 쌍만 뽑아 상대 파일 기준으로 펼치고
-    adjusted_score 내림차순 정렬한다. /coupling/{file_id}와 파일 상세 팝업(files/{file_id}/detail)
+    선택 파일에서 상대 파일로의 과거 동반 비율·표본 수 순으로 정렬한다. /coupling/{file_id}와 파일 상세 팝업(files/{file_id}/detail)
     양쪽에서 공유하는 로직 — 계산 결과가 어긋나지 않게 한 곳에 모아둔다."""
     coupled = []
     for p in result["pairs"]:
@@ -916,7 +744,7 @@ def _coupled_files_for(result: dict, file_id: int) -> list[dict]:
                              "selected_change_count": p["change_count_b"], "other_change_count": p["change_count_a"],
                              "selected_to_other_ratio": p["b_to_a_ratio"], "other_to_selected_ratio": p["a_to_b_ratio"],
                              "low_support": p["low_support"]})
-    coupled.sort(key=lambda c: c["adjusted_score"], reverse=True)
+    coupled.sort(key=lambda c: (-c["selected_to_other_ratio"], -c["co_change_count"], c["file_id"]))
     return coupled
 
 
@@ -1348,7 +1176,10 @@ def get_file_detail(repository_id: int, file_id: int, limit: int = 20, db: Sessi
 
     return {
         "file": {"id": file_row["id"], "path": file_row["path"]},
-        "entropy": round(oa["entropy"], 4),
+        "entropy": round(oa["entropy"], 4) if oa["entropy"] is not None else None,
+        "entropy_normalized":oa["entropy_normalized"],"top_owner_share":oa["top_owner_share"],
+        "contributor_count":oa["contributor_count"],"observation_count":oa["observation_count"],
+        "low_support":oa["low_support"],"bf80":oa["bus_factor"],
         "bus_factor": oa["bus_factor"],
         "is_bus_factor_risk": oa["bus_factor"] == 1,
         "editors": [
@@ -1390,6 +1221,8 @@ def _build_tree(files: list[dict]) -> dict:
             "coupling_support": f["coupling_support"],
             "observation_count": f["observation_count"],
             "evidence_status": f["evidence_status"],
+            **{k:f[k] for k in ("maintenance_priority","entropy_normalized","top_owner_share",
+                               "contributor_count","unidentified_share","ownership_low_support")},
         })
     return root
 
@@ -1435,13 +1268,19 @@ def get_repo_tree(repository_id: int, db: Session = Depends(get_db)):
             "path": path,
             "risk_score": risk["risk_score"] if risk else None,
             "bus_factor": risk["bus_factor"] if risk else None,
-            "entropy": round(risk["entropy"], 4) if risk else None,
+            "entropy": round(risk["entropy"], 4) if risk and risk["entropy"] is not None else None,
             "is_bus_factor_risk": risk["is_bus_factor_risk"] if risk else False,
             "coupling_score": round(coup["max_coupling_score"], 4),
             "coupled_file_count": coup["coupled_file_count"],
             "coupling_support": coup.get("coupling_support", 0),
+            "maintenance_priority":risk["maintenance_priority"] if risk else None,
+            "entropy_normalized":risk["entropy_normalized"] if risk else None,
+            "top_owner_share":risk["top_owner_share"] if risk else None,
+            "contributor_count":risk["contributor_count"] if risk else 0,
+            "unidentified_share":risk["unidentified_share"] if risk else None,
+            "ownership_low_support":risk["ownership_low_support"] if risk else True,
             "observation_count": risk["change_freq"] if risk else 0,
-            "evidence_status": "no_history" if not risk or not risk["change_freq"] else ("low_support" if risk["change_freq"] < 5 else "observed"),
+            "evidence_status":risk["evidence_status"] if risk else "no_history",
         })
 
     # 종합 리스트(위험도순 기본) — 프론트가 트리 아래 랭킹에 바로 쓸 수 있게 정렬해서 같이 내려준다.
