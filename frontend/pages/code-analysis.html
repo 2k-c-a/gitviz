@@ -13,11 +13,11 @@
     <!-- ═══════════ CODE ANALYSIS (Risk · Bus Factor · Coupling 통합) ═══════════ -->
 <div class="page active" id="page-code-analysis">
   <div class="dash-head">
-    <div><div class="dash-title js-repo-title">—</div><div class="dash-sub">코드 분석 — Risk Score · Bus Factor · 코드 영향도 통합 트리 뷰</div></div>
+    <div><div class="dash-title js-repo-title">—</div><div class="dash-sub">코드 분석 — 상대 분석 점수 · BF 추정치 · 공동 변경 결합도</div></div>
     <div style="display:flex;align-items:center;gap:10px;">
       <div style="display:flex;align-items:center;gap:7px;">
         <div class="status-dot" style="background:#639922;"></div>
-        <span style="font-size:12px;color:var(--text2);">분석 완료</span>
+        <span id="cx-status" style="font-size:12px;color:var(--text2);">결과 조회 중</span>
       </div>
       <button class="btn-secondary" data-auth="1" id="btn-reanalyze" onclick="openReanalyzeToast()">재분석</button>
     </div>
@@ -29,11 +29,13 @@
   </div>
   <div class="body">
     <div class="metrics-4">
-      <div class="metric-card"><div class="m-label">고위험 파일</div><div class="m-val" id="cx-m-highrisk">—</div><div class="m-sub">Risk Score ≥ 0.7</div></div>
-      <div class="metric-card"><div class="m-label">평균 Risk Score</div><div class="m-val" id="cx-m-avgrisk">—</div><div class="m-sub">전체 파일 기준</div></div>
-      <div class="metric-card"><div class="m-label">Bus Factor = 1</div><div class="m-val" id="cx-m-bf1">—</div><div class="m-sub">승계 위험 파일</div></div>
+      <div class="metric-card"><div class="m-label">높은 분석 점수 파일</div><div class="m-val" id="cx-m-highrisk">—</div><div class="m-sub">Risk Score ≥ 0.7</div></div>
+      <div class="metric-card"><div class="m-label">평균 Risk Score</div><div class="m-val" id="cx-m-avgrisk">—</div><div class="m-sub">점수가 있는 현재 파일 기준</div></div>
+      <div class="metric-card"><div class="m-label">BF 추정치 = 1</div><div class="m-val" id="cx-m-bf1">—</div><div class="m-sub">한 명의 변경 기여 ≥ 80%</div></div>
       <div class="metric-card"><div class="m-label">강결합 파일</div><div class="m-val" id="cx-m-coupling">—</div><div class="m-sub">결합도 ≥ 0.7</div></div>
     </div>
+
+    <div class="p-note">Risk Score는 저장소 내 지표를 정규화한 상대 점수이며 결함 확률이 아닙니다. 다른 저장소와 직접 비교하거나 낮은 점수를 안전으로 해석하지 마세요. 비교 파일이 하나이거나 지표값이 모두 같으면 정규화값은 0입니다. 폴더는 값이 있는 하위 파일의 평균을 표시합니다. BF는 변경 기여 80%를 차지하는 최소 인원 추정치이고, 결합도는 실제 의존성이 아닌 공동 변경 신호입니다.</div>
 
     <!-- 디렉토리 트리 -->
     <div class="panel" style="margin-bottom:14px;">
@@ -73,14 +75,14 @@
         <div class="p-title">전체 파일 종합 리스트</div>
         <div style="font-size:11px;color:var(--text2);" id="cx-list-note">위험도순 · 상위 20개</div>
       </div>
-      <div class="p-note">파일 경로를 클릭하면 GitHub에서 열리고, 행의 나머지 영역을 클릭하면 수정한 사람과 영향 파일을 볼 수 있습니다.</div>
+      <div class="p-note">파일 경로를 클릭하면 GitHub에서 열리고, 행의 나머지 영역을 클릭하면 수정한 사람과 함께 변경된 파일을 볼 수 있습니다.</div>
       <div class="hm-wrap">
         <table class="hm-table">
           <thead>
             <tr>
               <th class="hm-th left">파일</th>
               <th class="hm-th">Risk Score</th>
-              <th class="hm-th">Bus Factor</th>
+              <th class="hm-th">BF 추정치</th>
               <th class="hm-th">결합도</th>
               <th class="hm-th">결합 파일 수</th>
             </tr>

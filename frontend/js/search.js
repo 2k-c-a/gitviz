@@ -62,7 +62,7 @@ function scoreRing(scores) {
   const total = scores && scores.total != null ? Math.round(scores.total) : null;
   const tier = scoreTier(total);
   const title = scores
-    ? `활동성 ${scores.activity ?? '-'}/30 · 인기도 ${scores.popularity ?? '-'}/35 · 언어 ${scores.language ?? '-'}/20 · 건전성 ${scores.health ?? '-'}/15`
+    ? `활동성 ${scores.activity ?? '-'}/30 · 인기도 ${scores.popularity ?? '-'}/35 · 언어 ${scores.language ?? '-'}/10 · 이슈/스타 비율 점수 ${scores.health ?? '-'}/25 · 메타데이터 기반 예비 점수이며 코드 품질을 보장하지 않습니다`
     : '점수 정보 없음';
   return `<div class="score-ring tier-${tier}" title="${esc(title)}">${total != null ? total : '—'}</div>`;
 }

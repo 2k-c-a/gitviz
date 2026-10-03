@@ -10,3 +10,4 @@ from app.models.pr_commit import PrCommit
 from app.models.pr_review import PrReview
 from app.models.pull_request_file import PullRequestFile
 from app.models.release import Release
+from app.models.analysis_snapshot import AnalysisSnapshot, RepositoryAccess

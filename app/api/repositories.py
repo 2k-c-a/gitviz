@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import requests
 from requests.exceptions import RequestException
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
 
@@ -17,8 +17,12 @@ from app.models.pull_request import PullRequest
 from app.models.file import File
 from app.tasks.analyze_repository import analyze_repository
 from app.routers.auth import _get_session_user_id
-from app.api.analytics import _compute_risk_scores
+from app.models.analysis_snapshot import AnalysisSnapshot
+from app.services.analysis_snapshots import analysis_parameters, load_snapshot
+from app.services.repository_access import (canonical_github_url, github_metadata, user_github_token,
+    visible_repository_query, verify_repository_access, remember_access)
 from app.services.lightweight_score import compute_lightweight_score
+from app.services.job_lifecycle import job_staleness, ACTIVE_STATUSES, LOCK_NAMESPACE
 
 router = APIRouter()
 
@@ -39,62 +43,28 @@ _PRIMARY_LANGUAGE_EXTS = {
     "c", "h", "cpp", "hpp", "cs", "rs", "kt", "swift", "scala", "vue",
 }
 
-# rate_limited 상태에서 resume_at을 이만큼(초) 넘겨도 여전히 rate_limited면
-# 정상 대기가 아니라 워커가 죽어서 멈춘 것으로 간주한다(폴링/시계 오차 여유분).
-_STALE_GRACE_SECONDS = 120
-# resume_at 정보가 없는(구버전) 작업은 started_at 이후 이만큼 지나도 안 끝나면 멈춘 것으로 간주.
-_STALE_FALLBACK_SECONDS = 6 * 3600
-
-
 def _compute_staleness(job: AnalysisJob) -> dict:
-    """진행 중인 작업의 실시간 대기 상태를 계산한다 (DB에 저장하지 않고 조회 시점에 계산).
-
-    - remaining_seconds: rate_limited 상태일 때 남은 대기 시간(라이브 카운트다운용).
-    - is_stale / stale_seconds: 대기가 끝났어야 할 시각을 한참 지났는데도 상태가
-      안 바뀌었으면(=워커가 죽어서 멈춤) True. resume_at이 없는 구버전 데이터는
-      started_at 기준 장시간 미완료로 폴백 판정한다.
-    """
-    result = {"remaining_seconds": None, "is_stale": False, "stale_seconds": None}
-    if job.status not in ("running", "rate_limited"):
-        return result
-
-    now = datetime.now(timezone.utc)
-    detail = job.progress_detail or {}
-    resume_at_str = detail.get("resume_at")
-
-    if resume_at_str:
-        try:
-            resume_at = datetime.fromisoformat(resume_at_str)
-            overdue = (now - resume_at).total_seconds()
-            if job.status == "rate_limited":
-                result["remaining_seconds"] = max(0, int(-overdue))
-            if overdue > _STALE_GRACE_SECONDS:
-                result["is_stale"] = True
-                result["stale_seconds"] = int(overdue)
-            return result
-        except (ValueError, TypeError):
-            pass
-
-    if job.started_at:
-        elapsed = (now - job.started_at).total_seconds()
-        if elapsed > _STALE_FALLBACK_SECONDS:
-            result["is_stale"] = True
-            result["stale_seconds"] = int(elapsed)
-
-    return result
+    """시간상 복구 후보를 표시한다. 실제 재시작은 워커 잠금을 확인한 뒤 허용한다."""
+    return job_staleness(job)
 
 
 @router.get("/repositories")
-def list_repositories(limit: int = 20, db: Session = Depends(get_db)):
+def list_repositories(request: Request, limit: int = Query(20,ge=1,le=100), db: Session = Depends(get_db)):
     """최근 분석 요청된 레포지토리 목록 (홈 화면용)."""
     repos = (
-        db.query(Repository)
+        visible_repository_query(db, _get_session_user_id(request))
         .order_by(Repository.id.desc())
         .limit(limit)
         .all()
     )
     result = []
     for repo in repos:
+        try:
+            verify_repository_access(db, repo.id, _get_session_user_id(request))
+        except HTTPException as exc:
+            if exc.status_code in {401, 404, 409}:
+                continue
+            raise
         latest_job = (
             db.query(AnalysisJob)
             .filter(AnalysisJob.repository_id == repo.id)
@@ -149,10 +119,11 @@ def list_my_repositories(request: Request, db: Session = Depends(get_db)):
     my_repos = db.execute(
         text(
             """
-            SELECT repository_id, MAX(created_at) AS my_last_triggered_at
-            FROM analysis_jobs
-            WHERE triggered_by_user_id = :uid
-            GROUP BY repository_id
+            SELECT a.repository_id, COALESCE(MAX(j.created_at), MAX(a.created_at)) AS my_last_triggered_at
+            FROM repository_access a
+            LEFT JOIN analysis_jobs j ON j.repository_id=a.repository_id AND j.triggered_by_user_id=a.user_id
+            WHERE a.user_id = :uid
+            GROUP BY a.repository_id
             ORDER BY my_last_triggered_at DESC
             """
         ),
@@ -164,6 +135,12 @@ def list_my_repositories(request: Request, db: Session = Depends(get_db)):
         repo = db.query(Repository).filter(Repository.id == row["repository_id"]).first()
         if not repo:
             continue
+        try:
+            verify_repository_access(db, repo.id, user_id)
+        except HTTPException as exc:
+            if exc.status_code in {401, 404, 409}:
+                continue
+            raise
 
         latest_job = (
             db.query(AnalysisJob)
@@ -187,13 +164,15 @@ def list_my_repositories(request: Request, db: Session = Depends(get_db)):
 
         high_risk_count = bf1_count = 0
         median_bus_factor = None
-        if status == "done" and file_count:
-            live_ids = {fid for fid, _ in live_files}
-            risk_rows = [r for r in _compute_risk_scores(db, repo.id) if r["file_id"] in live_ids]
-            high_risk_count = sum(1 for r in risk_rows if r["risk_score"] is not None and r["risk_score"] >= 0.7)
-            bf1_count = sum(1 for r in risk_rows if r["is_bus_factor_risk"])
-            bf_values = [r["bus_factor"] for r in risk_rows if r["bus_factor"] is not None]
-            median_bus_factor = round(statistics.median(bf_values), 1) if bf_values else None
+        if status == "done":
+            snapshot = db.query(AnalysisSnapshot).filter_by(repository_id=repo.id).order_by(AnalysisSnapshot.id.desc()).first()
+            if snapshot:
+                risk_rows = snapshot.payload["tree"]["files"]
+                file_count = len(risk_rows)
+                high_risk_count = sum(1 for r in risk_rows if r["risk_score"] is not None and r["risk_score"] >= 0.7)
+                bf1_count = sum(1 for r in risk_rows if r["is_bus_factor_risk"])
+                bf_values = [r["bus_factor"] for r in risk_rows if r["bus_factor"] is not None]
+                median_bus_factor = round(statistics.median(bf_values), 1) if bf_values else None
 
         ext_counts: dict[str, int] = {}
         for _, ext in live_files:
@@ -233,82 +212,72 @@ def list_my_repositories(request: Request, db: Session = Depends(get_db)):
     return result
 
 
-def _trigger_analysis(db: Session, repository_id: int, user_id) -> None:
-    """기존 레포의 AnalysisJob을 pending으로 되돌리고 analyze_repository task를 큐잉한다.
-    analyze_repository()는 마지막으로 저장된 커밋 이후만 증분 수집하므로 재분석 비용이 적다."""
-    job = db.query(AnalysisJob).filter(AnalysisJob.repository_id == repository_id).first()
-    if job:
-        job.status = "pending"
-        job.triggered_by_user_id = user_id
-        # 이전 작업의 progress_detail(stage='done' 등)이 남아있으면 새 작업이 시작되기
-        # 전 첫 폴링에서 모달이 잠깐 "완료" 상태로 잘못 표시된다 — 큐잉 시점에 초기화한다.
-        job.progress_detail = {}
-        job.error_message = None
-        job.completed_at = None
-    else:
-        db.add(AnalysisJob(
-            repository_id=repository_id, status="pending", triggered_by="api",
-            triggered_by_user_id=user_id,
-        ))
+def _trigger_analysis(db: Session, repository_id: int, user_id, parameters=None):
+    # 요청마다 새 작업을 만든다. 같은 저장소의 진행 중인 작업은 중복 큐잉하지 않는다.
+    db.query(Repository).filter_by(id=repository_id).with_for_update().one()
+    active_jobs = db.query(AnalysisJob).filter(AnalysisJob.repository_id == repository_id,
+        AnalysisJob.status.in_(ACTIVE_STATUSES)).order_by(AnalysisJob.id.desc()).all()
+    if active_jobs:
+        if any(not job_staleness(active)["is_stale"] for active in active_jobs):
+            raise HTTPException(409, "진행 중인 분석이 있습니다. 완료 후 원하는 기간으로 다시 요청해 주세요.")
+        # 워커가 장시간 정상 실행 중이면 나이와 무관하게 교체하지 않는다.
+        # 수집 워커의 session advisory lock과 같은 키를 transaction 범위로 획득한다.
+        unlocked = db.execute(text("SELECT pg_try_advisory_xact_lock(:namespace, :rid)"),
+                              {"namespace": LOCK_NAMESPACE, "rid": repository_id}).scalar()
+        if not unlocked:
+            raise HTTPException(409, "수집 워커가 아직 실행 중입니다. 종료 후 다시 시도해 주세요.")
+        for active in active_jobs:
+            active.status = "cancelled"
+            active.completed_at = datetime.now(timezone.utc)
+            active.error_message = "응답이 없는 작업을 새 분석 요청으로 교체했습니다."
+    job = AnalysisJob(repository_id=repository_id, status="pending", triggered_by="api",
+                      triggered_by_user_id=user_id, parameters=parameters or analysis_parameters())
+    db.add(job)
     db.commit()
-    analyze_repository.delay(repository_id, user_id=str(user_id) if user_id else None)
+    try:
+        analyze_repository.delay(repository_id, user_id=str(user_id), job_id=job.id)
+    except Exception:
+        job.status = "failed"
+        job.error_message = "분석 작업을 큐에 등록하지 못했습니다. 다시 시도해 주세요."
+        db.commit()
+        raise HTTPException(503, job.error_message)
+    return job.id
 
 
 def _normalize_github_url(url: str) -> str:
-    """두 URL이 같은 레포를 가리키는지 비교할 때만 쓰는 정규화값(trim → 끝 슬래시
-    제거 → .git 제거 → 소문자 — GitHub URL은 대소문자를 구분하지 않는다).
-    저장에는 쓰지 않는다 — 레포는 사용자가 입력한 원래 표기 그대로 저장한다."""
-    normalized = (url or "").strip().rstrip("/")
-    if normalized.lower().endswith(".git"):
-        normalized = normalized[: -len(".git")]
-    return normalized.lower()
+    return canonical_github_url(url)
 
 
 @router.post("/repositories")
-def create_repository(github_url: str, request: Request, db: Session = Depends(get_db)):
-    github_url = github_url.strip().rstrip("/").removesuffix(".git")
-
-    # 로그인한 사용자가 요청했으면 그 사용자의 GitHub 토큰으로 수집한다(공용 토큰 대신
-    # 개인 rate limit 사용). 비로그인 요청은 기존처럼 공용 GITHUB_TOKEN으로 폴백.
+def create_repository(github_url: str, request: Request, analysis_start: str | None = None,
+                      analysis_end: str | None = None, db: Session = Depends(get_db)):
     user_id = _get_session_user_id(request)
-
-    # 대소문자만 다른 URL도 같은 레포로 인식해야 한다 (예: 조직 이전 등으로 owner
-    # 표기가 바뀐 경우도 있었음 — fastapi/fastapi 사례).
-    existing = (
-        db.query(Repository)
-        .filter(func.lower(Repository.url) == _normalize_github_url(github_url))
-        .order_by(Repository.id)
-        .first()
-    )
-    if existing:
-        _trigger_analysis(db, existing.id, user_id)
-        return {
-            "message": "Repository re-analysis started",
-            "repository_id": existing.id,
-        }
-
-    repository = Repository(
-        url=github_url,
-        name=github_url.rstrip("/").split("/")[-1],
-        platform="github",
-    )
-    db.add(repository)
-    db.commit()
-    db.refresh(repository)
-
-    job = AnalysisJob(
-        repository_id=repository.id, status="pending", triggered_by="api",
-        triggered_by_user_id=user_id,
-    )
-    db.add(job)
-    db.commit()
-
-    analyze_repository.delay(repository.id, user_id=str(user_id) if user_id else None)
-
-    return {
-        "message": "Repository analysis started",
-        "repository_id": repository.id,
-    }
+    if not user_id:
+        raise HTTPException(401, "분석을 요청하려면 로그인해 주세요.")
+    try:
+        github_url = canonical_github_url(github_url)
+        parameters = analysis_parameters(analysis_start, analysis_end)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    personal = user_github_token(db, user_id)
+    metadata = github_metadata(github_url, personal)
+    if metadata["private"] and not personal:
+        raise HTTPException(404, "저장소를 찾을 수 없거나 접근 권한이 없습니다.")
+    # 주소가 재사용돼도 이전 저장소의 수집 이력/결과에 새 ID를 덮어쓰지 않는다.
+    repository = db.query(Repository).filter(Repository.github_id == metadata["id"]).first()
+    if repository is None:
+        repository = Repository(url=metadata["canonical_url"],name=metadata["name"],platform="github",
+                                github_id=metadata["id"], is_private=metadata["private"])
+        db.add(repository)
+        from sqlalchemy.exc import IntegrityError
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            repository = db.query(Repository).filter_by(github_id=metadata["id"]).one()
+    remember_access(db,repository,metadata,user_id)
+    job_id = _trigger_analysis(db,repository.id,user_id,parameters)
+    return {"message":"Repository analysis queued", "repository_id":repository.id,"job_id":job_id}
 
 
 _GITHUB_SEARCH_URL = "https://api.github.com/search/repositories"
@@ -318,7 +287,7 @@ _SEARCH_SORT_VALUES = {"stars", "forks", "help-wanted-issues", "updated"}
 
 @router.get("/search/github-repositories")
 def search_github_repositories(
-    q: str, sort: str = "", per_page: int = 20, db: Session = Depends(get_db),
+    request: Request, q: str, sort: str = "", per_page: int = 20, db: Session = Depends(get_db),
 ):
     """GitHub Search API로 레포를 검색해 메타데이터 + is_registered만 반환한다.
     경량 예비 점수(scores)는 Track 02 몫이라 아직 없으면 null로 내려간다 — 프론트
@@ -340,7 +309,10 @@ def search_github_repositories(
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    token = os.getenv("GITHUB_TOKEN")
+    personal = user_github_token(db, _get_session_user_id(request))
+    token = personal or os.getenv("GITHUB_TOKEN")
+    if not personal:
+        params["q"] = f"{q} is:public"
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
@@ -358,12 +330,14 @@ def search_github_repositories(
 
     payload = response.json()
     registered_urls = {
-        _normalize_github_url(url) for (url,) in db.query(Repository.url).all()
+        _normalize_github_url(r.url) for r in visible_repository_query(db, _get_session_user_id(request)).all()
     }
     now = datetime.now(timezone.utc)
 
     results = []
     for item in payload.get("items", []):
+        if item.get("private") and not personal:
+            continue
         owner = item.get("owner") or {}
         html_url = item.get("html_url", "")
         metadata = {
@@ -394,27 +368,22 @@ def search_github_repositories(
 
 
 @router.post("/repositories/{repository_id}/reanalyze")
-def reanalyze_repository(repository_id: int, request: Request, db: Session = Depends(get_db)):
-    """헤더의 '재분석' 버튼용: repository_id를 직접 받아 증분 재분석을 큐잉한다."""
-    repository = db.query(Repository).filter(Repository.id == repository_id).first()
-    if not repository:
-        raise HTTPException(status_code=404, detail="Repository not found")
-
+def reanalyze_repository(repository_id: int, request: Request, analysis_start: str | None = None,
+                         analysis_end: str | None = None, db: Session = Depends(get_db)):
     user_id = _get_session_user_id(request)
-    _trigger_analysis(db, repository.id, user_id)
-
-    return {
-        "message": "Repository re-analysis started",
-        "repository_id": repository.id,
-    }
+    repository, metadata = verify_repository_access(db, repository_id, user_id, write=True)
+    try:
+        parameters = analysis_parameters(analysis_start,analysis_end)
+    except ValueError as exc:
+        raise HTTPException(422,str(exc))
+    remember_access(db,repository,metadata,user_id)
+    job_id = _trigger_analysis(db,repository.id,user_id,parameters)
+    return {"message":"Repository re-analysis queued","repository_id":repository.id,"job_id":job_id}
 
 
 @router.get("/repositories/{repository_id}")
-def get_repository(repository_id: int, db: Session = Depends(get_db)):
-    repository = db.query(Repository).filter(Repository.id == repository_id).first()
-
-    if not repository:
-        return {"error": "Repository not found"}
+def get_repository(repository_id: int, request: Request, db: Session = Depends(get_db)):
+    repository, _ = verify_repository_access(db, repository_id, _get_session_user_id(request))
 
     latest_job = (
         db.query(AnalysisJob)
@@ -433,8 +402,9 @@ def get_repository(repository_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/repositories/{repository_id}/status")
-def get_repository_status(repository_id: int, db: Session = Depends(get_db)):
-    """프론트엔드 폴링용: 현재 상태 + 실시간 진행 상황 (업무지시서 3-1)."""
+def get_repository_status(repository_id: int, request: Request, db: Session = Depends(get_db)):
+    """프론트엔드 폴링용: 접근 권한을 확인한 저장소 상태만 반환한다."""
+    verify_repository_access(db, repository_id, _get_session_user_id(request))
     job = (
         db.query(AnalysisJob)
         .filter(AnalysisJob.repository_id == repository_id)
@@ -465,6 +435,7 @@ def get_repository_status(repository_id: int, db: Session = Depends(get_db)):
     return {
         "repository_id": repository_id,
         "job_id": job.id,
+        "snapshot_id": (job.parameters or {}).get("snapshot_id"),
         "status": job.status,
         "progress_detail": job.progress_detail or {},
         "error_message": job.error_message,

@@ -19,6 +19,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # 기존 revision ID는 유지하고 새 설치에 빠졌던 선행 테이블만 보완한다.
+    from migrations.schema_20261002 import prerequisites
+    prerequisites()
     op.create_table(
         "commits",
 

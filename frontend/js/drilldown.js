@@ -118,14 +118,15 @@ async function renderContributor(contributorId) {
 function buildRiskExplanation(extra, detail) {
   if (!extra || extra.risk_score == null) return null;
   const reasons = [];
-  if (extra.risk_score >= 0.7) reasons.push('Risk Score가 상위권으로 결함 위험이 높습니다');
-  else if (extra.risk_score >= 0.5) reasons.push('Risk Score가 중간 이상으로 주의가 필요합니다');
-  if (detail.bus_factor === 1) reasons.push('이 파일을 아는 사람이 한 명뿐입니다(BF=1)');
+  if (extra.risk_score >= 0.7) reasons.push('저장소 내 상대 분석 점수가 높습니다(0.7 이상)');
+  else if (extra.risk_score >= 0.5) reasons.push('저장소 내 상대 분석 점수가 0.5 이상입니다');
+  else reasons.push('저장소 내 상대 분석 점수가 0.5 미만입니다. 낮은 점수가 안전을 보장하지는 않습니다');
+  if (detail.bus_factor === 1) reasons.push('관측 구간에서 한 명에게 파일 변경 기여의 80% 이상이 집중됩니다(BF 추정치=1)');
   if (extra.coupling_score >= 0.7) {
     const cnt = extra.coupled_file_count ?? 0;
-    reasons.push(`결합도가 높아 다른 파일 ${cnt}개에 영향을 줄 수 있습니다`);
+    reasons.push(`함께 변경되는 비율이 높은 파일이 ${cnt}개 있습니다. 실제 영향 관계를 증명하는 값은 아닙니다`);
   }
-  if (!reasons.length) reasons.push('현재 특별한 위험 신호는 없습니다');
+  reasons.push('Risk Score는 결함 발생 확률이 아닙니다');
   return reasons.join(' · ');
 }
 
@@ -170,17 +171,19 @@ async function renderFile(fileId, extra) {
     ? coupled.map(f => `
         <div class="coup-row" style="cursor:pointer;" onclick="window.__ddPushFile(${f.file_id})" title="${esc(f.path)}">
           <div class="coup-file">${esc(f.path)}</div>
-          <div class="coup-cnt">${num(f.co_change_count)}회</div>
-          <div class="coup-pct">${f.adjusted_score.toFixed(2)}</div>
+          <div class="coup-cnt">공동 ${num(f.co_change_count)}건${f.low_support ? ' · 데이터 부족' : ''}</div>
+          <div class="coup-pct" title="선택 파일 변경 중 상대 파일도 변경된 비율 / 상대 파일 변경 중 선택 파일도 변경된 비율">선택→상대 ${pct(f.selected_to_other_ratio)}% (${f.co_change_count}/${f.selected_change_count}) · 상대→선택 ${pct(f.other_to_selected_ratio)}% (${f.co_change_count}/${f.other_change_count})</div>
         </div>`).join('')
     : '<div style="padding:12px;text-align:center;color:var(--text3);font-size:12px;">함께 변경된 파일 없음</div>';
 
   bodyEl().innerHTML = `
-    <div style="font-size:11px;color:var(--text2);margin-top:6px;">Bus Factor ${detail.bus_factor ?? '—'}${bfBadge} · Entropy ${detail.entropy.toFixed(2)}</div>
+    <div style="font-size:11px;color:var(--text2);margin-top:6px;">BF 추정치 ${detail.bus_factor ?? '—'}${bfBadge} · Ownership Entropy ${detail.entropy.toFixed(2)}</div>
+    <div class="p-note">BF는 관측 구간의 파일 변경 커밋 수를 기준으로 누적 기여 80%에 도달하는 최소 인원입니다. 실제 지식 보유 인원은 아닙니다. 관측 구간은 마지막 refactor 분류 커밋 이후이며, 없으면 전체 이력입니다.</div>
     ${riskHtml}
     <div style="font-size:12px;font-weight:600;color:var(--text2);margin:14px 0 6px;">수정한 사람 (지분 순)</div>
     <div style="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto;">${editorsHtml}</div>
-    <div style="font-size:12px;font-weight:600;color:var(--text2);margin:16px 0 6px;">영향을 끼칠 수 있는 파일 (co-change 순)</div>
+    <div style="font-size:12px;font-weight:600;color:var(--text2);margin:16px 0 6px;">함께 확인할 후보 파일 (IDF 보정 점수 순)</div>
+    <div class="p-note">${detail.co_change_unit === 'pr' ? '병합 PR' : '커밋'} 단위의 공동 변경입니다. 파일 목록이 수집된 병합 PR이 없으면 커밋으로 대체합니다. 양방향 비율은 각 파일의 변경 건수를 분모로 사용합니다. 공동 변경 2건 이상인 쌍만 반환하고 IDF 보정 점수로 정렬합니다. 5건 미만은 데이터 부족으로 표시합니다(표시 정책이며 검증된 신뢰수준은 아님).</div>
     <div style="display:flex;flex-direction:column;gap:2px;max-height:160px;overflow-y:auto;">${coupledHtml}</div>
   `;
 }
