@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../css/index.css">
+    <title>GitViz</title>
+</head>
+<body>
+    <div id="navbar-container"></div>
+    <div id="modal-container"></div>
+    <!-- ═══════════ HISTORY (분석 이력 · 두 결과 비교) ═══════════ -->
+<div class="page active" id="page-history">
+  <div class="dash-head">
+    <div><div class="dash-title" id="hist-repo-title">—</div><div class="dash-sub">분석 이력 — 저장된 결과를 열어 보거나 두 결과를 비교합니다</div></div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <button class="btn-secondary" data-auth="1" id="btn-reanalyze" onclick="openReanalyzeToast()">재분석</button>
+    </div>
+  </div>
+  <div class="sub-tabs">
+    <div class="sub-tab" onclick="goPage('timeline')">타임라인</div>
+    <div class="sub-tab" onclick="goPage('network')">협업 네트워크</div>
+    <div class="sub-tab" onclick="goPage('code-analysis')">코드분석</div>
+    <div class="sub-tab active">분석 이력·비교</div>
+  </div>
+  <div class="body">
+    <div id="hist-error"></div>
+
+    <!-- 저장된 결과 목록 -->
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="p-head" style="margin-bottom:6px;">
+        <div class="p-title">저장된 분석 결과</div>
+        <div style="font-size:11px;color:var(--text2);" id="hist-count">불러오는 중</div>
+      </div>
+      <div class="p-note">분석을 실행할 때마다 불변 결과가 하나씩 저장됩니다. 재분석이 실패해도 마지막으로 성공한 결과는 그대로 열 수 있습니다. 결과의 관측 기간과 계산 버전은 서로 다를 수 있어, 숫자를 비교하기 전에 확인하세요.</div>
+      <div class="hm-wrap">
+        <table class="hm-table">
+          <thead><tr>
+            <th class="hm-th" title="비교의 시작(이전) 결과">시작</th><th class="hm-th" title="비교의 종료(이후) 결과">종료</th>
+            <th class="hm-th left">저장 결과</th><th class="hm-th left">분석 시각</th><th class="hm-th left">관측 기간</th><th class="hm-th left">지표 정책</th><th class="hm-th left">기준 SHA</th><th class="hm-th"></th>
+          </tr></thead>
+          <tbody id="hist-tbody"><tr><td class="hm-td" colspan="8" style="text-align:center;color:var(--text3);padding:24px;">불러오는 중...</td></tr></tbody>
+        </table>
+      </div>
+      <div style="text-align:center;margin-top:10px;"><button class="btn-secondary" id="hist-more" style="display:none;">더 보기</button></div>
+    </div>
+
+    <!-- 두 결과 비교 -->
+    <div class="panel">
+      <div class="p-head" style="margin-bottom:6px;">
+        <div class="p-title">두 결과 비교</div>
+      </div>
+      <div class="p-note">같은 저장소·같은 계산 버전의 결과끼리만 비교할 수 있습니다. 파일은 경로가 정확히 같을 때만 같은 파일로 봅니다(이름 변경은 제외+추가로 표시). 점수 차이는 각 결과 안에서 정규화한 상대 값의 차이이며 품질이 좋아지거나 나빠졌다는 뜻이 아닙니다. 값이 없으면 0이 아니라 '—'로 표시합니다.</div>
+      <div class="cmp-form">
+        <label>시작(이전) <select id="cmp-before"></select></label>
+        <span class="cmp-arrow">→</span>
+        <label>종료(이후) <select id="cmp-after"></select></label>
+        <button class="btn-primary" id="cmp-run" style="padding:8px 16px;font-size:13px;">비교</button>
+      </div>
+      <div id="cmp-warn"></div>
+      <div id="cmp-result"></div>
+    </div>
+  </div>
+</div>
+</body>
+
+<script type="module" src="../js/main.js"></script>
+</html>
