@@ -90,38 +90,65 @@ export function comparePriority(a, b) {
 }
 
 /* ── 수집 범위 / 분석 근거 상태 ──
-   조회 성공 ≠ 수집 완료 ≠ 분석 근거 충분. 세 가지를 따로 판정해 보여준다. */
+   조회 성공 ≠ 수집 완료 ≠ 분석 근거 충분. 세 가지를 따로 판정해 보여준다.
+   이 화면은 저장된 수치로 '확인할 수 있는 상태'만 말한다: 누락이 확인되면 partial, 판정에 필요한 수치가
+   없으면 unverified, 확인된 누락이 없으면 checked다. checked는 '수집 완료'가 아니다 — 완료를 확정하려면
+   수집 단계가 완료 정보를 제공해야 하며, 그 전에는 '완료'·'충분'이라고 단정하지 않는다.
+   수치가 없는 항목(undefined/null)은 0으로 읽지 않고 unverified로 둔다. */
 export function assessDataQuality(dq) {
   dq = dq || {};
   const threshold = dq.low_support_threshold ?? 5;
-  const collectionReasons = [];
-  if (dq.target_tree_file_count != null && dq.collected_target_file_count != null
-      && dq.collected_target_file_count < dq.target_tree_file_count) {
+  const collectionReasons = [];   // 확인된 누락
+  const unverified = [];          // 수치가 없어 확인하지 못한 항목
+
+  if (dq.target_tree_file_count == null || dq.collected_target_file_count == null) unverified.push('기준 SHA 파일 수');
+  else if (dq.collected_target_file_count < dq.target_tree_file_count) {
     collectionReasons.push(`기준 SHA 파일 ${dq.collected_target_file_count}/${dq.target_tree_file_count}개만 결과에 포함`);
   }
-  if ((dq.merged_pr_count ?? 0) > 0 && (dq.prs_with_files ?? 0) < dq.merged_pr_count) {
-    collectionReasons.push(`병합 PR ${dq.prs_with_files ?? 0}/${dq.merged_pr_count}개만 파일 상세 수집`);
+  if (dq.merged_pr_count == null) unverified.push('병합 PR 수');
+  else if (dq.merged_pr_count > 0) {
+    if (dq.prs_with_files == null) unverified.push('PR 파일 상세 수');
+    else if (dq.prs_with_files < dq.merged_pr_count) collectionReasons.push(`병합 PR ${dq.prs_with_files}/${dq.merged_pr_count}개만 파일 상세 수집`);
+    if (dq.prs_with_linked_commits == null) unverified.push('PR 커밋 연결 수');
+    else if (dq.prs_with_linked_commits < dq.merged_pr_count) {
+      collectionReasons.push(`병합 PR ${dq.prs_with_linked_commits}/${dq.merged_pr_count}개만 커밋 연결 확인`);
+    }
   }
-  const collection = collectionReasons.length ? 'partial' : 'complete';
+  const collection = collectionReasons.length ? 'partial' : unverified.length ? 'unverified' : 'checked';
 
   const evidenceReasons = [];
   let evidence;
-  if (dq.commit_count === 0) {
+  if (dq.commit_count == null) {
+    evidence = 'unknown';
+    evidenceReasons.push('관측 커밋 수를 확인할 수 없습니다');
+  } else if (dq.commit_count === 0) {
     evidence = 'none';
     evidenceReasons.push('관측 구간에 커밋이 없습니다(수집 실패가 아니라 구간 밖의 변경일 수 있음)');
   } else {
-    if (dq.commit_count != null && dq.commit_count < threshold) evidenceReasons.push(`관측 커밋 ${dq.commit_count}개 (<${threshold})`);
+    if (dq.commit_count < threshold) evidenceReasons.push(`관측 커밋 ${dq.commit_count}개 (<${threshold})`);
     if (collection === 'partial') evidenceReasons.push('수집 범위 일부 누락');
-    if (dq.commit_count > 0 && dq.unidentified_commits === dq.commit_count) evidenceReasons.push('모든 커밋의 작성자가 미식별');
-    evidence = evidenceReasons.length ? 'limited' : 'sufficient';
+    if (collection === 'unverified') evidenceReasons.push('수집 범위 일부를 확인하지 못함');
+    if (dq.unidentified_commits === dq.commit_count) evidenceReasons.push('모든 커밋의 작성자가 미식별');
+    evidence = evidenceReasons.length ? 'limited' : 'no_limits_found';
   }
 
   const notes = [];
   if ((dq.unidentified_commits ?? 0) > 0 && dq.unidentified_commits !== dq.commit_count) notes.push(`작성자 미식별 커밋 ${dq.unidentified_commits}개`);
   if ((dq.github_account_unlinked ?? 0) > 0) notes.push(`GitHub 계정 미연결 기여자 ${dq.github_account_unlinked}명`);
-  if ((dq.merged_pr_count ?? 0) > 0) notes.push(`병합 PR의 커밋 연결 ${dq.prs_with_linked_commits ?? 0}/${dq.merged_pr_count}`);
-  return { collection, collectionReasons, evidence, evidenceReasons, notes, threshold };
+  if ((dq.merged_pr_count ?? 0) > 0) notes.push(`병합 PR의 커밋 연결 ${dq.prs_with_linked_commits != null ? dq.prs_with_linked_commits : '확인 불가'}/${dq.merged_pr_count}`);
+  return { collection, collectionReasons, unverified, evidence, evidenceReasons, notes, threshold };
 }
+
+/* 수집 범위·분석 근거 상태의 표시 문구. 긍정 상태도 '확인된 범위'까지만 말한다(완료·충분 단정 없음).
+   tone은 'warn' | 'gray' — 확인된 한계가 있을 때만 강조하고, 나머지는 중립으로 둔다. */
+export const COLLECTION_TEXT = { partial: '일부만 수집', unverified: '수집 범위 확인 불가', checked: '확인된 범위 누락 없음' };
+export const EVIDENCE_TEXT = { limited: '근거 제한적', none: '관측 구간 커밋 없음', unknown: '근거 확인 불가', no_limits_found: '확인된 제한 없음' };
+export const STATUS_TONE = {
+  partial: 'warn', unverified: 'gray', checked: 'gray',
+  limited: 'warn', none: 'gray', unknown: 'gray', no_limits_found: 'gray',
+};
+export const COLLECTION_NOTE = '기준 SHA 파일 수·PR 파일 상세·PR 커밋 연결 수치에서 누락이 확인되지 않았다는 뜻이며 수집 완료를 확인한 것이 아닙니다. 완료 여부는 수집 단계가 완료 정보를 제공해야 확정할 수 있습니다.';
+export const evidenceNote = (threshold) => `관측 커밋 ${threshold}건 이상이고 확인된 수집 누락이 없다는 뜻입니다. 분석 근거가 충분하다는 보증이나 통계적 신뢰수준이 아닙니다.`;
 
 /* ── 변경 결합 메타 해석 ── */
 export const FALLBACK_LABELS = {

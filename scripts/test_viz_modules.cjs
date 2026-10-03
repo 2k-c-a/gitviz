@@ -134,14 +134,39 @@ async function main() {
     ['a/low.py', 'c/tie0.py', 'c/tie1.py', 'c/tie2.py', 'd/zero.py', 'b/missing.py', 'z/no_history.md'],
     '점수순 → 동률은 변경 횟수 많은 순 → 경로순, null은 뒤(자료 부족 → 관측 변경 없음), 0은 점수 있는 쪽');
 
-  const partial = policy.assessDataQuality({ commit_count: 29, merged_pr_count: 9, prs_with_files: 0, target_tree_file_count: 18, collected_target_file_count: 18, low_support_threshold: 5 });
+  /* 수집 범위·분석 근거: '완료'·'충분'을 단정하지 않고 확인 가능한 상태만 낸다 */
+  const full = { commit_count: 86, merged_pr_count: 23, prs_with_files: 23, prs_with_linked_commits: 23, target_tree_file_count: 129, collected_target_file_count: 129 };
+  const partial = policy.assessDataQuality({ commit_count: 29, merged_pr_count: 9, prs_with_files: 0, prs_with_linked_commits: 0, target_tree_file_count: 18, collected_target_file_count: 18, low_support_threshold: 5 });
   assert.equal(partial.collection, 'partial', 'job이 done이어도 PR 상세 0/9는 부분 수집');
   assert.equal(partial.evidence, 'limited');
-  const empty = policy.assessDataQuality({ commit_count: 0, merged_pr_count: 0, prs_with_files: 0 });
+  const empty = policy.assessDataQuality({ commit_count: 0, merged_pr_count: 0, prs_with_files: 0, prs_with_linked_commits: 0, target_tree_file_count: 4, collected_target_file_count: 4 });
   assert.equal(empty.evidence, 'none');
-  assert.equal(empty.collection, 'complete', '관측 커밋 0은 수집 실패가 아니라 별도 상태');
-  assert.equal(policy.assessDataQuality({ commit_count: 86, merged_pr_count: 23, prs_with_files: 23, target_tree_file_count: 129, collected_target_file_count: 129 }).evidence, 'sufficient');
+  assert.equal(empty.collection, 'checked', '관측 커밋 0은 수집 실패가 아니라 별도 상태');
+  const ok = policy.assessDataQuality(full);
+  assert.equal(ok.collection, 'checked', '누락이 확인되지 않아도 "완료"가 아니라 "확인된 범위 누락 없음"');
+  assert.equal(ok.evidence, 'no_limits_found', '"충분"이 아니라 "확인된 제한 없음"');
+  assert.equal(policy.assessDataQuality({ ...full, prs_with_files: 20 }).collection, 'partial', 'PR 상세가 일부만 있으면 부분 수집');
+  assert.ok(policy.assessDataQuality({ ...full, prs_with_files: 20 }).collectionReasons.some((r) => r.includes('20/23') && r.includes('파일 상세')));
+  const unlinked = policy.assessDataQuality({ ...full, prs_with_linked_commits: 0 });
+  assert.equal(unlinked.collection, 'partial', 'PR 커밋 연결이 없으면 수집 범위 일부 누락');
+  assert.equal(unlinked.evidence, 'limited', 'PR 커밋 연결이 없는데 근거 충분으로 보이면 안 된다');
+  assert.ok(unlinked.collectionReasons.some((r) => r.includes('0/23') && r.includes('커밋 연결')));
+  /* 수치가 없는 항목은 0으로 읽지 않는다 — 누락으로 단정하지도, 완료로 단정하지도 않고 '확인 불가' */
+  const { prs_with_linked_commits: _omit, ...noLink } = full;
+  const unknownLink = policy.assessDataQuality(noLink);
+  assert.equal(unknownLink.collection, 'unverified');
+  assert.deepEqual(unknownLink.collectionReasons, []);
+  assert.deepEqual(unknownLink.unverified, ['PR 커밋 연결 수']);
+  assert.equal(unknownLink.evidence, 'limited');
+  assert.ok(unknownLink.notes.some((n) => n.includes('확인 불가')), '연결 수 없음은 0/23이 아니라 확인 불가');
+  const blank = policy.assessDataQuality({});
+  assert.equal(blank.collection, 'unverified', '수치가 하나도 없으면 완료로 보지 않는다');
+  assert.equal(blank.evidence, 'unknown');
   assert.equal(policy.assessDataQuality({ commit_count: 3, unidentified_commits: 3 }).evidence, 'limited');
+  for (const text of [...Object.values(policy.COLLECTION_TEXT), ...Object.values(policy.EVIDENCE_TEXT)]) {
+    assert.ok(!/완료|충분/.test(text), `표시 문구에 완료·충분 단정 없음: ${text}`);
+  }
+  assert.ok(policy.COLLECTION_NOTE.includes('수집 완료를 확인한 것이 아닙니다'));
   assert.equal(policy.couplingUnitText({ co_change_unit: 'commit', fallback_reason: 'all_collected_prs_filtered' }), '커밋 단위 (대체: 전부 필터됨)');
   assert.equal(policy.FALLBACK_LABELS.no_merged_prs, 'PR 없음');
   assert.equal(policy.FALLBACK_LABELS.pr_details_missing, '상세 부족');

@@ -24,6 +24,9 @@
 
 - 목록 기본 정렬은 원 결합도·공동 변경 횟수다. `GET /repositories/{id}/analytics/coupling?sort_by=idf`로 실험용 IDF 정렬을 선택할 수 있다. snapshot_id는 유지한다.
 - 파일 상세의 `selected_to_other_ratio`는 선택 파일 변경 시 상대 파일이 동반된 과거 비율이다. 역방향 `other_to_selected_ratio`와 `co_change_count`도 표시한다. 미래 영향 확률·실제 의존성이라고 표현하지 않는다.
+- 파일 상세 `GET .../files/{id}/detail?limit=&sort_by=coupling|idf`: `sort_by`를 주면 서버가 **전체 후보를 정렬한 뒤** `limit`으로 자르고, 응답에 `sort_by`(에코)와 `coupled_total`(자르기 전 후보 수)을 싣는다. 화면은 이 둘이 있을 때만 "전체 후보 기준 서버 정렬"이라고 표시하고, 없으면 "조회된 후보 안에서 정렬"로 표시한다. `sort_by`를 생략하면 기존 순서(위 `selected_to_other_ratio`)다.
+- 파일 상세는 그 파일 자신의 `evidence_status`·`change_freq`·`churn`·`bugfix_count`·`priority_components`를 준다(점수 목록 `limit`과 무관). 점수 목록에 없다는 이유로 `no_history`를 추정하지 않는다. 응답에 `evidence_status`가 없으면(기준 SHA에 없는 파일·이전 형식) 상태를 단정하지 않는다.
+- 수집 범위·분석 근거 배지는 확인 가능한 수치만 말한다: `일부만 수집`(누락 확인) / `수집 범위 확인 불가`(수치 없음) / `확인된 범위 누락 없음`, `근거 제한적` / `근거 확인 불가` / `관측 구간 커밋 없음` / `확인된 제한 없음`. "수집 완료"·"근거 충분"은 수집 단계가 완료 정보를 제공하기 전에는 표시하지 않는다.
 - `meta.fallback_reason`: no_merged_prs / pr_details_missing / all_collected_prs_filtered를 각각 PR 없음 / 상세 부족 / 전부 필터됨으로 구분한다.
 - `meta.pr_file_coverage`는 상세가 하나 이상 있는 PR 비율이다. 전체 수집 완료율로 표현하지 않는다. `excluded_unit_count`도 함께 보여준다.
 - Hidden Coupling 확정 개수 표시는 제거한다. AST 비교가 없어서 새 risk summary의 hidden_coupling_count는 null이다.

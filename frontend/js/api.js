@@ -113,8 +113,10 @@ export const fetchContributorOwnedFiles = (id, contributorId, limit = 20) =>
   getJSON(`${base(id)}/contributors/${contributorId}/owned-files?limit=${limit}`);
 export const fetchContributorCollaborators = (id, contributorId, limit = 20) =>
   getJSON(`${base(id)}/contributors/${contributorId}/collaborators?limit=${limit}`);
-export const fetchFileDetail = (id, fileId, limit = 20) =>
-  getJSON(`${base(id)}/files/${fileId}/detail?limit=${limit}`);
+/* sortBy: 'coupling' | 'idf' — 서버가 전체 후보를 이 기준으로 정렬한 뒤 limit으로 잘라 보낸다.
+   생략하면 서버 기본 순서(선택 파일 → 상대 파일 동반 비율)로 자른다. */
+export const fetchFileDetail = (id, fileId, limit = 20, sortBy = null) =>
+  getJSON(`${base(id)}/files/${fileId}/detail?limit=${limit}${sortBy ? `&sort_by=${encodeURIComponent(sortBy)}` : ''}`);
 export const fetchBusFactor = (id, limit = 50) =>
   getJSON(`${base(id)}/bus-factor?limit=${limit}`);
 /* sortBy: 'coupling'(원 결합도·공동 변경 횟수, 기본) | 'idf'(IDF 보정, 실험) — 서버에 그대로 전달한다 */
@@ -127,15 +129,6 @@ export const fetchNetwork = (id, limitNodes = 50, minEdgeWeight = 0) =>
 export const fetchNetworkTopPairs = (id, limit = 5) =>
   getJSON(`${base(id)}/network/top-pairs?limit=${limit}`);
 export const fetchRepoTree = (id) => getJSON(`${base(id)}/tree`);
-
-/* 파일별 원시 지표(변경 횟수·Churn·버그 수정 횟수·백분위 구성 요소) — 한 결과당 한 번만 받아 file_id로 찾는다 */
-const riskIndexes = new Map();
-export function fetchRiskIndex(id) {
-  if (!riskIndexes.has(id)) {
-    riskIndexes.set(id, fetchRiskScores(id, 10000).then(r => new Map((r.files || []).map(f => [f.file_id, f]))));
-  }
-  return riskIndexes.get(id);
-}
 
 /* ── 분석 이력·비교 (결과 단위가 아니라 저장소 단위 API) ── */
 export const fetchSnapshots = (id, { limit = 20, beforeId = null } = {}) =>
