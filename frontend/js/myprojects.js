@@ -34,6 +34,7 @@ const STATUS_BADGE = {
   pending:      ['badge-blue',  'var(--blue)',  '대기 중'],
   rate_limited: ['badge-blue',  'var(--blue)',  'Rate Limit 대기'],
   failed:       ['badge-red',   'var(--red)',   '실패'],
+  cancelled:    ['badge-gray',  'var(--text3)', '교체됨'],
   unknown:      ['badge-gray',  'var(--text3)', '알 수 없음'],
 };
 
@@ -47,7 +48,8 @@ function statusBadge(repo) {
 
 function metaLine(repo) {
   const parts = [];
-  if (repo.commit_count) parts.push(`커밋 ${num(repo.commit_count)}개`);
+  // 수집한 기본 브랜치의 누적 커밋 수 — 결과 화면의 '관측 구간 커밋'(분석 구간 안)과 다르다
+  if (repo.commit_count) parts.push(`수집 커밋 ${num(repo.commit_count)}개`);
   if (repo.contributor_count) parts.push(`기여자 ${num(repo.contributor_count)}명`);
   if (repo.status === 'done') parts.push(`파일 ${num(repo.file_count)}개`);
   else if (!parts.length) parts.push('데이터 수집 중...');
@@ -62,11 +64,11 @@ function statusCallout(repo) {
     const bfText = repo.median_bus_factor != null ? `<strong style="margin:0 2px;">${repo.median_bus_factor}</strong>` : '<strong style="margin:0 2px;">—</strong>';
     if (repo.high_risk_count > 0 || repo.bus_factor_1_count > 0) {
       return `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--coral-light);border:0.5px solid var(--coral-mid);border-radius:var(--r-md);font-size:12px;color:var(--coral-dark);">
-        ⚠ 높은 분석 점수 파일 <strong style="margin:0 2px;">${num(repo.high_risk_count)}개</strong> · BF 추정치=1 파일 <strong style="margin:0 2px;">${num(repo.bus_factor_1_count)}개</strong> · 파일별 BF 추정치 중앙값 ${bfText}
+        점수 표시 임계값(≥0.7) 이상 파일 <strong style="margin:0 2px;">${num(repo.high_risk_count)}개</strong> · BF80=1 파일 <strong style="margin:0 2px;">${num(repo.bus_factor_1_count)}개</strong> · 파일별 BF80 중앙값 ${bfText}
       </div>`;
     }
     return `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--teal-light);border:0.5px solid var(--teal-mid);border-radius:var(--r-md);font-size:12px;color:var(--teal-dark);">
-      BF 추정치=1 파일 <strong style="margin:0 2px;">없음</strong> · 파일별 BF 추정치 중앙값 ${bfText} · 관측 이력 기준이며 실제 지식 분포와 다를 수 있습니다
+      BF80=1 파일 <strong style="margin:0 2px;">없음</strong> · 파일별 BF80 중앙값 ${bfText} · 관측 이력 기준이며 실제 지식 분포와 다를 수 있습니다
     </div>`;
   }
 
@@ -78,9 +80,15 @@ function statusCallout(repo) {
   }
 
   if (repo.status === 'failed') {
+    // 재분석이 실패해도 이전에 성공한 저장 결과는 그대로 열 수 있다
+    const keep = repo.last_analyzed_at ? ' 마지막으로 성공한 결과는 "마지막 성공 결과"에서 열 수 있습니다.' : '';
     return `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--red-light);border:0.5px solid var(--red-mid);border-radius:var(--r-md);font-size:12px;color:var(--red-dark);">
-      ✕ ${esc(repo.error_message || '분석 실패 — 원인을 알 수 없습니다.')}
+      ✕ ${esc(repo.error_message || '분석 실패 — 원인을 알 수 없습니다.')}${keep}
     </div>`;
+  }
+
+  if (repo.status === 'cancelled') {
+    return `<div class="rec-box" style="font-size:12px;">이전 분석이 새 분석 요청으로 교체되었습니다. 새 작업의 진행 상황을 확인하세요.</div>`;
   }
 
   return '';
@@ -96,8 +104,14 @@ function actionButtons(repo, repoName, cardId) {
   if (['running', 'pending', 'rate_limited'].includes(repo.status)) {
     return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="openJobModal('poll', ${repo.id})">진행 확인</button>`;
   }
+  if (repo.status === 'cancelled') {
+    return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="openJobModal('poll', ${repo.id})">진행 확인</button>`;
+  }
   if (repo.status === 'failed') {
+    const last = repo.last_analyzed_at
+      ? `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="goPage('code-analysis', ${repo.id})">마지막 성공 결과</button>` : '';
     return `
+      ${last}
       <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" onclick="openReanalyzeToast(${repo.id})">재시도</button>
       <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" onclick="openRemoveRepoModal('${esc(repoName)}','${cardId}')">제거</button>`;
   }
@@ -144,7 +158,7 @@ function renderSummary(repos) {
   if (!metricsEl) return;
   metricsEl.innerHTML = `
     <div class="metric-card"><div class="m-label">총 분석 프로젝트</div><div class="m-val">${num(total)}</div><div class="m-sub">내 레포지토리 목록</div></div>
-    <div class="metric-card"><div class="m-label">검토 신호가 있는 프로젝트</div><div class="m-val${highRisk ? ' m-dn' : ''}">${num(highRisk)}</div><div class="m-sub">BF 추정치=1 또는 높은 분석 점수 파일 보유</div></div>
+    <div class="metric-card"><div class="m-label">검토 신호가 있는 프로젝트</div><div class="m-val${highRisk ? ' m-dn' : ''}">${num(highRisk)}</div><div class="m-sub">BF80=1 또는 점수 표시 임계값(≥0.7) 이상 파일 보유</div></div>
     <div class="metric-card"><div class="m-label">분석 중</div><div class="m-val" style="color:var(--blue);">${num(inProgress)}</div><div class="m-sub">작업 진행 중</div></div>
     <div class="metric-card"><div class="m-label">분석 실패</div><div class="m-val${failed ? ' m-dn' : ''}">${num(failed)}</div><div class="m-sub">재시도 필요</div></div>`;
 }
