@@ -1,18 +1,28 @@
 /* ── 결과 Analytics API 클라이언트 ──
-   프론트는 FastAPI가 같은 오리진(/)에서 서빙하므로 상대경로로 호출한다. */
+   프론트는 FastAPI가 같은 오리진(/)에서 서빙하므로 상대경로로 호출한다.
+
+   어떤 저장 결과(snapshot)를 볼지는 주소(?repo=&snapshot=)가 유일한 기준이다.
+   주소에 snapshot이 없으면 그 저장소의 최신 결과를 연다. (sessionStorage에 마지막으로 연 결과를
+   기억해 두었다가 되살리는 방식은 쓰지 않는다 — 다른 결과를 열고 뒤로 가면 엉뚱한 결과가 열린다.) */
+import { parseState, effectiveSort, DEFAULT_SORT } from './viz-state.js';
+import { renderContextBanner } from './page-context.js';
 
 const REPO_KEY = 'gitviz_repo_id';
 
-/* 현재 보고 있는 repo_id를 기억 (페이지 간 이동 시 유지용) */
+/* 예전 버전이 남긴 snapshot 기억값 정리 — 더 이상 쓰지 않는다 */
+try {
+  Object.keys(sessionStorage).filter(k => k.startsWith('gitviz_snapshot_')).forEach(k => sessionStorage.removeItem(k));
+} catch { /* 저장소 접근이 막힌 환경 */ }
+
+/* 현재 보고 있는 repo_id를 기억 (홈·검색 등 주소에 repo가 없는 화면에서의 기본값용) */
 export function setRepoId(id) {
   if (Number.isInteger(Number(id))) localStorage.setItem(REPO_KEY, String(id));
 }
 
-/* 분석 대상 repo_id 결정: ?repo=<id> → localStorage → 기본 1(react).
-   쿼리로 들어온 값은 localStorage에 동기화해 서브탭/내비바 이동 시에도 유지된다. */
+/* 분석 대상 repo_id 결정: ?repo=<id> → localStorage → 기본 1. */
 export function getRepoId() {
-  const fromQuery = parseInt(new URLSearchParams(location.search).get('repo'), 10);
-  if (Number.isInteger(fromQuery)) {
+  const fromQuery = parseState(location.search).repo;
+  if (fromQuery != null) {
     setRepoId(fromQuery);
     return fromQuery;
   }
@@ -21,49 +31,73 @@ export function getRepoId() {
   return 1;
 }
 
-const snapshots = new Map();
-export function resetSnapshot(id) {
-  sessionStorage.removeItem(`gitviz_snapshot_${id}`);
-  snapshots.delete(Number(id));
+/* 주소의 snapshot (repo가 함께 있고 지금 저장소와 같을 때만) */
+export function getSnapshotId(repoId = getRepoId()) {
+  const st = parseState(location.search);
+  return st.repo === repoId ? st.snapshot : null;
 }
+
+/* 변경 결합 정렬 정책 — 주소의 sort_by가 기준 (coupling | idf) */
+export const getSortPolicy = () => effectiveSort(parseState(location.search));
+
+export function setSortPolicy(policy) {
+  const url = new URL(location.href);
+  if (policy === DEFAULT_SORT) url.searchParams.delete('sort_by');
+  else url.searchParams.set('sort_by', policy);
+  history.replaceState(null, '', url);
+}
+
+/* API 오류 — status로 화면별 안내를 나눈다 */
+export class ApiError extends Error {
+  constructor(message, status, detail) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 async function readJSON(url) {
-  const res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.detail || `분석 결과 조회 실패 (${res.status})`);
+  let res;
+  try {
+    res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+  } catch {
+    throw new ApiError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.', 0, null);
+  }
+  let body = null;
+  try { body = await res.json(); } catch { /* JSON이 아닌 응답 */ }
+  if (!res.ok) {
+    const detail = typeof body?.detail === 'string' ? body.detail : null;
+    throw new ApiError(detail || `분석 결과 조회 실패 (${res.status})`, res.status, detail);
+  }
   return body;
 }
+
+/* 저장소별 결과 메타 — 한 번만 조회한다. 주소에 snapshot이 있으면 그 결과를, 없으면 최신 결과를 연다.
+   조회가 끝나면 주소에 repo/snapshot을 확정해 넣어, 이후 탭 이동·새로고침·뒤로 가기에서도 같은 결과를 본다. */
+const snapshotMetas = new Map();
+export function fetchSnapshotMeta(id) {
+  if (!snapshotMetas.has(id)) {
+    const requested = getSnapshotId(id);
+    const query = requested != null ? `?snapshot_id=${requested}` : '';
+    snapshotMetas.set(id, readJSON(`/repositories/${id}/analytics/snapshot${query}`).then(data => {
+      const url = new URL(location.href);
+      url.searchParams.set('repo', String(id));
+      url.searchParams.set('snapshot', String(data.snapshot.id));
+      history.replaceState(null, '', url);
+      renderContextBanner(data);
+      return data;
+    }));
+  }
+  return snapshotMetas.get(id);
+}
+
 async function getJSON(url) {
   const match = url.match(/^\/repositories\/(\d+)\/analytics/);
   if (!match) return readJSON(url);
   const id = Number(match[1]);
-  if (!snapshots.has(id)) {
-    const requested = new URLSearchParams(location.search).get('snapshot') || sessionStorage.getItem(`gitviz_snapshot_${id}`);
-    snapshots.set(id, readJSON(`/repositories/${id}/analytics/snapshot${requested ? `?snapshot_id=${encodeURIComponent(requested)}` : ''}`)
-      .then(data => {
-        sessionStorage.setItem(`gitviz_snapshot_${id}`, String(data.snapshot.id));
-        const current = new URL(location.href);
-        current.searchParams.set('repo', String(id));
-        current.searchParams.set('snapshot', String(data.snapshot.id));
-        history.replaceState(null, '', current);
-        showAnalysisContext(data);
-        return data.snapshot.id;
-      }));
-  }
-  const sid = await snapshots.get(id);
-  return readJSON(`${url}${url.includes('?') ? '&' : '?'}snapshot_id=${sid}`);
-}
-function showAnalysisContext(data) {
-  const container = document.querySelector('main') || document.querySelector('.page.active');
-  if (!container) return;
-  let el = document.getElementById('analysis-context');
-  if (!el) {
-    el = document.createElement('div'); el.id = 'analysis-context';
-    el.style.cssText = 'padding:12px 16px;margin:12px 0;border:1px solid var(--border);border-radius:8px;font-size:12px;line-height:1.7;color:var(--text2)';
-    container.prepend(el);
-  }
-  const s = data.snapshot || data._snapshot, q = data.data_quality || {};
-  el.textContent = `저장 결과 #${s.id} · SHA ${s.target_sha.slice(0, 12)} · 분석 구간 ${s.window_start || '전체 이력'} ~ ${s.window_end} (종료 제외) · ${s.formula_version}\n관측 커밋 ${q.commit_count ?? 0}개 · 작성자 미식별 ${q.unidentified_commits ?? 0}개 · GitHub 계정 미연결 ${q.github_account_unlinked ?? 0}명 · 병합 PR의 커밋 연결 ${q.prs_with_linked_commits ?? 0}/${q.merged_pr_count ?? 0} · 기준 SHA 파일 수집 ${q.collected_target_file_count ?? 0}/${q.target_tree_file_count ?? 0}. ${q.coverage_scope || ''}. 5건 미만 표시는 데이터 부족 안내이며 통계적 신뢰수준을 뜻하지 않습니다.`;
-  el.style.whiteSpace = 'pre-wrap';
+  const meta = await fetchSnapshotMeta(id);
+  return readJSON(`${url}${url.includes('?') ? '&' : '?'}snapshot_id=${meta.snapshot.id}`);
 }
 
 const base = (id) => `/repositories/${id}/analytics`;
@@ -79,12 +113,15 @@ export const fetchContributorOwnedFiles = (id, contributorId, limit = 20) =>
   getJSON(`${base(id)}/contributors/${contributorId}/owned-files?limit=${limit}`);
 export const fetchContributorCollaborators = (id, contributorId, limit = 20) =>
   getJSON(`${base(id)}/contributors/${contributorId}/collaborators?limit=${limit}`);
-export const fetchFileDetail = (id, fileId, limit = 20) =>
-  getJSON(`${base(id)}/files/${fileId}/detail?limit=${limit}`);
+/* sortBy: 'coupling' | 'idf' — 서버가 전체 후보를 이 기준으로 정렬한 뒤 limit으로 잘라 보낸다.
+   생략하면 서버 기본 순서(선택 파일 → 상대 파일 동반 비율)로 자른다. */
+export const fetchFileDetail = (id, fileId, limit = 20, sortBy = null) =>
+  getJSON(`${base(id)}/files/${fileId}/detail?limit=${limit}${sortBy ? `&sort_by=${encodeURIComponent(sortBy)}` : ''}`);
 export const fetchBusFactor = (id, limit = 50) =>
   getJSON(`${base(id)}/bus-factor?limit=${limit}`);
-export const fetchCoupling = (id, limit = 100, minScore = 0) =>
-  getJSON(`${base(id)}/coupling?limit=${limit}&min_score=${minScore}`);
+/* sortBy: 'coupling'(원 결합도·공동 변경 횟수, 기본) | 'idf'(IDF 보정, 실험) — 서버에 그대로 전달한다 */
+export const fetchCoupling = (id, limit = 100, minScore = 0, sortBy = DEFAULT_SORT) =>
+  getJSON(`${base(id)}/coupling?limit=${limit}&min_score=${minScore}&sort_by=${encodeURIComponent(sortBy)}`);
 export const fetchFileCoupling = (id, fileId, limit = 20) =>
   getJSON(`${base(id)}/coupling/${fileId}?limit=${limit}`);
 export const fetchNetwork = (id, limitNodes = 50, minEdgeWeight = 0) =>
@@ -92,3 +129,9 @@ export const fetchNetwork = (id, limitNodes = 50, minEdgeWeight = 0) =>
 export const fetchNetworkTopPairs = (id, limit = 5) =>
   getJSON(`${base(id)}/network/top-pairs?limit=${limit}`);
 export const fetchRepoTree = (id) => getJSON(`${base(id)}/tree`);
+
+/* ── 분석 이력·비교 (결과 단위가 아니라 저장소 단위 API) ── */
+export const fetchSnapshots = (id, { limit = 20, beforeId = null } = {}) =>
+  readJSON(`/repositories/${id}/snapshots?limit=${limit}${beforeId != null ? `&before_id=${beforeId}` : ''}`);
+export const fetchSnapshotCompare = (id, before, after, { offset = 0, limit = 100 } = {}) =>
+  readJSON(`/repositories/${id}/snapshots/compare?before=${before}&after=${after}&offset=${offset}&limit=${limit}`);
