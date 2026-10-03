@@ -14,7 +14,12 @@ import {
 const timelineCanvas = document.getElementById('chart-timeline');
 
 if (timelineCanvas && typeof Chart !== 'undefined') {
-  initTimelinePage().catch(err => console.error('[timeline] 로드 실패:', err));
+  initTimelinePage().catch(err => {
+    console.error('[timeline] 로드 실패:', err);
+    const box = document.createElement('div'); box.textContent = err.message;
+    box.style.cssText = 'padding:20px;color:var(--red)';
+    (document.querySelector('.page.active') || document.body).prepend(box);
+  });
 }
 
 /* ── helpers ── */

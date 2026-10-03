@@ -1,0 +1,238 @@
+[
+  {
+    "check": "PostgreSQL transaction_read_only",
+    "passed": true,
+    "details": null
+  },
+  {
+    "check": "repo 9 공동 수정 SQL = 실제 변경 독립 집계",
+    "passed": true,
+    "details": {
+      "pr_file_records": 145,
+      "co_edit_pairs": 1,
+      "directed_edges": 4
+    }
+  },
+  {
+    "check": "repo 1 공동 수정 SQL = 실제 변경 독립 집계",
+    "passed": true,
+    "details": {
+      "pr_file_records": 75,
+      "co_edit_pairs": 0,
+      "directed_edges": 645
+    }
+  },
+  {
+    "check": "repo 6 GET summary",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.3
+    }
+  },
+  {
+    "check": "repo 6 GET tree",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.19
+    }
+  },
+  {
+    "check": "repo 6 파일 수 일치",
+    "passed": true,
+    "details": 1
+  },
+  {
+    "check": "repo 6 GET network",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.06
+    }
+  },
+  {
+    "check": "repo 6 GET network/top-pairs",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.05
+    }
+  },
+  {
+    "check": "repo 9 GET summary",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.07
+    }
+  },
+  {
+    "check": "repo 9 GET tree",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.53
+    }
+  },
+  {
+    "check": "repo 9 파일 수 일치",
+    "passed": true,
+    "details": 209
+  },
+  {
+    "check": "repo 9 GET network",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.1
+    }
+  },
+  {
+    "check": "repo 9 GET network/top-pairs",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.08
+    }
+  },
+  {
+    "check": "repo 9 GET risk-scores?limit=10000",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.1
+    }
+  },
+  {
+    "check": "repo 9 GET bus-factor?limit=10000",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.05
+    }
+  },
+  {
+    "check": "repo 9 GET coupling?limit=10000",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.07
+    }
+  },
+  {
+    "check": "repo 9 tree / risk / BF 계약 일치",
+    "passed": true,
+    "details": null
+  },
+  {
+    "check": "repo 9 GET files/30917/detail",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.09
+    }
+  },
+  {
+    "check": "repo 9 파일 상세 계약 일치",
+    "passed": true,
+    "details": {
+      "file_id": 30917
+    }
+  },
+  {
+    "check": "repo 9 GET contributors/4420/owned-files",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.06
+    }
+  },
+  {
+    "check": "repo 9 GET contributors/4420/collaborators",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.09
+    }
+  },
+  {
+    "check": "repo 1 GET summary",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.08
+    }
+  },
+  {
+    "check": "repo 1 GET tree",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 4.17
+    }
+  },
+  {
+    "check": "repo 1 파일 수 일치",
+    "passed": true,
+    "details": 3139
+  },
+  {
+    "check": "repo 1 GET network",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.38
+    }
+  },
+  {
+    "check": "repo 1 GET network/top-pairs",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.13
+    }
+  },
+  {
+    "check": "repo 11 GET summary",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.08
+    }
+  },
+  {
+    "check": "repo 11 GET tree",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.04
+    }
+  },
+  {
+    "check": "repo 11 파일 수 일치",
+    "passed": true,
+    "details": 0
+  },
+  {
+    "check": "repo 11 GET network",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.12
+    }
+  },
+  {
+    "check": "repo 11 GET network/top-pairs",
+    "passed": true,
+    "details": {
+      "status": 200,
+      "seconds": 0.08
+    }
+  },
+  {
+    "check": "repo 11 커밋 없는 파일 점수 null",
+    "passed": true,
+    "details": null
+  }
+]

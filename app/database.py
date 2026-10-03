@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from sqlalchemy.pool import NullPool
+from sqlalchemy.engine import make_url
 from dotenv import load_dotenv
 import os
 import ssl
@@ -26,9 +27,13 @@ if DATABASE_URL.startswith("postgresql://"):
 def _build_async_engine(url: str):
     if not url:
         return None
-    ssl_ctx = ssl.create_default_context()
-    ssl_ctx.check_hostname = False
-    ssl_ctx.verify_mode = ssl.CERT_NONE
+    # 로컬 PostgreSQL/Docker는 기본적으로 TLS를 제공하지 않는다.
+    local = make_url(url).host in {'localhost', '127.0.0.1', '::1'}
+    ssl_ctx = False
+    if not local:
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
     return create_async_engine(
         url,
         echo=False,

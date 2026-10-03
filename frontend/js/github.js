@@ -12,7 +12,7 @@ export async function getRepoGithubInfo(repoId) {
   const m = (repo.url || '').match(/github\.com\/([^/]+\/[^/]+?)(?:\.git)?\/?$/);
   const info = {
     base: m ? `https://github.com/${m[1]}` : null,
-    branch: repo.default_branch || 'main',
+    branch: repo.target_sha || repo.default_branch || 'main',
   };
   cache.set(repoId, info);
   return info;

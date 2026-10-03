@@ -36,11 +36,11 @@ const couplingColor = (score) => {
    dir: 방향(desc=값이 클수록 위험, asc=값이 작을수록 위험) */
 const METRICS = {
   risk:     { key: 'avgRisk',     leafKey: 'risk_score',     color: riskColor,     label: '위험도순',  dir: 'desc',
-              legendTitle: 'Risk Score', legendItems: [['안전 (<0.3)', '#639922'], ['0.3~0.5', '#378ADD'], ['0.5~0.7', '#EF9F27'], ['위험 (≥0.7)', '#E24B4A']] },
+              legendTitle: 'Risk Score', legendItems: [['낮은 점수 (<0.3)', '#639922'], ['0.3~0.5', '#378ADD'], ['0.5~0.7', '#EF9F27'], ['높은 점수 (≥0.7)', '#E24B4A']] },
   coupling: { key: 'avgCoupling', leafKey: 'coupling_score', color: couplingColor, label: '영향도순',  dir: 'desc',
               legendTitle: '결합도', legendItems: [['낮음 (0)', '#639922'], ['0~0.4', '#378ADD'], ['0.4~0.7', '#EF9F27'], ['강결합 (≥0.7)', '#E24B4A']] },
   bf:       { key: 'avgBF',       leafKey: 'bus_factor',     color: bfColor,       label: 'BF순',     dir: 'asc',
-              legendTitle: 'Bus Factor', legendItems: [['1 (위험)', BF_COLORS[1]], ['2', BF_COLORS[2]], ['3', BF_COLORS[3]], ['4', BF_COLORS[4]], ['5+ (안전)', BF_COLORS[5]]] },
+              legendTitle: 'BF 추정치', legendItems: [['1 (기여 집중)', BF_COLORS[1]], ['2', BF_COLORS[2]], ['3', BF_COLORS[3]], ['4', BF_COLORS[4]], ['5+', BF_COLORS[5]]] },
 };
 
 let currentMetric = 'risk';
@@ -55,6 +55,7 @@ async function initCodeAnalysisPage() {
 
   const id = getRepoId();
   const [data, ghInfo] = await Promise.all([fetchRepoTree(id), getRepoGithubInfo(id)]);
+  setText('cx-status', data.data_quality?.commit_count === 0 ? '수집된 커밋 이력 없음' : '저장 결과 조회 완료');
   TREE = data.tree || { name: 'root', children: [] };
   FILES = data.files || [];
   computeAverages(TREE);
@@ -96,17 +97,24 @@ function computeAverages(node) {
     node.avgBF = node.bus_factor;
     node.avgCoupling = node.coupling_score;
     node.fileCount = 1;
+    node.metricCounts = {
+      avgRisk: node.avgRisk == null ? 0 : 1,
+      avgBF: node.avgBF == null ? 0 : 1,
+      avgCoupling: node.avgCoupling == null ? 0 : 1,
+    };
     return;
   }
   node.children.forEach(computeAverages);
   node.fileCount = node.children.reduce((s, c) => s + c.fileCount, 0);
-  const avg = (vals) => {
-    const v = vals.filter(x => x != null);
-    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
-  };
-  node.avgRisk = avg(node.children.map(c => c.avgRisk));
-  node.avgBF = avg(node.children.map(c => c.avgBF));
-  node.avgCoupling = avg(node.children.map(c => c.avgCoupling));
+  // 폴더 평균끼리 단순 평균하면 디렉토리 구조에 따라 결과가 달라진다.
+  // 지표별로 값이 있는 하위 파일 수를 사용하여 파일당 동일 가중치를 준다.
+  node.metricCounts = {};
+  for (const key of ['avgRisk', 'avgBF', 'avgCoupling']) {
+    const count = node.children.reduce((s, c) => s + c.metricCounts[key], 0);
+    const sum = node.children.reduce((s, c) => s + (c[key] ?? 0) * c.metricCounts[key], 0);
+    node.metricCounts[key] = count;
+    node[key] = count ? sum / count : null;
+  }
 }
 
 function renderSummary() {
@@ -516,14 +524,14 @@ function showDetail(d) {
   if (!isDir(d)) {
     metricsEl.innerHTML = [
       row('Risk Score', chip(d.data.risk_score != null ? fmt2(d.data.risk_score) : '—', riskColor(d.data.risk_score))),
-      row('Bus Factor', chip(d.data.bus_factor ?? '—', bfColor(d.data.bus_factor)) + (d.data.is_bus_factor_risk ? '<span class="badge badge-red" style="margin-left:4px;">승계위험</span>' : '')),
+      row('BF 추정치', chip(d.data.bus_factor ?? '—', bfColor(d.data.bus_factor)) + (d.data.is_bus_factor_risk ? '<span class="badge badge-red" style="margin-left:4px;">기여 집중</span>' : '')),
       row('결합도', chip(d.data.coupling_score != null ? fmt2(d.data.coupling_score) : '—', couplingColor(d.data.coupling_score))),
       row('결합 파일 수', `<span>${num(d.data.coupled_file_count)}</span>`),
     ].join('');
   } else {
     metricsEl.innerHTML = [
       row('평균 Risk', chip(d.data.avgRisk != null ? fmt2(d.data.avgRisk) : '—', riskColor(d.data.avgRisk))),
-      row('평균 Bus Factor', chip(d.data.avgBF != null ? fmt2(d.data.avgBF) : '—', bfColor(d.data.avgBF))),
+      row('파일별 BF 평균', chip(d.data.avgBF != null ? fmt2(d.data.avgBF) : '—', bfColor(d.data.avgBF))),
       row('평균 결합도', chip(d.data.avgCoupling != null ? fmt2(d.data.avgCoupling) : '—', couplingColor(d.data.avgCoupling))),
       row('하위 파일 수', `<span>${num(d.data.fileCount)}개</span>`),
     ].join('');
@@ -555,15 +563,15 @@ function renderList() {
 
   tbody.innerHTML = sorted.map(f => {
     const bfBadge = f.is_bus_factor_risk
-      ? '<span class="badge badge-red" title="이 파일을 아는 사람이 한 명뿐입니다">BF=1</span>' : '';
+      ? '<span class="badge badge-red" title="관측 구간에서 한 명에게 파일 변경 기여의 80% 이상이 집중됩니다">BF=1</span>' : '';
     const couplingBadge = f.coupling_score >= 0.7
       ? '<span class="badge badge-amber" style="margin-left:4px;" title="강결합 파일">강결합</span>' : '';
     const fileUrl = githubFileUrl(f.path);
     const pathHtml = fileUrl
       ? `<a href="${esc(fileUrl)}" target="_blank" rel="noopener" class="cx-file-link" title="GitHub에서 열기">${esc(f.path)}</a>`
       : esc(f.path);
-    return `<tr style="cursor:pointer;" data-file-id="${f.file_id}" title="수정한 사람·영향 파일 보기">
-      <td class="hm-td file" title="${esc(f.path)}">${pathHtml}${bfBadge}${couplingBadge}</td>
+    return `<tr style="cursor:pointer;" data-file-id="${f.file_id}" title="수정한 사람·함께 변경된 파일 보기">
+      <td class="hm-td file" title="${esc(f.path)}">${pathHtml}${bfBadge}${couplingBadge}${f.evidence_status === 'no_history' ? ' · 관측 이력 없음' : f.evidence_status === 'low_support' ? ` · 데이터 부족 (${f.observation_count}건)` : ''}${f.coupling_support > 0 && f.coupling_support < 5 ? ' · 결합도 표본 부족' : ''}</td>
       <td class="hm-td"><span class="hm-val" style="background:${riskColor(f.risk_score)}22;color:${riskColor(f.risk_score)};font-weight:600;">${f.risk_score != null ? fmt2(f.risk_score) : '—'}</span></td>
       <td class="hm-td" style="text-align:center;">${f.bus_factor ?? '—'}</td>
       <td class="hm-td"><span class="hm-val" style="background:${couplingColor(f.coupling_score)}22;color:${couplingColor(f.coupling_score)};">${f.coupling_score != null ? fmt2(f.coupling_score) : '—'}</span></td>
@@ -589,5 +597,11 @@ function setText(id, text) {
 }
 
 if (svgEl && typeof d3 !== 'undefined') {
-  initCodeAnalysisPage().catch(err => console.error('[code-analysis] 로드 실패:', err));
+  initCodeAnalysisPage().catch(err => {
+    setText('cx-status', '결과 조회 실패');
+    console.error('[code-analysis] 로드 실패:', err);
+    const box = document.createElement('div');
+    box.textContent = err.message; box.style.cssText = 'padding:20px;color:var(--red)';
+    (document.querySelector('main') || document.body).prepend(box);
+  });
 }

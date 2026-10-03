@@ -5,7 +5,11 @@ import { getRepoId, fetchNetwork, fetchNetworkTopPairs } from './api.js';
 const svgEl = document.getElementById('net-graph-svg');
 
 if (svgEl && typeof d3 !== 'undefined') {
-  initNetworkPage().catch(err => console.error('[network] 로드 실패:', err));
+  initNetworkPage().catch(err => {
+    setText('net-status', '결과 조회 실패');
+    setText('net-m-density', err.message);
+    console.error('[network] 로드 실패:', err);
+  });
 }
 
 const num = (n) => (n ?? 0).toLocaleString('en-US');
@@ -25,6 +29,9 @@ async function initNetworkPage() {
   renderMetrics(network.metrics || {});
   renderGraph(network.nodes || [], network.edges || []);
   renderTopPairs(Array.isArray(topPairs) ? topPairs : []);
+  setText('net-status', '결과 조회 완료');
+  const statusDot = document.getElementById('net-status-dot');
+  if (statusDot) statusDot.style.background = '#639922';
 }
 
 function renderMetrics(m) {

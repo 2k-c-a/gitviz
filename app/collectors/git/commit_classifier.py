@@ -5,6 +5,9 @@
 2) 메시지 내 keyword 탐지 → confidence 0.60
 3) 해당 없음 → 'other', source='default', confidence 1.00
 
+confidence는 분류 규칙에 부여한 신뢰도 값이며 검증된 정확도/결함 확률이 아니다.
+default 1.00은 규칙에 매칭되지 않았다는 표시이지 실제 의미가 확실하다는 뜻이 아니다.
+
 반환 commit_type ∈ {feature, bugfix, refactor, docs, chore, other}
 """
 
