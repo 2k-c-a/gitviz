@@ -1,14 +1,16 @@
 /* ── 협업 네트워크 페이지: Network API → DOM/force-directed 그래프 연동 ──
    net-graph-svg가 있을 때(=Network 페이지)만 동작한다. */
 import { getRepoId, fetchNetwork, fetchNetworkTopPairs } from './api.js';
+import { renderLoadError } from './page-context.js';
+import { assessDataQuality } from './policy.js';
 
 const svgEl = document.getElementById('net-graph-svg');
 
 if (svgEl && typeof d3 !== 'undefined') {
   initNetworkPage().catch(err => {
     setText('net-status', '결과 조회 실패');
-    setText('net-m-density', err.message);
     console.error('[network] 로드 실패:', err);
+    renderLoadError(err);
   });
 }
 
@@ -28,7 +30,8 @@ async function initNetworkPage() {
   ]);
   renderMetrics(network.metrics || {});
   renderGraph(network.nodes || [], network.edges || []);
-  renderTopPairs(Array.isArray(topPairs) ? topPairs : []);
+  renderTopPairs(Array.isArray(topPairs) ? topPairs : [], network.data_quality);
+  renderEmptyEdgeNote(network.metrics || {}, network.data_quality);
   setText('net-status', '결과 조회 완료');
   const statusDot = document.getElementById('net-status-dot');
   if (statusDot) statusDot.style.background = '#639922';
@@ -157,11 +160,36 @@ function drag(sim) {
   return d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended);
 }
 
-function renderTopPairs(pairs) {
+/* 협업 엣지 0개를 '협업이 없다'로 읽지 않게 한다.
+   엣지는 PR 파일 상세·PR↔커밋 연결·리뷰 기록이 있어야 만들어지므로, 수집 범위가 부족하면 0이 나올 수 있다. */
+function collectionHint(dq) {
+  dq = dq || {};
+  const a = assessDataQuality(dq);
+  const parts = [];
+  if ((dq.merged_pr_count ?? 0) === 0) parts.push('관측 구간에 병합된 PR이 없습니다');
+  else {
+    if ((dq.prs_with_files ?? 0) < dq.merged_pr_count) parts.push(`병합 PR ${num(dq.merged_pr_count)}개 중 파일 상세가 수집된 PR은 ${num(dq.prs_with_files)}개입니다`);
+    if ((dq.prs_with_linked_commits ?? 0) < dq.merged_pr_count) parts.push(`PR↔커밋 연결은 ${num(dq.prs_with_linked_commits)}/${num(dq.merged_pr_count)}개입니다`);
+  }
+  return { parts, partial: a.collection === 'partial' };
+}
+
+function renderEmptyEdgeNote(metrics, dq) {
+  const box = document.getElementById('net-empty-note');
+  if (!box) return;
+  const edges = metrics.total_edge_count;
+  if (edges == null || edges > 0) { box.innerHTML = ''; return; }
+  const { parts } = collectionHint(dq);
+  box.innerHTML = `<div class="cx-fallback"><b>협업 엣지 0개</b> — 협업이 없다는 뜻이 아닙니다. 공동 수정은 PR 파일 상세와 PR↔커밋 연결로, 리뷰는 리뷰 기록으로 계산하므로 수집 범위가 부족하면 0이 나올 수 있습니다.
+    ${parts.length ? `현재 수집 범위: ${esc(parts.join(' · '))}.` : ''}</div>`;
+}
+
+function renderTopPairs(pairs, dq) {
   const wrap = document.getElementById('net-top-pairs');
   if (!wrap) return;
   if (!pairs.length) {
-    wrap.innerHTML = '<div class="c-meta" style="padding:4px;">협업 쌍 데이터가 없습니다.</div>';
+    const { parts } = collectionHint(dq);
+    wrap.innerHTML = `<div class="c-meta" style="padding:4px;">협업 쌍 데이터가 없습니다. 협업이 없었다는 뜻이 아니라 PR 상세·리뷰 수집 범위가 부족한 경우도 포함합니다${parts.length ? ` (${esc(parts.join(' · '))})` : ''}.</div>`;
     return;
   }
   wrap.innerHTML = pairs.map(p => {

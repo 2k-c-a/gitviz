@@ -1,8 +1,11 @@
 /* ── 타임라인 페이지: 결과 API → DOM/차트 연동 ──
    chart-timeline 캔버스가 있을 때(=타임라인 페이지)만 동작한다. */
 import { dark, gridC, textC, tooltipBg, tooltipBorder } from './utils.js';
+import { fmtWindow, windowDays } from './fmt.js';
+import { renderLoadError } from './page-context.js';
 import {
   getRepoId,
+  fetchSnapshotMeta,
   fetchSummary,
   fetchTimeline,
   fetchCommitTypes,
@@ -16,9 +19,7 @@ const timelineCanvas = document.getElementById('chart-timeline');
 if (timelineCanvas && typeof Chart !== 'undefined') {
   initTimelinePage().catch(err => {
     console.error('[timeline] 로드 실패:', err);
-    const box = document.createElement('div'); box.textContent = err.message;
-    box.style.cssText = 'padding:20px;color:var(--red)';
-    (document.querySelector('.page.active') || document.body).prepend(box);
+    renderLoadError(err);
   });
 }
 
@@ -30,12 +31,6 @@ const fmtDate = (iso) => {
   if (!iso) return '';
   const d = new Date(iso);
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-};
-const daysAgo = (iso) => {
-  if (!iso) return '';
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
-  if (days <= 0) return '오늘';
-  return `${days}일 전`;
 };
 
 const TYPE_META = {
@@ -51,7 +46,8 @@ const HEAT_COLORS = ['var(--bg2)', '#B5D4F4', '#85B7EB', '#378ADD', '#185FA5'];
 
 async function initTimelinePage() {
   const id = getRepoId();
-  const [summary, timeline, types, releases, contributors, heatmap] = await Promise.all([
+  const [meta, summary, timeline, types, releases, contributors, heatmap] = await Promise.all([
+    fetchSnapshotMeta(id),
     fetchSummary(id),
     fetchTimeline(id, 36),
     fetchCommitTypes(id),
@@ -62,7 +58,7 @@ async function initTimelinePage() {
 
   if (summary.error) throw new Error(summary.error);
 
-  renderHeader(summary);
+  renderHeader(summary, meta.snapshot);
   renderTimelineChart(timeline);
   renderDonut(types);
   renderReleases(releases.releases || []);
@@ -70,17 +66,22 @@ async function initTimelinePage() {
   renderHeatmap(heatmap);
 }
 
-/* ── 헤더 + 지표 카드 ── */
-function renderHeader(s) {
+/* ── 헤더 + 지표 카드 ──
+   요약·타임라인·협업의 수치는 전체 누적이 아니라 저장 결과의 관측 구간(기본 180일) 안의 값이다.
+   기간은 결과에 고정된 window_start/window_end를 그대로 보여준다. */
+function renderHeader(s, snap) {
   const repo = s.repository || {};
+  const days = windowDays(snap);
+  const period = `${fmtWindow(snap)}${days != null ? ` (${days}일)` : ''}`;
   setText('tl-repo-name', repo.name || '—');
   setText('tl-branch', repo.default_branch || 'main');
   setText('tl-dash-sub',
-    `커밋 ${num(s.total_commits)}개 · 기여자 ${num(s.total_contributors)}명 · `
-    + (repo.last_analyzed_at ? `마지막 분석 ${fmtDate(repo.last_analyzed_at)}` : '분석 정보 없음'));
+    `관측 구간 커밋 ${num(s.total_commits)}개 · 기여자 ${num(s.total_contributors)}명 · 관측 기간 ${period}`);
+  setText('tl-window-note',
+    `월별 커밋 수 · 활성 기여자 수 · 버그 픽스 비율. 관측 기간 ${period}(종료 시각 제외) 안의 기록만 보여주며 전체 누적 수가 아닙니다.`);
 
   setText('tl-m-commits', num(s.total_commits));
-  setText('tl-m-commits-sub', `▲ 최근 30일 +${num(s.commits_30d)}`);
+  setText('tl-m-commits-sub', `분석 종료 시점 이전 30일 ${num(s.commits_30d)}개`);
   setText('tl-m-contributors', num(s.active_contributors_90d));
   setText('tl-m-releases', num(s.total_releases));
   setText('tl-m-releases-sub', s.latest_release ? `최신 ${s.latest_release}` : '릴리즈 없음');
@@ -89,6 +90,11 @@ function renderHeader(s) {
 
 /* ── 타임라인 차트 ── */
 function renderTimelineChart(t) {
+  if (!t.months || !t.months.length) {
+    const box = timelineCanvas.parentElement;
+    box.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text3);text-align:center;">관측 구간에 커밋이 없습니다 (수집 실패가 아니라 구간 밖의 변경일 수 있습니다).</div>';
+    return;
+  }
   new Chart(timelineCanvas.getContext('2d'), {
     type: 'bar',
     data: {
@@ -171,7 +177,7 @@ function renderContributors(contributors) {
   wrap.innerHTML = contributors.map(c => {
     const name = c.github_login || c.display_name || '익명';
     const pct = Math.round(100 * c.commit_count / max);
-    const recent = c.last_commit_at ? ` · 최근 ${daysAgo(c.last_commit_at)}` : '';
+    const recent = c.last_commit_at ? ` · 마지막 커밋 ${fmtDate(c.last_commit_at)}` : '';  // 오래된 저장 결과에서 '오늘 기준 N일 전'으로 읽히지 않게 날짜로 표시
     return `<div class="c-row" style="cursor:pointer;" onclick="window.openContributorDrilldown(${c.id})" title="소유 파일·협업자 보기">`
       + `<div class="avatar" style="background:#E6F1FB;color:#185FA5;">${esc(name[0].toUpperCase())}</div>`
       + `<div class="c-info"><div class="c-name">${esc(name)}</div><div class="c-meta">커밋 ${num(c.commit_count)}개${recent}</div></div>`
