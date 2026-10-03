@@ -166,10 +166,14 @@ function collectionHint(dq) {
   dq = dq || {};
   const a = assessDataQuality(dq);
   const parts = [];
-  if ((dq.merged_pr_count ?? 0) === 0) parts.push('관측 구간에 병합된 PR이 없습니다');
+  if (dq.merged_pr_count === 0) parts.push('관측 구간에 병합된 PR이 없습니다');
+  else if (dq.merged_pr_count == null) parts.push('병합 PR 수를 확인할 수 없습니다');
   else {
-    if ((dq.prs_with_files ?? 0) < dq.merged_pr_count) parts.push(`병합 PR ${num(dq.merged_pr_count)}개 중 파일 상세가 수집된 PR은 ${num(dq.prs_with_files)}개입니다`);
-    if ((dq.prs_with_linked_commits ?? 0) < dq.merged_pr_count) parts.push(`PR↔커밋 연결은 ${num(dq.prs_with_linked_commits)}/${num(dq.merged_pr_count)}개입니다`);
+    /* 수치가 없는 항목은 0으로 읽지 않고 '확인 불가'로 둔다 */
+    if (dq.prs_with_files == null) parts.push('PR 파일 상세 수는 확인할 수 없습니다');
+    else if (dq.prs_with_files < dq.merged_pr_count) parts.push(`병합 PR ${num(dq.merged_pr_count)}개 중 파일 상세가 수집된 PR은 ${num(dq.prs_with_files)}개입니다`);
+    if (dq.prs_with_linked_commits == null) parts.push('PR↔커밋 연결 수는 확인할 수 없습니다');
+    else if (dq.prs_with_linked_commits < dq.merged_pr_count) parts.push(`PR↔커밋 연결은 ${num(dq.prs_with_linked_commits)}/${num(dq.merged_pr_count)}개입니다`);
   }
   return { parts, partial: a.collection === 'partial' };
 }

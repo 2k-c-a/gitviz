@@ -136,7 +136,7 @@ export function computeAverages(node) {
   if (!node.children) {
     node.avgRisk = scoreOf(node);
     node.avgBF = node.bus_factor;
-    node.avgCoupling = node.coupling_score;
+    node.avgCoupling = couplingOf(node);   // 후보 없는 파일(0으로 내려옴)은 값 없음 — 폴더 평균에 0으로 넣지 않는다
     node.fileCount = 1;
     node.metricCounts = {
       avgRisk: node.avgRisk == null ? 0 : 1,
@@ -180,7 +180,7 @@ function applyPolicyText() {
       : `이 결과는 구간 제한 없이 전체 이력을 대상으로 계산했습니다(${fmtWindow(SNAP)}).`;
     const lead = `${p.leadText} 색·배지의 0.7은 표시 임계값이며 상위 30%를 뜻하지 않습니다.`;
     const more = [win, p.summaryText, p.thresholdText,
-      '폴더는 점수가 있는 하위 파일의 평균입니다. 점수가 없는 파일(관측 변경 없음·계산 입력 누락)은 평균에서 제외하며 0으로 취급하지 않습니다.',
+      '폴더는 점수가 있는 하위 파일의 평균입니다. 점수가 없는 파일(관측 변경 없음·계산 입력 누락)은 평균에서 제외하며 0으로 취급하지 않습니다. 결합도 평균도 같아서, 결합 후보가 없는 파일은 평균에서 빼고 회색으로 표시합니다.',
       'BF80은 파일 변경 커밋의 80%를 차지하는 최소 기여자 수(식별된 기여 기준)이고, 결합도는 실제 의존성이 아닌 과거 공동 변경 신호입니다.'];
     note.innerHTML = `${esc(lead)} <details class="cx-more"><summary>지표 상세 설명</summary>${more.map(t => `<p>${esc(t)}</p>`).join('')}</details>`;
   }
@@ -646,7 +646,7 @@ function showDetail(d) {
     metricsEl.innerHTML = [
       row(`평균 ${POLICY.scoreShort}`, d.data.avgRisk != null ? chip(fmt2(d.data.avgRisk), riskColor(d.data.avgRisk)) + `<small>${num(n.avgRisk)}/${num(d.data.fileCount)}개</small>` : na('점수가 있는 하위 파일이 없습니다')),
       row('파일별 BF80 평균', d.data.avgBF != null ? chip(fmt2(d.data.avgBF), bfColor(d.data.avgBF)) + `<small>${num(n.avgBF)}개</small>` : na(BF_NA)),
-      row('평균 결합도', d.data.avgCoupling != null ? chip(fmt2(d.data.avgCoupling), couplingColor(d.data.avgCoupling)) : na('값이 있는 하위 파일이 없습니다')),
+      row('평균 결합도', d.data.avgCoupling != null ? chip(fmt2(d.data.avgCoupling), couplingColor(d.data.avgCoupling)) + `<small>후보 있는 ${num(n.avgCoupling)}/${num(d.data.fileCount)}개</small>` : na('결합 후보가 있는 하위 파일이 없습니다')),
       row('하위 파일 수', `${num(d.data.fileCount)}개`),
     ].join('');
   }

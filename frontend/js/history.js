@@ -7,7 +7,7 @@
 import { getRepoId, fetchSnapshots, fetchSnapshotCompare, ApiError } from './api.js';
 import { parseState } from './viz-state.js';
 import { esc, num, fmtScore, fmtDelta, fmtDateTime, fmtWindow, windowDays, DASH } from './fmt.js';
-import { policyOf, assessDataQuality } from './policy.js';
+import { policyOf, assessDataQuality, COLLECTION_TEXT, EVIDENCE_TEXT, STATUS_TONE, COLLECTION_NOTE, evidenceNote } from './policy.js';
 
 const tbody = document.getElementById('hist-tbody');
 
@@ -197,12 +197,17 @@ const FILTERS = {
   lack: { label: '자료 부족', test: hasLack },
 };
 
+const tagTone = (status) => (STATUS_TONE[status] === 'warn' ? 'amber' : STATUS_TONE[status]);
+
 function dqLine(side, snap, dq) {
   const a = assessDataQuality(dq);
+  const collectionTip = a.collectionReasons.length || a.unverified.length
+    ? [...a.collectionReasons, ...a.unverified.map(r => `${r} 확인 불가`)].join(' / ')
+    : COLLECTION_NOTE;
   return `<tr><td class="key">${side} #${snap.id}</td>
     <td class="val" style="text-align:left;">${esc(windowText(snap))} · ${versionTag(snap)}
-    <div>${tag(a.collection === 'complete' ? 'ok' : 'amber', a.collection === 'complete' ? '수집 범위 내 완료' : '일부만 수집', a.collectionReasons.join(' / '))}
-    ${tag(a.evidence === 'sufficient' ? 'ok' : a.evidence === 'none' ? 'gray' : 'amber', a.evidence === 'sufficient' ? '근거 충분' : a.evidence === 'none' ? '관측 구간 커밋 없음' : '근거 제한적', a.evidenceReasons.join(' / '))}
+    <div>${tag(tagTone(a.collection), COLLECTION_TEXT[a.collection], collectionTip)}
+    ${tag(tagTone(a.evidence), EVIDENCE_TEXT[a.evidence], a.evidenceReasons.join(' / ') || evidenceNote(a.threshold))}
     <small style="color:var(--text3);">관측 커밋 ${num(dq?.commit_count)}개 · 파일 ${num(dq?.collected_target_file_count)}/${num(dq?.target_tree_file_count)}개</small></div></td></tr>`;
 }
 
@@ -212,7 +217,7 @@ function renderCompare() {
   const policy = policyOf(d.after.formula_version);
   const interp = d.interpretation || {};
   const bdq = interp.before_data_quality || {}, adq = interp.after_data_quality || {};
-  const incomplete = assessDataQuality(bdq).collection === 'partial' || assessDataQuality(adq).collection === 'partial';
+  const incomplete = assessDataQuality(bdq).collection !== 'checked' || assessDataQuality(adq).collection !== 'checked';
   const s = d.summary || {};
   const pg = d.pagination || {};
 
@@ -238,7 +243,7 @@ function renderCompare() {
       <div class="metric-card"><div class="m-label">관측 기간 변경</div><div class="m-val">${interp.window_changed ? '있음' : '없음'}</div><div class="m-sub">${interp.window_changed ? '기간이 달라 변화에 기간 차이가 섞입니다' : '두 결과의 기간이 같습니다'}</div></div>
     </div>
     <table class="info-table" style="margin-bottom:10px;">${dqLine('시작', d.before, bdq)}${dqLine('종료', d.after, adq)}</table>
-    ${incomplete ? '<div class="cx-fallback">파일 또는 PR 수집 범위가 불완전한 결과가 있어, 추가·제외가 실제 Git에서의 추가·삭제라고 단정할 수 없습니다.</div>' : ''}
+    ${incomplete ? '<div class="cx-fallback">파일 또는 PR 수집 범위가 일부만 수집됐거나 확인되지 않은 결과가 있어, 추가·제외가 실제 Git에서의 추가·삭제라고 단정할 수 없습니다.</div>' : ''}
     <ul class="cx-notes-list">
       <li>${esc(interp.file_matching || '')}</li>
       <li>${esc(interp.presence_changes || '')}</li>

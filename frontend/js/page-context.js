@@ -5,14 +5,10 @@
      3) 분석 근거   : 이 결과를 해석할 표본이 있는가
    긴 ISO 시각·SHA·해시 같은 기술 정보는 접어 두고 필요할 때 펼친다. */
 import { esc, fmtDateTime, fmtWindow, windowDays, num } from './fmt.js';
-import { policyOf, assessDataQuality } from './policy.js';
+import { policyOf, assessDataQuality, COLLECTION_TEXT, EVIDENCE_TEXT, STATUS_TONE, COLLECTION_NOTE, evidenceNote } from './policy.js';
 import { parseState, buildQuery } from './viz-state.js';
 
 const host = () => document.querySelector('.page.active .body') || document.querySelector('.page.active') || document.querySelector('main') || document.body;
-
-const COLLECTION_TEXT = { complete: '수집 범위 내 완료', partial: '일부만 수집' };
-const EVIDENCE_TEXT = { sufficient: '근거 충분', limited: '근거 제한적', none: '관측 구간 커밋 없음' };
-const TONE = { complete: 'ok', partial: 'warn', sufficient: 'ok', limited: 'warn', none: 'gray' };
 
 function techRows(snap, dq) {
   const rows = [
@@ -53,9 +49,13 @@ export function renderContextBanner(data) {
     : `${fmtWindow(snap)} (이전 버전: 구간 제한 없음)`;
 
   const reasons = [
-    ...(a.collection === 'partial' ? a.collectionReasons.map(r => `수집 범위: ${r}`) : []),
-    ...(a.evidence !== 'sufficient' ? a.evidenceReasons.map(r => `분석 근거: ${r}`) : []),
+    ...a.collectionReasons.map(r => `수집 범위: ${r}`),
+    ...a.unverified.map(r => `수집 범위: ${r}를 확인할 수 없음`),
+    ...(a.evidence !== 'no_limits_found' ? a.evidenceReasons.map(r => `분석 근거: ${r}`) : []),
   ];
+  const collectionTip = a.collectionReasons.length || a.unverified.length
+    ? [...a.collectionReasons, ...a.unverified.map(r => `${r} 확인 불가`)].join(' / ')
+    : `${COLLECTION_NOTE} ${dq.coverage_scope || ''}`.trim();
   const legacy = policy.kind !== 'priority'
     ? `<div class="ctx-legacy">${policy.kind === 'legacy' ? '이전 계산 버전(v2)으로 저장된 결과입니다.' : '이 화면이 알지 못하는 계산 버전입니다.'} 최신 정책(점검 우선순위 v3)과 직접 비교할 수 없습니다.</div>`
     : '';
@@ -68,9 +68,9 @@ export function renderContextBanner(data) {
       <a class="ctx-link" href="#" onclick="goPage('history');return false;">분석 이력·비교 →</a>
     </div>
     <div class="ctx-row">
-      <span class="ctx-chip ok" title="저장된 결과를 불러왔습니다. 수집 완료나 분석 근거를 뜻하지 않습니다.">결과 조회 성공</span>
-      <span class="ctx-chip ${TONE[a.collection]}" title="${esc(a.collectionReasons.join(' / ') || (dq.coverage_scope || '수집된 이력 기준'))}">${COLLECTION_TEXT[a.collection]}</span>
-      <span class="ctx-chip ${TONE[a.evidence]}" title="${esc(a.evidenceReasons.join(' / ') || `관측 커밋 ${a.threshold}건 이상 · 수집 범위 완료 기준. 통계적 신뢰수준이 아닙니다.`)}">${EVIDENCE_TEXT[a.evidence]}</span>
+      <span class="ctx-chip ok" title="저장된 결과를 불러왔습니다. 수집이 끝났거나 분석 근거가 충분하다는 뜻이 아닙니다.">결과 조회 성공</span>
+      <span class="ctx-chip ${STATUS_TONE[a.collection]}" title="${esc(collectionTip)}">${COLLECTION_TEXT[a.collection]}</span>
+      <span class="ctx-chip ${STATUS_TONE[a.evidence]}" title="${esc(a.evidenceReasons.join(' / ') || evidenceNote(a.threshold))}">${EVIDENCE_TEXT[a.evidence]}</span>
       ${a.notes.length ? `<span class="ctx-note">${esc(a.notes.join(' · '))}</span>` : ''}
     </div>
     ${reasons.length ? `<ul class="ctx-reasons">${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}

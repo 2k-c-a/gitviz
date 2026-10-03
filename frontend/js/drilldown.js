@@ -11,7 +11,6 @@ import {
   fetchContributorCollaborators,
   fetchFileDetail,
   fetchSnapshotMeta,
-  fetchRiskIndex,
   getSortPolicy,
 } from './api.js';
 import { getRepoGithubInfo, githubFileUrl } from './github.js';
@@ -153,7 +152,7 @@ function priorityBlock({ policy, score, ev, row, extra, detail }) {
       ? '관측 구간에 변경이 없어 점수가 없습니다. 0이 아니며 안전하다는 뜻도 아닙니다.'
       : ev === 'metrics_missing'
         ? '점수 계산에 필요한 입력(Churn 등)이 누락되어 점수를 계산하지 못했습니다(자료 부족). 점수 순위에서는 뒤에 둡니다.'
-        : '점수가 없습니다.';
+        : '점수가 없습니다. 이 결과에서는 이 파일의 근거 상태를 확인할 수 없어, 변경 이력이 없다고 단정하지 않습니다.';
     html += `<div class="dd-note">${esc(why)}</div>`;
   }
 
@@ -226,10 +225,27 @@ function sortCoupled(files, policy) {
   return [...files].sort((a, b) => (b[key] - a[key]) || (b.co_change_count - a.co_change_count) || (a.file_id - b.file_id));
 }
 
+/* 서버가 전체 후보를 선택한 정책으로 정렬한 뒤 잘라 보냈는지(sort_by 에코 + 전체 후보 수) 확인한다.
+   그렇다면 서버 순서를 그대로 쓴다. 아니라면(정렬을 지원하지 않는 응답) 받은 후보 안에서만 정렬하고
+   전체 후보 기준의 순위가 아니라고 표시한다. */
+export function coupledCandidates(detail, sortPolicy) {
+  const fetched = detail.coupled_files || [];
+  const serverSorted = detail.sort_by === sortPolicy && Number.isInteger(detail.coupled_total);
+  const all = serverSorted ? fetched : sortCoupled(fetched, sortPolicy);
+  return {
+    serverSorted,
+    shown: all.slice(0, COUPLED_SHOWN),
+    total: serverSorted ? detail.coupled_total : all.length,
+    fetched: all.length,
+  };
+}
+
 function couplingBlock({ detail, sortPolicy }) {
-  const all = sortCoupled(detail.coupled_files || [], sortPolicy);
-  const shown = all.slice(0, COUPLED_SHOWN);
+  const { serverSorted, shown, total, fetched } = coupledCandidates(detail, sortPolicy);
   const idf = sortPolicy === 'idf';
+  const scopeText = serverSorted
+    ? `전체 후보 ${num(total)}개를 이 기준으로 서버에서 정렬한 상위 ${num(shown.length)}개`
+    : `조회된 후보 ${num(fetched)}개 안에서만 정렬했습니다. 전체 후보 기준의 정확한 순위가 아닐 수 있습니다`;
   const rows = shown.map(f => `
     <tr style="cursor:pointer;" onclick="window.__ddPushFile(${Number(f.file_id)})" title="${esc(f.path)}">
       <td class="file">${esc(f.path)}</td>
@@ -245,31 +261,32 @@ function couplingBlock({ detail, sortPolicy }) {
     : '<div style="padding:12px;text-align:center;color:var(--text3);font-size:12px;">공동 변경이 2건 이상인 파일이 없습니다(변경이 없다는 뜻이 아닙니다)</div>';
 
   const unit = detail.co_change_unit === 'pr' ? '병합 PR' : '커밋';
-  return `<div class="dd-sec-title">함께 변경된 파일 <small>(과거 동반 변경 · ${esc(SORT_TEXT[sortPolicy])})</small></div>
+  return `<div class="dd-sec-title">함께 변경된 파일 <small>(과거 동반 변경 · ${esc(SORT_TEXT[sortPolicy])})</small>${serverSorted ? '' : ` ${tag('amber', '조회된 후보 안에서 정렬', '서버가 전체 후보를 정렬해 보내지 않은 응답입니다')}`}</div>
     ${table}
     <div class="dd-note">${unit} 단위의 공동 변경 기록입니다${detail.co_change_unit === 'pr' ? '' : '(파일 상세가 있는 병합 PR이 없어 커밋으로 대체)'}.
       '이 파일 → 상대'는 이 파일이 바뀐 변경 중 상대 파일도 함께 바뀐 과거 비율이고, '상대 → 이 파일'은 그 반대입니다.
       미래 영향 확률이나 실제 의존성(import)이 아닙니다. 공동 변경 2건 이상인 쌍만 있고 5건 미만은 표본 부족으로 표시합니다.
-      정렬: ${esc(SORT_TEXT[sortPolicy])}${idf ? ' — 기본 정렬이 아닌 실험용 선택입니다' : ' — 기본'}${all.length > COUPLED_SHOWN ? ` · 후보 ${num(all.length)}개 중 상위 ${COUPLED_SHOWN}개` : ''}.</div>`;
+      정렬: ${esc(SORT_TEXT[sortPolicy])}${idf ? ' — 기본 정렬이 아닌 실험용 선택입니다' : ' — 기본'} · ${esc(scopeText)}.</div>`;
 }
 
 async function renderFile(fileId, extra) {
   const repoId = getRepoId();
   const sortPolicy = getSortPolicy();
-  /* 후보를 넉넉히 받아(IDF 정렬은 서버 순서와 다르다) 화면에서 선택한 정책으로 정렬해 상위만 보여준다 */
-  const [detail, meta, riskIndex, ghInfo] = await Promise.all([
-    fetchFileDetail(repoId, fileId, 500),
+  /* 후보 정렬은 서버가 전체 후보에 대해 한 뒤 잘라 보낸다 — 잘린 목록을 화면에서 다시 정렬하지 않는다 */
+  const [detail, meta, ghInfo] = await Promise.all([
+    fetchFileDetail(repoId, fileId, COUPLED_SHOWN, sortPolicy),
     fetchSnapshotMeta(repoId),
-    fetchRiskIndex(repoId).catch(() => null),
     getRepoGithubInfo(repoId),
   ]);
   if (detail.error) throw new Error(detail.error);
 
   const snap = meta.snapshot;
   const policy = policyOf(snap.formula_version);
-  const row = riskIndex ? riskIndex.get(fileId) : undefined;
-  const ev = row ? row.evidence_status : (riskIndex ? 'no_history' : extra?.evidence_status);
-  const score = row ? scoreOf(row) : extra ? scoreOf(extra) : has(detail, 'maintenance_priority') ? detail.maintenance_priority : null;
+  /* 점수 구성·근거 상태는 상세 응답이 그 파일 자체의 값을 준다. 점수 상위 목록에 없다는 이유로
+     '관측 변경 없음'을 추정하지 않는다 — 응답에도 목록(extra)에도 상태가 없으면 상태를 단정하지 않는다. */
+  const row = ['priority_components', 'change_freq', 'current_risk', 'structural_risk'].some(k => has(detail, k)) ? detail : undefined;
+  const ev = detail.evidence_status ?? extra?.evidence_status;
+  const score = has(detail, 'maintenance_priority') || has(detail, 'risk_score') ? scoreOf(detail) : extra ? scoreOf(extra) : null;
 
   const fileName = detail.file.path.split('/').pop();
   titleEl().textContent = fileName;
