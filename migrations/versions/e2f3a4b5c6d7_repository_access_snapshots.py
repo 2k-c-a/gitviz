@@ -10,6 +10,9 @@ depends_on = None
 
 
 def upgrade():
+    # 이미 d1까지 적용된 기존 DB에도 수동 추가 컬럼을 보완한다.
+    from migrations.schema_20261002 import reconcile
+    reconcile()
     op.add_column("repositories", sa.Column("github_id", sa.BigInteger(), nullable=True))
     op.add_column("repositories", sa.Column("is_private", sa.Boolean(), nullable=True))
     op.add_column("repositories", sa.Column("visibility_checked_at", sa.DateTime(timezone=True)))

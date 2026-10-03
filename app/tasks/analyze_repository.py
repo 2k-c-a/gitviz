@@ -39,6 +39,7 @@ from app.collectors.github.graphql_pr_collector import (
 from app.collectors.github.release_collector import collect_releases
 from app.collectors.identity.resolver import run_identity_resolution
 from app.tasks.progress import ProgressReporter
+from app.services.job_lifecycle import TERMINAL_STATUSES
 
 
 # -----------------------
@@ -116,8 +117,9 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
         job = job_query.order_by(AnalysisJob.id.desc()).first()
         if not job:
             raise RuntimeError("분석 작업이 존재하지 않습니다.")
-        if job.status == "done":
-            return  # 중복 전달된 완료 작업은 다시 수집하지 않는다.
+        current_job_id = job.id
+        if job.status in TERMINAL_STATUSES:
+            return  # 완료/실패/교체된 작업의 지연 전달은 새 작업을 되살리지 않는다.
         if str(job.triggered_by_user_id or "") != str(user_id or ""):
             raise RuntimeError("작업 요청자와 수집 인증 사용자가 일치하지 않습니다.")
         repository, metadata = verify_repository_access(db,repository_id,user_id)
@@ -213,6 +215,10 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
         db.close()
         db = SessionLocal()
         repository = db.query(Repository).filter(Repository.id == repository_id).first()
+        # 새 세션에 동일 작업을 다시 연결해야 완료 상태와 snapshot_id가 함께 저장된다.
+        # 이전 세션의 detached 객체를 수정하면 결과만 저장되고 status는 running에 남는다.
+        job = db.query(AnalysisJob).filter(AnalysisJob.id == current_job_id,
+                                         AnalysisJob.repository_id == repository_id).one()
         print("DB RECONNECTED")
 
         # -----------------------
