@@ -15,6 +15,7 @@ from app.models.analysis_job import AnalysisJob
 from app.models.commit import Commit
 from app.models.file import File
 from app.models.contributor import Contributor
+from app.models.contributor_alias import ContributorAlias
 from app.models.commit_file_change import CommitFileChange
 from app.models.pull_request import PullRequest
 from app.models.pr_commit import PrCommit
@@ -230,12 +231,26 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
             c["email"] = (c.get("email") or "").strip().lower()
             c["author"] = (c.get("author") or "").strip()
 
-        # 기존 이메일을 한 번에 로드 (이메일당 SELECT 1회씩 날리던 비용 제거)
+        # 기존 이메일을 한 번에 로드 (이메일당 SELECT 1회씩 날리던 비용 제거).
+        # primary_email 뿐 아니라 contributor_aliases.email 도 함께 넣는다 —
+        # resolver가 동일인으로 판정해 병합하면 중복이던 contributors 행은 삭제되고
+        # 그 이메일은 alias 에만 남는다. alias를 보지 않으면 재분석 때 같은 이메일로
+        # Contributor가 다시 생기고, 커밋은 이미 병합 대상에 연결돼 있으므로
+        # 커밋 0개의 unresolved 행만 쌓인다(식별 결과가 재분석마다 되돌아감).
         contributor_cache = {
-            e
+            (e or "").strip().lower()
             for (e,) in db.query(Contributor.primary_email)
             .filter(Contributor.repository_id == repository.id)
             .all()
+            if e
+        }
+        contributor_cache |= {
+            (e or "").strip().lower()
+            for (e,) in db.query(ContributorAlias.email)
+            .join(Contributor, Contributor.id == ContributorAlias.contributor_id)
+            .filter(Contributor.repository_id == repository.id)
+            .all()
+            if e
         }
 
         for c in commits:
