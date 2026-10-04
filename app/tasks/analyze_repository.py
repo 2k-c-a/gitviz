@@ -36,6 +36,7 @@ from app.collectors.github.graphql_pr_collector import (
     GraphQLClient,
     collect_pr_details_graphql,
     collect_pr_details_graphql_batch,
+    _failure_reason,
 )
 from app.collectors.github.release_collector import collect_releases
 from app.collectors.identity.resolver import run_identity_resolution
@@ -722,6 +723,8 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
 
         # PR별 수집 상태: {pr_id: (status, reason, collected, total)}
         pr_collection_state = {}
+        # 상세를 못 받은 PR의 실패 사유: {pr_number: reason}
+        pr_failure_reasons = {}
 
         def _accumulate(pr_id, details):
             # 파일 상세 완전성 기록 — 전체 페이지를 받았는지, 못 받았다면 왜인지.
@@ -789,12 +792,16 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
             except Exception as e:
                 # 배치 실패 시 per-PR 폴백 (한 PR 오류가 배치 전체를 막지 않게)
                 print(f"  batch GraphQL error (PRs {numbers[:3]}...): {e}; per-PR 폴백")
+                batch_reason = _failure_reason(e)
                 details_map = {}
                 for _pid, num in batch:
                     try:
                         details_map[num] = collect_pr_details_graphql(gql_client, owner, repo_name_gh, num)
                     except Exception as e2:
                         print(f"  GraphQL error PR#{num}: {e2}")
+                        pr_failure_reasons[num] = _failure_reason(e2)
+                for _pid, num in batch:
+                    pr_failure_reasons.setdefault(num, batch_reason)
 
             for pr_id, pr_number in batch:
                 details = details_map.get(pr_number)
@@ -802,7 +809,9 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
                     _accumulate(pr_id, details)
                 else:
                     # 배치·per-PR 폴백이 모두 실패 — 조용히 넘기면 done으로 끝나버린다.
-                    pr_collection_state[pr_id] = ("failed", "page_error", 0, None)
+                    # 인증 없음/권한 부족/한도를 뭉개지 않도록 실제 예외에서 분류한 사유를 쓴다.
+                    pr_collection_state[pr_id] = (
+                        "failed", pr_failure_reasons.get(pr_number, "page_error"), 0, None)
 
             processed += len(batch)
             print(f"  PR details progress: {processed}/{len(to_fetch)}")

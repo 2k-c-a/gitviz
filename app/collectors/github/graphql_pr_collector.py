@@ -150,7 +150,21 @@ class GraphQLClient:
                 time.sleep(wait)
                 continue
 
+            if response.status_code == 401:
+                raise RuntimeError(
+                    "GraphQL 401 unauthenticated: GitHub 토큰이 없거나 유효하지 않습니다. "
+                    "PR 상세(파일·리뷰·커밋)는 인증이 있어야 수집됩니다."
+                )
+
             if response.status_code in (403, 429):
+                # 토큰이 없으면 익명 한도(0)에 바로 걸린다. 이때 리셋까지 기다리면
+                # 최대 1시간을 멈춘 채 보내고 결국 아무것도 못 받는다. 대기 대신
+                # 인증이 필요하다는 사실을 즉시 알린다.
+                if not self.token:
+                    raise RuntimeError(
+                        "GraphQL 403 unauthenticated: GitHub 토큰이 없어 PR 상세를 수집할 수 없습니다. "
+                        "익명 요청은 GraphQL 한도가 0이므로 대기해도 복구되지 않습니다."
+                    )
                 remaining = int(response.headers.get("X-RateLimit-Remaining", 1))
                 reset_at = int(response.headers.get("X-RateLimit-Reset", 0))
                 retry_after = int(response.headers.get("Retry-After", 0))
@@ -262,7 +276,10 @@ def _page_all(client, query, variables, cursor, section, extract):
 def _failure_reason(exc: Exception) -> str:
     """실패 사유를 수집 기록용 코드로 분류한다(인증 없음/권한 부족/한도/그 외 페이지 오류)."""
     msg = str(exc).lower()
-    if "401" in msg or "bad credentials" in msg or "requires authentication" in msg:
+    # '403 unauthenticated'(토큰 없음)처럼 두 신호가 같이 오는 경우가 있어
+    # 인증 없음을 권한 부족보다 먼저 판정한다.
+    if ("unauthenticated" in msg or "401" in msg
+            or "bad credentials" in msg or "requires authentication" in msg):
         return "unauthenticated"
     if "403" in msg or "forbidden" in msg or "not accessible" in msg:
         return "forbidden"
