@@ -131,9 +131,11 @@ class SnapshotInput:
                 AND published_at >= :snapshot_start AND published_at < :snapshot_end
             )
         """
+        # Inline scope filters so joins can use the source tables' indexes. Forced
+        # materialization loses those indexes and, on newly collected repositories
+        # with underestimated row counts, causes repeated scans of entire CTEs.
+        # Snapshot boundaries still come from the same immutable parameters.
         scopes = scopes.replace(' AS (', ' AS NOT MATERIALIZED (')
-        for name in ['commits', 'commit_file_changes', 'files']:
-            scopes = scopes.replace(f'{name} AS NOT MATERIALIZED (', f'{name} AS MATERIALIZED (')
         sql = "WITH " + scopes + (", " + sql[4:].lstrip() if sql.upper().startswith("WITH") else " " + sql)
         result = self.db.execute(text(sql), {**(params or {}), **self.params})
         # 동일 스냅샷 내 여러 지표가 공유하는 SELECT는 한 번만 실행한다.
@@ -218,7 +220,8 @@ def build_snapshot(db, repo, job, *, target_sha, live_paths, reachable_shas, par
         "contributor_index": [dict(r) for r in scoped.execute(text("SELECT id,display_name,github_login FROM contributors WHERE repository_id=:rid"), {"rid": repo.id}).mappings()],
         "weekly_activity": [dict(r) for r in scoped.execute(text("""
             SELECT contributor_id,to_char(date_trunc('week',committed_at),'YYYY-MM-DD') AS week,COUNT(*) AS count
-            FROM commits WHERE repository_id=:rid AND contributor_id IS NOT NULL GROUP BY 1,2
+            FROM commits WHERE repository_id=:rid AND contributor_id IS NOT NULL
+            GROUP BY 1,2 ORDER BY 1,2
         """), {"rid": repo.id}).mappings()],
         "data_quality": data_quality(scoped, repo.id),
     }
