@@ -1,0 +1,111 @@
+# AI 인터페이스 계약 (S0)
+
+- 계약 버전: `1.0` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
+- 설계 근거: [요구사항 및 시스템 설계 v0.4](GitViz_AI_요구사항_및_시스템설계_v0.4.md), [구현 계획 v0.5](GitViz_AI_의존성기반_구현계획_v0.5.md) S0
+- 수집·백엔드·시각화는 모두 `app/schemas/ai.py`의 DTO를 기준으로 합니다. 이 문서와 코드가 다르면 코드가 우선이며 즉시 문서를 고칩니다.
+- 모든 DTO는 알 수 없는 필드를 거부합니다(`extra="forbid"`). 클라이언트가 `owner_user_id` 같은 값을 보내도 받지 않습니다.
+- 기본 scope는 본인만 접근하는 개인 scope입니다. 팀 scope는 S13에서 명시 필드로 추가하며, 그 전에는 DTO에 scope 필드를 두지 않습니다.
+
+## 1. 식별자와 코드 위치
+
+| 값 | 규칙 |
+|---|---|
+| Git SHA / blob OID | 소문자 hex 40자(sha1) 또는 64자(sha256). 대문자·짧은 SHA 거부 |
+| 해시(`content_hash`, `manifest_hash`) | sha256 소문자 hex 64자 |
+| `repo_id` | 정수, 1 이상 (기존 `repositories.id`) |
+| AI 리소스 ID | UUID |
+| 경로 | 저장소 상대 경로, `/` 구분. 빈 구간·`.`·`..`·`\`·NUL·절대 경로 거부 |
+
+`PRRevision = {repo_id, pr_number, base_sha, head_sha, merge_base_sha}` — 모두 필수입니다. merge-base를 확정할 수 없으면 revision을 만들지 않습니다.
+
+`CodeLocation = {path, side, start_line, end_line, revision_id}`
+
+- `side`는 `LEFT`(변경 전) / `RIGHT`(변경 후).
+- 줄 번호는 실제 commit의 1부터 시작하는 번호입니다. `start_line >= 1`, `end_line >= start_line`.
+- 삭제 파일은 `LEFT`만, 새 파일은 `RIGHT`만 줄을 가집니다(`ManifestFile.sides`). 모델이 만든 번호나 diff 화면 순번을 쓰지 않습니다.
+
+## 2. Coverage
+
+세 값은 서로 다른 분모를 가리키며 `job.status`와 별개입니다.
+
+| 필드 | 값 | 의미 |
+|---|---|---|
+| `inventory_coverage` | complete / partial / unknown | PR 전체 파일 목록을 확보한 정도 |
+| `selected_content_coverage` | complete / partial / none | 선택한 파일의 코드를 확보한 정도 |
+| `analysis_coverage` | complete / partial / none | 해당 기능이 실제 다룬 선택 범위 |
+| `selected_files` | 정수 ≥ 0 | 선택 파일 수 |
+| `pr_total_files` | 정수 ≥ 0 또는 null | PR 전체 파일 수. `unknown`이면 반드시 null, `complete`이면 필수 |
+| `limitations` | `Limitation[]` | 중복 없는 제외·누락 사유 |
+
+일관성 규칙: `selected_files <= pr_total_files`, 코드를 확보하지 못한(`none`) 범위는 분석 범위가 될 수 없고, 일부만 확보(`partial`)한 코드를 `complete`로 분석할 수 없습니다.
+
+화면 표기 예: 선택 3개 · PR 전체 8개 → "선택 범위 3/3, PR 전체 3/8". 전체 목록이 `unknown`이면 분모는 "알 수 없음"입니다.
+
+`Limitation`: `not_selected`, `unsupported_language`, `too_large`, `truncated`, `generated_file`, `binary`, `link_or_submodule`, `secret_suspected`, `fetch_failed`, `analysis_failed`. 파일별 `exclusion_reason`과 coverage가 같은 enum을 씁니다.
+
+## 3. InputManifest
+
+사용자에게 보이는 전송 미리보기이며 실제 AI 전송 후보와 같아야 합니다.
+
+`{contract_version, revision_id, revision, policy_version, pr_metadata_hash?, files[]}`
+
+파일 항목: `path, old_path, change_type(added|modified|deleted|renamed), old_blob_oid, new_blob_oid, content_hash, language, content_state(read|excluded|failed), exclusion_reason, hunks[{old_start,old_lines,new_start,new_lines}]`
+
+- 모든 파일은 `read` / `excluded` / `failed` 중 하나입니다. 숨겨진 누락이 없습니다.
+- `read`는 `content_hash`가 필수이고 `exclusion_reason`이 없습니다. `excluded`/`failed`는 `exclusion_reason`이 필수이고 `content_hash`가 없습니다.
+- `added`는 `old_path`/`old_blob_oid` 없음, `deleted`는 `new_blob_oid` 없음, `renamed`는 `path`와 다른 `old_path` 필수. 그 외 `old_path`는 사용하지 않습니다.
+- 같은 `path`가 두 번 나올 수 없습니다.
+- `canonical_hash()`: 키를 정렬한 공백 없는 JSON(UTF-8)의 sha256. 필드 입력 순서와 무관하지만 **배열 순서는 의미가 있습니다**(파일 순서가 바뀌면 해시가 바뀜).
+
+## 4. 요청
+
+`PrepareInputRequest` (POST `/inputs`): `repository_id, pr_number, expected_base_sha, expected_head_sha, selected_paths`. `selected_paths`는 1개 이상(최대 1000), 중복 불가. 선택 0개는 `INVALID_SELECTION`으로 매핑합니다.
+
+## 5. 작업 상태
+
+- `status`: `queued → running → succeeded | failed | cancelled`, 일시 오류 `retry_wait`, 취소 요청 `cancel_requested`. 종료 상태는 되돌리지 않습니다.
+- `stage`: `input_preparation / queued / provider_call / output_validation / result_storage`. 종료된 작업은 stage가 없습니다. 모델 진행률을 백분율로 만들지 않습니다.
+- `JobState`: `succeeded`이면 `result_id` 필수, 아니면 금지. `failed`이면 `error_code` 필수, `succeeded`이면 금지. `retry_after_seconds >= 0`.
+- 입력 상태 `InputStatus`: `building → ready | failed`, 만료 시 `expired`. `ready`는 입력이 고정됐다는 뜻이지 coverage가 완전하다는 뜻이 아닙니다.
+
+## 6. Finding
+
+`ordinal(≥1), title, category, priority(정수 ≥1, 1이 먼저 검토), condition, impact, evidence_ids(1개 이상), verification, suggestion?, limitations[], location, human_validation`
+
+- `priority`는 검토 순서이며 장애 등급이 아닙니다.
+- `human_validation` 기본값은 `unverified`입니다. 구조·위치 검증 통과는 내용이 맞다는 뜻이 아니며 자동으로 `valid`로 바꾸지 않습니다. 사람의 판정은 `Verdict`(valid/false_positive/uncertain) 피드백으로만 들어옵니다.
+
+## 7. 오류
+
+```json
+{"error": {"code": "PR_CHANGED", "message": "PR이 변경됐습니다.", "retryable": true, "request_id": "...", "details": {}}}
+```
+
+비밀·다른 이용자의 존재·제공자 원문 오류를 `details`에 넣지 않습니다. code→HTTP status는 `ERROR_HTTP_STATUS`가 단일 출처입니다.
+
+| HTTP | code |
+|---|---|
+| 401 | AUTH_REQUIRED, REAUTH_REQUIRED |
+| 403 | TRANSFER_NOT_ALLOWED, CSRF_FAILED |
+| 404 | RESOURCE_NOT_FOUND (권한 밖 자료도 동일) |
+| 409 | PR_CHANGED, PREVIEW_CHANGED, VERSION_CONFLICT, IDEMPOTENCY_CONFLICT |
+| 410 | INPUT_EXPIRED, RESULT_EXPIRED |
+| 413 | INPUT_TOO_LARGE |
+| 422 | INVALID_SELECTION, INVALID_STATE |
+| 429 | USER_LIMIT, BUDGET_LIMIT, UPSTREAM_RATE_LIMIT |
+| 503 | ACCESS_CHECK_UNAVAILABLE, UPSTREAM_UNAVAILABLE |
+
+설계 v0.4 표의 `502/503` 중 이번 계약은 503만 사용합니다. 502가 필요하면 다음 minor 버전에서 추가합니다.
+
+## 8. 버전 규칙
+
+- 필드·enum 값 **추가**는 minor 증가, 의미 변경·삭제·이름 변경은 major 증가이며 소비자 합의가 필요합니다.
+- 이후 단계에서 임의로 enum/필드 의미를 바꾸지 않습니다. 변경은 `CONTRACT_VERSION`, 이 문서, `scripts/test_ai_contracts.py`를 같은 PR에서 고칩니다.
+- 기능별 출력 schema 버전(S6)과 API 응답 DTO(S5·S8)는 이 계약 위에 추가하며 위 정의를 재정의하지 않습니다.
+
+## 9. 테스트와 fixture
+
+- `python scripts/test_ai_contracts.py` — DB·네트워크 없이 실행. DTO 검증, 줄 맵, canonical hash, 테스트 DB 가드.
+- `scripts/fixtures/ai/sample.diff` + `line_maps.json`: add / delete / rename+수정 줄 맵. `valid_findings.json`, `invalid_findings.json`: 정상·비정상 Finding.
+- `scripts/ai_test_support.py`의 `require_test_database()`는 `gitviz_test`로 시작하는 DB만 허용하고, 앱 import **전에** `DATABASE_URL` 등을 설정합니다. 오류 메시지에 URL(비밀번호)을 넣지 않습니다.
+- `parse_line_maps()`는 fixture 검증용입니다. 실제 수집기의 줄 맵(S3)은 같은 fixture를 통과해야 합니다.
