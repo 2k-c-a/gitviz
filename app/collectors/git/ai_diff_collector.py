@@ -194,7 +194,10 @@ def parse_file_diff(text: str) -> tuple[list[Hunk], dict]:
     hunks, left, right, mapping = [], [], [], {}
     old_no = new_no = 0
     in_hunk = False
-    for line in text.splitlines():
+    diff_text_lines = text.split('\n')      # git의 줄 구분만 쓴다(splitlines는 form feed 등에서도 나뉘어 번호가 어긋난다)
+    if diff_text_lines and diff_text_lines[-1] == '':
+        diff_text_lines.pop()                # 마지막 개행 뒤의 빈 조각은 줄이 아니다
+    for line in diff_text_lines:
         m = _HUNK_RE.match(line)
         if m:
             old_start, old_len = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)

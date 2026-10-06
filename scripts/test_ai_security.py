@@ -45,7 +45,8 @@ def ai_env(**over):
     env = {'AI_ENABLED': '1', 'AI_ALLOW_EXTERNAL_TRANSFER': '1', 'AI_INPUT_ENCRYPTION_KEYS': f'v1:{KEY1}',
            'AI_INPUT_KEY_VERSION': 'v1', 'AI_ALLOWED_ORIGINS': ORIGIN, 'SESSION_COOKIE_SECURE': '0',
            'DATABASE_URL': LOCAL_DB, 'DATABASE_URL_ASYNC': LOCAL_DB.replace('postgresql://', 'postgresql+asyncpg://'),
-           'DATABASE_SSL_CA': '', 'AI_POLICY_VERSIONS': 'code-transfer-v1'}
+           'DATABASE_SSL_CA': '', 'AI_POLICY_VERSIONS': 'code-transfer-v1', 'ANTHROPIC_API_KEY': 'test-key',
+           'AI_PROVIDER_PROFILE': 'claude-review-v1'}
     env.update(over)
     return patch.dict(os.environ, env)
 

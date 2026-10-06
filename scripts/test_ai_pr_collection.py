@@ -189,6 +189,20 @@ class DiffCollection(GitCase):
         moved = self.collect(['main.py'], head=self.fx.f2).files[0].manifest.content_hash
         self.assertNotEqual(moved, pinned)          # 다른 head를 주면 다른 입력이다
 
+    def test_lines_containing_unicode_separators_keep_git_line_numbers(self):
+        """str.splitlines()는 form feed·U+2028·NEL에서도 줄을 나눠 줄 번호가 어긋난다. git의 줄 구분만 따라야 한다."""
+        content = 'a = 1\n\x0c\nb = "x\u2028y"\nc = 3\n'.encode('utf-8')
+        head = self.fx.commit(self.fx.f1, {'sep.py': content}, 'separators')
+        result = diffc.collect_selected_code(self.fx.path, self.fx.f1, head, ['sep.py'], protocols='file')
+        item = result.files[0]
+        self.assertEqual(item.manifest.content_state, ContentState.read)
+        self.assertEqual(item.line_map['right'], [1, 2, 3, 4])                       # 4줄(5줄로 어긋나지 않는다)
+        self.assertEqual(item.manifest.hunks[0].new_lines, 4)
+        from app.services.ai.difftext import diff_lines
+        lines = diff_lines(item.payload.decode('utf-8'))
+        self.assertEqual([l.right_line for l in lines], [1, 2, 3, 4])
+        self.assertEqual(lines[2].text, 'b = "x\u2028y"')
+
     def test_selection_validation_and_limits(self):
         with self.assertRaises(InvalidSelection):
             self.collect(['not/in/pr.py'])

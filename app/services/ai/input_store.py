@@ -183,7 +183,7 @@ def load_preview(db: Session, input_id: UUID, owner_id: UUID, *, now: datetime |
     raw_available = status == 'ready' and any(f.encrypted_payload is not None for f in stored.values())
     metadata = manifest.pr_metadata if manifest and manifest.pr_metadata else input_builder.transfer_metadata(
         revision.pr_metadata or {})
-    token_estimate = (input_builder.estimate_tokens(sum(f.byte_count for f in read_files), metadata)
+    token_estimate = (input_builder.estimate_tokens(sum(f.byte_count for f in read_files), metadata, len(read_files))
                       if status in ('ready', 'expired') and manifest is not None else None)
     job = db.execute(text("""SELECT id, status, error_code FROM ai_jobs WHERE input_id = :i AND kind = 'prepare'
                              ORDER BY generation DESC LIMIT 1"""), {'i': row.id}).one_or_none()

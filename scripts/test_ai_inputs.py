@@ -2,6 +2,7 @@
 
 실제 PostgreSQL과 local Git fixture를 쓴다(GitHub API와 HTTP는 막아 둔다).
 """
+import dataclasses
 import json
 import logging
 import os
@@ -23,11 +24,13 @@ from sqlalchemy import text  # noqa: E402
 
 from app.collectors.ai_errors import PRChanged  # noqa: E402
 from app.schemas.ai import ErrorCode, InputManifest, canonical_hash  # noqa: E402
-from app.services.ai import crypto, input_store, job_runner, job_service  # noqa: E402
+from app.services.ai import crypto, input_store, job_runner, job_service, token_budget  # noqa: E402
+from app.services.ai.providers.registry import get_profile  # noqa: E402
 from app.services.ai.access import AIError  # noqa: E402
 from app.services.ai.crypto import decrypt_input  # noqa: E402
 
 T0 = S.T0
+PROFILE = get_profile('claude-review-v1')
 
 
 def setUpModule():
@@ -107,7 +110,10 @@ class Prepare(S.InputCase):
         self.assertFalse(preview.reviewable)
         self.assertEqual({f.exclusion_reason.value for f in preview.files},
                          {'secret_suspected', 'link_or_submodule', 'generated_file'})
-        self.assertEqual(preview.token_estimate.input_tokens, 200 + (len('Add feature') + len('Adds the feature') + 3) // 4)
+        expected = token_budget.estimate_input_tokens(PROFILE, 'review', payload_bytes=0,
+                                                      description_chars=len('Add feature') + len('Adds the feature'),
+                                                      file_count=0)
+        self.assertEqual(preview.token_estimate.input_tokens, expected)
 
     def test_partial_selection_is_distinguished_from_pr_total(self):
         owner, repo, input_id, _ = self.prepared(paths=['main.py', '.env'], changed_files=18)
@@ -269,11 +275,23 @@ class Reading(S.InputCase):
         self.assertEqual((preview.base_sha, preview.merge_base_sha), (self.fx.m1, self.fx.c0))
         self.assertEqual((preview.pr_title, preview.pr_body), ('Add feature', 'Adds the feature'))
         self.assertTrue(preview.execution_valid and preview.raw_available and preview.reviewable)
-        self.assertEqual(preview.provider_profile, 'profile-v1')
+        self.assertEqual(preview.provider_profile, 'claude-review-v1')
         self.assertEqual(preview.policy_version, 'code-transfer-v1')
         self.assertEqual(preview.prepare_job.status.value, 'succeeded')
         total_bytes = sum(f.byte_count for f in preview.files)
-        self.assertEqual(preview.token_estimate.input_tokens, -(-total_bytes // 4) + -(-(11 + 16) // 4) + 200)
+        estimate = preview.token_estimate
+        expected = token_budget.estimate_input_tokens(PROFILE, 'review', payload_bytes=total_bytes,
+                                                      description_chars=len('Add feature') + len('Adds the feature'),
+                                                      file_count=4)
+        self.assertEqual(estimate.input_tokens, expected)
+        self.assertEqual((estimate.profile, estimate.limit, estimate.within_limit, estimate.max_output_tokens,
+                          estimate.currency), ('claude-review-v1', 24_000, True, 4_000, 'USD'))
+        self.assertEqual(estimate.estimated_max_cost, str(token_budget.max_cost(PROFILE, expected)))   # 예약액 상한
+        # 모델 호출 전에 한도를 넘는 입력임을 미리 알린다(생성 요청은 이 입력으로 시작할 수 없다)
+        with patch('app.services.ai.input_builder.current_profile',
+                   return_value=dataclasses.replace(PROFILE, id='tiny-v1', max_input_tokens=100)):
+            tiny = input_store.load_preview(self.db, input_id, owner, now=T0 + timedelta(hours=1)).token_estimate
+        self.assertEqual((tiny.within_limit, tiny.limit, tiny.profile), (False, 100, 'tiny-v1'))
         # 같은 manifest의 hunks가 파일 미리보기에 그대로 있다
         by_path = {f.path: f for f in preview.files}
         self.assertEqual(by_path['src/b.py'].hunks[0].new_lines, 21)

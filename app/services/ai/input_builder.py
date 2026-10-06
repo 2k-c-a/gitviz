@@ -5,21 +5,21 @@
 - input_hash: 실행 fingerprint에 들어가는 입력 해시(manifest + 순서 + 문맥 크기 + 수집 방식).
 """
 import math
-import re
 from dataclasses import dataclass
 from uuid import UUID
 
 from app.collectors.ai_errors import CollectionError
 from app.collectors.git import ai_diff_collector
-from app.schemas.ai import (Coverage, DiffLine, DiffLineKind, ErrorCode, InputManifest, PRRevision,
+from app.schemas.ai import (Coverage, ErrorCode, InputManifest, PRRevision,
                             PRTransferMetadata, TokenEstimate, canonical_hash)
+from app.services.ai import token_budget
 from app.services.ai.access import AIError
+from app.services.ai.providers.registry import current_profile
+from app.services.ai.difftext import diff_lines  # noqa: F401  (S5 호환: 여기서도 가져다 쓴다)
 from app.services.ai.content_policy import POLICY_VERSION
 
 COLLECTOR_VERSION = 'merge-base-diff-context25-v1'
-TOKEN_METHOD = 'bytes/4+overhead (mock; 모델 profile별 확인은 실행 직전에 다시 한다)'
-TOKEN_OVERHEAD = 200
-_HUNK_RE = re.compile(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@')
+TOKEN_METHOD = 'local-conservative-v1'
 
 
 @dataclass
@@ -45,10 +45,16 @@ def prepare_fingerprint(revision_fingerprint: str, selected_paths: list[str], me
                            'collector': COLLECTOR_VERSION})
 
 
-def estimate_tokens(payload_bytes: int, metadata: PRTransferMetadata) -> TokenEstimate:
-    chars = len(metadata.title) + len(metadata.body)
-    tokens = math.ceil(payload_bytes / 4) + math.ceil(chars / 4) + TOKEN_OVERHEAD
-    return TokenEstimate(input_tokens=tokens, method=TOKEN_METHOD)
+def estimate_tokens(payload_bytes: int, metadata: PRTransferMetadata, file_count: int = 0) -> TokenEstimate:
+    """전송 미리보기의 토큰·비용 추정. 선택한 profile의 한도와 비교해 한도 초과 여부를 함께 알린다."""
+    profile = current_profile()
+    tokens = token_budget.estimate_input_tokens(
+        profile, 'review', payload_bytes=payload_bytes, description_chars=len(metadata.title) + len(metadata.body),
+        file_count=file_count)
+    return TokenEstimate(input_tokens=tokens, method=TOKEN_METHOD, profile=profile.id,
+                         limit=profile.max_input_tokens, within_limit=tokens <= profile.max_input_tokens,
+                         max_output_tokens=profile.max_output_tokens,
+                         estimated_max_cost=str(token_budget.max_cost(profile, tokens)), currency=profile.currency)
 
 
 def assemble(collected, *, revision: PRRevision, revision_id: UUID, metadata: PRTransferMetadata,
@@ -61,30 +67,8 @@ def assemble(collected, *, revision: PRRevision, revision_id: UUID, metadata: PR
                                  'collector': COLLECTOR_VERSION})
     return BuiltInput(manifest=manifest, manifest_hash=manifest_hash, input_hash=input_hash,
                       coverage=collected.coverage,
-                      token_estimate=estimate_tokens(collected.total_bytes, metadata))
-
-
-def diff_lines(text: str) -> list[DiffLine]:
-    """보관한 unified diff를 줄 번호가 붙은 줄 목록으로 푼다(실제 commit의 1부터 시작하는 번호)."""
-    lines, old_no, new_no, in_hunk = [], 0, 0, False
-    for line in text.splitlines():
-        m = _HUNK_RE.match(line)
-        if m:
-            old_no, new_no, in_hunk = int(m.group(1)), int(m.group(3)), True
-            continue
-        if not in_hunk or line.startswith('\\'):
-            continue
-        if line.startswith('-'):
-            lines.append(DiffLine(kind=DiffLineKind.removed, left_line=old_no, text=line[1:]))
-            old_no += 1
-        elif line.startswith('+'):
-            lines.append(DiffLine(kind=DiffLineKind.added, right_line=new_no, text=line[1:]))
-            new_no += 1
-        else:
-            lines.append(DiffLine(kind=DiffLineKind.context, left_line=old_no, right_line=new_no, text=line[1:]))
-            old_no += 1
-            new_no += 1
-    return lines
+                      token_estimate=estimate_tokens(collected.total_bytes, metadata,
+                                                     sum(1 for f in collected.files if f.payload is not None)))
 
 
 def remote_url_for(repo_url: str) -> str:

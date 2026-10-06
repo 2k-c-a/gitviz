@@ -71,7 +71,7 @@ class AISettings:
     max_attempts: int = 3
     queue_deadline_seconds: int = 1800
     retry_delay_seconds: int = 30
-    provider_profile: str = 'profile-v1'
+    provider_profile: str = 'claude-review-v1'
     input_valid_hours: int = 24
     input_retention_days: int = 7
     prepare_time_limit_seconds: int = 120
@@ -101,7 +101,7 @@ def get_ai_settings() -> AISettings:
         max_attempts=_int('AI_MAX_ATTEMPTS', 3),
         queue_deadline_seconds=_int('AI_QUEUE_DEADLINE_SECONDS', 1800),
         retry_delay_seconds=_int('AI_RETRY_DELAY_SECONDS', 30),
-        provider_profile=os.getenv('AI_PROVIDER_PROFILE', '').strip() or 'profile-v1',
+        provider_profile=os.getenv('AI_PROVIDER_PROFILE', '').strip() or 'claude-review-v1',
         input_valid_hours=_int('AI_INPUT_VALID_HOURS', 24),
         input_retention_days=_int('AI_INPUT_RETENTION_DAYS', 7),
         prepare_time_limit_seconds=_int('AI_PREPARE_TIME_LIMIT_SECONDS', 120),
@@ -146,6 +146,14 @@ def validate_ai_settings(settings: AISettings | None = None) -> list[str]:
         problems.append('AI_ALLOWED_ORIGINS 또는 FRONTEND_URL에 유효한 origin이 없습니다.')
     elif not s.cookie_secure and any(urlsplit(o).hostname not in LOCAL_HOSTS for o in s.allowed_origins):
         problems.append('로컬이 아닌 origin에서는 SESSION_COOKIE_SECURE=1이 필요합니다.')
+    from app.services.ai.providers.registry import UnknownProfile, get_profile
+    try:
+        profile = get_profile(s.provider_profile)
+    except UnknownProfile:
+        problems.append('AI_PROVIDER_PROFILE이 등록된 provider profile이 아닙니다.')
+    else:
+        if s.allow_external_transfer and profile.provider == 'anthropic' and not os.getenv('ANTHROPIC_API_KEY', '').strip():
+            problems.append('외부 전송을 허용하려면 ANTHROPIC_API_KEY가 필요합니다.')
     sync_url = os.getenv('DATABASE_URL', '')
     async_url = os.getenv('DATABASE_URL_ASYNC') or sync_url
     if not sync_url:
