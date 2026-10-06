@@ -258,9 +258,9 @@ class ReadAndDelete(ApiCase):
         estimate = data['token_estimate']
         self.assertGreater(estimate['input_tokens'], 200)
         self.assertEqual((estimate['profile'], estimate['limit'], estimate['within_limit'], estimate['currency']),
-                         ('claude-review-v1', 24000, True, 'USD'))
+                         ('claude-opus-5-5-v1', 24000, True, 'USD'))
         self.assertGreater(float(estimate['estimated_max_cost']), 0)
-        self.assertEqual(data['provider_profile'], 'claude-review-v1')
+        self.assertEqual(data['provider_profile'], 'claude-opus-5-5-v1')
         coverage = data['coverage']
         self.assertEqual((coverage['selected_files'], coverage['pr_total_files'], coverage['inventory_coverage'],
                           coverage['selected_content_coverage'], coverage['analysis_coverage']),

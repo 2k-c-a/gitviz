@@ -107,8 +107,7 @@ class QueueCase(lc.Case):
             self.db, owner_id=owner, repository_id=repo, input_id=inp, kind=kind,
             fingerprint=fingerprint or lc.H('1'), route=lc.ROUTE, idempotency_key=f'k-{mode}-{fingerprint}-{time.time_ns()}',
             body_hash=idempotency.request_hash({'mode': mode, 'f': fingerprint}), request_options={'mode': mode},
-            provider_profile=None if kind == 'prepare' else 'p', prompt_version=None if kind == 'prepare' else 'v',
-            schema_version=None if kind == 'prepare' else 'v').job
+            pinned=None if kind == 'prepare' else self.pinned(world)).job
 
     def status(self, job_id):
         self.db.rollback()

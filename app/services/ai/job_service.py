@@ -7,7 +7,7 @@
 """
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 from uuid import UUID, uuid4
 
 from sqlalchemy import select, text
@@ -20,6 +20,9 @@ from app.schemas.ai import ErrorCode
 from app.services.ai import idempotency, outbox, usage_service
 from app.services.ai.access import AIError, ensure_owner
 from app.services.ai.lease import CancelRequested, Lease, LeaseLost
+
+if TYPE_CHECKING:
+    from app.services.ai.consent import PinnedConfig
 
 __all__ = ['Lease', 'LeaseLost', 'CreateResult', 'HeartbeatResult', 'create_job', 'claim_job', 'heartbeat',
            'request_cancel', 'finish_job', 'fail_job', 'recover_expired', 'fail_queue_deadline',
@@ -83,14 +86,15 @@ def _advisory_lock(db: Session, key: str) -> None:
 
 def create_job(db: Session, *, owner_id: UUID, repository_id: int, input_id: UUID | None, kind: str, fingerprint: str,
                route: str, idempotency_key: str, body_hash: str, request_options: dict | None = None,
-               consent_manifest_hash: str | None = None, provider_profile: str | None = None,
-               prompt_version: str | None = None, schema_version: str | None = None,
-               force_regenerate: bool = False, input_factory: Callable[[Session], UUID] | None = None,
+               pinned: 'PinnedConfig | None' = None, force_regenerate: bool = False, input_factory: Callable[[Session], UUID] | None = None,
                now: datetime | None = None) -> CreateResult:
     """job·Idempotency-Key·outbox를 한 transaction으로 저장한다.
 
     input_factory를 주면(입력 준비 작업) 재사용 여부를 확인한 뒤에만 호출되어 새 입력을 만들고, 입력·작업·
     key·outbox가 모두 같은 transaction에 저장된다. 이때 input_id는 None이다.
+
+    생성 작업(summary/review)은 동의로 확정한 `pinned`(제공자·모델·profile·사용자 key 버전)가 필수이며 작업에 그대로
+    기록된다. 이후 key를 교체해도 이 작업은 고정된 key 버전과 모델로 실행된다.
 
     재사용 규칙은 두 가지로 구분한다.
     - Idempotency-Key: 같은 key·같은 요청이면 처음 만든 job을 그대로, 다른 요청이면 IDEMPOTENCY_CONFLICT.
@@ -100,9 +104,7 @@ def create_job(db: Session, *, owner_id: UUID, repository_id: int, input_id: UUI
     try:
         return _create_job(db, owner_id=owner_id, repository_id=repository_id, input_id=input_id, kind=kind,
                            fingerprint=fingerprint, route=route, idempotency_key=idempotency_key,
-                           body_hash=body_hash, request_options=request_options,
-                           consent_manifest_hash=consent_manifest_hash, provider_profile=provider_profile,
-                           prompt_version=prompt_version, schema_version=schema_version,
+                           body_hash=body_hash, request_options=request_options, pinned=pinned,
                            force_regenerate=force_regenerate, input_factory=input_factory, now=_now(now))
     except Exception:
         db.rollback()        # advisory lock과 이 transaction의 key·job 기록을 함께 되돌린다
@@ -110,8 +112,7 @@ def create_job(db: Session, *, owner_id: UUID, repository_id: int, input_id: UUI
 
 
 def _create_job(db: Session, *, owner_id, repository_id, input_id, kind, fingerprint, route, idempotency_key,
-                body_hash, request_options, consent_manifest_hash, provider_profile, prompt_version,
-                schema_version, force_regenerate, input_factory, now) -> CreateResult:
+                body_hash, request_options, pinned, force_regenerate, input_factory, now) -> CreateResult:
     settings = get_ai_settings()
     _advisory_lock(db, f'ai-create:{owner_id}')       # 같은 owner의 생성은 직렬화(재사용·한도·채번 경쟁 방지)
     entry = idempotency.begin(db, owner_id, route, idempotency_key, body_hash, now)
@@ -124,6 +125,8 @@ def _create_job(db: Session, *, owner_id, repository_id, input_id, kind, fingerp
 
     if input_factory is None:
         _check_input(db, owner_id, repository_id, input_id, kind, now)
+    if kind != 'prepare':
+        _check_pinned(db, owner_id, repository_id, input_id, kind, pinned)
     latest = db.execute(select(AIJob).where(
         AIJob.owner_user_id == owner_id, AIJob.kind == kind, AIJob.fingerprint == fingerprint)
         .order_by(AIJob.generation.desc()).limit(1).with_for_update()
@@ -148,14 +151,35 @@ def _create_job(db: Session, *, owner_id, repository_id, input_id, kind, fingerp
         input_id = input_factory(db)
     job = AIJob(owner_user_id=owner_id, repository_id=repository_id, input_id=input_id, kind=kind,
                 created_at=now, updated_at=now, fingerprint=fingerprint, generation=(latest.generation + 1) if latest is not None else 0,
-                status='queued', request_options=request_options or {}, consent_manifest_hash=consent_manifest_hash,
-                provider_profile=provider_profile, prompt_version=prompt_version, schema_version=schema_version)
+                status='queued', request_options=request_options or {}, **_pinned_columns(kind, pinned))
     db.add(job)
     db.flush()
     outbox.enqueue(db, job.id, kind)
     idempotency.complete(db, entry, job.id)
     db.commit()
     return CreateResult(job, True)
+
+
+def _pinned_columns(kind: str, pinned) -> dict:
+    if pinned is None:
+        return {}
+    return {'consent_manifest_hash': pinned.manifest_hash, 'provider_profile': pinned.profile.id,
+            'prompt_version': pinned.profile.prompt_version(kind), 'schema_version': pinned.profile.schema_version(kind),
+            'provider': pinned.provider, 'model': pinned.profile.model, 'profile_fingerprint': pinned.profile_fingerprint,
+            'credential_version_id': pinned.credential_version_id}
+
+
+def _check_pinned(db: Session, owner_id, repository_id, input_id, kind: str, pinned) -> None:
+    """생성 작업의 고정 설정을 확인한다. key 버전 행을 FOR SHARE로 잠가 교체(retire)와 직렬화한다:
+    교체가 먼저 끝났으면 거부(새 확인 필요), 작업 생성이 먼저면 그 작업이 옛 key를 쓰는 동안 암호문이 남는다."""
+    if pinned is None:
+        raise AIError(ErrorCode.CREDENTIAL_REQUIRED, '제공자·모델·API key를 확인하고 동의해야 합니다.')
+    if pinned.input_id != input_id or pinned.repository_id != repository_id:
+        raise AIError(ErrorCode.PREVIEW_CHANGED, '동의한 입력과 다른 입력입니다.')
+    status = db.execute(text("""SELECT status FROM ai_credential_versions WHERE id = :v AND owner_user_id = :o
+                                FOR SHARE"""), {'v': pinned.credential_version_id, 'o': owner_id}).scalar()
+    if status != 'active':
+        raise AIError(ErrorCode.PREVIEW_CHANGED, 'API key가 바뀌었거나 삭제됐습니다. 다시 확인해 주세요.')
 
 
 def _prepared_input_usable(db: Session, input_id: UUID, now: datetime) -> bool:

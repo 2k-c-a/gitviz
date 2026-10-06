@@ -1,6 +1,6 @@
 # AI 인터페이스 계약 (S0)
 
-- 계약 버전: `1.1` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
+- 계약 버전: `1.2` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
 - 설계 근거: [요구사항 및 시스템 설계 v0.4](GitViz_AI_요구사항_및_시스템설계_v0.4.md), [구현 계획 v0.5](GitViz_AI_의존성기반_구현계획_v0.5.md) S0
 - 수집·백엔드·시각화는 모두 `app/schemas/ai.py`의 DTO를 기준으로 합니다. 이 문서와 코드가 다르면 코드가 우선이며 즉시 문서를 고칩니다.
 - 모든 DTO는 알 수 없는 필드를 거부합니다(`extra="forbid"`). 클라이언트가 `owner_user_id` 같은 값을 보내도 받지 않습니다.
@@ -109,7 +109,7 @@
 | 409 | PR_CHANGED, PREVIEW_CHANGED, VERSION_CONFLICT, IDEMPOTENCY_CONFLICT |
 | 410 | INPUT_EXPIRED, RESULT_EXPIRED |
 | 413 | INPUT_TOO_LARGE |
-| 422 | INVALID_SELECTION, INVALID_STATE |
+| 422 | INVALID_SELECTION, INVALID_STATE, CREDENTIAL_REQUIRED, CREDENTIAL_INVALID |
 | 429 | USER_LIMIT, BUDGET_LIMIT, UPSTREAM_RATE_LIMIT |
 | 503 | ACCESS_CHECK_UNAVAILABLE, UPSTREAM_UNAVAILABLE |
 
@@ -119,6 +119,7 @@
 
 - 필드·enum 값 **추가**는 minor 증가, 의미 변경·삭제·이름 변경은 major 증가이며 소비자 합의가 필요합니다.
 - 1.1(S5): `InputManifest.pr_metadata`(AI로 보내는 PR 제목·설명) 추가. 기존 필드는 그대로이며 manifest_hash에 PR 설명이 반영된다.
+- 1.2(BYOK): 사용자 key 관리 DTO(`CredentialView` 등)·`TransferConsent`·`InputPreview.transfer` 추가, ErrorCode `CREDENTIAL_REQUIRED`·`CREDENTIAL_INVALID`(422) 추가.
 - 이후 단계에서 임의로 enum/필드 의미를 바꾸지 않습니다. 변경은 `CONTRACT_VERSION`, 이 문서, `scripts/test_ai_contracts.py`를 같은 PR에서 고칩니다.
 - 기능별 출력 schema 버전(S6)과 API 응답 DTO(S5·S8)는 이 계약 위에 추가하며 위 정의를 재정의하지 않습니다.
 
@@ -151,9 +152,9 @@
 
 외부 송신은 이 단계에서도 일어나지 않는다(테스트는 HTTP 계층을 mock). 실제 작업 실행 연결은 S7이다.
 
-**Profile** (`app/services/ai/providers/registry.py`, `AI_PROVIDER_PROFILE`로 선택): 버전이 고정된 불변 값이다. 이용자가 모델·URL을 지정할 수 없고, 값을 바꾸려면 새 id를 만든다. 작업 fingerprint에는 `profile.fingerprint()`(모델·가격·한도·timeout·프롬프트·schema 전체)를 넣는다.
+**Profile** (`app/services/ai/providers/registry.py`, 사용자가 지원 목록에서 선택, 기본값은 `AI_PROVIDER_PROFILE`): 버전이 고정된 불변 값이다. 이용자가 모델·URL을 지정할 수 없고, 값을 바꾸려면 새 id를 만든다. 작업 fingerprint에는 `profile.fingerprint()`(모델·가격·한도·timeout·프롬프트·schema 전체)를 넣는다.
 
-| 항목 | `claude-review-v1` |
+| 항목 | `claude-opus-5-5-v1` (sonnet 변형은 §12) |
 |---|---|
 | 제공자·모델 | anthropic / `claude-opus-5-5` (공식 SDK, `max_retries=0`: 호출 1번 = HTTP 1번) |
 | 가격 | 입력 $4.00 / 출력 $20.00 per 1M 토큰 (`price_version` 2026-09-25, 제공자 가격표와 대조 후 새 profile로 갱신) |
@@ -191,3 +192,28 @@
 - 통과한 결과의 `human_validation`은 항상 `unverified`다. **구조·참조 검증은 내용의 정확도를 보장하지 않는다**(틀린 주장도 형식이 맞으면 통과). 정확도는 사람의 피드백과 S10 평가에서 다룬다.
 
 **미해결(S7 이후)**: 실제 API schema 수용 여부와 모델 출력 품질은 실제 키로만 확인할 수 있다(S10). `reviewable=false` 입력으로 생성 작업을 만드는 것은 S8에서 차단한다.
+
+## 12. 사용자 API key(BYOK)
+
+서버 공용 제공자 key는 없다. 사용자가 자기 key만 등록하고, 제공자·모델은 **지원 목록**(`GET /api/ai/v1/providers`)에서 고른다. 이 단계도 외부로 코드를 보내지 않는다(key 확인은 `models.retrieve`, 코드 미포함·무과금).
+
+**API** (모두 로그인·AI 기능 켜짐·변경 요청은 CSRF, 응답 `Cache-Control: private, no-store`):
+
+| 메서드·경로 | 설명 |
+|---|---|
+| `GET /api/ai/v1/providers` | 지원 제공자·모델(`profile_id`·가격·한도·`allowed`)과 `external_transfer_allowed` |
+| `GET /api/ai/v1/credentials` | 내 key 목록: 마스킹 힌트(`sk-ant-…1111`)·버전·기본 모델·확인 시각·진행 중 작업 수. key 원문은 어떤 응답에도 없다 |
+| `PUT /api/ai/v1/credentials/{provider}` | 등록·교체 `{api_key, profile_id?, verify=true}`. 같은 key 재전송은 `changed=false`. `AI_ALLOW_EXTERNAL_TRANSFER=1`이어야 한다(아니면 403 TRANSFER_NOT_ALLOWED) |
+| `DELETE /api/ai/v1/credentials/{provider}` | 암호문 즉시 삭제, 이 key에 고정된 진행 중 작업 취소(`jobs_cancelled`) |
+
+key 형식 오류·제공자 거절(401·403·402·모델 없음)은 422 `CREDENTIAL_INVALID`(`details.reason`), 제공자 제한·장애는 429/503. 확인 호출은 사용자당 시간당 `AI_CREDENTIAL_VERIFY_LIMIT_PER_HOUR`회(초과 시 429 `USER_LIMIT`). 확인에 실패하면 아무것도 저장하지 않는다.
+
+**저장·접근**: 사용자별 AES-GCM 암호화(`AI_CREDENTIAL_ENCRYPTION_KEYS`, 입력 코드 키와 분리, AAD=`credential:{owner}:{version_id}`라 다른 사용자·버전으로 옮기면 복호화 실패). 교체하면 새 버전이 active, 옛 버전은 retired(되살릴 수 없음)이며 암호문은 **그 버전에 고정된 비종료 작업이 없을 때** 삭제된다. DB 트리거가 암호문·소유자·상태 변경을 막고, key 원문은 로그·큐·작업 옵션·audit·idempotency에 들어가지 않는다(작업에는 `credential_version_id`만 있다).
+
+**작업 고정**: 생성 작업(`summary`/`review`)은 만들 때 `provider`·`model`·`provider_profile`·`profile_fingerprint`·`credential_version_id`·`consent_manifest_hash`를 기록하고 바꿀 수 없다(DB 트리거). 이후 key·모델을 바꿔도 진행 중 작업은 고정된 설정으로 실행된다. 고정한 profile 값이 바뀌었거나 key가 삭제·파기됐으면 실행하지 않는다(`CredentialUnavailable`). 설정이 없는 생성 작업은 422 `CREDENTIAL_REQUIRED`, key 버전이 바뀌어 있으면 409 `PREVIEW_CHANGED`. `prepare` 작업은 key가 필요 없다. 작업 fingerprint는 key 버전을 넣지 않는다(같은 입력·같은 모델이면 key를 바꿔도 결과 재사용).
+
+**전송 동의** `TransferConsent{input_id, manifest_hash, provider, profile_id, credential_version, policy_version}`: 미리보기(`InputPreview.transfer`)에 보이는 제공자·모델·마스킹 key·보낼 코드 범위(manifest_hash)를 사용자가 확인한 값이다. 서버는 전송 허용·정책 버전·허용 모델·입력 소유자/준비 완료/유효기간·manifest 일치·읽을 파일 존재(`reviewable`)·모델 토큰 한도·key 존재와 버전 일치를 모두 확인하고, 하나라도 다르면 거부한다(`PREVIEW_CHANGED` 등). `reviewable=false` 입력 차단은 S8 완료 조건으로 유지한다.
+
+**사용량**: 사용자 key를 써도 요청 한도(`AI_DAILY_JOB_LIMIT`)와 비용·토큰 기록(attempt, 예약·정산)은 그대로다. 사용자별 월 지출 상한(`AI_USER_MONTHLY_BUDGET`, 기본 20)은 항상 적용한다. 서버 전체 합계 상한(`AI_SERVER_MONTHLY_BUDGET`)은 0이면 끄고(기본) 0보다 클 때만 적용한다.
+
+**지원 모델**: `claude-opus-5-5-v1`(입력 $4 / 출력 $20 per 1M), `claude-sonnet-5-5-v1`($2 / $10). 둘 다 입력 24,000·출력 4,000 토큰, timeout 90초, effort low. 관리자는 `AI_ALLOWED_PROFILES`로 선택지를 줄인다. 무단 fallback은 없다: 다른 모델·제공자로 자동 전환하지 않는다.

@@ -22,6 +22,7 @@ from alembic.config import Config  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
+import ai_credential_support as credential_support  # noqa: E402
 from app.schemas.ai import ErrorCode  # noqa: E402
 from app.services.ai import idempotency, job_runner, job_service, outbox, usage_service  # noqa: E402
 from app.services.ai.access import AIError  # noqa: E402
@@ -48,8 +49,12 @@ class Case(unittest.TestCase):
     def setUp(self):
         self.db = Session()
         self.users, self.repos = [], []
+        # 이 파일의 예산 테스트는 서버 공유 예산이 켜진 구성(사용자 + 서버 두 예산)을 전제로 한다. 기본값은 꺼짐이다.
+        self._budget_env = patch.dict(os.environ, {'AI_SERVER_MONTHLY_BUDGET': '100'})
+        self._budget_env.start()
 
     def tearDown(self):
+        self._budget_env.stop()
         self.db.rollback()
         self.db.close()
         with Session() as db:
@@ -87,14 +92,18 @@ class Case(unittest.TestCase):
                                {'o': owner, 'r': repo, 'v': rev, 's': status, 'ready': ready, 'h': H('a'),
                                 'vu': valid_until or datetime(2099, 1, 1, tzinfo=timezone.utc)}).scalar()
 
+    def pinned(self, world, **kw):
+        owner, repo, _, inp = world
+        return credential_support.pinned_for(self.db, owner, repo, inp, **kw)
+
     def create(self, world, *, key=None, kind='review', fingerprint=None, body=None, **kw):
         owner, repo, _, inp = world
         return job_service.create_job(
             self.db, owner_id=owner, repository_id=repo, input_id=inp, kind=kind, fingerprint=fingerprint or H('1'),
             route=ROUTE, idempotency_key=key if key is not None else uuid4().hex,
             body_hash=idempotency.request_hash(body or {'input': str(inp), 'kind': kind}),
-            provider_profile=None if kind == 'prepare' else 'p1', prompt_version=None if kind == 'prepare' else 'v1',
-            schema_version=None if kind == 'prepare' else 'v1', now=kw.pop('now', T0), **kw)
+            pinned=None if kind == 'prepare' else kw.pop('pinned', None) or self.pinned(world),
+            now=kw.pop('now', T0), **kw)
 
     def job_row(self, job_id):
         return self.db.execute(text("SELECT * FROM ai_jobs WHERE id = :i"), {'i': job_id}).mappings().one()
@@ -176,6 +185,7 @@ class Creation(Case):
 
     def test_same_key_concurrent_requests_create_one_job(self):
         world = self.make_world()
+        pinned = self.pinned(world)
         results, errors = [], []
 
         def run():
@@ -184,8 +194,7 @@ class Creation(Case):
                     results.append(job_service.create_job(
                         db, owner_id=world[0], repository_id=world[1], input_id=world[3], kind='review',
                         fingerprint=H('1'), route=ROUTE, idempotency_key='race',
-                        body_hash=idempotency.request_hash({'a': 1}), provider_profile='p', prompt_version='v',
-                        schema_version='v', now=T0))
+                        body_hash=idempotency.request_hash({'a': 1}), pinned=pinned, now=T0))
                 except Exception as exc:     # pragma: no cover
                     errors.append(exc)
         threads = [threading.Thread(target=run) for _ in range(8)]
@@ -200,6 +209,7 @@ class Creation(Case):
 
     def test_same_fingerprint_different_keys_concurrent_requests_create_one_job(self):
         world = self.make_world()
+        pinned = self.pinned(world)
         results = []
 
         def run(i):
@@ -207,8 +217,7 @@ class Creation(Case):
                 results.append(job_service.create_job(
                     db, owner_id=world[0], repository_id=world[1], input_id=world[3], kind='review',
                     fingerprint=H('1'), route=ROUTE, idempotency_key=f'key-{i}',
-                    body_hash=idempotency.request_hash({'i': i}), provider_profile='p', prompt_version='v',
-                    schema_version='v', now=T0))
+                    body_hash=idempotency.request_hash({'i': i}), pinned=pinned, now=T0))
         threads = [threading.Thread(target=run, args=(i,)) for i in range(8)]
         [t.start() for t in threads]
         [t.join() for t in threads]
@@ -231,6 +240,7 @@ class Creation(Case):
 
         with env(AI_DAILY_JOB_LIMIT=2):
             racer = self.make_world()
+            racer_pinned = self.pinned(racer)
             outcomes = []
 
             def run(i):
@@ -239,8 +249,7 @@ class Creation(Case):
                         job_service.create_job(
                             db, owner_id=racer[0], repository_id=racer[1], input_id=racer[3], kind='review',
                             fingerprint=H(format(i, 'x')), route=ROUTE, idempotency_key=f'r{i}',
-                            body_hash=idempotency.request_hash({'i': i}), provider_profile='p', prompt_version='v',
-                            schema_version='v', now=T0)
+                            body_hash=idempotency.request_hash({'i': i}), pinned=racer_pinned, now=T0)
                         outcomes.append('ok')
                     except AIError as exc:
                         outcomes.append(exc.code)
@@ -328,12 +337,12 @@ class Leases(Case):
         with self.assertRaises(RuntimeError):
             job_service.finish_job(self.db, lease, 'succeeded', work=failing, now=T0)
         self.assertEqual(self.job_row(job.id)['status'], 'running')                      # 상태는 확정되지 않았다
-        self.assertEqual(self.scalar('SELECT count(*) FROM audit_events'), 0)            # 결과 저장도 되돌려졌다
+        self.assertEqual(self.scalar("SELECT count(*) FROM audit_events WHERE action = 'x'"), 0)   # 결과 저장도 되돌려졌다
 
         def storing(db):
             db.execute(text("INSERT INTO audit_events(action, object_type, request_id) VALUES('stored', 'job', 'r')"))
         self.assertEqual(job_service.finish_job(self.db, lease, 'succeeded', work=storing, now=T0), 'succeeded')
-        self.assertEqual(self.scalar('SELECT count(*) FROM audit_events'), 1)
+        self.assertEqual(self.scalar("SELECT count(*) FROM audit_events WHERE action = 'stored'"), 1)
         row = self.job_row(job.id)
         self.assertEqual((row['status'], row['lease_token'], row['finished_at']), ('succeeded', None, T0))
         self.assertEqual(self.scalar("SELECT status FROM ai_attempts WHERE job_id = :j", j=job.id), 'succeeded')

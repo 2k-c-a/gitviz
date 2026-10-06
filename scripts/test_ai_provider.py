@@ -29,7 +29,7 @@ from app.services.ai.providers.anthropic_provider import AnthropicProvider, Prov
 from app.services.ai.providers.base import (GenerationRequest, ProviderError, ProviderFailure,  # noqa: E402
                                             TokenLimitExceeded, Usage, parse_json_object)
 
-PROFILE = registry.get_profile('claude-review-v1')
+PROFILE = registry.get_profile('claude-opus-5-5-v1')
 API_KEY = 'sk-ant-test-SUPERSECRETKEY'
 CODE_MARKER = 'UNIQUE_CODE_MARKER_8f3a'
 VALID_TEXT = json.dumps({'schema_version': 'review-output-v1', 'findings': []})
@@ -153,13 +153,16 @@ class RequestShape(unittest.TestCase):
             provider.generate(GenerationRequest(kind='prepare', system='s', user='u'))
 
     def test_client_is_configured_for_single_attempts_and_the_profile_timeout(self):
-        with patch.dict(os.environ, {'ANTHROPIC_API_KEY': API_KEY}):
-            provider = AnthropicProvider(PROFILE)
+        provider = AnthropicProvider(PROFILE, api_key=API_KEY)                    # 사용자 key를 주입한다
         self.assertEqual(provider.client.max_retries, 0)                           # 재시도는 job 계층이 결정한다
         self.assertEqual(provider.client.timeout, 90.0)
-        with patch.dict(os.environ, {'ANTHROPIC_API_KEY': ''}):
+        # 서버 환경변수의 공용 key로는 만들 수 없다(주입하지 않으면 거부)
+        with patch.dict(os.environ, {'ANTHROPIC_API_KEY': API_KEY}):
             with self.assertRaises(ProviderConfigError):
                 AnthropicProvider(PROFILE)
+        for empty in (None, ''):
+            with self.assertRaises(ProviderConfigError):
+                AnthropicProvider(PROFILE, api_key=empty)
         with self.assertRaises(ProviderConfigError):
             AnthropicProvider(dataclasses.replace(PROFILE, provider='other'), api_key=API_KEY)
 
@@ -370,7 +373,8 @@ class CountTokens(unittest.TestCase):
 class Profiles(unittest.TestCase):
     def test_default_profile_pins_model_price_limits_and_timeout(self):
         p = PROFILE
-        self.assertEqual((p.id, p.provider, p.model), ('claude-review-v1', 'anthropic', 'claude-opus-5-5'))
+        self.assertEqual((p.id, p.provider, p.model, p.display_name), ('claude-opus-5-5-v1', 'anthropic', 'claude-opus-5-5',
+                                                                   'Claude Opus 5.5'))
         self.assertEqual((p.max_input_tokens, p.max_output_tokens, p.timeout_seconds), (24_000, 4_000, 90))
         self.assertEqual((p.input_price_per_mtok, p.output_price_per_mtok, p.currency), (Decimal('4.00'), Decimal('20.00'), 'USD'))
         self.assertEqual((p.context_window, p.price_version, p.effort), (1_000_000, '2026-09-25', 'low'))
@@ -379,11 +383,11 @@ class Profiles(unittest.TestCase):
                          ('summary-output-v1', 'review-output-v1'))
         with self.assertRaises(dataclasses.FrozenInstanceError):
             p.model = 'x'
-        self.assertIs(registry.get_profile('claude-review-v1'), PROFILE)
+        self.assertIs(registry.get_profile('claude-opus-5-5-v1'), PROFILE)
 
     def test_any_change_to_the_profile_changes_its_fingerprint(self):
         base = PROFILE.fingerprint()
-        self.assertEqual(base, registry.get_profile('claude-review-v1').fingerprint())
+        self.assertEqual(base, registry.get_profile('claude-opus-5-5-v1').fingerprint())
         for change in ({'model': 'x'}, {'input_price_per_mtok': Decimal('5.00')}, {'output_price_per_mtok': Decimal('21')},
                        {'max_input_tokens': 1}, {'max_output_tokens': 1}, {'timeout_seconds': 1}, {'effort': 'high'},
                        {'context_window': 1}, {'review_prompt': 'review-v2'}, {'review_schema': 'review-output-v2'},
@@ -397,26 +401,35 @@ class Profiles(unittest.TestCase):
         foreign = dataclasses.replace(PROFILE, id='foreign-v1', provider='some-other-company')
         with self.assertRaises(registry.UnknownProvider):
             registry.create_provider(foreign)
-        with patch.dict(os.environ, {'ANTHROPIC_API_KEY': API_KEY, 'AI_PROVIDER_PROFILE': 'nope'}):
+        with patch.dict(os.environ, {'AI_PROVIDER_PROFILE': 'nope'}):
             with self.assertRaises(registry.UnknownProfile):
                 registry.current_profile()
-        with patch.dict(os.environ, {'ANTHROPIC_API_KEY': API_KEY}):
-            provider = registry.create_provider(PROFILE)
-            self.assertIsInstance(provider, AnthropicProvider)
+        provider = registry.create_provider(PROFILE, api_key=API_KEY)
+        self.assertIsInstance(provider, AnthropicProvider)
+        with self.assertRaises(ProviderConfigError):                                # 공용 key로 대체하지 않는다
+            registry.create_provider(PROFILE)
 
     def test_settings_validation_checks_profile_and_credentials_before_any_call(self):
         env = {'AI_ENABLED': '1', 'AI_INPUT_ENCRYPTION_KEYS': 'v1:' + 'a1' * 32, 'AI_INPUT_KEY_VERSION': 'v1',
+               'AI_CREDENTIAL_ENCRYPTION_KEYS': 'c1:' + 'b2' * 32, 'AI_CREDENTIAL_KEY_VERSION': 'c1',
                'AI_ALLOWED_ORIGINS': 'http://localhost:8000', 'DATABASE_URL': 'postgresql://u:p@localhost/db',
-               'DATABASE_URL_ASYNC': '', 'DATABASE_SSL_CA': ''}
+               'DATABASE_URL_ASYNC': '', 'DATABASE_SSL_CA': '', 'AI_PROVIDER_PROFILE': 'claude-opus-5-5-v1',
+               'AI_ALLOWED_PROFILES': ''}
         def problems(**over):
             with patch.dict(os.environ, {**env, **over}):
                 return ai_settings.validate_ai_settings()
-        self.assertEqual(problems(AI_ALLOW_EXTERNAL_TRANSFER='0', ANTHROPIC_API_KEY=''), [])      # 준비만 쓰면 key 불필요
-        self.assertTrue(any('ANTHROPIC_API_KEY' in p for p in problems(AI_ALLOW_EXTERNAL_TRANSFER='1', ANTHROPIC_API_KEY='')))
-        self.assertEqual(problems(AI_ALLOW_EXTERNAL_TRANSFER='1', ANTHROPIC_API_KEY=API_KEY), [])
+        # 서버 공용 API key는 필요 없다(사용자가 자신의 key를 등록한다). 대신 사용자 key 암호화 키가 필요하다.
+        self.assertEqual(problems(AI_ALLOW_EXTERNAL_TRANSFER='1', ANTHROPIC_API_KEY=''), [])
+        self.assertEqual(problems(AI_ALLOW_EXTERNAL_TRANSFER='0'), [])
+        self.assertTrue(any('AI_CREDENTIAL_ENCRYPTION_KEYS' in p for p in problems(AI_CREDENTIAL_ENCRYPTION_KEYS='')))
+        self.assertTrue(any('AI_CREDENTIAL_KEY_VERSION' in p for p in problems(AI_CREDENTIAL_KEY_VERSION='c9')))
+        self.assertTrue(any('달라야' in p for p in problems(AI_CREDENTIAL_ENCRYPTION_KEYS='v1:' + 'a1' * 32,
+                                                          AI_CREDENTIAL_KEY_VERSION='v1')))   # 입력 키와 같은 키 금지
         self.assertTrue(any('AI_PROVIDER_PROFILE' in p for p in problems(AI_PROVIDER_PROFILE='unknown-profile')))
-        leaked = ' '.join(problems(AI_ALLOW_EXTERNAL_TRANSFER='1', ANTHROPIC_API_KEY='', AI_PROVIDER_PROFILE='zzz'))
-        self.assertNotIn(API_KEY, leaked)
+        self.assertTrue(any('AI_PROVIDER_PROFILE' in p for p in problems(AI_ALLOWED_PROFILES='claude-sonnet-5-5-v1')))
+        self.assertEqual(problems(AI_ALLOWED_PROFILES='claude-opus-5-5-v1,claude-sonnet-5-5-v1'), [])
+        leaked = ' '.join(problems(AI_CREDENTIAL_ENCRYPTION_KEYS='', AI_PROVIDER_PROFILE='zzz'))
+        self.assertNotIn('b2' * 32, leaked)
 
 
 class TokenBudget(unittest.TestCase):

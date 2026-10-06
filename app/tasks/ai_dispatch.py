@@ -12,7 +12,7 @@ from uuid import UUID
 
 from app.core.celery_app import celery
 from app.core.database import SessionLocal
-from app.services.ai import input_store, job_runner, job_service, outbox
+from app.services.ai import credentials, input_store, job_runner, job_service, outbox
 
 logger = logging.getLogger('gitviz.ai.dispatch')
 
@@ -55,6 +55,8 @@ def maintenance_once(session_factory=SessionLocal) -> dict:
         stats = job_service.run_maintenance(db)
     with session_factory() as db:
         stats['inputs'] = input_store.run_input_maintenance(db)
+    with session_factory() as db:
+        stats['credentials'] = credentials.run_credential_maintenance(db)
     return stats
 
 

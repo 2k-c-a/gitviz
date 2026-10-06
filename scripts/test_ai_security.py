@@ -45,8 +45,9 @@ def ai_env(**over):
     env = {'AI_ENABLED': '1', 'AI_ALLOW_EXTERNAL_TRANSFER': '1', 'AI_INPUT_ENCRYPTION_KEYS': f'v1:{KEY1}',
            'AI_INPUT_KEY_VERSION': 'v1', 'AI_ALLOWED_ORIGINS': ORIGIN, 'SESSION_COOKIE_SECURE': '0',
            'DATABASE_URL': LOCAL_DB, 'DATABASE_URL_ASYNC': LOCAL_DB.replace('postgresql://', 'postgresql+asyncpg://'),
-           'DATABASE_SSL_CA': '', 'AI_POLICY_VERSIONS': 'code-transfer-v1', 'ANTHROPIC_API_KEY': 'test-key',
-           'AI_PROVIDER_PROFILE': 'claude-review-v1'}
+           'DATABASE_SSL_CA': '', 'AI_POLICY_VERSIONS': 'code-transfer-v1',
+           'AI_CREDENTIAL_ENCRYPTION_KEYS': f'c1:{KEY2}', 'AI_CREDENTIAL_KEY_VERSION': 'c1',
+           'AI_PROVIDER_PROFILE': 'claude-opus-5-5-v1', 'AI_ALLOWED_PROFILES': ''}
     env.update(over)
     return patch.dict(os.environ, env)
 
@@ -406,7 +407,8 @@ class AppStartup(unittest.TestCase):
 
     def test_enabled_with_valid_config_starts(self):
         r = self.run_import(AI_ENABLED='1', DATABASE_URL=LOCAL_DB, AI_INPUT_ENCRYPTION_KEYS=f'v1:{KEY1}',
-                            AI_INPUT_KEY_VERSION='v1', FRONTEND_URL=ORIGIN, AI_ALLOWED_ORIGINS='')
+                            AI_INPUT_KEY_VERSION='v1', FRONTEND_URL=ORIGIN, AI_ALLOWED_ORIGINS='',
+                            AI_CREDENTIAL_ENCRYPTION_KEYS=f'c1:{KEY2}', AI_CREDENTIAL_KEY_VERSION='c1')
         self.assertEqual(r.returncode, 0, r.stderr[-500:])
 
 
