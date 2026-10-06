@@ -146,3 +146,48 @@
 - `coverage`의 세 분모: `inventory_coverage`/`pr_total_files`(PR 전체), `selected_files`·`selected_content_coverage`(선택과 확보), `analysis_coverage`(항상 `none`, 분석 전). 읽을 수 있는 파일이 없으면 `reviewable=false`(NO_REVIEWABLE_CONTENT, 생성 작업을 만들 수 없다).
 - prepare 작업 `error_code`(S5): `PR_CHANGED`(준비 중 PR 변경, 재시도 안 함), `INVALID_SELECTION`, `INPUT_TOO_LARGE`, `MERGE_BASE_UNAVAILABLE`, `RESOURCE_NOT_FOUND`/`REAUTH_REQUIRED`(권한 상실), `PREPARE_TIMEOUT`. 입력이 `failed`가 된다. 일시 오류(`UPSTREAM_UNAVAILABLE` 등)는 입력을 `building`으로 둔 채 재시도한다.
 - 보관: 코드 원문은 AES-GCM으로 암호화되어 `ai_input_files`에만 있고(AAD=`input_id:file_id`) 로그·큐·audit에는 없다. 확정된 입력은 파일을 바꾸거나 더할 수 없다(새 입력을 준비). 기한이 지난 원문은 참조하는 결과가 있어도 삭제된다(`run_input_maintenance`).
+
+## 11. Provider adapter·프롬프트·출력 검증 (S6)
+
+외부 송신은 이 단계에서도 일어나지 않는다(테스트는 HTTP 계층을 mock). 실제 작업 실행 연결은 S7이다.
+
+**Profile** (`app/services/ai/providers/registry.py`, `AI_PROVIDER_PROFILE`로 선택): 버전이 고정된 불변 값이다. 이용자가 모델·URL을 지정할 수 없고, 값을 바꾸려면 새 id를 만든다. 작업 fingerprint에는 `profile.fingerprint()`(모델·가격·한도·timeout·프롬프트·schema 전체)를 넣는다.
+
+| 항목 | `claude-review-v1` |
+|---|---|
+| 제공자·모델 | anthropic / `claude-opus-5-5` (공식 SDK, `max_retries=0`: 호출 1번 = HTTP 1번) |
+| 가격 | 입력 $4.00 / 출력 $20.00 per 1M 토큰 (`price_version` 2026-09-25, 제공자 가격표와 대조 후 새 profile로 갱신) |
+| 한도 | 입력 24,000 토큰, 출력 4,000 토큰(생각 토큰 포함), 컨텍스트 1,000,000, 모델 호출 timeout 90초 |
+| effort | `low` (thinking은 끌 수 없는 모델이라 effort로만 조절) |
+| 프롬프트·schema | `summary-v1`/`review-v1`, `summary-output-v1`/`review-output-v1` |
+
+- 요청에는 `tools`·`tool_choice`·`fallbacks`·beta·sampling 옵션이 없다. 모델이 도구를 실행하거나 다른 모델·제공자로 바뀔 수 없다(자동 fallback 없음). 안전 분류기가 거절하면 `finish=refused`로 끝나며 사람이 다른 profile을 명시적으로 선택해야 한다.
+- 프롬프트 파일은 `PROMPT_DIGESTS`로 고정된다. 내용을 바꾸면 테스트가 실패하므로 새 버전 파일과 profile을 만든다.
+- 신뢰할 수 없는 자료(PR 설명·코드)는 요청마다 새로 만든 무작위 경계 토큰 블록 안에만 들어가고 system 프롬프트에는 코드가 없다. 모든 diff 줄은 실제 줄 번호(`= L8 R8 | …`)와 함께 보낸다.
+
+**토큰·비용** (`token_budget.py`): 미리보기(`InputPreview.token_estimate`)와 호출 전 검사는 외부로 보내지 않는 로컬 보수적 추정(`bytes_per_token`)이다. 입력 토큰이 `limit`를 넘으면(`within_limit=false`) 호출 전에 거부한다(`input_too_large`, 과금 없음). 정확한 값은 사용자 동의 이후 실행 직전 `count_tokens`(과금되지 않는 별도 호출)로 확인한다. 비용은 `Decimal`이며 올림한다. 예약액 `estimated_max_cost`는 추정 입력 + 최대 출력 기준 상한, 정산액은 응답 usage 기준이다. usage가 없거나 올바르지 않으면 비용은 `null`(알 수 없음, 0이 아님)이며 호출자는 예약액으로 추정 정산한다.
+
+**실패 분류** (`ProviderFailure`): `outcome_uncertain=false`이면 요청이 처리되지 않았음이 확실하다(예약 해제). `retryable`이면 backoff 후 자동으로 다시 호출해도 안전하다. `outcome_uncertain=true`이면 처리·과금 여부를 모르므로 예약을 `uncertain`으로 남기고 **자동 재호출하지 않는다**.
+
+| 분류 `kind` | 상황 | retryable | outcome_uncertain | 작업 error_code |
+|---|---|---|---|---|
+| `rate_limited` | 429 (`retry_after`는 1~3600초) | 예 | 아니오 | `PROVIDER_RATE_LIMITED` |
+| `server_error` | 500·502·503·529 | 예 | 아니오 | `PROVIDER_UNAVAILABLE` |
+| `connection_failed` | 연결·연결 timeout·pool timeout(서버에 닿기 전) | 예 | 아니오 | `PROVIDER_UNAVAILABLE` |
+| `timeout` | 응답 대기·전송 중 timeout | 아니오 | **예** | `PROVIDER_TIMEOUT` |
+| `response_lost` | 408·504, 응답 중 연결 끊김, 형식이 깨진 200 응답 | 아니오 | **예** | `PROVIDER_TIMEOUT` |
+| `auth_failed` / `billing_error` | 401·403 / 402 | 아니오 | 아니오 | `PROVIDER_AUTH` |
+| `model_unavailable` / `request_rejected` | 404 / 그 밖의 4xx | 아니오 | 아니오 | `PROVIDER_REJECTED` |
+| `input_too_large` | 로컬 한도 초과 또는 413 | 아니오 | 아니오 | `INPUT_TOO_LARGE` |
+| `unknown_error` | 분류할 수 없는 예외 | 아니오 | **예** | `PROVIDER_ERROR` |
+
+호출이 끝까지 처리된 응답은 예외가 아니라 `ProviderResponse`이며 과금된다(비용 기록 대상). `finish`: `complete`(출력 JSON 사용 가능 여부는 `usable`), `truncated`(출력 한도), `refused`(안전 거절, `refusal_category`), `empty`, `incomplete`(예상 밖 stop reason·도구 블록). 출력은 JSON 객체 하나여야 하며 코드 펜스·앞뒤 설명·NaN·64KB 초과는 `parse_error`(`invalid_json`/`not_json_object`/`output_too_large`)이다. 출력 검증 실패도 호출이 일어났으므로 비용을 기록한다.
+
+**출력 검증** (`validators.validate_output(kind, output, sent, revision_id=…)`): 구조(`strict`, 알 수 없는 필드·형 변환 금지)와 함께 *실제로 보낸* 자료(`SentInput`)에 대해 다음을 검사한다. 하나라도 어긋나면 결과 전체를 거부한다(부분 채택 없음).
+
+- 근거(`evidence_ids`)는 보낸 파일의 handle(F1…)이며 중복·미지의 handle·위치한 파일과 다른 근거는 거부.
+- 위치는 보낸 파일(제외된 파일 불가)의 `side`(삭제=LEFT만, 신규=RIGHT만)와 줄 범위 안이어야 하고 범위의 **모든 줄**이 실제로 보낸 번호여야 한다(hunk 사이 빈 구간을 가로지르면 거부). `quote`는 그 줄 범위의 코드에 실제로 있어야 한다(공백 차이 무시).
+- 이름이 바뀐 파일의 LEFT는 옛 경로로 부를 수 있고 결과 위치는 옛 경로로 기록된다. 요약은 PR 설명이 없으면 `author_intent`를 쓸 수 없다.
+- 통과한 결과의 `human_validation`은 항상 `unverified`다. **구조·참조 검증은 내용의 정확도를 보장하지 않는다**(틀린 주장도 형식이 맞으면 통과). 정확도는 사람의 피드백과 S10 평가에서 다룬다.
+
+**미해결(S7 이후)**: 실제 API schema 수용 여부와 모델 출력 품질은 실제 키로만 확인할 수 있다(S10). `reviewable=false` 입력으로 생성 작업을 만드는 것은 S8에서 차단한다.

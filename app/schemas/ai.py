@@ -8,7 +8,7 @@ import json
 import re
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -442,10 +442,16 @@ class DiffLine(_Strict):
 
 
 class TokenEstimate(_Strict):
-    """전송 전 대략적인 입력 크기. 모델 profile별 정확한 확인은 실행 직전에 다시 한다."""
+    """전송 전 로컬 추정(보수적). 제공자 토큰 수 확인은 사용자 동의 뒤 실행 직전에 다시 한다."""
     input_tokens: int = Field(ge=0)
     method: str
     final_check: str = "before_generation"
+    profile: str | None = None
+    limit: int | None = None                 # profile의 입력 토큰 한도
+    within_limit: bool | None = None         # False면 이 입력으로는 AI 생성을 시작할 수 없다
+    max_output_tokens: int | None = None
+    estimated_max_cost: str | None = None    # 입력 추정 + 최대 출력 기준 비용 상한(예약액)
+    currency: str | None = None
 
 
 class InputFileView(_Strict):
@@ -508,3 +514,77 @@ class InputFileContent(_Strict):
     exclusion_reason: Limitation | None = None
     content_hash: Sha256Hex | None = None
     lines: list[DiffLine] = Field(default_factory=list)
+
+
+# ── 모델 출력 schema (S6) ───────────────────────────────────────────────
+# 모델이 만드는 JSON의 구조다. 구조가 맞아도 내용이 맞다는 뜻은 아니며, 파일·줄 참조는 validators가 실제 전송한
+# 자료와 대조한다. 모델은 줄 번호를 지어낼 수 있으므로 위치는 전송한 줄 번호 안에서만 인정한다.
+
+SUMMARY_SCHEMA_VERSION = "summary-output-v1"
+REVIEW_SCHEMA_VERSION = "review-output-v1"
+MAX_FINDINGS = 10
+
+
+class _StrictOutput(BaseModel):
+    """모델 출력 전용: 타입을 강제 변환하지 않는다('1'이나 true를 정수로 받아들이지 않는다)."""
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+MAX_FILE_CHANGES = 100
+
+Handle = Annotated[str, StringConstraints(pattern=r"^F[0-9]{1,4}$")]
+_Text = Annotated[str, StringConstraints(min_length=1, max_length=1500)]
+_Quote = Annotated[str, StringConstraints(min_length=3, max_length=300)]
+
+
+class ModelLocation(_StrictOutput):
+    path: RepoPath
+    side: Literal["LEFT", "RIGHT"]
+    start_line: int = Field(ge=1, le=10_000_000)
+    end_line: int = Field(ge=1, le=10_000_000)
+    quote: _Quote            # 그 줄 범위에서 그대로 가져온 코드 조각(근거 확인용)
+
+
+class ModelFinding(_StrictOutput):
+    title: Annotated[str, StringConstraints(min_length=1, max_length=200)]
+    category: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_-]{1,39}$")]
+    priority: int = Field(ge=1, le=1000)       # 검토 순서. 장애 등급이 아니다.
+    condition: _Text
+    impact: _Text
+    evidence_ids: list[Handle] = Field(min_length=1, max_length=5)
+    location: ModelLocation
+    verification: _Text
+    suggestion: _Text | None = None
+    limitations: list[Annotated[str, StringConstraints(min_length=1, max_length=300)]] = Field(
+        default_factory=list, max_length=3)
+
+
+class ReviewOutput(_StrictOutput):
+    schema_version: str
+    findings: list[ModelFinding] = Field(max_length=MAX_FINDINGS)
+
+    @model_validator(mode="after")
+    def _version(self):
+        if self.schema_version != REVIEW_SCHEMA_VERSION:
+            raise ValueError("schema_version이 올바르지 않습니다.")
+        return self
+
+
+class FileChange(_StrictOutput):
+    path: RepoPath
+    summary: Annotated[str, StringConstraints(min_length=1, max_length=800)]
+    evidence_ids: list[Handle] = Field(min_length=1, max_length=5)
+
+
+class SummaryOutput(_StrictOutput):
+    schema_version: str
+    overview: Annotated[str, StringConstraints(min_length=1, max_length=2000)]       # 코드에서 관찰한 사실
+    author_intent: Annotated[str, StringConstraints(min_length=1, max_length=1000)] | None = None   # PR 설명이 말하는 의도
+    file_changes: list[FileChange] = Field(max_length=MAX_FILE_CHANGES)
+    unknowns: list[Annotated[str, StringConstraints(min_length=1, max_length=500)]] = Field(max_length=20)
+    evidence_ids: list[Handle] = Field(min_length=1, max_length=50)
+
+    @model_validator(mode="after")
+    def _version(self):
+        if self.schema_version != SUMMARY_SCHEMA_VERSION:
+            raise ValueError("schema_version이 올바르지 않습니다.")
+        return self

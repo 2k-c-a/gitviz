@@ -255,8 +255,12 @@ class ReadAndDelete(ApiCase):
         self.assertEqual([f['path'] for f in data['files']], sorted(S.PR_PATHS))
         self.assertEqual(data['manifest_hash'], self.input_row(UUID(input_id))['manifest_hash'].strip())
         self.assertEqual((data['pr_title'], data['pr_body']), ('Add feature', 'Adds the feature'))
-        self.assertGreater(data['token_estimate']['input_tokens'], 200)
-        self.assertEqual(data['provider_profile'], 'profile-v1')
+        estimate = data['token_estimate']
+        self.assertGreater(estimate['input_tokens'], 200)
+        self.assertEqual((estimate['profile'], estimate['limit'], estimate['within_limit'], estimate['currency']),
+                         ('claude-review-v1', 24000, True, 'USD'))
+        self.assertGreater(float(estimate['estimated_max_cost']), 0)
+        self.assertEqual(data['provider_profile'], 'claude-review-v1')
         coverage = data['coverage']
         self.assertEqual((coverage['selected_files'], coverage['pr_total_files'], coverage['inventory_coverage'],
                           coverage['selected_content_coverage'], coverage['analysis_coverage']),
