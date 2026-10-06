@@ -4,6 +4,7 @@
 """
 import os
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -23,6 +24,14 @@ def _int(name: str, default: int) -> int:
     except ValueError:
         return default
     return value if value > 0 else default
+
+
+def _decimal(name: str, default: str) -> Decimal:
+    try:
+        value = Decimal(os.getenv(name, '').strip() or default)
+    except InvalidOperation:
+        return Decimal(default)
+    return value if value.is_finite() and value >= 0 else Decimal(default)
 
 
 def _parse_keys(raw: str) -> dict[str, bytes]:
@@ -58,6 +67,13 @@ class AISettings:
     max_files: int = 50
     max_input_bytes: int = 2_000_000
     daily_job_limit: int = 30
+    lease_seconds: int = 120
+    max_attempts: int = 3
+    queue_deadline_seconds: int = 1800
+    retry_delay_seconds: int = 30
+    budget_currency: str = 'USD'
+    user_monthly_budget: Decimal = Decimal('5')
+    server_monthly_budget: Decimal = Decimal('50')
 
 
 def get_ai_settings() -> AISettings:
@@ -77,6 +93,13 @@ def get_ai_settings() -> AISettings:
         max_files=_int('AI_MAX_FILES', 50),
         max_input_bytes=_int('AI_MAX_INPUT_BYTES', 2_000_000),
         daily_job_limit=_int('AI_DAILY_JOB_LIMIT', 30),
+        lease_seconds=_int('AI_LEASE_SECONDS', 120),
+        max_attempts=_int('AI_MAX_ATTEMPTS', 3),
+        queue_deadline_seconds=_int('AI_QUEUE_DEADLINE_SECONDS', 1800),
+        retry_delay_seconds=_int('AI_RETRY_DELAY_SECONDS', 30),
+        budget_currency=(os.getenv('AI_BUDGET_CURRENCY', 'USD').strip().upper() or 'USD')[:3],
+        user_monthly_budget=_decimal('AI_USER_MONTHLY_BUDGET', '5'),
+        server_monthly_budget=_decimal('AI_SERVER_MONTHLY_BUDGET', '50'),
     )
 
 

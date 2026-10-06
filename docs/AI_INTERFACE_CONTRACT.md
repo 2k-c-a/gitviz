@@ -68,6 +68,24 @@
 - `JobState`: 생성 작업(`summary`/`review`)은 `succeeded`이면 `result_id` 필수, 아니면 금지. `prepare`는 AI 결과가 없으므로 항상 `result_id`가 없다(성공해도 입력 준비만 완료). `failed`이면 `error_code` 필수, `succeeded`이면 금지. `retry_after_seconds >= 0`.
 - 입력 상태 `InputStatus`: `building → ready | failed`, 만료 시 `expired`. `ready`는 입력이 고정됐다는 뜻이지 coverage가 완전하다는 뜻이 아닙니다.
 
+### 작업 `error_code` (S4, `failed` 작업의 값)
+
+| 값 | 의미 |
+|---|---|
+| `NO_HANDLER` | 해당 종류를 처리할 handler가 worker에 없다(재시도 안 함) |
+| `INTERNAL_ERROR` | handler의 예상 못 한 예외(재시도 안 함. 원문 예외는 저장하지 않는다) |
+| `RESULT_STORAGE_FAILED` | 결과 저장 transaction 실패(재시도 가능) |
+| `LEASE_EXPIRED` | 처리자가 사라져 처리권이 만료됨(attempt 기록에만 남고 재시도 대기로 전환) |
+| `ATTEMPTS_EXHAUSTED` | 최대 시도 횟수(`AI_MAX_ATTEMPTS`) 소진 |
+| `QUEUE_TIMEOUT` | 대기열에서 `AI_QUEUE_DEADLINE_SECONDS`를 넘김 |
+| `OUTCOME_UNCERTAIN` | AI 호출 중 처리자가 사라져 결과를 알 수 없음. 새 호출로 이어가지 않으며 사용자가 명시적으로 재시도(새 generation)해야 한다 |
+
+그 외 handler가 정하는 코드(`TEMPORARY` 등)는 해당 단계의 문서에서 정의한다. 재시도·취소 규칙은 다음과 같다.
+
+- 일시 오류는 `running → retry_wait → queued`이며 대기 시간은 `AI_RETRY_DELAY_SECONDS`부터 2배씩(최대 600초) 늘어난다.
+- 취소가 접수된 작업(`cancel_requested`)은 처리자가 성공을 시도해도 `cancelled`로 확정하고 결과를 저장하지 않는다.
+- 같은 `Idempotency-Key`+같은 요청은 같은 작업을, 다른 요청은 `IDEMPOTENCY_CONFLICT`를 낸다. 새 key라도 같은 fingerprint의 진행 중·성공 작업은 재사용하고, 실패·취소·강제 재생성은 새 `generation`이다.
+
 ## 6. Finding
 
 `ordinal(≥1), title, category, priority(정수 ≥1, 1이 먼저 검토), condition, impact, evidence_ids(1개 이상), verification, suggestion?, limitations[], location, human_validation`

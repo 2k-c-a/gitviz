@@ -17,5 +17,39 @@ services:
     ports:
       - "6379:6379"
 
+  # ── AI 작업 처리(선택). `docker compose --profile ai up`으로 실행한다 ─────────────────
+  # DB는 .env의 DATABASE_URL을 쓰므로 컨테이너에서 접근 가능한 주소여야 한다(localhost 불가).
+  ai-worker:
+    profiles: ["ai"]
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - redis
+    command: >
+      sh -c "pip install -q -r requirements.txt &&
+             celery -A app.core.celery_app.celery worker -Q ai_prepare,ai_generate,ai_maintenance --loglevel=INFO"
+
+  ai-dispatcher:
+    profiles: ["ai"]
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - redis
+    command: sh -c "pip install -q -r requirements.txt && python -m app.tasks.ai_dispatch"
+
 volumes:
   postgres_data:
