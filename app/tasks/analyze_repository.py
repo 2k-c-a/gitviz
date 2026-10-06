@@ -74,6 +74,36 @@ def chunked(iterable: List, size: int):
 GITHUB_PR_FILE_CAP = 3000
 
 
+def classify_pr_detail_status(details: Dict) -> tuple:
+    """PR 상세 수집 결과를 (status, reason, collected, total) 로 판정한다.
+
+    파일·커밋·리뷰 세 영역이 모두 끝나야 complete 다. 파일만 보고 판정하면 커밋/리뷰
+    페이지가 실패한 PR이 complete 로 남아 다음 재분석에서 영구히 건너뛰게 된다.
+
+    api_file_limit 은 GitHub이 PR당 파일을 3000개에서 자르는 경우로, 재시도해도
+    복구되지 않아 재수집 대상에서 제외한다. 단 커밋/리뷰가 미완이면 그쪽은 재시도로
+    복구되므로 이 사유를 쓰지 않는다.
+    """
+    collected = len(details["files"])
+    total = details.get("changed_files")
+    commits_ok = details.get("commits_complete", True)
+    reviews_ok = details.get("reviews_complete", True)
+
+    if details.get("files_complete") and commits_ok and reviews_ok:
+        return "complete", None, collected, total
+
+    if collected or details.get("commits") or details.get("reviews"):
+        files_capped = (collected >= GITHUB_PR_FILE_CAP and (total or 0) > collected
+                        and commits_ok and reviews_ok)
+        reason = "api_file_limit" if files_capped else (
+            details.get("files_reason") or details.get("commits_reason")
+            or details.get("reviews_reason") or details.get("failure_reason")
+            or "page_error")
+        return "partial", reason, collected, total
+
+    return "failed", details.get("failure_reason") or "page_error", collected, total
+
+
 def _resolve_github_token(db, user_id: Optional[str], is_private=False) -> Optional[str]:
     # 비공개 수집에는 반드시 요청자의 토큰을 사용한다. 복호화 실패 시 폴백하지 않는다.
     token = user_github_token(db,user_id) if user_id else None
@@ -727,22 +757,7 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
         pr_failure_reasons = {}
 
         def _accumulate(pr_id, details):
-            # 파일 상세 완전성 기록 — 전체 페이지를 받았는지, 못 받았다면 왜인지.
-            collected = len(details["files"])
-            total = details.get("changed_files")
-            if details.get("files_complete"):
-                status, reason = "complete", None
-            elif collected:
-                # GitHub은 PR 하나의 files 연결을 3000개에서 자른다. 재시도해도 더
-                # 받을 수 없으므로 일시적 실패와 구분한다(아래 재수집 대상에서 제외).
-                if collected >= GITHUB_PR_FILE_CAP and (total or 0) > collected:
-                    reason = "api_file_limit"
-                else:
-                    reason = details.get("failure_reason") or "page_error"
-                status = "partial"
-            else:
-                status, reason = "failed", details.get("failure_reason") or "page_error"
-            pr_collection_state[pr_id] = (status, reason, collected, total)
+            pr_collection_state[pr_id] = classify_pr_detail_status(details)
 
             # PR Commits
             for sha_raw in details["commits"]:
@@ -828,12 +843,19 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
         # changed_file_count·is_large_pr을 다시 계산해 덮어쓴다.
         # 이번 실행에서 판정된 PR별 상세 수집 상태를 저장한다.
         for pr_id, (status, reason, collected, total) in pr_collection_state.items():
+            # files_collected_count 는 이번 응답 길이가 아니라 DB에 실제 저장된 행 수다
+            # (중복 스킵·이전 실행에서 쌓인 행 때문에 둘은 다를 수 있다).
+            # files_total_count 는 이번에 changedFiles 를 못 받았으면 기존 값을 지운다.
             db.execute(text("""
-                UPDATE pull_requests
-                SET file_collection_status = :st, file_collection_reason = :rs,
-                    files_collected_count = :col, files_total_count = :tot
-                WHERE id = :pid
-            """), {"st": status, "rs": reason, "col": collected, "tot": total, "pid": pr_id})
+                UPDATE pull_requests pr
+                SET file_collection_status = :st,
+                    file_collection_reason = :rs,
+                    files_collected_count = (
+                        SELECT count(*) FROM pull_request_files f
+                        WHERE f.pull_request_id = pr.id),
+                    files_total_count = COALESCE(:tot, pr.files_total_count)
+                WHERE pr.id = :pid
+            """), {"st": status, "rs": reason, "tot": total, "pid": pr_id})
         db.commit()
         _st = {}
         for (status, *_rest) in pr_collection_state.values():

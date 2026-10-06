@@ -299,29 +299,32 @@ def _parse_pr_node(
     if not pr:
         return {"commits": [], "reviews": [], "files": [],
                 "changed_files": None, "files_complete": False,
-                "failure_reason": "page_error"}
+                "commits_complete": False, "reviews_complete": False,
+                "files_reason": "page_error", "commits_reason": "page_error",
+                "reviews_reason": "page_error", "failure_reason": "page_error"}
     variables = {"owner": owner, "repo": repo, "number": number}
     reason = None
+    commits_reason = reviews_reason = None
 
     commits_conn = pr.get("commits") or {}
     commits = [n["commit"]["oid"] for n in commits_conn.get("nodes", []) if n.get("commit")]
     if commits_conn.get("pageInfo", {}).get("hasNextPage"):
-        more, r = _page_all(
+        more, commits_reason = _page_all(
             client, PR_COMMITS_NEXT_QUERY, variables,
             commits_conn["pageInfo"]["endCursor"], "commits",
             lambda c: [n["commit"]["oid"] for n in c.get("nodes", []) if n.get("commit")])
         commits += more
-        reason = reason or r
+        reason = reason or commits_reason
 
     reviews_conn = pr.get("reviews") or {}
     reviews = [_review_obj(n) for n in reviews_conn.get("nodes", [])]
     if reviews_conn.get("pageInfo", {}).get("hasNextPage"):
-        more, r = _page_all(
+        more, reviews_reason = _page_all(
             client, PR_REVIEWS_NEXT_QUERY, variables,
             reviews_conn["pageInfo"]["endCursor"], "reviews",
             lambda c: [_review_obj(n) for n in c.get("nodes", [])])
         reviews += more
-        reason = reason or r
+        reason = reason or reviews_reason
 
     files_conn = pr.get("files") or {}
     files = [_file_obj(n) for n in files_conn.get("nodes", [])]
@@ -339,9 +342,17 @@ def _parse_pr_node(
     files_complete = files_reason is None and (
         changed_files is None or len(files) >= changed_files)
 
+    # 섹션별로 따로 돌려준다. 파일이 완전해도 커밋/리뷰 페이지가 실패했다면
+    # 그 PR은 상세가 덜 수집된 것이므로 다음 재분석에서 다시 받아야 한다.
     return {"commits": commits, "reviews": reviews, "files": files,
-            "changed_files": changed_files, "files_complete": files_complete,
-            "failure_reason": reason if not files_complete else None}
+            "changed_files": changed_files,
+            "files_complete": files_complete,
+            "commits_complete": commits_reason is None,
+            "reviews_complete": reviews_reason is None,
+            "files_reason": files_reason,
+            "commits_reason": commits_reason,
+            "reviews_reason": reviews_reason,
+            "failure_reason": reason}
 
 
 def collect_pr_details_graphql(
