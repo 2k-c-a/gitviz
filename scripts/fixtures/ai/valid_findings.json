@@ -1,0 +1,17 @@
+[
+  {
+    "ordinal": 1, "title": "경계값 처리 누락", "category": "correctness", "priority": 1,
+    "condition": "입력이 빈 목록일 때", "impact": "IndexError가 발생할 수 있음",
+    "evidence_ids": ["ev-1"], "verification": "빈 목록 단위 테스트로 확인",
+    "location": {"path": "src/b.py", "side": "RIGHT", "start_line": 2, "end_line": 3,
+                 "revision_id": "00000000-0000-4000-8000-000000000101"}
+  },
+  {
+    "ordinal": 2, "title": "삭제된 상수 참조", "category": "maintainability", "priority": 2,
+    "condition": "삭제 전 값을 다른 모듈이 참조", "impact": "호출부 누락 가능",
+    "evidence_ids": ["ev-2"], "verification": "grep으로 참조 확인", "suggestion": "참조 제거",
+    "limitations": ["not_selected"],
+    "location": {"path": "src/old_mod.py", "side": "LEFT", "start_line": 1, "end_line": 1,
+                 "revision_id": "00000000-0000-4000-8000-000000000101"}
+  }
+]

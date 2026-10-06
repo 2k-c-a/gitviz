@@ -37,3 +37,5 @@ jobs:
       - run: python scripts/test_repository_snapshots.py
       - run: python scripts/test_lightweight_score.py
       - run: node scripts/test_metric_display.cjs
+      - run: python scripts/test_ai_contracts.py
+      - run: python scripts/test_ai_security.py

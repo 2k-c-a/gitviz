@@ -1,0 +1,13 @@
+[
+  {"case": "start_line 0", "patch": {"location": {"start_line": 0}}},
+  {"case": "음수 줄", "patch": {"location": {"start_line": -3, "end_line": 2}}},
+  {"case": "역순 범위", "patch": {"location": {"start_line": 5, "end_line": 2}}},
+  {"case": "잘못된 side", "patch": {"location": {"side": "BOTH"}}},
+  {"case": "상위 경로 탈출", "patch": {"location": {"path": "../etc/passwd"}}},
+  {"case": "절대 경로", "patch": {"location": {"path": "/etc/passwd"}}},
+  {"case": "revision_id 형식", "patch": {"location": {"revision_id": "not-a-uuid"}}},
+  {"case": "evidence 없음", "patch": {"evidence_ids": []}},
+  {"case": "priority 0", "patch": {"priority": 0}},
+  {"case": "알 수 없는 필드", "patch": {"severity": "critical"}},
+  {"case": "title 누락", "patch": {"title": null}}
+]

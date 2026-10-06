@@ -24,16 +24,24 @@ if DATABASE_URL.startswith("postgresql://"):
 #   • statement_cache_size / prepared_statement_*: transaction pooling에서는
 #          prepared statement가 커넥션 간 공유되지 않아 DuplicatePreparedStatement가
 #          난다 → 캐시 끄고 statement 이름을 매번 고유화.
+def _async_ssl_context(url: str):
+    # 로컬 PostgreSQL/Docker는 기본적으로 TLS를 제공하지 않는다.
+    if make_url(url).host in {'localhost', '127.0.0.1', '::1'}:
+        return False
+    # DATABASE_SSL_CA가 있으면 해당 CA로 인증서·호스트명을 모두 검증한다.
+    ca = os.getenv("DATABASE_SSL_CA", "").strip()
+    if ca:
+        return ssl.create_default_context(cafile=ca)
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+    return ssl_ctx
+
+
 def _build_async_engine(url: str):
     if not url:
         return None
-    # 로컬 PostgreSQL/Docker는 기본적으로 TLS를 제공하지 않는다.
-    local = make_url(url).host in {'localhost', '127.0.0.1', '::1'}
-    ssl_ctx = False
-    if not local:
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
+    ssl_ctx = _async_ssl_context(url)
     return create_async_engine(
         url,
         echo=False,

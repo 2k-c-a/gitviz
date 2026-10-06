@@ -27,6 +27,15 @@ from app.routers import auth as auth_router
 
 app = FastAPI(title="GitViz API", version="0.1.0")
 
+# ── AI 기능 (기본 꺼짐). 켜져 있으면 모델 호출 전에 필요한 보안 설정을 검증한다 ──
+from app.core.ai_settings import get_ai_settings, require_valid_ai_settings
+from app.api.ai.dependencies import ai_error_response
+from app.services.ai.access import AIError
+
+if get_ai_settings().enabled:
+    require_valid_ai_settings()
+app.add_exception_handler(AIError, ai_error_response)
+
 # ── 세션 미들웨어 (HttpOnly 서명 쿠키, auth 로그인에 필요) ────────────────────
 session_secret = os.getenv("SESSION_SECRET_KEY", "")
 if not session_secret or session_secret == "change-me-in-production":
