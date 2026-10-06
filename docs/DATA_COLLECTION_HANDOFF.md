@@ -72,3 +72,28 @@
 GitHub OAuth로 로그인하고 GitViz 저장소를 신규 분석한 뒤 웹에서 재분석했다. 원시 commits 97개와 commit_file_changes 22,352개는 유지됐지만 Contributor 수는 3→4, unresolved는 0→1로 증가했다. 새 미해결 행은 연결 커밋 0개였다. 분석 구간 실제 기여자 3명과 원시 행 수를 구분한다.
 
 수집 담당 작업: 동일 SHA 반복 실행에서 resolver가 병합했던 이메일의 Contributor를 다시 생성하는지 조사하고, 별칭 매핑을 재사용하도록 설계한다. 수집/식별 반복 후 커밋 없는 미해결 후보가 재생성되지 않는지 확인한다. 기존 스냅샷은 수정하지 않는다. 이번 검증에서는 수집 코드를 변경하지 않았다.
+
+## AI 리뷰용 PR·고정 코드 수집 계약 — S3
+
+기존 전체 분석(`pr_collector.collect_pull_requests`, `analyze_repository`)과 별개의 경로입니다. 저장소 전체를 수집하지 않고 PR 한 건 단위로, 사용자가 선택한 파일만 취득합니다. DB와 AI 모델을 호출하지 않으며 결과는 `app/schemas/ai.py` 계약 DTO로 반환합니다.
+
+| 모듈 | 책임 |
+|---|---|
+| `app/collectors/github/ai_pr_collector.py` | `list_ai_prs`(open/closed/merged), `list_pr_files`(전체 파일 목록 한 페이지, 아직 고정 입력 아님), `capture_revision`(base/head/merge-base 고정) |
+| `app/collectors/git/ai_diff_collector.py` | `fetch_revision_objects`/`revision_workspace`(merge-base·head만 얕게 취득), `list_changed_files`, `collect_selected_code`, `parse_file_diff` |
+| `app/services/ai/content_policy.py` | 링크·submodule, 바이너리, 생성 파일, 미지원 언어, 크기, 의심 비밀 제외 규칙 (`code-transfer-v1`) |
+| `app/collectors/ai_errors.py` | `CollectionError` 계열. 계약의 `ErrorCode`를 싣는다 |
+
+**비교 기준**: `merge_base_sha..head_sha` 두 commit의 tree 차이(GitHub PR diff와 같다). base 브랜치 tip과 직접 비교하지 않는다. merge-base는 GitHub compare API로 확정하며 없으면 `MergeBaseUnavailable`(INVALID_STATE)이다.
+
+**고정**: `capture_revision`은 PR 조회 → compare → PR 재조회로 취득 중 base/head/state 변경을 감지하고 `PRChanged`(409)를 낸다. `revision_fingerprint`는 `canonical_hash({github_repo_id, github_pr_id, base_sha, head_sha, merge_base_sha, compare})`이다. PR 설명은 8000자까지 보관하고 잘렸는지 표시한다.
+
+**취득**: GitHub API 요청은 기준 저장소 경로로만 보낸다(fork의 URL·저장소는 따라가지 않고 `is_fork`/`head_repo_deleted`만 표시). 코드는 임시 bare 저장소에 `--depth=1 --filter=blob:none`으로 merge-base·head commit만 가져오고 선택 파일의 blob만 읽는다. checkout·hook·submodule·symlink 해석이 없으며 블록을 벗어나면 작업 공간을 삭제한다. 토큰은 프로세스 환경으로만 전달하고 저장소 설정에 남기지 않는다.
+
+**파일 상태**: 선택한 모든 파일은 `read`/`excluded`/`failed` 중 하나이고 `exclusion_reason`(`Limitation`)이 manifest에 남습니다. 판정 순서는 링크·submodule(모드 120000/160000) → 바이너리(numstat `-`, NUL, UTF-8로 해석 불가) → 경로(생성 파일 → 비밀 파일명 → 미지원 언어) → diff 내용(생성 표식 → 200KB 초과 → 의심 비밀)입니다. 의심 비밀은 삭제·맥락 줄까지 검사하고 해당 파일 전체를 제외합니다. 선택 경로가 PR 변경 목록에 없으면 `InvalidSelection`, 파일 수/총 바이트 한도 초과는 `InputTooLarge`로 부분 결과 없이 거부합니다.
+
+**줄 맵**: 파일별 `{left, right, right_to_left}`(실제 commit의 1부터 시작하는 줄 번호). 보내는 payload는 맥락 25줄을 포함한 unified diff입니다. S0 fixture(`scripts/fixtures/ai/sample.diff`, `line_maps.json`)를 같은 파서가 재현합니다.
+
+**coverage**: `inventory_coverage`는 git이 확정한 전체 diff이므로 `complete`, `selected_content_coverage`는 read 개수 기준 complete/partial/none, `analysis_coverage`는 항상 `none`(분석 전)입니다. `list_pr_files`는 API 한계에 따라 `changed_files` ≤ 3000이면 complete, 초과면 partial, 값이 없으면 unknown입니다.
+
+**한계**: 전체 diff가 GitHub의 merge-base 판정에 의존합니다. 이름 변경은 git의 유사도 판정(-M)을 따릅니다. 비밀 탐지는 패턴 기반이라 누락·오탐이 있을 수 있으며 정확도 평가는 S10에서 합니다.
