@@ -175,6 +175,20 @@ class JobStateRules(unittest.TestCase):
                 JobState(**self.state(**patch))
         JobState(**self.state(status='failed', stage=None, error_code='UPSTREAM_UNAVAILABLE'))
 
+    def test_prepare_success_has_no_result(self):
+        ok = self.state(kind='prepare', status='succeeded', stage=None,
+                        coverage={**COVERAGE, 'analysis_coverage': 'none'})
+        self.assertIsNone(JobState(**ok).result_id)
+        for kind in ('prepare',):
+            with self.assertRaises(ValidationError):   # prepare는 어떤 상태에서도 result_id 불가
+                JobState(**{**ok, 'kind': kind, 'result_id': JOB_ID})
+        with self.assertRaises(ValidationError):
+            JobState(**self.state(kind='prepare', status='running', result_id=JOB_ID))
+        # 생성 작업은 성공 시 result_id 필수(기존 규칙 유지)
+        with self.assertRaises(ValidationError):
+            JobState(**self.state(kind='summary', status='succeeded', stage=None))
+        JobState(**self.state(kind='summary', status='succeeded', stage=None, result_id=JOB_ID))
+
 
 class FindingFixtures(unittest.TestCase):
     def test_valid_findings(self):

@@ -260,9 +260,9 @@ class Constraints(SchemaCase):
         self.rejected(self.insert, 'request_idempotency', owner_user_id=a['owner'], route='POST /jobs', key='k1',
                       request_hash=H('b'), expires_at='2099-01-01T00:00:00Z')
 
-        self.insert('usage_budgets', owner_user_id=None, period_start='2026-10-01', currency='USD', amount_limit=1)
-        self.rejected(self.insert, 'usage_budgets', owner_user_id=None, period_start='2026-10-01',
-                      currency='USD', amount_limit=2)   # 서버 예산도 중복 불가(NULL owner)
+        self.insert('usage_budgets', scope='server', period_start='2026-10-01', currency='USD', amount_limit=1)
+        self.rejected(self.insert, 'usage_budgets', scope='server', period_start='2026-10-01',
+                      currency='USD', amount_limit=2)   # 서버 예산도 기간·통화당 1개
         self.insert('usage_budgets', owner_user_id=a['owner'], period_start='2026-10-01', currency='USD',
                     amount_limit=1)
         self.rejected(self.insert, 'usage_budgets', owner_user_id=a['owner'], period_start='2026-10-01',
@@ -389,6 +389,21 @@ class Constraints(SchemaCase):
             with self.subTest(label):
                 self.rejected(fn)
 
+    def test_budget_scope_rules(self):
+        a = self.chain()
+        self.rejected(self.insert, 'usage_budgets', scope='server', owner_user_id=a['owner'],
+                      period_start='2026-10-01', currency='USD', amount_limit=1)   # 서버 예산에 owner 불가
+        self.rejected(self.insert, 'usage_budgets', scope='team', period_start='2026-10-01', currency='USD',
+                      amount_limit=1)
+
+    def test_prepare_jobs_cannot_have_results(self):
+        a = self.chain()
+        prepare = self.job(a['owner'], a['repo'], a['inp'], kind='prepare', fingerprint=H('1'))
+        msg = self.rejected(self.insert, 'ai_results', job_id=prepare, owner_user_id=a['owner'],
+                            repository_id=a['repo'], payload={}, payload_hash=H('a'), coverage={},
+                            structure_validation='passed', expires_at='2099-01-01T00:00:00Z')
+        self.assertIn('prepare', msg)
+
     def test_valid_rows_accepted(self):
         a = self.chain()
         self.job(a['owner'], a['repo'], a['inp'], kind='prepare', fingerprint=H('1'))
@@ -444,6 +459,17 @@ class Immutability(SchemaCase):
                            i=a['file']).one()
         self.assertEqual((row[0], row[1], row[2].strip()), (None, None, H('c')))
 
+    def test_file_cannot_be_moved_between_inputs(self):
+        a = self.chain()    # a['inp']는 ready
+        building = self.input(a['owner'], a['repo'], a['rev'])
+        self.rejected(self.execute, "UPDATE ai_input_files SET input_id=:t WHERE id=:f", t=building, f=a['file'])
+        free_file = self.file(building, 'mv.py')      # building 입력 사이의 이동도 금지
+        other = self.input(a['owner'], a['repo'], a['rev'])
+        msg = self.rejected(self.execute, "UPDATE ai_input_files SET input_id=:t WHERE id=:f", t=other, f=free_file)
+        self.assertIn('input_id is immutable', msg)
+        self.assertEqual(self.execute('SELECT input_id FROM ai_input_files WHERE id=:f', f=a['file']).scalar(),
+                         a['inp'])
+
     def test_result_original_immutable_but_human_validation_updates(self):
         a = self.chain()
         result = self.insert('ai_results', job_id=a['job'], owner_user_id=a['owner'], repository_id=a['repo'],
@@ -474,7 +500,7 @@ class Immutability(SchemaCase):
 class CascadeAndRetention(SchemaCase):
     def test_deleting_user_removes_ai_data_but_keeps_budget_ledger_rows_detached(self):
         a = self.chain()
-        budget = self.insert('usage_budgets', owner_user_id=None, period_start='2026-10-01', currency='USD',
+        budget = self.insert('usage_budgets', scope='server', period_start='2026-10-01', currency='USD',
                              amount_limit=10)
         res = self.insert('usage_reservations', job_id=a['job'], attempt_no=1, budget_id=budget, reserved_amount=1)
         self.insert('ai_attempts', job_id=a['job'], attempt_no=1, lease_token=str(uuid4()))
@@ -487,6 +513,32 @@ class CascadeAndRetention(SchemaCase):
         # 예약 기록은 남고 job만 분리된다. 감사 기록은 actor/repository만 분리된다.
         self.assertIsNone(self.execute('SELECT job_id FROM usage_reservations WHERE id=:i', i=res).scalar())
         self.assertEqual(self.execute('SELECT actor_user_id FROM audit_events').scalar(), None)
+
+    def test_deleting_user_anonymizes_personal_budget_and_keeps_reservations(self):
+        a = self.chain()
+        other = self.user()
+        server = self.insert('usage_budgets', scope='server', period_start='2026-10-01', currency='USD',
+                             amount_limit=100)
+        personal = self.insert('usage_budgets', owner_user_id=a['owner'], period_start='2026-10-01',
+                               currency='USD', amount_limit=5, spent_amount=2)
+        res = self.insert('usage_reservations', job_id=a['job'], attempt_no=1, budget_id=personal,
+                          reserved_amount=1, settled_amount=0.5, status='settled')
+        self.execute('DELETE FROM users WHERE id=:i', i=a['owner'])       # FK 위반 없이 삭제된다
+        row = self.execute('SELECT scope, owner_user_id, spent_amount FROM usage_budgets WHERE id=:i',
+                           i=personal).one()
+        self.assertEqual((row[0], row[1], float(row[2])), ('user', None, 2.0))     # 익명화되어 보존
+        self.assertEqual(float(self.execute('SELECT settled_amount FROM usage_reservations WHERE id=:i',
+                                            i=res).scalar()), 0.5)
+        self.assertEqual(self.execute('SELECT scope FROM usage_budgets WHERE id=:i', i=server).scalar(), 'server')
+        # 익명화된 예산이 서버 예산·다른 사용자 예산과 충돌하지 않고, 여러 개가 있어도 된다.
+        self.insert('usage_budgets', owner_user_id=other, period_start='2026-10-01', currency='USD', amount_limit=1)
+        second = self.user()
+        self.insert('usage_budgets', owner_user_id=second, period_start='2026-10-01', currency='USD', amount_limit=1)
+        self.execute('DELETE FROM users WHERE id=:i', i=second)
+        self.assertEqual(self.execute("SELECT count(*) FROM usage_budgets WHERE scope='user' AND owner_user_id IS NULL"
+                                      ).scalar(), 2)
+        self.rejected(self.insert, 'usage_budgets', scope='server', period_start='2026-10-01', currency='USD',
+                      amount_limit=1)        # 서버 예산 유일성은 유지
 
     def test_deleting_input_cascades_files_jobs_results_findings(self):
         a = self.chain()
@@ -501,6 +553,88 @@ class CascadeAndRetention(SchemaCase):
         for table in ['ai_input_files', 'ai_jobs', 'ai_results', 'ai_findings', 'finding_feedback']:
             self.assertEqual(self.execute(f'SELECT count(*) FROM {table}').scalar(), 0, table)
         self.assertEqual(self.execute('SELECT count(*) FROM pr_revisions').scalar(), 1)
+
+
+class ConcurrentFinalize(SchemaCase):
+    """파일 저장과 입력 확정이 같은 부모 행 잠금으로 직렬화되는지 서로 다른 connection으로 확인한다."""
+
+    def setUp(self):    # 커밋된 데이터로 동작하므로 savepoint 격리를 쓰지 않는다.
+        pass
+
+    def tearDown(self):
+        pass
+
+    def open(self):
+        conn = engine.connect()
+        conn.execute(text(f'SET search_path TO {self.schema}'))
+        conn.commit()
+        return conn
+
+    def building_input(self):
+        owner, repo = self.user(), self.repo()
+        inp = self.input(owner, repo, self.revision(owner, repo))
+        self.conn.commit()
+        return inp
+
+    READY = ("UPDATE ai_inputs SET status='ready',manifest='{}',manifest_hash=:h,input_hash=:h,"
+             "finalized_at=now(),valid_until=now()+interval '1 day' WHERE id=:i")
+    ADD = ("INSERT INTO ai_input_files(input_id,path,side_availability,content_state,reason) "
+           "VALUES(:i,:p,'BOTH','excluded','binary')")
+
+    def run_in_thread(self, conn, sql, **params):
+        import threading
+        import time
+        out = {}
+
+        def work():
+            start = time.monotonic()
+            try:
+                conn.execute(text(sql), params)
+                conn.commit()
+                out['ok'] = True
+            except DBAPIError as exc:
+                conn.rollback()
+                out['error'] = str(exc.orig)
+            out['elapsed'] = time.monotonic() - start
+        thread = threading.Thread(target=work)
+        thread.start()
+        return thread, out
+
+    def test_finalize_waits_for_uncommitted_file_insert(self):
+        import time
+        inp = self.building_input()
+        writer, finalizer = self.open(), self.open()
+        try:
+            writer.execute(text(self.ADD), {'i': inp, 'p': 'a.bin'})          # 미커밋, 부모 행을 FOR SHARE로 잠금
+            thread, out = self.run_in_thread(finalizer, self.READY, h=H('a'), i=inp)
+            time.sleep(0.7)
+            self.assertTrue(thread.is_alive(), '확정이 미커밋 파일 저장을 기다리지 않았다')
+            writer.commit()
+            thread.join(10)
+            self.assertTrue(out.get('ok'), out)
+            self.assertGreaterEqual(out['elapsed'], 0.5)
+            self.assertEqual(self.execute('SELECT count(*) FROM ai_input_files WHERE input_id=:i', i=inp).scalar(), 1)
+            self.assertEqual(self.execute('SELECT status FROM ai_inputs WHERE id=:i', i=inp).scalar(), 'ready')
+        finally:
+            writer.close()
+            finalizer.close()
+
+    def test_file_insert_after_uncommitted_finalize_is_rejected(self):
+        import time
+        inp = self.building_input()
+        finalizer, writer = self.open(), self.open()
+        try:
+            finalizer.execute(text(self.READY), {'h': H('a'), 'i': inp})      # 미커밋 확정
+            thread, out = self.run_in_thread(writer, self.ADD, i=inp, p='late.bin')
+            time.sleep(0.7)
+            self.assertTrue(thread.is_alive(), '파일 저장이 미커밋 확정을 기다리지 않았다')
+            finalizer.commit()
+            thread.join(10)
+            self.assertIn('building', out.get('error', ''), out)
+            self.assertEqual(self.execute('SELECT count(*) FROM ai_input_files WHERE input_id=:i', i=inp).scalar(), 0)
+        finally:
+            writer.close()
+            finalizer.close()
 
 
 class UpgradeFromPreviousHead(unittest.TestCase):

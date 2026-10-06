@@ -8,10 +8,11 @@ from app.models.ai_base import created_at, updated_at, uuid_pk
 
 
 class UsageBudget(Base):
-    """owner_user_id가 NULL이면 서버 전체 예산."""
+    """scope='server'는 서버 전체 예산(owner 없음). 사용자 삭제 시 개인 예산은 owner를 NULL로 익명화해 보존한다."""
     __tablename__ = "usage_budgets"
     id = uuid_pk()
-    owner_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    scope = Column(Text, nullable=False, default="user", server_default="user")
+    owner_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     period_start = Column(Date, nullable=False)
     currency = Column(CHAR(3), nullable=False)
     amount_limit = Column(Numeric(18, 6), nullable=False)
@@ -21,8 +22,11 @@ class UsageBudget(Base):
     created_at = created_at()
     updated_at = updated_at()
     __table_args__ = (
-        UniqueConstraint("owner_user_id", "period_start", "currency", postgresql_nulls_not_distinct=True,
-                         name="uq_usage_budgets_owner_period_currency"),
+        UniqueConstraint("owner_user_id", "period_start", "currency", name="uq_usage_budgets_owner_period_currency"),
+        CheckConstraint("scope IN ('user','server') AND (scope <> 'server' OR owner_user_id IS NULL)",
+                        name="ck_usage_budgets_scope"),
+        Index("uq_usage_budgets_server_period_currency", "period_start", "currency", unique=True,
+              postgresql_where=text("scope = 'server'")),
         CheckConstraint("amount_limit >= 0 AND reserved_amount >= 0 AND spent_amount >= 0 AND version >= 0",
                         name="ck_usage_budgets_amounts"),
         CheckConstraint("currency ~ '^[A-Z]{3}$'", name="ck_usage_budgets_currency"),

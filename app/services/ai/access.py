@@ -70,6 +70,9 @@ def authorize_ai(db, user_id: UUID, repo_id: int, action: AIAction, policy_versi
     if action.sends_externally:
         if not settings.allow_external_transfer:
             raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '코드의 외부 전송이 허용되지 않았습니다.')
+        if metadata.get('private') is not False:
+            # MVP 정책: 비공개(또는 공개 여부를 확인하지 못한) 저장소의 코드는 외부로 보내지 않는다.
+            raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '비공개 저장소의 코드는 외부로 전송할 수 없습니다.')
         if policy_version not in settings.policy_versions:
             raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '허용되지 않은 전송 정책 버전입니다.')
     return repo, metadata
