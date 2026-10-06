@@ -266,7 +266,8 @@ CREATE INDEX ix_task_outbox_unpublished ON task_outbox (available_at) WHERE publ
 
 CREATE TABLE usage_budgets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    scope TEXT NOT NULL DEFAULT 'user',
+    owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     period_start DATE NOT NULL,
     currency CHAR(3) NOT NULL,
     amount_limit NUMERIC(18,6) NOT NULL,
@@ -275,11 +276,15 @@ CREATE TABLE usage_budgets (
     version INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_usage_budgets_owner_period_currency UNIQUE NULLS NOT DISTINCT (owner_user_id, period_start, currency),
+    CONSTRAINT uq_usage_budgets_owner_period_currency UNIQUE (owner_user_id, period_start, currency),
+    CONSTRAINT ck_usage_budgets_scope CHECK (scope IN ('user','server') AND (scope <> 'server' OR owner_user_id IS NULL)),
     CONSTRAINT ck_usage_budgets_amounts CHECK (amount_limit >= 0 AND reserved_amount >= 0
         AND spent_amount >= 0 AND version >= 0),
     CONSTRAINT ck_usage_budgets_currency CHECK (currency ~ '^[A-Z]{{3}}$')
 );
+-- 서버 전체 예산은 기간·통화당 1개. 사용자 삭제로 익명화된(owner NULL) 개인 예산은 여러 개 남을 수 있다.
+CREATE UNIQUE INDEX uq_usage_budgets_server_period_currency ON usage_budgets (period_start, currency)
+    WHERE scope = 'server';
 
 CREATE TABLE usage_reservations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -356,7 +361,13 @@ END $$;
 CREATE FUNCTION gitviz_ai_input_files_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE parent_status text;
 BEGIN
-    SELECT status INTO parent_status FROM ai_inputs WHERE id = COALESCE(NEW.input_id, OLD.input_id);
+    IF TG_OP = 'UPDATE' AND NEW.input_id IS DISTINCT FROM OLD.input_id THEN
+        RAISE EXCEPTION USING ERRCODE = 'integrity_constraint_violation',
+            MESSAGE = 'ai_input_files.input_id is immutable';
+    END IF;
+    -- 부모 행을 FOR SHARE로 잠근다: 같은 입력을 ready로 확정하는 UPDATE와 직렬화되어
+    -- 파일 변경이 확정과 동시에 커밋되는 경우가 없다.
+    SELECT status INTO parent_status FROM ai_inputs WHERE id = COALESCE(NEW.input_id, OLD.input_id) FOR SHARE;
     IF TG_OP = 'INSERT' THEN
         IF parent_status IS DISTINCT FROM 'building' THEN
             RAISE EXCEPTION USING ERRCODE = 'integrity_constraint_violation',
@@ -373,6 +384,17 @@ BEGIN
        OR NEW.encrypted_payload IS NOT NULL THEN
         RAISE EXCEPTION USING ERRCODE = 'integrity_constraint_violation',
             MESSAGE = 'files of a finalized input are immutable';
+    END IF;
+    RETURN NEW;
+END $$;
+
+CREATE FUNCTION gitviz_ai_results_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE job_kind text;
+BEGIN
+    SELECT kind INTO job_kind FROM ai_jobs WHERE id = NEW.job_id;
+    IF job_kind IS NULL OR job_kind = 'prepare' THEN
+        RAISE EXCEPTION USING ERRCODE = 'integrity_constraint_violation',
+            MESSAGE = 'prepare jobs do not produce AI results';
     END IF;
     RETURN NEW;
 END $$;
@@ -394,6 +416,8 @@ CREATE TRIGGER ai_results_immutable BEFORE UPDATE ON ai_results
     FOR EACH ROW EXECUTE FUNCTION gitviz_ai_immutable_columns(
         'job_id', 'owner_user_id', 'repository_id', 'payload', 'payload_hash', 'coverage',
         'structure_validation', 'created_at');
+CREATE TRIGGER ai_results_guard BEFORE INSERT ON ai_results
+    FOR EACH ROW EXECUTE FUNCTION gitviz_ai_results_guard();
 CREATE TRIGGER ai_inputs_identity BEFORE UPDATE ON ai_inputs
     FOR EACH ROW EXECUTE FUNCTION gitviz_ai_immutable_columns(
         'owner_user_id', 'repository_id', 'revision_id', 'policy_version', 'created_at');
@@ -411,7 +435,7 @@ CREATE TRIGGER ai_jobs_guard BEFORE UPDATE ON ai_jobs
 TABLES = ['audit_events', 'usage_reservations', 'usage_budgets', 'task_outbox', 'request_idempotency',
           'finding_feedback', 'ai_findings', 'ai_results', 'ai_attempts', 'ai_jobs', 'ai_input_files',
           'ai_inputs', 'pr_revisions']
-FUNCTIONS = ['gitviz_ai_jobs_guard', 'gitviz_ai_input_files_guard', 'gitviz_ai_inputs_guard',
+FUNCTIONS = ['gitviz_ai_results_guard', 'gitviz_ai_jobs_guard', 'gitviz_ai_input_files_guard', 'gitviz_ai_inputs_guard',
              'gitviz_ai_immutable_columns', 'gitviz_ai_forbid_update']
 
 

@@ -371,9 +371,12 @@ class JobState(_Strict):
 
     @model_validator(mode="after")
     def _consistent(self):
-        if self.status is JobStatus.succeeded and self.result_id is None:
-            raise ValueError("succeeded 작업은 result_id가 필요합니다.")
-        if self.status is not JobStatus.succeeded and self.result_id is not None:
+        if self.kind is JobKind.prepare:
+            if self.result_id is not None:
+                raise ValueError("prepare 작업은 AI 결과가 없으므로 result_id를 둘 수 없습니다.")
+        elif self.status is JobStatus.succeeded and self.result_id is None:
+            raise ValueError("succeeded 생성 작업은 result_id가 필요합니다.")
+        elif self.status is not JobStatus.succeeded and self.result_id is not None:
             raise ValueError("성공하지 않은 작업에 result_id를 둘 수 없습니다.")
         if self.status is JobStatus.failed and not self.error_code:
             raise ValueError("failed 작업은 error_code가 필요합니다.")

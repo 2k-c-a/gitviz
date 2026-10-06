@@ -209,9 +209,10 @@ USER, OTHER = uuid.uuid4(), uuid.uuid4()
 
 
 class Authorization(unittest.TestCase):
-    def authorize(self, action=AIAction.generate, side_effect=None, policy='code-transfer-v1', user=USER, **env):
+    def authorize(self, action=AIAction.generate, side_effect=None, policy='code-transfer-v1', user=USER,
+                  private=False, **env):
         with ai_env(**env), patch.object(access, 'verify_repository_access',
-                                         side_effect=side_effect or (lambda *a, **k: ('repo', {'id': 1}))) as m:
+                                         side_effect=side_effect or (lambda *a, **k: ('repo', {'id': 1, 'private': private}))) as m:
             try:
                 result = authorize_ai(None, user, 7, action, policy)
             except AIError as exc:
@@ -225,7 +226,7 @@ class Authorization(unittest.TestCase):
 
     def test_allowed(self):
         result, m = self.authorize()
-        self.assertEqual(result, ('repo', {'id': 1}))
+        self.assertEqual(result, ('repo', {'id': 1, 'private': False}))
         self.assertEqual(m.call_args.args[1:3], (7, USER))  # 현재 사용자 기준으로 GitHub 권한 확인
 
     def test_no_user_and_feature_off(self):
@@ -250,7 +251,17 @@ class Authorization(unittest.TestCase):
         # 입력 준비·조회는 외부 전송 허용 없이도 가능
         for action in (AIAction.prepare, AIAction.read, AIAction.delete):
             result, _ = self.authorize(action=action, AI_ALLOW_EXTERNAL_TRANSFER='0', policy='anything')
-            self.assertEqual(result, ('repo', {'id': 1}))
+            self.assertEqual(result, ('repo', {'id': 1, 'private': False}))
+
+    def test_private_repository_is_never_sent_externally(self):
+        # 외부 전송을 켜도 비공개(또는 공개 여부를 모르는) 저장소는 generate 불가
+        for private in (True, None):
+            with self.subTest(private=private):
+                self.assertEqual(self.code(private=private), ErrorCode.TRANSFER_NOT_ALLOWED)
+        # 비공개 저장소도 입력 준비·조회·삭제는 가능(외부 전송 없음)
+        for action in (AIAction.prepare, AIAction.read, AIAction.delete):
+            result, _ = self.authorize(action=action, private=True)
+            self.assertEqual(result, ('repo', {'id': 1, 'private': True}))
 
     def test_other_author_is_hidden_as_not_found(self):
         ensure_owner(USER, USER)

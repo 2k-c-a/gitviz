@@ -65,7 +65,7 @@
 
 - `status`: `queued → running → succeeded | failed | cancelled`, 일시 오류 `retry_wait`, 취소 요청 `cancel_requested`. 종료 상태는 되돌리지 않습니다.
 - `stage`: `input_preparation / queued / provider_call / output_validation / result_storage`. 종료된 작업은 stage가 없습니다. 모델 진행률을 백분율로 만들지 않습니다.
-- `JobState`: `succeeded`이면 `result_id` 필수, 아니면 금지. `failed`이면 `error_code` 필수, `succeeded`이면 금지. `retry_after_seconds >= 0`.
+- `JobState`: 생성 작업(`summary`/`review`)은 `succeeded`이면 `result_id` 필수, 아니면 금지. `prepare`는 AI 결과가 없으므로 항상 `result_id`가 없다(성공해도 입력 준비만 완료). `failed`이면 `error_code` 필수, `succeeded`이면 금지. `retry_after_seconds >= 0`.
 - 입력 상태 `InputStatus`: `building → ready | failed`, 만료 시 `expired`. `ready`는 입력이 고정됐다는 뜻이지 coverage가 완전하다는 뜻이 아닙니다.
 
 ## 6. Finding
