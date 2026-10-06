@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.ai_settings import get_ai_settings
 from app.services.ai import job_service
-from app.services.ai.lease import Lease, LeaseLost
+from app.services.ai.lease import CancelRequested, Lease, LeaseLost
 
 logger = logging.getLogger('gitviz.ai.jobs')
 
@@ -117,6 +117,8 @@ def run_job(job_id: UUID, *, session_factory=None) -> str:
             return _fail(session_factory, lease, exc.error_code, retryable=False)
         except LeaseLost:
             return 'lost'
+        except CancelRequested:
+            return _fail(session_factory, lease, 'CANCELLED', retryable=False)   # 취소 접수 상태면 cancelled로 확정
         except Exception as exc:
             logger.error('job handler crashed job=%s error=%s', job_id, type(exc).__name__)
             return _fail(session_factory, lease, 'INTERNAL_ERROR', retryable=False)

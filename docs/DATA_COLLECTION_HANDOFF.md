@@ -88,12 +88,12 @@ GitHub OAuth로 로그인하고 GitViz 저장소를 신규 분석한 뒤 웹에�
 
 **고정**: `capture_revision`은 PR 조회 → compare → PR 재조회로 취득 중 base/head/state 변경을 감지하고 `PRChanged`(409)를 낸다. `revision_fingerprint`는 `canonical_hash({github_repo_id, github_pr_id, base_sha, head_sha, merge_base_sha, compare})`이다. PR 설명은 8000자까지 보관하고 잘렸는지 표시한다.
 
-**취득**: GitHub API 요청은 기준 저장소 경로로만 보낸다(fork의 URL·저장소는 따라가지 않고 `is_fork`/`head_repo_deleted`만 표시). 코드는 임시 bare 저장소에 `--depth=1 --filter=blob:none`으로 merge-base·head commit만 가져오고 선택 파일의 blob만 읽는다. checkout·hook·submodule·symlink 해석이 없으며 블록을 벗어나면 작업 공간을 삭제한다. 토큰은 프로세스 환경으로만 전달하고 저장소 설정에 남기지 않는다.
+**취득**: GitHub API 요청은 기준 저장소 경로로만 보낸다(fork의 URL·저장소는 따라가지 않고 `is_fork`/`head_repo_deleted`만 표시). 코드는 임시 bare 저장소에 `--depth=1 --filter=blob:none`으로 merge-base·head commit만 가져온다. 전체 변경 목록은 두 tree의 차이(`-M100%`, 동일 OID 이름 변경만 묶음)로 만들어 blob을 받지 않고, 경로·모드로 제외되는 파일(생성·비밀 파일명·미지원 언어·symlink·submodule)도 내용을 읽지 않는다. 읽을 파일의 blob만 받으며, 내용이 바뀐 이름 변경의 원본은 선택한 추가 파일과 정책상 읽을 수 있는 삭제 파일 후보(최대 20개)만 비교해 찾는다(후보가 더 많으면 추가 파일로 둔다). 선택 경로는 항상 literal pathspec(`--literal-pathspecs`)이라 `a[1].py`·`*.py` 같은 이름이 다른 파일을 끌어오지 않고, 반환된 diff의 헤더가 선택한 파일 하나인지도 확인한다(아니면 `fetch_failed`). checkout·hook·submodule·symlink 해석이 없으며 블록을 벗어나면 작업 공간을 삭제한다. 토큰은 프로세스 환경으로만 전달하고 저장소 설정에 남기지 않는다.
 
-**파일 상태**: 선택한 모든 파일은 `read`/`excluded`/`failed` 중 하나이고 `exclusion_reason`(`Limitation`)이 manifest에 남습니다. 판정 순서는 링크·submodule(모드 120000/160000) → 바이너리(numstat `-`, NUL, UTF-8로 해석 불가) → 경로(생성 파일 → 비밀 파일명 → 미지원 언어) → diff 내용(생성 표식 → 200KB 초과 → 의심 비밀)입니다. 의심 비밀은 삭제·맥락 줄까지 검사하고 해당 파일 전체를 제외합니다. 선택 경로가 PR 변경 목록에 없으면 `InvalidSelection`, 파일 수/총 바이트 한도 초과는 `InputTooLarge`로 부분 결과 없이 거부합니다.
+**파일 상태**: 선택한 모든 파일은 `read`/`excluded`/`failed` 중 하나이고 `exclusion_reason`(`Limitation`)이 manifest에 남습니다. 판정 순서는 링크·submodule(모드 120000/160000) → 바이너리(diff의 `Binary files … differ`, NUL, UTF-8로 해석 불가) → 경로(생성 파일 → 비밀 파일명 → 미지원 언어) → diff 내용(생성 표식 → 200KB 초과 → 의심 비밀)입니다. 의심 비밀은 삭제·맥락 줄까지 검사하고 해당 파일 전체를 제외합니다. 선택 경로가 PR 변경 목록에 없으면 `InvalidSelection`, 파일 수/총 바이트 한도 초과는 `InputTooLarge`로 부분 결과 없이 거부합니다.
 
 **줄 맵**: 파일별 `{left, right, right_to_left}`(실제 commit의 1부터 시작하는 줄 번호). 보내는 payload는 맥락 25줄을 포함한 unified diff입니다. S0 fixture(`scripts/fixtures/ai/sample.diff`, `line_maps.json`)를 같은 파서가 재현합니다.
 
-**coverage**: `inventory_coverage`는 git이 확정한 전체 diff이므로 `complete`, `selected_content_coverage`는 read 개수 기준 complete/partial/none, `analysis_coverage`는 항상 `none`(분석 전)입니다. `list_pr_files`는 API 한계에 따라 `changed_files` ≤ 3000이면 complete, 초과면 partial, 값이 없으면 unknown입니다.
+**coverage**: `inventory_coverage`는 git이 확정한 전체 diff이므로 `complete`(`pr_total_files`는 호출자가 GitHub `changed_files`를 넘기면 그 값, 없으면 목록 항목 수로 내용이 바뀐 이름 변경이 2개로 셈), `selected_content_coverage`는 read 개수 기준 complete/partial/none, `analysis_coverage`는 항상 `none`(분석 전)입니다. `list_pr_files`는 API 한계에 따라 `changed_files` ≤ 3000이면 complete, 초과면 partial, 값이 없으면 unknown입니다.
 
-**한계**: 전체 diff가 GitHub의 merge-base 판정에 의존합니다. 이름 변경은 git의 유사도 판정(-M)을 따릅니다. 비밀 탐지는 패턴 기반이라 누락·오탐이 있을 수 있으며 정확도 평가는 S10에서 합니다.
+**한계**: 전체 diff가 GitHub의 merge-base 판정에 의존합니다. 내용이 바뀐 이름 변경은 위 후보 한도 안에서만 짝지어집니다. 선택한 파일의 blob은 크기를 알기 전에 받아야 하므로 매우 큰 파일을 직접 선택하면 그 파일은 내려받습니다(받은 뒤 `too_large`로 제외). 비밀 탐지는 패턴 기반이라 누락·오탐이 있을 수 있으며 정확도 평가는 S10에서 합니다.

@@ -25,7 +25,7 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 from app.schemas.ai import ErrorCode  # noqa: E402
 from app.services.ai import idempotency, job_runner, job_service, outbox, usage_service  # noqa: E402
 from app.services.ai.access import AIError  # noqa: E402
-from app.services.ai.lease import LeaseLost  # noqa: E402
+from app.services.ai.lease import CancelRequested, LeaseLost  # noqa: E402
 
 T0 = datetime(2026, 10, 7, 12, 0, 0, tzinfo=timezone.utc)
 H = lambda c: c * 64  # noqa: E731
@@ -795,10 +795,172 @@ class Budget(Case):
             self.db.execute(text('DELETE FROM users WHERE id = :i'), {'i': world[0]})
             self.db.commit()
             self.assertEqual(self.scalar("SELECT count(*) FROM usage_budgets WHERE scope = 'user' AND owner_user_id IS NULL"), 1)
-            world2, job2, lease2 = self.claimed(self.make_world(), fingerprint=H('2'))
-            usage_service.reserve_attempt(self.db, lease2, Decimal('1'), now=T0 + timedelta(days=40))   # 다음 달은 새 예산
+            later = T0 + timedelta(days=40)
+            world2 = self.make_world()
+            job2 = self.create(world2, fingerprint=H('2'), now=later).job
+            lease2 = job_service.claim_job(self.db, job2.id, now=later)
+            usage_service.reserve_attempt(self.db, lease2, Decimal('1'), now=later)   # 다음 달은 새 예산
             self.db.commit()
             self.assertEqual(self.scalar("SELECT count(DISTINCT period_start) FROM usage_budgets WHERE scope = 'server'"), 2)
+
+
+class ReservationSafety(Case):
+    """비용 예약은 유효한 처리권에서만, 미정산 예약이 있으면 자동 재호출 없이."""
+
+    def reservations(self):
+        return [tuple(r) for r in self.db.execute(text(
+            'SELECT attempt_no, status FROM usage_reservations ORDER BY attempt_no, status')).all()]
+
+    def test_expired_or_cancelled_lease_cannot_reserve(self):
+        world, job, lease = self.claimed()
+        late = T0 + timedelta(seconds=121)                                   # lease_until(T0+120s) 이후, 아직 복구 전
+        with self.assertRaises(LeaseLost):
+            usage_service.reserve_attempt(self.db, lease, Decimal('1'), now=late)
+        self.db.rollback()
+        self.assertEqual(self.scalar('SELECT count(*) FROM usage_reservations'), 0)
+        job_service.request_cancel(self.db, job.id, world[0], now=T0)
+        with self.assertRaises(CancelRequested):
+            usage_service.reserve_attempt(self.db, lease, Decimal('1'), now=T0)
+        self.db.rollback()
+        self.assertEqual(self.scalar('SELECT count(*) FROM usage_reservations'), 0)
+
+    def test_recovery_in_between_check_and_reserve_cannot_leave_a_reservation(self):
+        world, job, lease = self.claimed()
+        recovering = Session()
+        recovering.execute(text("""UPDATE ai_jobs SET status = 'retry_wait', lease_token = NULL, lease_until = NULL,
+                                   next_attempt_at = :t WHERE id = :j"""), {'t': T0, 'j': job.id})   # 미커밋
+        outcome = {}
+
+        def reserve():
+            with Session() as db:
+                try:
+                    usage_service.reserve_attempt(db, lease, Decimal('1'), now=T0)
+                    db.commit()
+                    outcome['result'] = 'reserved'
+                except LeaseLost:
+                    db.rollback()
+                    outcome['result'] = 'lost'
+        thread = threading.Thread(target=reserve)
+        thread.start()
+        thread.join(0.7)
+        self.assertTrue(thread.is_alive())                                    # 작업 행 잠금을 기다린다
+        recovering.commit()
+        recovering.close()
+        thread.join(10)
+        self.assertEqual(outcome['result'], 'lost')
+        self.assertEqual(self.scalar('SELECT count(*) FROM usage_reservations'), 0)
+
+    def test_recovery_skips_a_job_that_is_reserving_and_then_treats_it_as_uncertain(self):
+        world, job, lease = self.claimed()
+        reserving = Session()
+        usage_service.reserve_attempt(reserving, lease, Decimal('1'), now=T0)   # 미커밋 잠금 보유
+        late = T0 + timedelta(seconds=121)
+        self.assertEqual(job_service.recover_expired(self.db, now=late)['retried'], 0)   # 잠긴 행은 건드리지 않는다
+        reserving.commit()
+        reserving.close()
+        stats = job_service.recover_expired(self.db, now=late)
+        self.assertEqual((stats['uncertain'], stats['retried']), (1, 0))
+        self.assertEqual(self.job_row(job.id)['error_code'], 'OUTCOME_UNCERTAIN')
+
+    def test_retryable_failure_with_open_reservation_is_uncertain_and_not_retried(self):
+        world, job, lease = self.claimed()
+        usage_service.reserve_attempt(self.db, lease, Decimal('1'), now=T0)
+        self.db.commit()
+        self.assertEqual(job_service.fail_job(self.db, lease, 'TIMEOUT', retryable=True, now=T0), 'failed')
+        row = self.job_row(job.id)
+        self.assertEqual((row['status'], row['error_code']), ('failed', 'OUTCOME_UNCERTAIN'))
+        self.assertEqual(self.reservations(), [(1, 'uncertain'), (1, 'uncertain')])
+        self.assertEqual(self.scalar('SELECT status FROM ai_attempts WHERE job_id = :j', j=job.id), 'uncertain')
+        self.assertEqual(self.scalar("SELECT max(reserved_amount) FROM usage_budgets"), Decimal('1'))   # 예산 계속 점유
+        self.assertEqual(self.scalar('SELECT count(*) FROM task_outbox WHERE job_id = :j', j=job.id), 1)  # 재시도 발행 없음
+        self.assertIsNone(job_service.claim_job(self.db, job.id, now=T0 + timedelta(hours=1)))
+        self.assertEqual(self.scalar('SELECT count(*) FROM ai_attempts WHERE job_id = :j', j=job.id), 1)
+
+    def test_already_uncertain_reservation_also_blocks_retry(self):
+        world, job, lease = self.claimed()
+        usage_service.reserve_attempt(self.db, lease, Decimal('1'), now=T0)
+        usage_service.mark_uncertain(self.db, job.id, 1)
+        self.db.commit()
+        self.assertEqual(job_service.fail_job(self.db, lease, 'TIMEOUT', retryable=True, now=T0), 'failed')
+        self.assertEqual(self.job_row(job.id)['error_code'], 'OUTCOME_UNCERTAIN')
+
+    def test_released_or_settled_reservation_still_allows_retry(self):
+        resolvers = (lambda j: usage_service.release_attempt(self.db, j, 1),
+                     lambda j: usage_service.settle_attempt(self.db, j, 1, Decimal('0.5')))
+        for n, resolve in enumerate(resolvers):
+            world, job, lease = self.claimed(self.make_world(), fingerprint=H(str(n + 1)))
+            usage_service.reserve_attempt(self.db, lease, Decimal('1'), now=T0)
+            resolve(job.id)
+            self.db.commit()
+            self.assertEqual(job_service.fail_job(self.db, lease, 'TEMP', retryable=True, now=T0), 'retry_wait')
+
+    def test_finish_cleans_up_open_reservations(self):
+        world, job, lease = self.claimed()
+        usage_service.reserve_attempt(self.db, lease, Decimal('1.5'), now=T0)
+        self.db.commit()
+        job_service.finish_job(self.db, lease, 'succeeded', now=T0)               # 비용을 모르면 예약액으로 추정 정산
+        self.assertEqual(self.reservations(), [(1, 'settled'), (1, 'settled')])
+        self.assertEqual(self.scalar("SELECT max(spent_amount) FROM usage_budgets"), Decimal('1.5'))
+        self.assertEqual(self.scalar("SELECT max(reserved_amount) FROM usage_budgets"), 0)
+
+        world2, job2, lease2 = self.claimed(self.make_world(), fingerprint=H('2'))
+        usage_service.reserve_attempt(self.db, lease2, Decimal('1'), now=T0)
+        self.db.commit()
+        job_service.finish_job(self.db, lease2, 'failed', error_code='BAD', now=T0)   # 호출 여부를 모르면 불명
+        self.assertIn((1, 'uncertain'), self.reservations())
+
+        world3, job3, lease3 = self.claimed(self.make_world(), fingerprint=H('3'))
+        usage_service.reserve_attempt(self.db, lease3, Decimal('1'), now=T0)
+        self.db.commit()
+        job_service.request_cancel(self.db, job3.id, world3[0], now=T0)
+        self.assertEqual(job_service.finish_job(self.db, lease3, 'succeeded', now=T0), 'cancelled')
+        self.assertEqual(self.scalar("SELECT count(*) FROM usage_reservations WHERE status = 'reserved'"), 0)
+
+    def test_claim_refuses_a_job_with_unresolved_reservations(self):
+        world, job, lease = self.claimed()
+        usage_service.reserve_attempt(self.db, lease, Decimal('1'), now=T0)
+        self.db.execute(text("UPDATE ai_jobs SET status = 'queued', lease_token = NULL, lease_until = NULL WHERE id = :j"),
+                        {'j': job.id})                    # 어떤 경로로든 queued로 되돌려진 상황
+        self.db.commit()
+        self.assertIsNone(job_service.claim_job(self.db, job.id, now=T0 + timedelta(minutes=5)))
+        row = self.job_row(job.id)
+        self.assertEqual((row['status'], row['error_code']), ('failed', 'OUTCOME_UNCERTAIN'))
+        self.assertEqual(self.scalar('SELECT count(*) FROM ai_attempts WHERE job_id = :j', j=job.id), 1)
+
+    def test_runner_does_not_retry_after_a_reserved_call_times_out(self):
+        world = self.make_world()
+        job = self.create(world).job
+
+        def handler(ctx):
+            with Session() as db:
+                usage_service.reserve_attempt(db, ctx.lease, Decimal('1'))
+                db.commit()
+            raise job_runner.RetryableError('TIMEOUT')
+        job_runner.register_handler('review', handler)
+        try:
+            outcome = job_runner.run_job(job.id, session_factory=Session)
+        finally:
+            job_runner.HANDLERS.pop('review', None)
+        self.assertEqual(outcome, 'failed')
+        self.assertEqual(self.job_row(job.id)['error_code'], 'OUTCOME_UNCERTAIN')
+        self.assertEqual(self.scalar('SELECT count(*) FROM ai_attempts WHERE job_id = :j', j=job.id), 1)
+
+    def test_runner_stops_when_cancel_arrives_before_the_next_reservation(self):
+        world = self.make_world()
+        job = self.create(world).job
+
+        def handler(ctx):
+            with Session() as db:
+                job_service.request_cancel(db, ctx.lease.job_id, ctx.lease.owner_user_id)
+            with Session() as db:
+                usage_service.reserve_attempt(db, ctx.lease, Decimal('1'))      # CancelRequested
+        job_runner.register_handler('review', handler)
+        try:
+            outcome = job_runner.run_job(job.id, session_factory=Session)
+        finally:
+            job_runner.HANDLERS.pop('review', None)
+        self.assertEqual((outcome, self.job_row(job.id)['status']), ('cancelled', 'cancelled'))
+        self.assertEqual(self.scalar('SELECT count(*) FROM usage_reservations'), 0)
 
 
 if __name__ == '__main__':
