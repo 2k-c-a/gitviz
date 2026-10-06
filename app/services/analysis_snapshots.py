@@ -96,6 +96,8 @@ class SnapshotInput:
                 SELECT p.id,p.repository_id,p.pr_number,p.title,p.state,p.author_login,p.author_contributor_id,
                     p.opened_at,p.merged_at,p.closed_at,p.changed_file_count,
                     p.base_branch,p.head_branch,p.review_duration_hours,p.merged_commit_sha,
+                    p.file_collection_status,p.file_collection_reason,
+                    p.files_collected_count,p.files_total_count,
                     COALESCE(p.changed_file_count,(SELECT COUNT(DISTINCT f.file_id) FROM public.pull_request_files f WHERE f.pull_request_id=p.id)) >= :snapshot_large_threshold AS is_large_pr
                 FROM public.pull_requests p WHERE repository_id = :snapshot_rid
                 AND merged_at >= :snapshot_start AND merged_at < :snapshot_end
@@ -169,9 +171,27 @@ def data_quality(db, rid):
     prs = dict(db.execute(text("""
         SELECT COUNT(*) AS merged_pr_count,
             COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM pull_request_files f WHERE f.pull_request_id=p.id)) AS prs_with_files,
-            COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM pr_commits pc WHERE pc.pull_request_id=p.id AND pc.commit_id IS NOT NULL)) AS prs_with_linked_commits
+            COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM pr_commits pc WHERE pc.pull_request_id=p.id AND pc.commit_id IS NOT NULL)) AS prs_with_linked_commits,
+            -- 아래는 수집 담당이 기록한 '상세 수집 완전성'이다. prs_with_files(상세가
+            -- 1행이라도 있는 PR 수)는 보유율일 뿐 완전성을 보장하지 않으므로 함께 쓴다.
+            COUNT(*) FILTER (WHERE p.file_collection_status = 'complete') AS prs_detail_complete,
+            COUNT(*) FILTER (WHERE p.file_collection_status = 'partial') AS prs_detail_partial,
+            COUNT(*) FILTER (WHERE p.file_collection_status = 'failed') AS prs_detail_failed,
+            COUNT(*) FILTER (WHERE p.file_collection_status IS NULL) AS prs_detail_unknown,
+            COALESCE(SUM(p.files_collected_count), 0) AS pr_files_collected,
+            COALESCE(SUM(p.files_total_count), 0) AS pr_files_total
         FROM pull_requests p WHERE repository_id=:rid
     """), {"rid": rid}).mappings().one())
+    # 실패 사유별 PR 수 (unauthenticated / forbidden / rate_limited / page_error / api_file_limit)
+    prs["pr_detail_failure_reasons"] = {
+        r["file_collection_reason"]: r["cnt"]
+        for r in db.execute(text("""
+            SELECT file_collection_reason, COUNT(*) AS cnt
+            FROM pull_requests
+            WHERE repository_id=:rid AND file_collection_reason IS NOT NULL
+            GROUP BY 1
+        """), {"rid": rid}).mappings()
+    }
     return {**counts, **identities, **prs, "low_support_threshold": LOW_SUPPORT_THRESHOLD,
             "coverage_scope": "수집된 이력 기준. GitHub 전체 이력의 수집 완전성을 보장하지 않음"}
 
