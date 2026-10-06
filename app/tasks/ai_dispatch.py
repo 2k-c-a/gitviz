@@ -12,7 +12,7 @@ from uuid import UUID
 
 from app.core.celery_app import celery
 from app.core.database import SessionLocal
-from app.services.ai import job_runner, job_service, outbox
+from app.services.ai import input_store, job_runner, job_service, outbox
 
 logger = logging.getLogger('gitviz.ai.dispatch')
 
@@ -21,6 +21,9 @@ TASK_BY_EVENT = {outbox.EVENT_PREPARE: 'ai.prepare_job', outbox.EVENT_GENERATE: 
 DISPATCH_INTERVAL = 2.0
 MAINTENANCE_INTERVAL = 30.0
 
+from app.tasks import ai_prepare  # noqa: E402,F401  (운영 prepare handler 등록)
+
+# 환경변수로 지정한 handler 모듈은 운영 handler 뒤에 불러와 그 위에 덮어쓸 수 있다(테스트용 fake 등).
 job_runner.load_handler_modules()
 
 
@@ -49,7 +52,10 @@ def dispatch_once(session_factory=SessionLocal, publish=publish_event, *, limit:
 
 def maintenance_once(session_factory=SessionLocal) -> dict:
     with session_factory() as db:
-        return job_service.run_maintenance(db)
+        stats = job_service.run_maintenance(db)
+    with session_factory() as db:
+        stats['inputs'] = input_store.run_input_maintenance(db)
+    return stats
 
 
 def run_forever(stop: threading.Event | None = None, *, session_factory=SessionLocal,

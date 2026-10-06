@@ -81,12 +81,16 @@ def _advisory_lock(db: Session, key: str) -> None:
 
 # ── 생성 ────────────────────────────────────────────────────────────────
 
-def create_job(db: Session, *, owner_id: UUID, repository_id: int, input_id: UUID, kind: str, fingerprint: str,
+def create_job(db: Session, *, owner_id: UUID, repository_id: int, input_id: UUID | None, kind: str, fingerprint: str,
                route: str, idempotency_key: str, body_hash: str, request_options: dict | None = None,
                consent_manifest_hash: str | None = None, provider_profile: str | None = None,
                prompt_version: str | None = None, schema_version: str | None = None,
-               force_regenerate: bool = False, now: datetime | None = None) -> CreateResult:
+               force_regenerate: bool = False, input_factory: Callable[[Session], UUID] | None = None,
+               now: datetime | None = None) -> CreateResult:
     """job·Idempotency-Key·outbox를 한 transaction으로 저장한다.
+
+    input_factory를 주면(입력 준비 작업) 재사용 여부를 확인한 뒤에만 호출되어 새 입력을 만들고, 입력·작업·
+    key·outbox가 모두 같은 transaction에 저장된다. 이때 input_id는 None이다.
 
     재사용 규칙은 두 가지로 구분한다.
     - Idempotency-Key: 같은 key·같은 요청이면 처음 만든 job을 그대로, 다른 요청이면 IDEMPOTENCY_CONFLICT.
@@ -99,7 +103,7 @@ def create_job(db: Session, *, owner_id: UUID, repository_id: int, input_id: UUI
                            body_hash=body_hash, request_options=request_options,
                            consent_manifest_hash=consent_manifest_hash, provider_profile=provider_profile,
                            prompt_version=prompt_version, schema_version=schema_version,
-                           force_regenerate=force_regenerate, now=_now(now))
+                           force_regenerate=force_regenerate, input_factory=input_factory, now=_now(now))
     except Exception:
         db.rollback()        # advisory lock과 이 transaction의 key·job 기록을 함께 되돌린다
         raise
@@ -107,7 +111,7 @@ def create_job(db: Session, *, owner_id: UUID, repository_id: int, input_id: UUI
 
 def _create_job(db: Session, *, owner_id, repository_id, input_id, kind, fingerprint, route, idempotency_key,
                 body_hash, request_options, consent_manifest_hash, provider_profile, prompt_version,
-                schema_version, force_regenerate, now) -> CreateResult:
+                schema_version, force_regenerate, input_factory, now) -> CreateResult:
     settings = get_ai_settings()
     _advisory_lock(db, f'ai-create:{owner_id}')       # 같은 owner의 생성은 직렬화(재사용·한도·채번 경쟁 방지)
     entry = idempotency.begin(db, owner_id, route, idempotency_key, body_hash, now)
@@ -118,13 +122,16 @@ def _create_job(db: Session, *, owner_id, repository_id, input_id, kind, fingerp
             db.commit()
             return CreateResult(existing, False, 'idempotency')
 
-    _check_input(db, owner_id, repository_id, input_id, kind, now)
+    if input_factory is None:
+        _check_input(db, owner_id, repository_id, input_id, kind, now)
     latest = db.execute(select(AIJob).where(
         AIJob.owner_user_id == owner_id, AIJob.kind == kind, AIJob.fingerprint == fingerprint)
         .order_by(AIJob.generation.desc()).limit(1).with_for_update()
         .execution_options(populate_existing=True)).scalar_one_or_none()      # 다른 경로가 바꾼 상태를 반영
     if latest is not None and latest.deleted_at is None:
         reusable = latest.status in IN_PROGRESS_STATUSES or (latest.status == 'succeeded' and not force_regenerate)
+        if reusable and kind == 'prepare' and not _prepared_input_usable(db, latest.input_id, now):
+            reusable = False          # 만료됐거나 더는 실행에 쓸 수 없는 입력은 새로 준비한다
         if reusable:
             idempotency.complete(db, entry, latest.id)
             db.commit()
@@ -137,6 +144,8 @@ def _create_job(db: Session, *, owner_id, repository_id, input_id, kind, fingerp
         if used >= settings.daily_job_limit:
             raise AIError(ErrorCode.USER_LIMIT, '일일 AI 요청 한도에 도달했습니다.', retryable=False)
 
+    if input_factory is not None:
+        input_id = input_factory(db)
     job = AIJob(owner_user_id=owner_id, repository_id=repository_id, input_id=input_id, kind=kind,
                 created_at=now, updated_at=now, fingerprint=fingerprint, generation=(latest.generation + 1) if latest is not None else 0,
                 status='queued', request_options=request_options or {}, consent_manifest_hash=consent_manifest_hash,
@@ -147,6 +156,16 @@ def _create_job(db: Session, *, owner_id, repository_id, input_id, kind, fingerp
     idempotency.complete(db, entry, job.id)
     db.commit()
     return CreateResult(job, True)
+
+
+def _prepared_input_usable(db: Session, input_id: UUID, now: datetime) -> bool:
+    row = db.execute(text("""SELECT status, valid_until, expires_at FROM ai_inputs WHERE id = :i"""),
+                     {'i': input_id}).one_or_none()
+    if row is None or row.expires_at <= now:
+        return False
+    if row.status == 'building':
+        return True
+    return row.status == 'ready' and row.valid_until is not None and row.valid_until > now
 
 
 def _check_input(db: Session, owner_id: UUID, repository_id: int, input_id: UUID, kind: str, now: datetime) -> None:

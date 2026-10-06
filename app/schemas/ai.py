@@ -6,6 +6,7 @@
 import hashlib
 import json
 import re
+from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any
 from uuid import UUID
@@ -19,7 +20,7 @@ from pydantic import (
     model_validator,
 )
 
-CONTRACT_VERSION = "1.0"
+CONTRACT_VERSION = "1.1"
 
 _SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -312,6 +313,13 @@ class ManifestFile(_Strict):
         return self
 
 
+class PRTransferMetadata(_Strict):
+    """AI에 함께 보내는 PR 설명. manifest에 포함되어 manifest_hash에 반영된다."""
+    title: Annotated[str, StringConstraints(max_length=1000)] = ""
+    body: Annotated[str, StringConstraints(max_length=8000)] = ""
+    body_truncated: bool = False
+
+
 class InputManifest(_Strict):
     """사용자에게 미리보기로 보이고 실제 AI 전송 후보와 같아야 하는 목록."""
     contract_version: str = CONTRACT_VERSION
@@ -319,6 +327,7 @@ class InputManifest(_Strict):
     revision: PRRevision
     policy_version: ShortText
     pr_metadata_hash: Sha256Hex | None = None
+    pr_metadata: PRTransferMetadata | None = None
     files: list[ManifestFile]
 
     @model_validator(mode="after")
@@ -326,6 +335,8 @@ class InputManifest(_Strict):
         paths = [f.path for f in self.files]
         if len(set(paths)) != len(paths):
             raise ValueError("manifest에 같은 path가 중복됩니다.")
+        if self.pr_metadata is not None and self.pr_metadata_hash != canonical_hash(self.pr_metadata):
+            raise ValueError("pr_metadata_hash가 pr_metadata와 일치하지 않습니다.")
         return self
 
 
@@ -413,3 +424,87 @@ class ErrorBody(_Strict):
 
 class ErrorEnvelope(_Strict):
     error: ErrorBody
+
+
+# ── 입력 준비·전송 미리보기 (S5) ────────────────────────────────────────
+
+class DiffLineKind(str, Enum):
+    context = "context"
+    added = "added"
+    removed = "removed"
+
+
+class DiffLine(_Strict):
+    kind: DiffLineKind
+    left_line: int | None = Field(default=None, ge=1)     # 변경 전(LEFT) 줄 번호. 추가된 줄은 없다.
+    right_line: int | None = Field(default=None, ge=1)    # 변경 후(RIGHT) 줄 번호. 삭제된 줄은 없다.
+    text: str
+
+
+class TokenEstimate(_Strict):
+    """전송 전 대략적인 입력 크기. 모델 profile별 정확한 확인은 실행 직전에 다시 한다."""
+    input_tokens: int = Field(ge=0)
+    method: str
+    final_check: str = "before_generation"
+
+
+class InputFileView(_Strict):
+    file_id: UUID
+    path: RepoPath
+    old_path: RepoPath | None = None
+    change_type: ChangeType
+    language: str | None = None
+    content_state: ContentState
+    exclusion_reason: Limitation | None = None
+    side_availability: str
+    byte_count: int = Field(ge=0)
+    content_hash: Sha256Hex | None = None
+    hunks: list[Hunk] = Field(default_factory=list)
+
+
+class PrepareJobView(_Strict):
+    job_id: UUID
+    status: JobStatus
+    stage: JobStage | None = None
+    error_code: str | None = None
+
+
+class InputPreview(_Strict):
+    """GET /inputs/{id}: 사용자에게 보이는 전송 후보. 실제 AI 전송 후보와 같은 manifest다."""
+    input_id: UUID
+    status: InputStatus
+    repository_id: int
+    pr_number: int
+    base_sha: GitSha
+    head_sha: GitSha
+    merge_base_sha: GitSha | None = None
+    pr_state: str
+    pr_title: str = ""
+    pr_body: str = ""
+    pr_body_truncated: bool = False
+    coverage: Coverage
+    files: list[InputFileView] = Field(default_factory=list)
+    manifest_hash: Sha256Hex | None = None       # 생성 요청의 consent_manifest_hash로 되돌려 보낸다
+    policy_version: str
+    provider_profile: str | None = None
+    token_estimate: TokenEstimate | None = None
+    valid_until: datetime | None = None          # 이 시각까지 새 실행을 시작할 수 있다
+    expires_at: datetime                         # 이 시각에 원문 코드가 삭제된다
+    execution_valid: bool = False
+    raw_available: bool = False
+    reviewable: bool = False                     # 읽은 파일이 하나 이상이어서 AI에 보낼 내용이 있다
+    prepare_job: PrepareJobView | None = None
+
+
+class InputFileContent(_Strict):
+    """GET /inputs/{id}/files/{file_id}: 보관된 고정 diff(맥락 포함). 작성자만 볼 수 있다."""
+    file_id: UUID
+    path: RepoPath
+    old_path: RepoPath | None = None
+    change_type: ChangeType
+    language: str | None = None
+    side_availability: str
+    content_state: ContentState
+    exclusion_reason: Limitation | None = None
+    content_hash: Sha256Hex | None = None
+    lines: list[DiffLine] = Field(default_factory=list)

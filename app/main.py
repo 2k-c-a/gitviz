@@ -29,12 +29,15 @@ app = FastAPI(title="GitViz API", version="0.1.0")
 
 # ── AI 기능 (기본 꺼짐). 켜져 있으면 모델 호출 전에 필요한 보안 설정을 검증한다 ──
 from app.core.ai_settings import get_ai_settings, require_valid_ai_settings
-from app.api.ai.dependencies import ai_error_response
+from fastapi.exceptions import RequestValidationError
+from app.api.ai.dependencies import ai_error_response, ai_validation_error_response
+from app.api.ai.inputs import router as ai_inputs_router
 from app.services.ai.access import AIError
 
 if get_ai_settings().enabled:
     require_valid_ai_settings()
 app.add_exception_handler(AIError, ai_error_response)
+app.add_exception_handler(RequestValidationError, ai_validation_error_response)
 
 # ── 세션 미들웨어 (HttpOnly 서명 쿠키, auth 로그인에 필요) ────────────────────
 session_secret = os.getenv("SESSION_SECRET_KEY", "")
@@ -57,6 +60,7 @@ app.include_router(repository_router)
 app.include_router(analytics_router)
 app.include_router(snapshots_router)
 app.include_router(auth_router.router)
+app.include_router(ai_inputs_router)   # AI 기능이 꺼져 있으면 모든 경로가 404를 돌려준다
 
 # ── 프론트엔드 정적 파일 서빙 (API 라우터 이후 마지막에 위치) ─────────────────
 app.mount("/", NoCacheStaticFiles(directory="frontend", html=True), name="frontend")
