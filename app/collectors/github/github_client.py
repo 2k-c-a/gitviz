@@ -4,10 +4,19 @@ import requests
 from requests.exceptions import ConnectionError as RequestsConnectionError, Timeout
 
 
+class GitHubRateLimited(Exception):
+    """대기 한도(max_wait_seconds)를 넘는 rate limit. 대화형 요청이 오래 멈추지 않도록 호출자에게 알린다."""
+
+    def __init__(self, wait_seconds):
+        super().__init__(f"GitHub rate limit: {wait_seconds}s")
+        self.wait_seconds = wait_seconds
+
+
 class GitHubClient:
     BASE_URL = "https://api.github.com"
 
-    def __init__(self, token=None, on_rate_limit=None, on_resume=None):
+    def __init__(self, token=None, on_rate_limit=None, on_resume=None, *, timeout=30, max_retries=5,
+                 max_wait_seconds=None):
         self.token = token or os.getenv("GITHUB_TOKEN")
         self.session = requests.Session()
         self.session.headers.update({
@@ -22,14 +31,18 @@ class GitHubClient:
         # 진행 상황 보고용 콜백 (선택). 제한 발생/재개 시 호출.
         self.on_rate_limit = on_rate_limit
         self.on_resume = on_resume
+        # 기본값은 기존 동작(30초, 5회, 무제한 대기)과 같다. AI 대화형 요청은 짧은 한도를 지정한다.
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.max_wait_seconds = max_wait_seconds
 
     def get(self, url, params=None):
         attempt = 0
-        max_retries = 5
+        max_retries = self.max_retries
 
         while True:
             try:
-                response = self.session.get(url, params=params, timeout=30)
+                response = self.session.get(url, params=params, timeout=self.timeout)
             except (RequestsConnectionError, Timeout) as e:
                 attempt += 1
                 if attempt >= max_retries:
@@ -52,6 +65,8 @@ class GitHubClient:
                     # 403/429 but not a rate limit (e.g. token permission issue)
                     response.raise_for_status()
 
+                if self.max_wait_seconds is not None and wait > self.max_wait_seconds:
+                    raise GitHubRateLimited(wait)
                 print(f"GitHub rate limit hit ({response.status_code}). Waiting {wait}s...")
                 self.rate_limit_hits += 1
                 self.total_wait_seconds += wait
