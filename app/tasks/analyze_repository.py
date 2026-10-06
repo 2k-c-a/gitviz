@@ -15,6 +15,7 @@ from app.models.analysis_job import AnalysisJob
 from app.models.commit import Commit
 from app.models.file import File
 from app.models.contributor import Contributor
+from app.models.contributor_alias import ContributorAlias
 from app.models.commit_file_change import CommitFileChange
 from app.models.pull_request import PullRequest
 from app.models.pr_commit import PrCommit
@@ -35,6 +36,7 @@ from app.collectors.github.graphql_pr_collector import (
     GraphQLClient,
     collect_pr_details_graphql,
     collect_pr_details_graphql_batch,
+    _failure_reason,
 )
 from app.collectors.github.release_collector import collect_releases
 from app.collectors.identity.resolver import run_identity_resolution
@@ -66,6 +68,40 @@ def chunked(iterable: List, size: int):
     """Yield successive chunks from iterable."""
     for i in range(0, len(iterable), size):
         yield iterable[i : i + size]
+
+
+# GitHub은 PR 하나의 파일 목록을 3000개까지만 내려준다(REST·GraphQL 공통).
+GITHUB_PR_FILE_CAP = 3000
+
+
+def classify_pr_detail_status(details: Dict) -> tuple:
+    """PR 상세 수집 결과를 (status, reason, collected, total) 로 판정한다.
+
+    파일·커밋·리뷰 세 영역이 모두 끝나야 complete 다. 파일만 보고 판정하면 커밋/리뷰
+    페이지가 실패한 PR이 complete 로 남아 다음 재분석에서 영구히 건너뛰게 된다.
+
+    api_file_limit 은 GitHub이 PR당 파일을 3000개에서 자르는 경우로, 재시도해도
+    복구되지 않아 재수집 대상에서 제외한다. 단 커밋/리뷰가 미완이면 그쪽은 재시도로
+    복구되므로 이 사유를 쓰지 않는다.
+    """
+    collected = len(details["files"])
+    total = details.get("changed_files")
+    commits_ok = details.get("commits_complete", True)
+    reviews_ok = details.get("reviews_complete", True)
+
+    if details.get("files_complete") and commits_ok and reviews_ok:
+        return "complete", None, collected, total
+
+    if collected or details.get("commits") or details.get("reviews"):
+        files_capped = (collected >= GITHUB_PR_FILE_CAP and (total or 0) > collected
+                        and commits_ok and reviews_ok)
+        reason = "api_file_limit" if files_capped else (
+            details.get("files_reason") or details.get("commits_reason")
+            or details.get("reviews_reason") or details.get("failure_reason")
+            or "page_error")
+        return "partial", reason, collected, total
+
+    return "failed", details.get("failure_reason") or "page_error", collected, total
 
 
 def _resolve_github_token(db, user_id: Optional[str], is_private=False) -> Optional[str]:
@@ -230,12 +266,26 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
             c["email"] = (c.get("email") or "").strip().lower()
             c["author"] = (c.get("author") or "").strip()
 
-        # 기존 이메일을 한 번에 로드 (이메일당 SELECT 1회씩 날리던 비용 제거)
+        # 기존 이메일을 한 번에 로드 (이메일당 SELECT 1회씩 날리던 비용 제거).
+        # primary_email 뿐 아니라 contributor_aliases.email 도 함께 넣는다 —
+        # resolver가 동일인으로 판정해 병합하면 중복이던 contributors 행은 삭제되고
+        # 그 이메일은 alias 에만 남는다. alias를 보지 않으면 재분석 때 같은 이메일로
+        # Contributor가 다시 생기고, 커밋은 이미 병합 대상에 연결돼 있으므로
+        # 커밋 0개의 unresolved 행만 쌓인다(식별 결과가 재분석마다 되돌아감).
         contributor_cache = {
-            e
+            (e or "").strip().lower()
             for (e,) in db.query(Contributor.primary_email)
             .filter(Contributor.repository_id == repository.id)
             .all()
+            if e
+        }
+        contributor_cache |= {
+            (e or "").strip().lower()
+            for (e,) in db.query(ContributorAlias.email)
+            .join(Contributor, Contributor.id == ContributorAlias.contributor_id)
+            .filter(Contributor.repository_id == repository.id)
+            .all()
+            if e
         }
 
         for c in commits:
@@ -665,13 +715,18 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
             for r in db.query(PrReview.pull_request_id, PrReview.reviewer_login, PrReview.submitted_at).all()
         )
 
-        # 이미 상세 수집이 끝난 PR은 GraphQL 호출 자체를 스킵 (merged PR은 커밋이 반드시 1개 이상)
+        # 상세 수집이 '완전히' 끝난 PR만 GraphQL 호출을 스킵한다.
+        # 예전에는 pr_commits가 하나라도 있으면 수집 완료로 보고 건너뛰어서, 파일 상세가
+        # 중간에 실패한 PR이 영구히 부분 상태로 남았다(재분석해도 복구되지 않음).
+        # complete 는 물론, 재시도해도 복구가 불가능한 건(GitHub 3000개 상한)도 제외한다.
         prs_with_details = {
             pid
-            for (pid,) in db.query(PrCommit.pull_request_id)
-            .join(PullRequest, PullRequest.id == PrCommit.pull_request_id)
+            for (pid,) in db.query(PullRequest.id)
             .filter(PullRequest.repository_id == repository.id)
-            .distinct()
+            .filter(
+                (PullRequest.file_collection_status == "complete")
+                | (PullRequest.file_collection_reason == "api_file_limit")
+            )
             .all()
         }
         print(f"  PRs already collected (skip): {len(prs_with_details)}")
@@ -696,7 +751,14 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
                 pr_file_rows = []
             db.commit()
 
+        # PR별 수집 상태: {pr_id: (status, reason, collected, total)}
+        pr_collection_state = {}
+        # 상세를 못 받은 PR의 실패 사유: {pr_number: reason}
+        pr_failure_reasons = {}
+
         def _accumulate(pr_id, details):
+            pr_collection_state[pr_id] = classify_pr_detail_status(details)
+
             # PR Commits
             for sha_raw in details["commits"]:
                 sha = normalize_sha(sha_raw)
@@ -745,17 +807,26 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
             except Exception as e:
                 # 배치 실패 시 per-PR 폴백 (한 PR 오류가 배치 전체를 막지 않게)
                 print(f"  batch GraphQL error (PRs {numbers[:3]}...): {e}; per-PR 폴백")
+                batch_reason = _failure_reason(e)
                 details_map = {}
                 for _pid, num in batch:
                     try:
                         details_map[num] = collect_pr_details_graphql(gql_client, owner, repo_name_gh, num)
                     except Exception as e2:
                         print(f"  GraphQL error PR#{num}: {e2}")
+                        pr_failure_reasons[num] = _failure_reason(e2)
+                for _pid, num in batch:
+                    pr_failure_reasons.setdefault(num, batch_reason)
 
             for pr_id, pr_number in batch:
                 details = details_map.get(pr_number)
                 if details:
                     _accumulate(pr_id, details)
+                else:
+                    # 배치·per-PR 폴백이 모두 실패 — 조용히 넘기면 done으로 끝나버린다.
+                    # 인증 없음/권한 부족/한도를 뭉개지 않도록 실제 예외에서 분류한 사유를 쓴다.
+                    pr_collection_state[pr_id] = (
+                        "failed", pr_failure_reasons.get(pr_number, "page_error"), 0, None)
 
             processed += len(batch)
             print(f"  PR details progress: {processed}/{len(to_fetch)}")
@@ -770,10 +841,38 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
         # 전혀 안 걸러지고 Coupling·Network의 co-change 신호를 오염시킴). 방금 GraphQL로
         # pull_request_files에 실제 파일 목록이 다 채워졌으니, 그 실제 개수 기준으로
         # changed_file_count·is_large_pr을 다시 계산해 덮어쓴다.
+        # 이번 실행에서 판정된 PR별 상세 수집 상태를 저장한다.
+        for pr_id, (status, reason, collected, total) in pr_collection_state.items():
+            # files_collected_count 는 이번 응답 길이가 아니라 DB에 실제 저장된 행 수다
+            # (중복 스킵·이전 실행에서 쌓인 행 때문에 둘은 다를 수 있다).
+            # files_total_count 는 이번에 changedFiles 를 못 받았으면 기존 값을 지운다.
+            db.execute(text("""
+                UPDATE pull_requests pr
+                SET file_collection_status = :st,
+                    file_collection_reason = :rs,
+                    files_collected_count = (
+                        SELECT count(*) FROM pull_request_files f
+                        WHERE f.pull_request_id = pr.id),
+                    files_total_count = COALESCE(:tot, pr.files_total_count)
+                WHERE pr.id = :pid
+            """), {"st": status, "rs": reason, "tot": total, "pid": pr_id})
+        db.commit()
+        _st = {}
+        for (status, *_rest) in pr_collection_state.values():
+            _st[status] = _st.get(status, 0) + 1
+        print(f"PR 상세 수집 상태: {_st or '변경 없음'}")
+
+        # changed_file_count 는 GitHub이 보고한 '전체' 변경 파일 수를 유지한다.
+        # 예전에는 수집된 pull_request_files 개수로 덮어썼는데, 상세를 일부만 받은 PR은
+        # 전체 수가 줄어든 것처럼 보여 대규모 변경 판정(분모)이 흔들렸다.
+        # files_total_count 를 받은 PR은 그 값을, 못 받은 PR은 기존처럼 수집 개수를 쓴다.
         db.execute(text("""
             UPDATE pull_requests pr SET
-                changed_file_count = sub.cnt,
-                is_large_pr = (sub.cnt > :thr OR (:total > 0 AND sub.cnt > :total * :pct))
+                changed_file_count = COALESCE(pr.files_total_count, sub.cnt),
+                is_large_pr = (
+                    COALESCE(pr.files_total_count, sub.cnt) > :thr
+                    OR (:total > 0 AND COALESCE(pr.files_total_count, sub.cnt) > :total * :pct)
+                )
             FROM (
                 SELECT pull_request_id, COUNT(*) AS cnt
                 FROM pull_request_files
@@ -782,7 +881,7 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
             WHERE sub.pull_request_id = pr.id AND pr.repository_id = :rid
         """), {"rid": repository.id, "thr": LARGE_PR_THRESHOLD, "total": total_files_count, "pct": LARGE_PR_PCT})
         db.commit()
-        print("END recompute is_large_pr from real pull_request_files counts")
+        print("END recompute is_large_pr (changed_file_count = GitHub 전체 변경 파일 수)")
 
         # ---- Releases ----
         print("START collect_releases")

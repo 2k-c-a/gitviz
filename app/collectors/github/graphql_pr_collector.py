@@ -11,6 +11,7 @@ query GetPRDetails($owner: String!, $repo: String!, $number: Int!) {
   rateLimit { remaining resetAt cost }
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
+      changedFiles
       commits(first: 30) {
         nodes { commit { oid } }
         pageInfo { hasNextPage endCursor }
@@ -149,7 +150,21 @@ class GraphQLClient:
                 time.sleep(wait)
                 continue
 
+            if response.status_code == 401:
+                raise RuntimeError(
+                    "GraphQL 401 unauthenticated: GitHub 토큰이 없거나 유효하지 않습니다. "
+                    "PR 상세(파일·리뷰·커밋)는 인증이 있어야 수집됩니다."
+                )
+
             if response.status_code in (403, 429):
+                # 토큰이 없으면 익명 한도(0)에 바로 걸린다. 이때 리셋까지 기다리면
+                # 최대 1시간을 멈춘 채 보내고 결국 아무것도 못 받는다. 대기 대신
+                # 인증이 필요하다는 사실을 즉시 알린다.
+                if not self.token:
+                    raise RuntimeError(
+                        "GraphQL 403 unauthenticated: GitHub 토큰이 없어 PR 상세를 수집할 수 없습니다. "
+                        "익명 요청은 GraphQL 한도가 0이므로 대기해도 복구되지 않습니다."
+                    )
                 remaining = int(response.headers.get("X-RateLimit-Remaining", 1))
                 reset_at = int(response.headers.get("X-RateLimit-Reset", 0))
                 retry_after = int(response.headers.get("Retry-After", 0))
@@ -242,48 +257,102 @@ def _file_obj(node: dict) -> dict:
     }
 
 
+def _page_all(client, query, variables, cursor, section, extract):
+    """커서 페이지를 끝까지 따라가며 모은다.
+    중간 페이지가 실패하면 예외를 삼키지 않고 (부분 결과, 실패 사유)를 함께 돌려준다 —
+    호출측이 '부분 수집'과 '완전 수집'을 구분해 기록할 수 있어야 하기 때문이다."""
+    out = []
+    while cursor:
+        try:
+            r = client.query(query, {**variables, "cursor": cursor})
+            conn = r["data"]["repository"]["pullRequest"][section]
+        except Exception as e:
+            return out, _failure_reason(e)
+        out += extract(conn)
+        cursor = conn["pageInfo"]["endCursor"] if conn["pageInfo"]["hasNextPage"] else None
+    return out, None
+
+
+def _failure_reason(exc: Exception) -> str:
+    """실패 사유를 수집 기록용 코드로 분류한다(인증 없음/권한 부족/한도/그 외 페이지 오류)."""
+    msg = str(exc).lower()
+    # '403 unauthenticated'(토큰 없음)처럼 두 신호가 같이 오는 경우가 있어
+    # 인증 없음을 권한 부족보다 먼저 판정한다.
+    if ("unauthenticated" in msg or "401" in msg
+            or "bad credentials" in msg or "requires authentication" in msg):
+        return "unauthenticated"
+    if "403" in msg or "forbidden" in msg or "not accessible" in msg:
+        return "forbidden"
+    if "rate limit" in msg or "429" in msg:
+        return "rate_limited"
+    return "page_error"
+
+
 def _parse_pr_node(
     client: "GraphQLClient", owner: str, repo: str, number: int, pr: Optional[dict]
 ) -> Dict:
-    """단일 PR 노드(첫 30개 포함) 파싱. 30개 초과 연결은 per-PR 커서로 보충."""
-    if not pr:
-        return {"commits": [], "reviews": [], "files": []}
-    variables = {"owner": owner, "repo": repo, "number": number}
+    """단일 PR 노드(첫 30개 포함) 파싱. 30개 초과 연결은 per-PR 커서로 보충.
 
-    # Commits
+    반환에 changed_files(GitHub이 보고한 전체 변경 파일 수)와 files_complete /
+    failure_reason 을 포함한다. 상세가 1/100만 수집돼도 '수집됨'으로 보이던 문제를
+    호출측에서 구분하기 위한 값이다."""
+    if not pr:
+        return {"commits": [], "reviews": [], "files": [],
+                "changed_files": None, "files_complete": False,
+                "commits_complete": False, "reviews_complete": False,
+                "files_reason": "page_error", "commits_reason": "page_error",
+                "reviews_reason": "page_error", "failure_reason": "page_error"}
+    variables = {"owner": owner, "repo": repo, "number": number}
+    reason = None
+    commits_reason = reviews_reason = None
+
     commits_conn = pr.get("commits") or {}
     commits = [n["commit"]["oid"] for n in commits_conn.get("nodes", []) if n.get("commit")]
     if commits_conn.get("pageInfo", {}).get("hasNextPage"):
-        cursor = commits_conn["pageInfo"]["endCursor"]
-        while cursor:
-            r = client.query(PR_COMMITS_NEXT_QUERY, {**variables, "cursor": cursor})
-            conn = r["data"]["repository"]["pullRequest"]["commits"]
-            commits += [n["commit"]["oid"] for n in conn.get("nodes", []) if n.get("commit")]
-            cursor = conn["pageInfo"]["endCursor"] if conn["pageInfo"]["hasNextPage"] else None
+        more, commits_reason = _page_all(
+            client, PR_COMMITS_NEXT_QUERY, variables,
+            commits_conn["pageInfo"]["endCursor"], "commits",
+            lambda c: [n["commit"]["oid"] for n in c.get("nodes", []) if n.get("commit")])
+        commits += more
+        reason = reason or commits_reason
 
-    # Reviews
     reviews_conn = pr.get("reviews") or {}
     reviews = [_review_obj(n) for n in reviews_conn.get("nodes", [])]
     if reviews_conn.get("pageInfo", {}).get("hasNextPage"):
-        cursor = reviews_conn["pageInfo"]["endCursor"]
-        while cursor:
-            r = client.query(PR_REVIEWS_NEXT_QUERY, {**variables, "cursor": cursor})
-            conn = r["data"]["repository"]["pullRequest"]["reviews"]
-            reviews += [_review_obj(n) for n in conn.get("nodes", [])]
-            cursor = conn["pageInfo"]["endCursor"] if conn["pageInfo"]["hasNextPage"] else None
+        more, reviews_reason = _page_all(
+            client, PR_REVIEWS_NEXT_QUERY, variables,
+            reviews_conn["pageInfo"]["endCursor"], "reviews",
+            lambda c: [_review_obj(n) for n in c.get("nodes", [])])
+        reviews += more
+        reason = reason or reviews_reason
 
-    # Files
     files_conn = pr.get("files") or {}
     files = [_file_obj(n) for n in files_conn.get("nodes", [])]
+    files_reason = None
     if files_conn.get("pageInfo", {}).get("hasNextPage"):
-        cursor = files_conn["pageInfo"]["endCursor"]
-        while cursor:
-            r = client.query(PR_FILES_NEXT_QUERY, {**variables, "cursor": cursor})
-            conn = r["data"]["repository"]["pullRequest"]["files"]
-            files += [_file_obj(n) for n in conn.get("nodes", [])]
-            cursor = conn["pageInfo"]["endCursor"] if conn["pageInfo"]["hasNextPage"] else None
+        more, files_reason = _page_all(
+            client, PR_FILES_NEXT_QUERY, variables,
+            files_conn["pageInfo"]["endCursor"], "files",
+            lambda c: [_file_obj(n) for n in c.get("nodes", [])])
+        files += more
+        reason = reason or files_reason
 
-    return {"commits": commits, "reviews": reviews, "files": files}
+    # GitHub이 보고한 전체 변경 파일 수. 수집한 상세 수와 다르면 부분 수집이다.
+    changed_files = pr.get("changedFiles")
+    files_complete = files_reason is None and (
+        changed_files is None or len(files) >= changed_files)
+
+    # 섹션별로 따로 돌려준다. 파일이 완전해도 커밋/리뷰 페이지가 실패했다면
+    # 그 PR은 상세가 덜 수집된 것이므로 다음 재분석에서 다시 받아야 한다.
+    return {"commits": commits, "reviews": reviews, "files": files,
+            "changed_files": changed_files,
+            "files_complete": files_complete,
+            "commits_complete": commits_reason is None,
+            "reviews_complete": reviews_reason is None,
+            "files_reason": files_reason,
+            "commits_reason": commits_reason,
+            "reviews_reason": reviews_reason,
+            "failure_reason": reason}
 
 
 def collect_pr_details_graphql(
@@ -300,6 +369,7 @@ def collect_pr_details_graphql(
 
 # ── 배치 수집: GraphQL alias로 PR 여러 개를 한 요청에 묶는다 ──
 _PR_DETAILS_FIELDS = """
+    changedFiles
     commits(first: 30) { nodes { commit { oid } } pageInfo { hasNextPage endCursor } }
     reviews(first: 30) { nodes { author { login } state submittedAt } pageInfo { hasNextPage endCursor } }
     files(first: 30) { nodes { path additions deletions changeType } pageInfo { hasNextPage endCursor } }
