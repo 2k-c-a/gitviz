@@ -133,6 +133,21 @@ class ManifestRules(unittest.TestCase):
         m4 = InputManifest(**self.manifest([read_file('a.py', content_hash='e' * 64), read_file('b.py')]))
         self.assertNotEqual(canonical_hash(m1), canonical_hash(m4))
 
+    def test_pr_metadata_is_part_of_the_manifest_and_its_hash(self):
+        from app.schemas.ai import PRTransferMetadata
+        meta = PRTransferMetadata(title='t', body='b')
+        base = self.manifest([read_file('a.py')])
+        plain = InputManifest(**base)
+        with_meta = InputManifest(**{**base, 'pr_metadata': meta.model_dump(), 'pr_metadata_hash': canonical_hash(meta)})
+        self.assertNotEqual(canonical_hash(plain), canonical_hash(with_meta))          # 설명이 달라지면 manifest_hash도 달라진다
+        other = PRTransferMetadata(title='t', body='different')
+        changed = InputManifest(**{**base, 'pr_metadata': other.model_dump(), 'pr_metadata_hash': canonical_hash(other)})
+        self.assertNotEqual(canonical_hash(with_meta), canonical_hash(changed))
+        with self.assertRaises(ValidationError):                                         # 해시와 본문이 어긋나면 거부
+            InputManifest(**{**base, 'pr_metadata': meta.model_dump(), 'pr_metadata_hash': H64})
+        with self.assertRaises(ValidationError):
+            PRTransferMetadata(title='t', body='x' * 8001)
+
     def test_canonical_hash_of_dict_matches_model(self):
         m = InputManifest(**self.manifest([read_file('a.py')]))
         self.assertEqual(canonical_hash(m), canonical_hash(m.model_dump(mode='json')))

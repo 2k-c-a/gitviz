@@ -1,6 +1,6 @@
 # AI 인터페이스 계약 (S0)
 
-- 계약 버전: `1.0` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
+- 계약 버전: `1.1` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
 - 설계 근거: [요구사항 및 시스템 설계 v0.4](GitViz_AI_요구사항_및_시스템설계_v0.4.md), [구현 계획 v0.5](GitViz_AI_의존성기반_구현계획_v0.5.md) S0
 - 수집·백엔드·시각화는 모두 `app/schemas/ai.py`의 DTO를 기준으로 합니다. 이 문서와 코드가 다르면 코드가 우선이며 즉시 문서를 고칩니다.
 - 모든 DTO는 알 수 없는 필드를 거부합니다(`extra="forbid"`). 클라이언트가 `owner_user_id` 같은 값을 보내도 받지 않습니다.
@@ -118,6 +118,7 @@
 ## 8. 버전 규칙
 
 - 필드·enum 값 **추가**는 minor 증가, 의미 변경·삭제·이름 변경은 major 증가이며 소비자 합의가 필요합니다.
+- 1.1(S5): `InputManifest.pr_metadata`(AI로 보내는 PR 제목·설명) 추가. 기존 필드는 그대로이며 manifest_hash에 PR 설명이 반영된다.
 - 이후 단계에서 임의로 enum/필드 의미를 바꾸지 않습니다. 변경은 `CONTRACT_VERSION`, 이 문서, `scripts/test_ai_contracts.py`를 같은 PR에서 고칩니다.
 - 기능별 출력 schema 버전(S6)과 API 응답 DTO(S5·S8)는 이 계약 위에 추가하며 위 정의를 재정의하지 않습니다.
 
@@ -127,3 +128,21 @@
 - `scripts/fixtures/ai/sample.diff` + `line_maps.json`: add / delete / rename+수정 줄 맵. `valid_findings.json`, `invalid_findings.json`: 정상·비정상 Finding.
 - `scripts/ai_test_support.py`의 `require_test_database()`는 `gitviz_test`로 시작하는 DB만 허용하고, 앱 import **전에** `DATABASE_URL` 등을 설정합니다. 오류 메시지에 URL(비밀번호)을 넣지 않습니다.
 - `parse_line_maps()`는 fixture 검증용입니다. 실제 수집기의 줄 맵(S3)은 같은 fixture를 통과해야 합니다.
+
+## 10. 입력 준비 API (S5)
+
+모든 응답은 `Cache-Control: private, no-store`이며 오류는 `ErrorEnvelope`입니다(요청 형식 오류도 `INVALID_SELECTION`, 문제 필드 이름만 `details.fields`에 담고 입력값은 되돌려 주지 않음). 변경 요청(POST/DELETE)은 CSRF와 Origin 검사를 거치고, POST는 `Idempotency-Key`가 필수입니다. AI 제공자는 호출하지 않으며 `AI_ALLOW_EXTERNAL_TRANSFER=0`이어도 동작합니다. 비공개 저장소도 준비할 수 있습니다(외부 전송만 막힘).
+
+| Method / path | 설명 |
+|---|---|
+| POST `/api/ai/v1/inputs` | 본문은 `PrepareInputRequest`. PR 리비전을 고정하고 `building` 입력과 prepare 작업을 접수한다. 새로 만들었거나 진행 중이면 202, 이미 준비된 입력을 재사용하면 200. 응답은 `InputPreview` |
+| GET `/api/ai/v1/inputs/{id}` | 상태·전송 후보(manifest)·제외 사유·기한·토큰 예상·profile·policy. 작업이나 코드 취득을 시작하지 않는다 |
+| GET `/api/ai/v1/inputs/{id}/files/{file_id}?side=&start_line=&end_line=` | 보관된 고정 diff(맥락 25줄 포함)를 줄 번호와 함께. `side`(LEFT/RIGHT)와 범위는 함께 지정(범위는 side 필수). 삭제 파일은 LEFT만, 새 파일은 RIGHT만. `InputFileContent` |
+| DELETE `/api/ai/v1/inputs/{id}` | 202. 연결된 진행 중 작업을 취소하고 원문을 삭제한다. 입력 행·manifest·이미 만든 결과는 남는다. 본인 자료 삭제라 현재 저장소 접근 권한과 무관 |
+
+- 오류: 로그인 없음 401, 기능 꺼짐·다른 작성자·권한 상실 404(`RESOURCE_NOT_FOUND`), CSRF 403, 같은 key의 다른 요청 409(`IDEMPOTENCY_CONFLICT`), 미리보기 이후 PR 변경 409(`PR_CHANGED`), 선택 파일 수·요청 크기 초과 413, 원문 만료·삭제 410(`INPUT_EXPIRED`, files 엔드포인트), 권한 확인 장애 503. 코드를 읽는 GET은 매번 GitHub 접근 권한을 다시 확인한다.
+- `InputPreview.status`: `building → ready | failed`, 원문 보관 기한이 지나면(또는 삭제하면) `expired`. `ready`여도 `execution_valid=false`일 수 있다(실행 유효기간 `AI_INPUT_VALID_HOURS`=24시간 경과, 원문은 `expires_at`=`AI_INPUT_RETENTION_DAYS`=7일까지 보관). 준비 제한은 `AI_PREPARE_TIME_LIMIT_SECONDS`=120초(`PREPARE_TIMEOUT`).
+- `manifest_hash`가 생성 요청의 `consent_manifest_hash`로 되돌아오는 값이다. 미리보기 manifest는 실제 AI 전송 후보와 같다(파일별 `content_hash`·제외 사유·언어, PR 제목·설명 포함). `token_estimate`는 mock 추정(bytes/4+overhead)이며 모델 profile별 확인은 실행 직전에 다시 한다.
+- `coverage`의 세 분모: `inventory_coverage`/`pr_total_files`(PR 전체), `selected_files`·`selected_content_coverage`(선택과 확보), `analysis_coverage`(항상 `none`, 분석 전). 읽을 수 있는 파일이 없으면 `reviewable=false`(NO_REVIEWABLE_CONTENT, 생성 작업을 만들 수 없다).
+- prepare 작업 `error_code`(S5): `PR_CHANGED`(준비 중 PR 변경, 재시도 안 함), `INVALID_SELECTION`, `INPUT_TOO_LARGE`, `MERGE_BASE_UNAVAILABLE`, `RESOURCE_NOT_FOUND`/`REAUTH_REQUIRED`(권한 상실), `PREPARE_TIMEOUT`. 입력이 `failed`가 된다. 일시 오류(`UPSTREAM_UNAVAILABLE` 등)는 입력을 `building`으로 둔 채 재시도한다.
+- 보관: 코드 원문은 AES-GCM으로 암호화되어 `ai_input_files`에만 있고(AAD=`input_id:file_id`) 로그·큐·audit에는 없다. 확정된 입력은 파일을 바꾸거나 더할 수 없다(새 입력을 준비). 기한이 지난 원문은 참조하는 결과가 있어도 삭제된다(`run_input_maintenance`).

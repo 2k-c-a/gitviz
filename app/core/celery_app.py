@@ -10,7 +10,8 @@ celery = Celery(
     "gitviz",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.tasks.analyze_repository", "app.tasks.ai_dispatch", "app.tasks.ai_maintenance"]
+    include=["app.tasks.analyze_repository", "app.tasks.ai_dispatch", "app.tasks.ai_maintenance",
+             "app.tasks.ai_prepare"]
 )
 
 # AI 작업은 분석 task와 큐를 분리한다(기존 분석은 기본 큐 그대로).

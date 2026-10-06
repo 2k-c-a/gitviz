@@ -294,3 +294,10 @@ def capture_revision(client, repo: RepoRef, pr_number: int, expected_base_sha: s
     except ValidationError:
         raise UpstreamUnavailable('GitHub 응답의 PR 정보가 올바르지 않습니다.') from None
     return captured
+
+
+def verify_unchanged(client, repo: RepoRef, pr_number: int, base_sha: str, head_sha: str) -> None:
+    """입력 준비를 마치기 전에 PR의 base/head가 고정한 값 그대로인지 다시 확인한다(다르면 PRChanged)."""
+    pr = _json(_request(client, _repo_url(client, repo, f'pulls/{pr_number}')), dict)
+    if _heads(pr) != (base_sha, head_sha):
+        raise PRChanged('PR의 base 또는 head가 입력을 준비하는 동안 변경됐습니다.')
