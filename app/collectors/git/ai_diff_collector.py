@@ -38,7 +38,6 @@ class ChangedFile:
     new_oid: str | None
     old_mode: str
     new_mode: str
-    is_binary: bool
 
 
 @dataclass
@@ -64,8 +63,9 @@ class CollectedInput:
 # ── Git 실행 ────────────────────────────────────────────────────────────
 
 def _git(repo_path, *args, env=None, check=True, timeout=GIT_TIMEOUT) -> bytes:
-    cmd = ['git', '-c', 'core.quotepath=off', '-c', 'diff.external=', '-c', 'core.fsmonitor=false',
-           '--git-dir', str(repo_path), *args]
+    # --literal-pathspecs: 'a[1].py'나 '*.py' 같은 경로를 glob·pathspec 문법이 아닌 글자 그대로 취급한다.
+    cmd = ['git', '--literal-pathspecs', '-c', 'core.quotepath=off', '-c', 'diff.external=', '-c',
+           'core.fsmonitor=false', '--git-dir', str(repo_path), *args]
     try:
         proc = subprocess.run(cmd, env=env or git_environment(), capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -123,14 +123,18 @@ def _env(protocols='https', token=None):
 # ── 변경 목록 ───────────────────────────────────────────────────────────
 
 def list_changed_files(repo_path, merge_base_sha, head_sha, *, env=None) -> list[ChangedFile]:
-    """merge-base..head의 전체 변경 파일(=PR 전체 목록의 확정판). 이름 변경은 -M으로 묶는다."""
+    """merge-base..head의 전체 변경 파일 목록. 두 commit의 tree만 읽고 blob은 내려받지 않는다.
+
+    이름 변경은 OID가 같은 경우(R100)만 묶는다. 내용이 바뀐 이름 변경의 짝은 선택한 파일에 한해
+    `_pair_renames`가 찾는다(유사도 판정에는 blob이 필요하다). 바이너리 여부도 내용을 읽을 때 판단한다.
+    """
     env = env or _env()
-    raw = _git(repo_path, 'diff', '--raw', '--no-abbrev', '-z', '-M', '--no-ext-diff', '--no-textconv', merge_base_sha,
-               head_sha,
-               env=env)
-    numstat = _git(repo_path, 'diff', '--numstat', '-z', '-M', '--no-ext-diff', '--no-textconv', merge_base_sha,
-                   head_sha, env=env)
-    binary = _binary_paths(numstat)
+    raw = _git(repo_path, 'diff', '--raw', '--no-abbrev', '-z', '-M100%', '--no-ext-diff', '--no-textconv',
+               merge_base_sha, head_sha, env=env)
+    return _parse_raw(raw)
+
+
+def _parse_raw(raw: bytes) -> list[ChangedFile]:
     parts = raw.split(b'\0')
     files, i = [], 0
     while i < len(parts) and parts[i]:
@@ -151,25 +155,32 @@ def list_changed_files(repo_path, merge_base_sha, head_sha, *, env=None) -> list
             path=path, old_path=old_path, change_type=_STATUS_TYPES[kind],
             old_oid=None if ZERO_OID.match(old_oid) else old_oid,
             new_oid=None if ZERO_OID.match(new_oid) else new_oid,
-            old_mode=old_mode, new_mode=new_mode, is_binary=path in binary))
+            old_mode=old_mode, new_mode=new_mode))
     return files
 
 
-def _binary_paths(numstat: bytes) -> set[str]:
-    """numstat -z: '-\\t-\\t<path>\\0' 또는 이름 변경 시 '-\\t-\\t\\0<old>\\0<new>\\0'."""
-    parts = numstat.split(b'\0')
-    out, i = set(), 0
-    while i < len(parts) and parts[i]:
-        added, deleted, tail = (parts[i].decode('utf-8', 'replace').split('\t', 2) + [''])[:3]
-        if tail == '':
-            path = parts[i + 2].decode('utf-8', 'replace') if i + 2 < len(parts) else ''
-            i += 3
-        else:
-            path = tail
-            i += 1
-        if added == '-' and deleted == '-':
-            out.add(path)
-    return out
+MAX_RENAME_CANDIDATES = 20
+
+
+def _pair_renames(repo_path, merge_base_sha, head_sha, by_path, selected, env) -> None:
+    """선택한 '추가' 파일 중 내용이 바뀐 이름 변경의 원본을 찾아 by_path를 갱신한다.
+
+    비교 대상은 선택한 추가 파일과 정책상 읽을 수 있는 삭제 파일 후보(최대 MAX_RENAME_CANDIDATES개)로
+    제한해, 그 밖의 파일 blob은 내려받지 않는다. 후보가 많으면 짝짓기를 건너뛰고 추가 파일로 둔다.
+    """
+    added = [p for p in selected if by_path[p].change_type is ChangeType.added
+             and content_policy.mode_exclusion(None, by_path[p].new_mode) is None
+             and content_policy.path_exclusion(p) is None]
+    candidates = [c.path for c in by_path.values() if c.change_type is ChangeType.deleted
+                  and content_policy.mode_exclusion(c.old_mode, None) is None
+                  and content_policy.path_exclusion(c.path) is None]
+    if not added or not candidates or len(candidates) > MAX_RENAME_CANDIDATES:
+        return
+    raw = _git(repo_path, 'diff', '--raw', '--no-abbrev', '-z', '-M', '--no-ext-diff', '--no-textconv',
+               merge_base_sha, head_sha, '--', *added, *candidates, env=env)
+    for item in _parse_raw(raw):
+        if item.change_type is ChangeType.renamed and item.path in added and item.old_path in by_path:
+            by_path[item.path] = item
 
 
 # ── diff·줄 맵 ──────────────────────────────────────────────────────────
@@ -214,19 +225,23 @@ def _side_availability(change_type: ChangeType) -> str:
 
 def _file_diff(repo_path, merge_base_sha, head_sha, changed: ChangedFile, env) -> bytes:
     specs = [changed.path] + ([changed.old_path] if changed.old_path else [])
-    return _git(repo_path, 'diff', f'-U{CONTEXT_LINES}', '-M', '--no-color', '--no-ext-diff', '--no-textconv',
+    rename = ['-M'] if changed.old_path else []
+    return _git(repo_path, 'diff', f'-U{CONTEXT_LINES}', *rename, '--no-color', '--no-ext-diff', '--no-textconv',
                 merge_base_sha, head_sha, '--', *specs, env=env)
 
 
 # ── 선택 파일 수집 ──────────────────────────────────────────────────────
 
 def collect_selected_code(repo_path, merge_base_sha, head_sha, paths, *, max_files=50, max_bytes=2_000_000,
-                          protocols='https') -> CollectedInput:
+                          protocols='https', pr_total_files: int | None = None) -> CollectedInput:
     """선택한 경로의 고정 diff·manifest·coverage를 만든다.
 
     - 선택 경로는 PR의 실제 변경 목록과 대조한다(없으면 InvalidSelection).
     - 모든 선택 파일은 read / excluded / failed 중 하나이며 사유가 manifest에 남는다.
     - 확정할 수 없는 비교(commit 없음)는 예외로 알리고 부분 결과를 만들지 않는다.
+    - 선택하지 않은 파일의 blob은 내려받지 않는다. 목록은 tree만으로 만들고 내용은 선택 파일에 한해 읽는다.
+    - pr_total_files: PR 전체 파일 수(GitHub의 changed_files). 없으면 목록 항목 수(내용이 바뀐 이름 변경은
+      삭제+추가 두 항목으로 세어 약간 많을 수 있다).
     """
     env = _env(protocols)
     if not paths:
@@ -245,6 +260,7 @@ def collect_selected_code(repo_path, merge_base_sha, head_sha, paths, *, max_fil
     if unknown:
         raise InvalidSelection('PR 변경 목록에 없는 경로가 선택됐습니다.')
 
+    _pair_renames(repo_path, merge_base_sha, head_sha, by_path, paths, env)
     files, total, exclusions = [], 0, {}
     for path in paths:
         item = _collect_one(repo_path, merge_base_sha, head_sha, by_path[path], env)
@@ -256,7 +272,7 @@ def collect_selected_code(repo_path, merge_base_sha, head_sha, paths, *, max_fil
             exclusions[path] = item.manifest.exclusion_reason.value
         files.append(item)
 
-    coverage = _coverage(files, len(changed))
+    coverage = _coverage(files, pr_total_files if pr_total_files is not None else len(changed))
     return CollectedInput(merge_base_sha=merge_base_sha, head_sha=head_sha, files=files, coverage=coverage,
                           total_bytes=total, exclusions=exclusions)
 
@@ -273,10 +289,19 @@ def _skipped(changed: ChangedFile, state: ContentState, reason: Limitation) -> C
                          side_availability=_side_availability(changed.change_type), byte_count=0)
 
 
+_BINARY_MARKER = re.compile(rb'^(?:Binary files .* differ|GIT binary patch)$', re.MULTILINE)
+_DIFF_HEADER = re.compile(rb'^diff --git a/(.*) b/(.*)$', re.MULTILINE)
+
+
+def _only_expected_file(raw: bytes, changed: ChangedFile) -> bool:
+    """diff가 선택한 파일 하나의 것인지 확인한다(헤더가 정확히 하나이고 경로가 일치)."""
+    headers = _DIFF_HEADER.findall(raw)
+    expected = ((changed.old_path or changed.path).encode(), changed.path.encode())
+    return len(headers) == 1 and headers[0] == expected
+
+
 def _collect_one(repo_path, merge_base_sha, head_sha, changed: ChangedFile, env) -> CollectedFile:
     reason = content_policy.mode_exclusion(changed.old_mode, changed.new_mode)
-    if reason is None and changed.is_binary:
-        reason = Limitation.binary
     if reason is None:
         reason = content_policy.path_exclusion(changed.path, old_path=changed.old_path)
     if reason is not None:
@@ -285,12 +310,15 @@ def _collect_one(repo_path, merge_base_sha, head_sha, changed: ChangedFile, env)
         raw = _file_diff(repo_path, merge_base_sha, head_sha, changed, env)
     except UpstreamUnavailable:
         return _skipped(changed, ContentState.failed, Limitation.fetch_failed)
-    if b'\0' in raw:
+    if b'\0' in raw or _BINARY_MARKER.search(raw):
         return _skipped(changed, ContentState.excluded, Limitation.binary)
     try:
         text = raw.decode('utf-8')
     except UnicodeDecodeError:
         return _skipped(changed, ContentState.excluded, Limitation.binary)   # 텍스트로 해석할 수 없는 인코딩
+    if not _only_expected_file(raw, changed):
+        # pathspec이 의도와 다른 파일을 끌어들였다면 전송 범위를 확정할 수 없으므로 막는다.
+        return _skipped(changed, ContentState.failed, Limitation.fetch_failed)
     reason = content_policy.content_exclusion(text, byte_count=len(raw))
     if reason is not None:
         return _skipped(changed, ContentState.excluded, reason)

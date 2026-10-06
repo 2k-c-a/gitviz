@@ -19,7 +19,7 @@ from app.models.ai_job import AIJob
 from app.schemas.ai import ErrorCode
 from app.services.ai import idempotency, outbox, usage_service
 from app.services.ai.access import AIError, ensure_owner
-from app.services.ai.lease import Lease, LeaseLost
+from app.services.ai.lease import CancelRequested, Lease, LeaseLost
 
 __all__ = ['Lease', 'LeaseLost', 'CreateResult', 'HeartbeatResult', 'create_job', 'claim_job', 'heartbeat',
            'request_cancel', 'finish_job', 'fail_job', 'recover_expired', 'fail_queue_deadline',
@@ -49,6 +49,30 @@ class CreateResult:
 class HeartbeatResult:
     alive: bool
     cancel_requested: bool = False
+
+
+def _has_unresolved_reservation(db: Session, job_id: UUID) -> bool:
+    """정산·해제되지 않은(reserved) 또는 결과가 불명확한(uncertain) 비용 예약이 이 작업에 있는가."""
+    return db.execute(text("""SELECT 1 FROM usage_reservations WHERE job_id = :j
+                              AND status IN ('reserved', 'uncertain') LIMIT 1"""), {'j': job_id}).first() is not None
+
+
+def _close_open_reservations(db: Session, lease: Lease, *, succeeded: bool) -> bool:
+    """확정 시점에 남은 reserved 예약을 정리한다. 정리한 것이 불명(uncertain)이면 True.
+
+    성공이면 실제 비용을 모르므로 예약액으로 추정 정산하고, 그 외에는 호출이 일어났는지 알 수 없으므로
+    uncertain으로 남겨 예산을 계속 점유한다.
+    """
+    amount = db.execute(text("""SELECT max(reserved_amount) FROM usage_reservations
+                                WHERE job_id = :j AND attempt_no = :n AND status = 'reserved'"""),
+                        {'j': lease.job_id, 'n': lease.attempt_no}).scalar()
+    if amount is None:
+        return False
+    if succeeded:
+        usage_service.settle_attempt(db, lease.job_id, lease.attempt_no, amount)
+        return False
+    usage_service.mark_uncertain(db, lease.job_id, lease.attempt_no)
+    return True
 
 
 def _advisory_lock(db: Session, key: str) -> None:
@@ -152,6 +176,8 @@ def claim_job(db: Session, job_id: UUID, *, now: datetime | None = None) -> Leas
             started_at = COALESCE(started_at, :now), attempt_count = attempt_count + 1, updated_at = :now
         WHERE id = :id AND status = 'queued' AND deleted_at IS NULL AND cancel_requested_at IS NULL
           AND (next_attempt_at IS NULL OR next_attempt_at <= :now) AND attempt_count < :max
+          AND NOT EXISTS (SELECT 1 FROM usage_reservations r WHERE r.job_id = ai_jobs.id
+                          AND r.status IN ('reserved', 'uncertain'))
         RETURNING owner_user_id, repository_id, kind, attempt_count"""),
         {'token': token, 'until': now + timedelta(seconds=settings.lease_seconds), 'now': now, 'id': job_id,
          'max': settings.max_attempts}).one_or_none()
@@ -161,6 +187,11 @@ def claim_job(db: Session, job_id: UUID, *, now: datetime | None = None) -> Leas
                 updated_at = :now
             WHERE id = :id AND status = 'queued' AND deleted_at IS NULL AND cancel_requested_at IS NULL
               AND attempt_count >= :max"""), {'now': now, 'id': job_id, 'max': settings.max_attempts})
+        db.execute(text("""
+            UPDATE ai_jobs SET status = 'failed', error_code = 'OUTCOME_UNCERTAIN', finished_at = :now, updated_at = :now
+            WHERE id = :id AND status = 'queued' AND deleted_at IS NULL AND cancel_requested_at IS NULL
+              AND EXISTS (SELECT 1 FROM usage_reservations r WHERE r.job_id = ai_jobs.id
+                          AND r.status IN ('reserved', 'uncertain'))"""), {'now': now, 'id': job_id})
         db.commit()
         return None
     db.execute(text("""INSERT INTO ai_attempts (job_id, attempt_no, lease_token, status, started_at)
@@ -250,6 +281,7 @@ def finish_job(db: Session, lease: Lease, outcome: str = 'succeeded', *, error_c
     row = _locked(db, lease)
     if row.status == 'cancel_requested':
         final, attempt_status, error_code = 'cancelled', 'cancelled', None
+        _close_open_reservations(db, lease, succeeded=False)
     else:
         final, attempt_status = outcome, outcome
         if outcome == 'succeeded' and work is not None:
@@ -258,6 +290,7 @@ def finish_job(db: Session, lease: Lease, outcome: str = 'succeeded', *, error_c
             except Exception:
                 db.rollback()
                 raise
+        _close_open_reservations(db, lease, succeeded=outcome == 'succeeded')
     _close_attempt(db, lease, attempt_status, error_code, now)
     _terminal(db, lease, final, error_code if final == 'failed' else None, now)
     db.commit()
@@ -269,10 +302,16 @@ def fail_job(db: Session, lease: Lease, error_code: str, *, retryable: bool = Fa
     """실패를 확정한다. 재시도 가능하고 한도가 남았으면 retry_wait(+outbox 재발행 예약), 아니면 failed."""
     now = _now(now)
     row = _locked(db, lease)
+    _close_open_reservations(db, lease, succeeded=False)       # 남은 예약이 있으면 호출 결과가 불명확하다
     if row.status == 'cancel_requested':
         _close_attempt(db, lease, 'cancelled', None, now)
         _terminal(db, lease, 'cancelled', None, now)
         final = 'cancelled'
+    elif _has_unresolved_reservation(db, lease.job_id):
+        # 호출 결과를 알 수 없으면 자동으로 새 호출을 시작하지 않는다(사용자가 명시적으로 재시도).
+        _close_attempt(db, lease, 'failed', 'OUTCOME_UNCERTAIN', now)
+        _terminal(db, lease, 'failed', 'OUTCOME_UNCERTAIN', now)
+        final = 'failed'
     elif retryable and row.attempt_count < get_ai_settings().max_attempts:
         due = now + timedelta(seconds=retry_delay(row.attempt_count))
         _close_attempt(db, lease, 'failed', error_code, now)
@@ -308,9 +347,7 @@ def recover_expired(db: Session, *, now: datetime | None = None, limit: int = 10
     for row in rows:
         lease = Lease(job_id=row.id, token=uuid4(), attempt_no=row.attempt_count, owner_user_id=None,
                       repository_id=0, kind=row.kind)
-        called = db.execute(text("""SELECT 1 FROM usage_reservations WHERE job_id = :j AND attempt_no = :n
-                                    AND status = 'reserved' LIMIT 1"""),
-                            {'j': row.id, 'n': row.attempt_count}).first() is not None
+        called = _has_unresolved_reservation(db, row.id)
         if called:
             usage_service.mark_uncertain(db, row.id, row.attempt_count)
         if row.status == 'cancel_requested':

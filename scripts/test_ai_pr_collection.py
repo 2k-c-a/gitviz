@@ -48,7 +48,9 @@ class Fixture:
         self.path = Path(root) / 'origin.git'
         self.env = {**os.environ, 'GIT_AUTHOR_NAME': 'fixture', 'GIT_AUTHOR_EMAIL': 'f@example.com',
                     'GIT_COMMITTER_NAME': 'fixture', 'GIT_COMMITTER_EMAIL': 'f@example.com',
-                    'GIT_AUTHOR_DATE': '2026-01-01T00:00:00Z', 'GIT_COMMITTER_DATE': '2026-01-01T00:00:00Z'}
+                    'GIT_AUTHOR_DATE': '2026-01-01T00:00:00Z', 'GIT_COMMITTER_DATE': '2026-01-01T00:00:00Z',
+                    # Windows git은 '*' 같은 NTFS 금지 문자가 든 경로를 index에 못 넣는다(저장소 데이터로는 유효하다).
+                    'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'core.protectNTFS', 'GIT_CONFIG_VALUE_0': 'false'}
         self.git('init', '--bare', '-q', str(self.path))
         self.git('config', 'uploadpack.allowFilter', 'true')
         self.git('config', 'uploadpack.allowAnySHA1InWant', 'true')
@@ -72,6 +74,8 @@ class Fixture:
             'latin.py': b'x = "\xe9"\n',
             'big.py': big,
             'notes.xyz': b'hello\n',
+            'a[1].py': b'bracket = 1\n', 'a1.py': b'plain = 1\n',
+            'star*.py': b'star_literal = 1\n', 'star1.py': b'star_other = 1\n',
             'link.py': ('120000', b'target.py'),
             'sub': ('160000', bytes.fromhex(A[:40])),
         }, 'feature')
@@ -109,7 +113,7 @@ class Fixture:
 
 
 ALL_PATHS = ['src/new_mod.py', 'src/old_mod.py', 'src/b.py', 'main.py', 'weird.py', 'app/config.py', '.env',
-             'package-lock.json', 'gen/api.py', 'latin.py', 'big.py', 'notes.xyz', 'link.py', 'sub']
+             'package-lock.json', 'gen/api.py', 'latin.py', 'big.py', 'notes.xyz', 'link.py', 'sub', 'a[1].py', 'a1.py', 'star*.py', 'star1.py']
 EXPECTED = {
     'src/new_mod.py': ('read', None), 'src/old_mod.py': ('read', None), 'src/b.py': ('read', None),
     'main.py': ('read', None), 'weird.py': ('excluded', 'binary'), 'app/config.py': ('excluded', 'secret_suspected'),
@@ -117,7 +121,9 @@ EXPECTED = {
     'gen/api.py': ('excluded', 'generated_file'), 'latin.py': ('excluded', 'binary'),
     'big.py': ('excluded', 'too_large'), 'notes.xyz': ('excluded', 'unsupported_language'),
     'link.py': ('excluded', 'link_or_submodule'), 'sub': ('excluded', 'link_or_submodule'),
+    'a[1].py': ('read', None), 'a1.py': ('read', None), 'star*.py': ('read', None), 'star1.py': ('read', None),
 }
+PR_FILES = 18            # GitHub가 세는 PR 변경 파일 수(이름 변경은 1개)
 
 
 class GitCase(unittest.TestCase):
@@ -138,19 +144,17 @@ class GitCase(unittest.TestCase):
 class DiffCollection(GitCase):
     def test_changed_files_are_computed_from_merge_base_not_base_tip(self):
         changed = {c.path: c for c in diffc.list_changed_files(self.fx.path, self.fx.c0, self.fx.f1)}
-        self.assertEqual(set(changed), set(ALL_PATHS))
+        self.assertEqual(set(changed), set(ALL_PATHS) | {'src/a.py'})   # 내용이 바뀐 이름 변경은 목록에서 삭제+추가
         self.assertNotIn('other.py', changed)         # main이 이후에 추가한 파일은 PR 변경이 아니다
         # base tip과 직접 비교하면 other.py가 삭제로 보이는 잘못된 목록이 된다.
         wrong = {c.path for c in diffc.list_changed_files(self.fx.path, self.fx.m1, self.fx.f1)}
         self.assertIn('other.py', wrong)
-        self.assertEqual(changed['src/b.py'].change_type, ChangeType.renamed)
-        self.assertEqual(changed['src/b.py'].old_path, 'src/a.py')
+        self.assertEqual(changed['src/b.py'].change_type, ChangeType.added)
+        self.assertEqual(changed['src/a.py'].change_type, ChangeType.deleted)
         self.assertEqual(changed['src/new_mod.py'].change_type, ChangeType.added)
         self.assertIsNone(changed['src/new_mod.py'].old_oid)
         self.assertEqual(changed['src/old_mod.py'].change_type, ChangeType.deleted)
         self.assertIsNone(changed['src/old_mod.py'].new_oid)
-        self.assertTrue(changed['weird.py'].is_binary)
-        self.assertFalse(changed['main.py'].is_binary)
         self.assertEqual(changed['link.py'].new_mode, '120000')
         self.assertEqual(changed['sub'].new_mode, '160000')
 
@@ -166,19 +170,21 @@ class DiffCollection(GitCase):
         self.assertEqual(set(result.exclusions), {p for p, (s, _) in EXPECTED.items() if s != 'read'})
 
     def test_coverage_separates_inventory_selection_and_analysis(self):
-        full = self.collect()
+        full = self.collect(pr_total_files=PR_FILES)
         self.assertEqual(full.coverage.inventory_coverage, InventoryCoverage.complete)
         self.assertEqual(full.coverage.selected_content_coverage, ContentCoverage.partial)
         self.assertEqual(full.coverage.analysis_coverage, ContentCoverage.none)
-        self.assertEqual((full.coverage.selected_files, full.coverage.pr_total_files), (14, 14))
+        self.assertEqual((full.coverage.selected_files, full.coverage.pr_total_files), (18, 18))
         self.assertNotIn(Limitation.not_selected, full.coverage.limitations)
         self.assertTrue({Limitation.binary, Limitation.secret_suspected, Limitation.too_large,
                          Limitation.generated_file, Limitation.link_or_submodule,
                          Limitation.unsupported_language} <= set(full.coverage.limitations))
 
-        some = self.collect(['main.py', 'src/b.py'])
+        derived = self.collect(['main.py'])           # 총수를 주지 않으면 목록 항목 수(이름 변경이 2개로 셈)
+        self.assertEqual(derived.coverage.pr_total_files, 19)
+        some = self.collect(['main.py', 'src/b.py'], pr_total_files=PR_FILES)
         self.assertEqual(some.coverage.selected_content_coverage, ContentCoverage.complete)
-        self.assertEqual((some.coverage.selected_files, some.coverage.pr_total_files), (2, 14))
+        self.assertEqual((some.coverage.selected_files, some.coverage.pr_total_files), (2, 18))
         self.assertEqual(some.coverage.limitations, [Limitation.not_selected])
 
         none = self.collect(['weird.py', '.env'])
@@ -190,7 +196,7 @@ class DiffCollection(GitCase):
                                  revision={'repo_id': 1, 'pr_number': 7, 'base_sha': self.fx.m1,
                                            'head_sha': self.fx.f1, 'merge_base_sha': self.fx.c0},
                                  files=[f.manifest for f in result.files])
-        self.assertEqual(len(manifest.files), 14)
+        self.assertEqual(len(manifest.files), 18)
         for f in result.files:
             if f.payload is not None:
                 self.assertEqual(f.manifest.content_hash, hashlib.sha256(f.payload).hexdigest())
@@ -264,6 +270,66 @@ class DiffCollection(GitCase):
             self.collect(max_files=3)
         with self.assertRaises(InputTooLarge):
             self.collect(['src/b.py', 'main.py'], max_bytes=100)
+
+    def test_selected_paths_are_literal_not_pathspec_patterns(self):
+        for chosen, wanted, unwanted in (('a[1].py', 'bracket', 'plain'), ('star*.py', 'star_literal', 'star_other')):
+            with self.subTest(path=chosen):
+                result = self.collect([chosen])
+                self.assertEqual([f.manifest.path for f in result.files], [chosen])
+                payload = result.files[0].payload.decode()
+                self.assertIn(wanted, payload)
+                self.assertNotIn(unwanted, payload)          # 다른 파일의 코드가 전송 범위에 섞이지 않는다
+                self.assertEqual(payload.count('diff --git'), 1)
+                self.assertEqual(result.files[0].line_map['right'], [1])
+                self.assertEqual(result.total_bytes, len(result.files[0].payload))
+
+    def test_diff_that_contains_another_file_is_rejected(self):
+        two_files = self.fx.git('diff', '--no-color', self.fx.c0, self.fx.f1, '--', 'a1.py', 'a[1].py').encode()
+        self.assertEqual(two_files.count(b'diff --git'), 2)
+        with patch.object(diffc, '_file_diff', return_value=two_files):
+            result = self.collect(['a1.py'])
+        item = result.files[0]
+        self.assertIsNone(item.payload)
+        self.assertEqual((item.manifest.content_state, item.manifest.exclusion_reason),
+                         (ContentState.failed, Limitation.fetch_failed))
+        with patch.object(diffc, '_file_diff', return_value=b''):
+            self.assertIsNone(self.collect(['a1.py']).files[0].payload)
+
+    def test_total_file_count_can_be_supplied_from_github(self):
+        self.assertEqual(self.collect(['main.py'], pr_total_files=18).coverage.pr_total_files, 18)
+
+    def test_only_selected_files_blobs_are_downloaded(self):
+        def missing(work):
+            out = subprocess.run(['git', '--git-dir', str(work), 'rev-list', '--objects', '--missing=print',
+                                  self.fx.c0, self.fx.f1],
+                                 capture_output=True, check=True).stdout.decode().split('\n')
+            return {line[1:].split(' ')[0] for line in out if line.startswith('?')}
+        big_oid = self.fx.git('rev-parse', f'{self.fx.f1}:big.py')
+        main_oids = {self.fx.git('rev-parse', f'{self.fx.c0}:main.py'), self.fx.git('rev-parse', f'{self.fx.f1}:main.py')}
+        with diffc.revision_workspace(self.fx.path.as_uri(), self.fx.c0, self.fx.f1, protocols='file') as work:
+            before = missing(work)
+            self.assertIn(big_oid, before)
+            diffc.list_changed_files(work, self.fx.c0, self.fx.f1, env=diffc._env('file'))
+            self.assertEqual(missing(work), before)                      # 전체 목록 조회는 blob을 받지 않는다
+            diffc.collect_selected_code(work, self.fx.c0, self.fx.f1, ['.env', 'package-lock.json', 'link.py', 'sub',
+                                                                         'notes.xyz'], protocols='file')
+            self.assertEqual(missing(work), before)                      # 경로·모드로 제외되는 파일은 내용을 읽지 않는다
+            diffc.collect_selected_code(work, self.fx.c0, self.fx.f1, ['main.py'], protocols='file')
+            after_main = missing(work)
+            self.assertEqual(before - after_main, main_oids)             # 선택한 파일의 두 blob만 받았다
+            self.assertIn(big_oid, after_main)
+            diffc.collect_selected_code(work, self.fx.c0, self.fx.f1, ['src/b.py'], protocols='file')
+            after_rename = missing(work)
+            self.assertLessEqual(len(after_main - after_rename), 4)      # 새 파일 + 이름 변경 후보 몇 개뿐
+            self.assertIn(big_oid, after_rename)
+
+    def test_rename_pairing_is_skipped_when_there_are_too_many_candidates(self):
+        with patch.object(diffc, 'MAX_RENAME_CANDIDATES', 1):
+            result = self.collect(['src/b.py'])
+        item = result.files[0]
+        self.assertEqual(item.manifest.change_type, ChangeType.added)    # 짝을 못 찾으면 추가 파일로 다룬다
+        self.assertIsNone(item.manifest.old_path)
+        self.assertEqual(self.collect(['src/b.py']).files[0].manifest.change_type, ChangeType.renamed)
 
     def test_missing_commit_is_not_returned_as_partial_result(self):
         with self.assertRaises(MergeBaseUnavailable):

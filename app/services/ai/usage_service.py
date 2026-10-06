@@ -16,7 +16,7 @@ from app.core.ai_settings import get_ai_settings
 from app.models.ai_usage import UsageBudget, UsageReservation
 from app.schemas.ai import ErrorCode
 from app.services.ai.access import AIError
-from app.services.ai.lease import Lease, LeaseLost
+from app.services.ai.lease import CancelRequested, Lease, LeaseLost
 
 ZERO = Decimal(0)
 
@@ -44,12 +44,16 @@ def _budget_id(db: Session, *, owner_id: UUID | None, scope: str, period: date, 
         UsageBudget.currency == currency)).scalar_one()
 
 
-def _require_lease(db: Session, lease: Lease) -> None:
-    ok = db.execute(text("""SELECT 1 FROM ai_jobs WHERE id = :id AND lease_token = :t
-                            AND status IN ('running', 'cancel_requested')"""),
-                    {'id': lease.job_id, 't': lease.token}).first()
-    if ok is None:
+def _require_lease(db: Session, lease: Lease, now: datetime) -> None:
+    """작업 행을 잠그고 처리권·실행 상태·만료·취소를 확인한다. 이 transaction이 끝날 때까지 복구·취소 처리가
+    같은 행을 바꾸지 못하므로 확인 직후 처리권이 사라진 채 예약되는 일이 없다."""
+    row = db.execute(text("""SELECT status, lease_until FROM ai_jobs WHERE id = :id AND lease_token = :t
+                             FOR UPDATE"""), {'id': lease.job_id, 't': lease.token}).one_or_none()
+    if row is None or row.status not in ('running', 'cancel_requested') or row.lease_until is None \
+            or row.lease_until <= now:
         raise LeaseLost('처리권을 잃은 작업입니다.')
+    if row.status == 'cancel_requested':
+        raise CancelRequested('취소가 접수된 작업입니다.')
 
 
 def reserve_attempt(db: Session, lease: Lease, amount: Decimal, *, now: datetime | None = None) -> list[UUID]:
@@ -58,8 +62,9 @@ def reserve_attempt(db: Session, lease: Lease, amount: Decimal, *, now: datetime
     if amount < 0:
         raise ValueError('예약 금액은 0 이상이어야 합니다.')
     settings = get_ai_settings()
+    now = now or datetime.now(timezone.utc)
     period = period_start(now)
-    _require_lease(db, lease)
+    _require_lease(db, lease, now)
     ids = [
         _budget_id(db, owner_id=lease.owner_user_id, scope='user', period=period,
                    currency=settings.budget_currency, limit=settings.user_monthly_budget),
