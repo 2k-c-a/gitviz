@@ -16,11 +16,12 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    SecretStr,
     StringConstraints,
     model_validator,
 )
 
-CONTRACT_VERSION = "1.1"
+CONTRACT_VERSION = "1.2"
 
 _SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -171,6 +172,8 @@ class ErrorCode(str, Enum):
     INPUT_EXPIRED = "INPUT_EXPIRED"
     RESULT_EXPIRED = "RESULT_EXPIRED"
     INPUT_TOO_LARGE = "INPUT_TOO_LARGE"
+    CREDENTIAL_REQUIRED = "CREDENTIAL_REQUIRED"
+    CREDENTIAL_INVALID = "CREDENTIAL_INVALID"
     INVALID_SELECTION = "INVALID_SELECTION"
     INVALID_STATE = "INVALID_STATE"
     USER_LIMIT = "USER_LIMIT"
@@ -193,6 +196,8 @@ ERROR_HTTP_STATUS: dict[ErrorCode, int] = {
     ErrorCode.INPUT_EXPIRED: 410,
     ErrorCode.RESULT_EXPIRED: 410,
     ErrorCode.INPUT_TOO_LARGE: 413,
+    ErrorCode.CREDENTIAL_REQUIRED: 422,
+    ErrorCode.CREDENTIAL_INVALID: 422,
     ErrorCode.INVALID_SELECTION: 422,
     ErrorCode.INVALID_STATE: 422,
     ErrorCode.USER_LIMIT: 429,
@@ -500,6 +505,7 @@ class InputPreview(_Strict):
     raw_available: bool = False
     reviewable: bool = False                     # 읽은 파일이 하나 이상이어서 AI에 보낼 내용이 있다
     prepare_job: PrepareJobView | None = None
+    transfer: 'TransferView | None' = None       # 선택된 제공자·모델·key(동의 화면에 표시)
 
 
 class InputFileContent(_Strict):
@@ -588,3 +594,95 @@ class SummaryOutput(_StrictOutput):
         if self.schema_version != SUMMARY_SCHEMA_VERSION:
             raise ValueError("schema_version이 올바르지 않습니다.")
         return self
+
+
+# ── 사용자 API key(BYOK)·제공자 선택·전송 동의 (S6.5) ───────────────────────────
+# API key는 요청 본문으로만 들어오고(SecretStr: 실수로 로그에 찍혀도 가려진다) 응답에는 마스킹된 힌트만 나간다.
+
+PROFILE_ID_PATTERN = r"^[a-z0-9][a-z0-9._-]{2,63}$"
+ProfileId = Annotated[str, StringConstraints(pattern=PROFILE_ID_PATTERN)]
+
+
+class SupportedModel(_Strict):
+    profile_id: str
+    provider: str
+    model: str
+    display_name: str
+    currency: str
+    input_price_per_mtok: str
+    output_price_per_mtok: str
+    price_version: str
+    context_window: int
+    max_input_tokens: int
+    max_output_tokens: int
+    allowed: bool = True          # 서버 관리자가 허용한 profile인가
+
+
+class SupportedProvider(_Strict):
+    id: str
+    display_name: str
+    key_format: str
+    models: list[SupportedModel]
+
+
+class ProvidersResponse(_Strict):
+    providers: list[SupportedProvider]
+    external_transfer_allowed: bool
+
+
+class RegisterKeyRequest(_Strict):
+    api_key: SecretStr = Field(min_length=16, max_length=400)
+    profile_id: ProfileId | None = None       # 이 key로 기본 사용할 모델(지원 목록의 profile)
+    verify: bool = True                        # 제공자에 key를 확인한다(코드는 보내지 않는다)
+
+
+class CredentialView(_Strict):
+    provider: str
+    status: Literal["active"] = "active"
+    version: int = Field(ge=1)
+    key_hint: str                              # 마스킹된 힌트(sk-ant-…a1b2). 전체 key는 어디에도 돌려주지 않는다
+    preferred_profile_id: str | None = None
+    validated_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    in_flight_jobs: int = Field(ge=0, default=0)
+
+
+class CredentialChange(_Strict):
+    credential: CredentialView
+    changed: bool                              # 같은 key를 다시 보냈으면 false(새 버전을 만들지 않는다)
+    previous_version: int | None = None
+
+
+class CredentialList(_Strict):
+    credentials: list[CredentialView]
+
+
+class CredentialDeleted(_Strict):
+    provider: str
+    status: Literal["deleted"] = "deleted"
+    jobs_cancelled: int = Field(ge=0)
+
+
+class TransferConsent(_Strict):
+    """전송 동의: 사용자가 확인한 코드 범위(manifest_hash)와 제공자·모델·key 버전."""
+    input_id: UUID
+    manifest_hash: Sha256Hex
+    provider: str
+    profile_id: ProfileId
+    credential_version: int = Field(ge=1)
+    policy_version: ShortText
+
+
+class TransferView(_Strict):
+    """미리보기에서 사용자가 확인할 전송 대상(동의 화면용)."""
+    provider: str
+    profile_id: str
+    model: str
+    external_transfer_allowed: bool
+    credential_configured: bool
+    credential_version: int | None = None
+    key_hint: str | None = None
+
+
+InputPreview.model_rebuild()   # 뒤에 정의된 TransferView 참조를 확정한다

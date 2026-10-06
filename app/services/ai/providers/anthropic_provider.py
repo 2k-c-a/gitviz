@@ -5,7 +5,6 @@
 - 구조화 출력(output_config.format)과 effort만 사용한다. thinking은 모델 기본(적응형)에 맡기며 끌 수 없다.
 - 오류는 ProviderFailure로 분류한다(과금·재시도 판단). 요청·응답 본문과 API key는 예외·repr·로그에 넣지 않는다.
 """
-import os
 import time
 from decimal import Decimal
 
@@ -42,10 +41,10 @@ class AnthropicProvider:
             raise ProviderConfigError('profile이 anthropic이 아닙니다.')
         self.profile = profile
         if client is None:
-            key = api_key or os.getenv('ANTHROPIC_API_KEY', '')
-            if not key:
-                raise ProviderConfigError('ANTHROPIC_API_KEY가 설정되지 않았습니다.')
-            client = anthropic.Anthropic(api_key=key, timeout=float(profile.timeout_seconds), max_retries=0)
+            # 서버 공용 key로 대체하지 않는다. 호출하는 쪽이 작업에 고정된 사용자 key를 주입해야 한다.
+            if not api_key:
+                raise ProviderConfigError('사용자 API key가 주입되지 않았습니다.')
+            client = anthropic.Anthropic(api_key=api_key, timeout=float(profile.timeout_seconds), max_retries=0)
         self.client = client
 
     def __repr__(self) -> str:
@@ -83,6 +82,13 @@ class AnthropicProvider:
         except Exception as exc:
             raise ProviderError(self.classify_error(exc, billable=False)) from None
         return int(result.input_tokens) + COUNT_SCHEMA_MARGIN_TOKENS
+
+    def verify_credential(self) -> None:
+        """사용자 key가 이 profile의 모델을 쓸 수 있는지 제공자에 확인한다(모델 조회: 코드를 보내지 않고 과금되지 않는다)."""
+        try:
+            self.client.models.retrieve(self.profile.model)
+        except Exception as exc:
+            raise ProviderError(self.classify_error(exc, billable=False)) from None
 
     def generate(self, request: GenerationRequest) -> ProviderResponse:
         profile = self.profile

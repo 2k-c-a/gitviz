@@ -112,6 +112,10 @@ class InputCase(unittest.TestCase):
             route='POST /api/ai/v1/inputs', idempotency_key=key or uuid4().hex,
             body_hash=idempotency.request_hash({'paths': sorted(paths), 'meta': meta, 'k': key or str(uuid4())}), now=now)
 
+    def pinned(self, owner, repo, input_id, **kw):
+        import ai_credential_support
+        return ai_credential_support.pinned_for(self.db, owner, repo, input_id, **kw)
+
     def run_prepare(self, job_id, *, authorize=None, verify=None, token=None):
         """prepare handler를 실제 DB·실제 git(local file remote)로 실행한다. GitHub API와 HTTP는 쓰지 않는다."""
         from app.services.ai import job_runner

@@ -36,3 +36,28 @@ def decrypt_input(payload: bytes, key_version: str, aad: bytes = b'') -> bytes:
         return AESGCM(_key(key_version)).decrypt(payload[:NONCE_SIZE], payload[NONCE_SIZE:], aad or None)
     except InvalidTag:
         raise InputCryptoError('암호문을 복호화할 수 없습니다.') from None
+
+
+# ── 사용자 API key 암호화: 입력 코드 암호화 키와 분리된 키 묶음(AI_CREDENTIAL_ENCRYPTION_KEYS)을 쓴다 ──
+
+def _credential_key(key_version: str) -> bytes:
+    key = get_ai_settings().credential_keys.get(key_version)
+    if not key:
+        raise InputCryptoError('알 수 없는 API key 암호화 키 버전입니다.')
+    return key
+
+
+def encrypt_secret(data: bytes, key_version: str, aad: bytes) -> bytes:
+    """aad(예: 'credential:<version id>')로 다른 행·다른 사용자에게 암호문을 옮겨 붙이는 것을 막는다."""
+    nonce = secrets.token_bytes(NONCE_SIZE)
+    return nonce + AESGCM(_credential_key(key_version)).encrypt(nonce, data, aad)
+
+
+def decrypt_secret(payload: bytes, key_version: str, aad: bytes) -> bytes:
+    if len(payload) <= NONCE_SIZE:
+        raise InputCryptoError('암호문이 올바르지 않습니다.')
+    try:
+        return AESGCM(_credential_key(key_version)).decrypt(payload[:NONCE_SIZE], payload[NONCE_SIZE:], aad)
+    except InvalidTag:
+        raise InputCryptoError('암호문을 복호화할 수 없습니다.') from None
+

@@ -60,6 +60,8 @@ class AISettings:
     allow_external_transfer: bool = False
     policy_versions: tuple[str, ...] = DEFAULT_POLICY_VERSIONS
     encryption_keys: dict = field(default_factory=dict, repr=False)
+    credential_keys: dict = field(default_factory=dict, repr=False)      # 사용자 API key 암호화 키(입력 암호화 키와 분리)
+    credential_key_version: str = ''
     active_key_version: str = ''
     allowed_origins: tuple[str, ...] = ()
     cookie_secure: bool = False
@@ -71,13 +73,15 @@ class AISettings:
     max_attempts: int = 3
     queue_deadline_seconds: int = 1800
     retry_delay_seconds: int = 30
-    provider_profile: str = 'claude-review-v1'
+    provider_profile: str = 'claude-opus-5-5-v1'      # 사용자가 아직 모델을 고르지 않았을 때의 기본 profile
+    allowed_profiles: tuple[str, ...] = ()            # 비어 있으면 등록된 모든 profile 허용
+    credential_verify_limit_per_hour: int = 10
     input_valid_hours: int = 24
     input_retention_days: int = 7
     prepare_time_limit_seconds: int = 120
     budget_currency: str = 'USD'
-    user_monthly_budget: Decimal = Decimal('5')
-    server_monthly_budget: Decimal = Decimal('50')
+    user_monthly_budget: Decimal = Decimal('20')      # 사용자 key 사용에 대한 개인 지출 상한(실수·폭주 방지)
+    server_monthly_budget: Decimal = Decimal('0')     # 0이면 서버 공유 예산을 쓰지 않는다(사용자 key는 서버 비용이 아니다)
 
 
 def get_ai_settings() -> AISettings:
@@ -90,6 +94,8 @@ def get_ai_settings() -> AISettings:
         allow_external_transfer=_flag('AI_ALLOW_EXTERNAL_TRANSFER'),
         policy_versions=tuple(p.strip() for p in policies.split(',') if p.strip()),
         encryption_keys=_parse_keys(os.getenv('AI_INPUT_ENCRYPTION_KEYS', '')),
+        credential_keys=_parse_keys(os.getenv('AI_CREDENTIAL_ENCRYPTION_KEYS', '')),
+        credential_key_version=os.getenv('AI_CREDENTIAL_KEY_VERSION', '').strip(),
         active_key_version=os.getenv('AI_INPUT_KEY_VERSION', '').strip(),
         allowed_origins=tuple(origins),
         cookie_secure=_flag('SESSION_COOKIE_SECURE'),
@@ -101,13 +107,15 @@ def get_ai_settings() -> AISettings:
         max_attempts=_int('AI_MAX_ATTEMPTS', 3),
         queue_deadline_seconds=_int('AI_QUEUE_DEADLINE_SECONDS', 1800),
         retry_delay_seconds=_int('AI_RETRY_DELAY_SECONDS', 30),
-        provider_profile=os.getenv('AI_PROVIDER_PROFILE', '').strip() or 'claude-review-v1',
+        provider_profile=os.getenv('AI_PROVIDER_PROFILE', '').strip() or 'claude-opus-5-5-v1',
+        allowed_profiles=tuple(p.strip() for p in os.getenv('AI_ALLOWED_PROFILES', '').split(',') if p.strip()),
+        credential_verify_limit_per_hour=_int('AI_CREDENTIAL_VERIFY_LIMIT_PER_HOUR', 10),
         input_valid_hours=_int('AI_INPUT_VALID_HOURS', 24),
         input_retention_days=_int('AI_INPUT_RETENTION_DAYS', 7),
         prepare_time_limit_seconds=_int('AI_PREPARE_TIME_LIMIT_SECONDS', 120),
         budget_currency=(os.getenv('AI_BUDGET_CURRENCY', 'USD').strip().upper() or 'USD')[:3],
-        user_monthly_budget=_decimal('AI_USER_MONTHLY_BUDGET', '5'),
-        server_monthly_budget=_decimal('AI_SERVER_MONTHLY_BUDGET', '50'),
+        user_monthly_budget=_decimal('AI_USER_MONTHLY_BUDGET', '20'),
+        server_monthly_budget=_decimal('AI_SERVER_MONTHLY_BUDGET', '0'),
     )
 
 
@@ -146,14 +154,20 @@ def validate_ai_settings(settings: AISettings | None = None) -> list[str]:
         problems.append('AI_ALLOWED_ORIGINS 또는 FRONTEND_URL에 유효한 origin이 없습니다.')
     elif not s.cookie_secure and any(urlsplit(o).hostname not in LOCAL_HOSTS for o in s.allowed_origins):
         problems.append('로컬이 아닌 origin에서는 SESSION_COOKIE_SECURE=1이 필요합니다.')
-    from app.services.ai.providers.registry import UnknownProfile, get_profile
-    try:
-        profile = get_profile(s.provider_profile)
-    except UnknownProfile:
-        problems.append('AI_PROVIDER_PROFILE이 등록된 provider profile이 아닙니다.')
+    if not s.credential_keys:
+        problems.append('AI_CREDENTIAL_ENCRYPTION_KEYS에 유효한 키(버전:64자리 hex)가 없습니다.')
+    if s.credential_key_version not in s.credential_keys:
+        problems.append('AI_CREDENTIAL_KEY_VERSION이 설정된 사용자 API key 암호화 키 버전에 없습니다.')
+    elif s.credential_keys == s.encryption_keys:
+        problems.append('사용자 API key 암호화 키는 입력 암호화 키와 달라야 합니다.')
+    from app.services.ai.providers.registry import PROFILES
+    for name in (s.provider_profile, *s.allowed_profiles):
+        if name not in PROFILES:
+            problems.append('AI_PROVIDER_PROFILE/AI_ALLOWED_PROFILES에 등록되지 않은 provider profile이 있습니다.')
+            break
     else:
-        if s.allow_external_transfer and profile.provider == 'anthropic' and not os.getenv('ANTHROPIC_API_KEY', '').strip():
-            problems.append('외부 전송을 허용하려면 ANTHROPIC_API_KEY가 필요합니다.')
+        if s.allowed_profiles and s.provider_profile not in s.allowed_profiles:
+            problems.append('AI_PROVIDER_PROFILE이 AI_ALLOWED_PROFILES에 포함돼 있지 않습니다.')
     sync_url = os.getenv('DATABASE_URL', '')
     async_url = os.getenv('DATABASE_URL_ASYNC') or sync_url
     if not sync_url:

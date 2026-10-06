@@ -20,6 +20,11 @@ class AIJob(Base):
     request_options = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     consent_manifest_hash = Column(CHAR(64))
     provider_profile = Column(Text)
+    # 작업을 만들 때 고정한 실행 설정(이후 바뀌지 않는다): 제공자·모델·profile 전체 해시·사용자 key 버전
+    provider = Column(Text)
+    model = Column(Text)
+    profile_fingerprint = Column(CHAR(64))
+    credential_version_id = Column(UUID(as_uuid=True))
     prompt_version = Column(Text)
     schema_version = Column(Text)
     attempt_count = Column(Integer, nullable=False, default=0, server_default="0")
@@ -38,6 +43,9 @@ class AIJob(Base):
         ForeignKeyConstraint(["input_id", "owner_user_id", "repository_id"],
                              ["ai_inputs.id", "ai_inputs.owner_user_id", "ai_inputs.repository_id"],
                              name="fk_ai_jobs_input", ondelete="CASCADE"),
+        ForeignKeyConstraint(["credential_version_id", "owner_user_id"],
+                             ["ai_credential_versions.id", "ai_credential_versions.owner_user_id"],
+                             name="fk_ai_jobs_credential_version"),
         UniqueConstraint("owner_user_id", "kind", "fingerprint", "generation",
                          name="uq_ai_jobs_owner_kind_fingerprint_generation"),
         UniqueConstraint("id", "owner_user_id", "repository_id", name="uq_ai_jobs_id_owner_repo"),
@@ -55,6 +63,13 @@ class AIJob(Base):
         CheckConstraint("status NOT IN ('succeeded','failed','cancelled') OR finished_at IS NOT NULL",
                         name="ck_ai_jobs_terminal"),
         CheckConstraint("status <> 'failed' OR error_code IS NOT NULL", name="ck_ai_jobs_failed_code"),
+        CheckConstraint("credential_version_id IS NULL OR (provider IS NOT NULL AND model IS NOT NULL "
+                        "AND provider_profile IS NOT NULL AND profile_fingerprint IS NOT NULL)",
+                        name="ck_ai_jobs_pinned"),
+        CheckConstraint(f"profile_fingerprint IS NULL OR profile_fingerprint ~ '{HEX64}'",
+                        name="ck_ai_jobs_profile_fingerprint"),
+        Index("ix_ai_jobs_credential_version", "credential_version_id",
+              postgresql_where=text("credential_version_id IS NOT NULL")),
         Index("ix_ai_jobs_status_next_attempt", "status", "next_attempt_at"),
         Index("ix_ai_jobs_owner_created", "owner_user_id", "created_at", "id"),
         Index("ix_ai_jobs_input", "input_id"),

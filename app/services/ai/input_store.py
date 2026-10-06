@@ -18,7 +18,7 @@ from app.models.ai_input import AIInput, AIInputFile, PRRevision as PRRevisionRo
 from app.models.ai_usage import AuditEvent
 from app.schemas.ai import (ContentState, Coverage, ErrorCode, InputFileContent, InputFileView, InputManifest,
                             InputPreview, InputStatus, JobStage, JobStatus, PrepareJobView, Side)
-from app.services.ai import input_builder, job_service
+from app.services.ai import credentials, input_builder, job_service
 from app.services.ai.access import AIError, ensure_owner
 from app.services.ai.content_policy import POLICY_VERSION
 from app.services.ai.crypto import InputCryptoError, decrypt_input, encrypt_input
@@ -183,7 +183,9 @@ def load_preview(db: Session, input_id: UUID, owner_id: UUID, *, now: datetime |
     raw_available = status == 'ready' and any(f.encrypted_payload is not None for f in stored.values())
     metadata = manifest.pr_metadata if manifest and manifest.pr_metadata else input_builder.transfer_metadata(
         revision.pr_metadata or {})
-    token_estimate = (input_builder.estimate_tokens(sum(f.byte_count for f in read_files), metadata, len(read_files))
+    profile = credentials.preferred_profile(db, owner_id)
+    token_estimate = (input_builder.estimate_tokens(sum(f.byte_count for f in read_files), metadata, len(read_files),
+                                                    profile=profile)
                       if status in ('ready', 'expired') and manifest is not None else None)
     job = db.execute(text("""SELECT id, status, error_code FROM ai_jobs WHERE input_id = :i AND kind = 'prepare'
                              ORDER BY generation DESC LIMIT 1"""), {'i': row.id}).one_or_none()
@@ -198,7 +200,8 @@ def load_preview(db: Session, input_id: UUID, owner_id: UUID, *, now: datetime |
         base_sha=revision.base_sha, head_sha=revision.head_sha, merge_base_sha=revision.merge_base_sha,
         pr_state=revision.state_at_capture, pr_title=metadata.title, pr_body=metadata.body,
         pr_body_truncated=metadata.body_truncated, coverage=Coverage(**row.coverage), files=files,
-        manifest_hash=row.manifest_hash, policy_version=row.policy_version, provider_profile=settings.provider_profile,
+        manifest_hash=row.manifest_hash, policy_version=row.policy_version, provider_profile=profile.id,
+        transfer=credentials.transfer_view(db, owner_id, profile),
         token_estimate=token_estimate, valid_until=row.valid_until, expires_at=row.expires_at,
         execution_valid=status == 'ready' and row.valid_until is not None and now < row.valid_until,
         raw_available=raw_available, reviewable=bool(read_files), prepare_job=prepare_job)

@@ -15,3 +15,4 @@ from app.models.ai_input import PRRevision, AIInput, AIInputFile
 from app.models.ai_job import AIJob, AIAttempt, RequestIdempotency, TaskOutbox
 from app.models.ai_result import AIResult, AIFinding, FindingFeedback
 from app.models.ai_usage import UsageBudget, UsageReservation, AuditEvent
+from app.models.ai_credential import AICredential, AICredentialVersion

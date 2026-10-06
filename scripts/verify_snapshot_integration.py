@@ -24,7 +24,7 @@ def main(auth_fixture=False):
         if not condition:raise AssertionError(name)
     with SessionLocal() as db:
         db.execute(text('SET TRANSACTION READ ONLY'))
-        check('migration',db.execute(text('SELECT version_num FROM alembic_version')).scalar()=='a7c1e5b2d903')
+        check('migration',db.execute(text('SELECT version_num FROM alembic_version')).scalar()=='c3e9a1b7d550')
         check('immutable trigger installed',bool(db.execute(text("SELECT COUNT(*) FROM pg_trigger WHERE tgname='analysis_snapshot_immutable' AND NOT tgisinternal")).scalar()))
         for (rid,) in db.query(AnalysisSnapshot.repository_id).distinct():
             latest=db.query(AnalysisSnapshot).filter_by(repository_id=rid).order_by(AnalysisSnapshot.id.desc()).first()

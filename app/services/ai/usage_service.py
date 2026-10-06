@@ -65,12 +65,13 @@ def reserve_attempt(db: Session, lease: Lease, amount: Decimal, *, now: datetime
     now = now or datetime.now(timezone.utc)
     period = period_start(now)
     _require_lease(db, lease, now)
-    ids = [
-        _budget_id(db, owner_id=lease.owner_user_id, scope='user', period=period,
-                   currency=settings.budget_currency, limit=settings.user_monthly_budget),
-        _budget_id(db, owner_id=None, scope='server', period=period,
-                   currency=settings.budget_currency, limit=settings.server_monthly_budget),
-    ]
+    # 사용자 key로 호출하므로 비용은 사용자 몫이다. 개인 지출 상한은 항상 적용하고, 서버 공유 예산은
+    # 관리자가 AI_SERVER_MONTHLY_BUDGET을 0보다 크게 지정했을 때만 모든 사용량의 합계 상한으로 적용한다.
+    ids = [_budget_id(db, owner_id=lease.owner_user_id, scope='user', period=period,
+                      currency=settings.budget_currency, limit=settings.user_monthly_budget)]
+    if settings.server_monthly_budget > 0:
+        ids.append(_budget_id(db, owner_id=None, scope='server', period=period,
+                              currency=settings.budget_currency, limit=settings.server_monthly_budget))
     budgets = db.execute(select(UsageBudget).where(UsageBudget.id.in_(ids)).order_by(UsageBudget.id)
                          .with_for_update()).scalars().all()
     for budget in budgets:

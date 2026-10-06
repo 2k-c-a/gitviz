@@ -30,7 +30,7 @@ from app.services.ai.access import AIError  # noqa: E402
 from app.services.ai.crypto import decrypt_input  # noqa: E402
 
 T0 = S.T0
-PROFILE = get_profile('claude-review-v1')
+PROFILE = get_profile('claude-opus-5-5-v1')
 
 
 def setUpModule():
@@ -275,7 +275,7 @@ class Reading(S.InputCase):
         self.assertEqual((preview.base_sha, preview.merge_base_sha), (self.fx.m1, self.fx.c0))
         self.assertEqual((preview.pr_title, preview.pr_body), ('Add feature', 'Adds the feature'))
         self.assertTrue(preview.execution_valid and preview.raw_available and preview.reviewable)
-        self.assertEqual(preview.provider_profile, 'claude-review-v1')
+        self.assertEqual(preview.provider_profile, 'claude-opus-5-5-v1')
         self.assertEqual(preview.policy_version, 'code-transfer-v1')
         self.assertEqual(preview.prepare_job.status.value, 'succeeded')
         total_bytes = sum(f.byte_count for f in preview.files)
@@ -285,10 +285,10 @@ class Reading(S.InputCase):
                                                       file_count=4)
         self.assertEqual(estimate.input_tokens, expected)
         self.assertEqual((estimate.profile, estimate.limit, estimate.within_limit, estimate.max_output_tokens,
-                          estimate.currency), ('claude-review-v1', 24_000, True, 4_000, 'USD'))
+                          estimate.currency), ('claude-opus-5-5-v1', 24_000, True, 4_000, 'USD'))
         self.assertEqual(estimate.estimated_max_cost, str(token_budget.max_cost(PROFILE, expected)))   # 예약액 상한
         # 모델 호출 전에 한도를 넘는 입력임을 미리 알린다(생성 요청은 이 입력으로 시작할 수 없다)
-        with patch('app.services.ai.input_builder.current_profile',
+        with patch('app.services.ai.credentials.preferred_profile',
                    return_value=dataclasses.replace(PROFILE, id='tiny-v1', max_input_tokens=100)):
             tiny = input_store.load_preview(self.db, input_id, owner, now=T0 + timedelta(hours=1)).token_estimate
         self.assertEqual((tiny.within_limit, tiny.limit, tiny.profile), (False, 100, 'tiny-v1'))
@@ -416,7 +416,7 @@ class DeletionAndExpiry(S.InputCase):
         job = job_service.create_job(
             self.db, owner_id=owner, repository_id=repo, input_id=input_id, kind=kind, fingerprint=canonical_hash(kind),
             route='POST /api/ai/v1/jobs', idempotency_key=uuid4().hex, body_hash=canonical_hash([kind, str(uuid4())]),
-            provider_profile='p', prompt_version='v', schema_version='v', now=T0 + timedelta(minutes=1)).job
+            pinned=self.pinned(owner, repo, input_id), now=T0 + timedelta(minutes=1)).job
         lease = job_service.claim_job(self.db, job.id, now=T0 + timedelta(minutes=1))
         job_service.finish_job(self.db, lease, 'succeeded', now=T0 + timedelta(minutes=2))
         file_id = self.scalar("SELECT id FROM ai_input_files WHERE input_id = :i AND path = 'main.py'", i=input_id)
@@ -434,12 +434,10 @@ class DeletionAndExpiry(S.InputCase):
         done_job, result = self.make_result(owner, repo, input_id, 'summary')            # 공유 input의 기존 결과
         queued = job_service.create_job(
             self.db, owner_id=owner, repository_id=repo, input_id=input_id, kind='review', fingerprint=canonical_hash('r'),
-            route='POST /api/ai/v1/jobs', idempotency_key='k-review', body_hash=canonical_hash('r'), provider_profile='p',
-            prompt_version='v', schema_version='v', now=T0 + timedelta(minutes=3)).job
+            route='POST /api/ai/v1/jobs', idempotency_key='k-review', body_hash=canonical_hash('r'), pinned=self.pinned(owner, repo, input_id), now=T0 + timedelta(minutes=3)).job
         running = job_service.create_job(
             self.db, owner_id=owner, repository_id=repo, input_id=input_id, kind='review', fingerprint=canonical_hash('r2'),
-            route='POST /api/ai/v1/jobs', idempotency_key='k-review2', body_hash=canonical_hash('r2'), provider_profile='p',
-            prompt_version='v', schema_version='v', now=T0 + timedelta(minutes=3)).job
+            route='POST /api/ai/v1/jobs', idempotency_key='k-review2', body_hash=canonical_hash('r2'), pinned=self.pinned(owner, repo, input_id), now=T0 + timedelta(minutes=3)).job
         lease = job_service.claim_job(self.db, running.id, now=T0 + timedelta(minutes=3))
         fid = self.scalar("SELECT id FROM ai_input_files WHERE input_id = :i AND path = 'main.py'", i=input_id)
 
@@ -525,8 +523,7 @@ class DeletionAndExpiry(S.InputCase):
         self.make_result(owner, repo, input_id, 'summary')
         pending = job_service.create_job(
             self.db, owner_id=owner, repository_id=repo, input_id=input_id, kind='review', fingerprint=canonical_hash('p'),
-            route='POST /api/ai/v1/jobs', idempotency_key='kp', body_hash=canonical_hash('p'), provider_profile='p',
-            prompt_version='v', schema_version='v', now=T0 + timedelta(minutes=3)).job
+            route='POST /api/ai/v1/jobs', idempotency_key='kp', body_hash=canonical_hash('p'), pinned=self.pinned(owner, repo, input_id), now=T0 + timedelta(minutes=3)).job
         self.assertEqual(input_store.run_input_maintenance(self.db, now=T0 + timedelta(days=6))['expired'], 0)
         stats = input_store.run_input_maintenance(self.db, now=T0 + timedelta(days=8))
         self.assertEqual((stats['expired'], stats['payloads_purged'], stats['jobs_cancelled']), (1, 4, 1))

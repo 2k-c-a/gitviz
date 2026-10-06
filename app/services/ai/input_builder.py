@@ -45,9 +45,10 @@ def prepare_fingerprint(revision_fingerprint: str, selected_paths: list[str], me
                            'collector': COLLECTOR_VERSION})
 
 
-def estimate_tokens(payload_bytes: int, metadata: PRTransferMetadata, file_count: int = 0) -> TokenEstimate:
-    """전송 미리보기의 토큰·비용 추정. 선택한 profile의 한도와 비교해 한도 초과 여부를 함께 알린다."""
-    profile = current_profile()
+def estimate_tokens(payload_bytes: int, metadata: PRTransferMetadata, file_count: int = 0, *,
+                    profile=None) -> TokenEstimate:
+    """전송 미리보기의 토큰·비용 추정. 사용자가 고른 profile(없으면 기본)의 한도와 비교해 한도 초과 여부를 함께 알린다."""
+    profile = profile or current_profile()
     tokens = token_budget.estimate_input_tokens(
         profile, 'review', payload_bytes=payload_bytes, description_chars=len(metadata.title) + len(metadata.body),
         file_count=file_count)
