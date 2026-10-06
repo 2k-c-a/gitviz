@@ -346,7 +346,12 @@ function _renderStatus(s) {
   const prs = s.pr_count ?? detail.prs_collected ?? 0;
   const contTotal = s.contributors_total ?? 0;
 
-  let label = detail.status_message || (status === 'pending' ? '분석 대기 중...' : '데이터 수집 중...');
+  // A progress message alone does not confirm that the saved result is available.
+  // Wait for status=done (and the result ID) before showing completion/actions.
+  const confirmingResult = detail.stage === 'done';
+  document.getElementById('modal-title').textContent = confirmingResult ? '분석 결과 확인 중' : '분석 진행 중';
+  let label = confirmingResult ? '저장된 분석 결과 확인 중...'
+    : detail.status_message || (status === 'pending' ? '분석 대기 중...' : '데이터 수집 중...');
   if (status === 'rate_limited') {
     // remaining_seconds는 서버가 매 폴링(2초)마다 절대 시각(resume_at) 기준으로
     // 다시 계산해서 주는 값이라 — 메시지를 한 번 박아두는 게 아니라 실제로 줄어든다.
