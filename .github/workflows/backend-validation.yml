@@ -39,3 +39,4 @@ jobs:
       - run: node scripts/test_metric_display.cjs
       - run: python scripts/test_ai_contracts.py
       - run: python scripts/test_ai_security.py
+      - run: python scripts/test_ai_schema.py

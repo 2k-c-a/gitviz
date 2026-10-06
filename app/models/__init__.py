@@ -11,3 +11,7 @@ from app.models.pr_review import PrReview
 from app.models.pull_request_file import PullRequestFile
 from app.models.release import Release
 from app.models.analysis_snapshot import AnalysisSnapshot, RepositoryAccess
+from app.models.ai_input import PRRevision, AIInput, AIInputFile
+from app.models.ai_job import AIJob, AIAttempt, RequestIdempotency, TaskOutbox
+from app.models.ai_result import AIResult, AIFinding, FindingFeedback
+from app.models.ai_usage import UsageBudget, UsageReservation, AuditEvent
