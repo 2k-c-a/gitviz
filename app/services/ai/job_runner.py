@@ -38,8 +38,13 @@ class JobFailed(Exception):
 
 @dataclass
 class HandlerResult:
-    """work는 결과 저장처럼 상태 확정과 같은 transaction에서 실행할 함수다."""
+    """work는 결과 저장처럼 상태 확정과 같은 transaction에서 실행할 함수다.
+
+    storage_retryable=False이면 work가 실패해도 handler를 다시 실행하지 않는다. 이미 비용이 든 외부 호출을
+    자동으로 되풀이하지 않기 위해서다(사용자가 명시적으로 다시 시작한다).
+    """
     work: Callable[[Session], None] | None = None
+    storage_retryable: bool = True
 
 
 class JobContext:
@@ -129,7 +134,8 @@ def run_job(job_id: UUID, *, session_factory=None) -> str:
             return 'lost'
         except Exception as exc:
             logger.error('job finalize failed job=%s error=%s', job_id, type(exc).__name__)
-            return _fail(session_factory, lease, 'RESULT_STORAGE_FAILED', retryable=True)
+            return _fail(session_factory, lease, 'RESULT_STORAGE_FAILED',
+                         retryable=getattr(result, 'storage_retryable', True))
         return final
     finally:
         ctx.stop_heartbeat()

@@ -78,6 +78,7 @@ class AISettings:
     credential_verify_limit_per_hour: int = 10
     input_valid_hours: int = 24
     input_retention_days: int = 7
+    result_retention_days: int = 30
     prepare_time_limit_seconds: int = 120
     budget_currency: str = 'USD'
     user_monthly_budget: Decimal = Decimal('20')      # 사용자 key 사용에 대한 개인 지출 상한(실수·폭주 방지)
@@ -112,6 +113,7 @@ def get_ai_settings() -> AISettings:
         credential_verify_limit_per_hour=_int('AI_CREDENTIAL_VERIFY_LIMIT_PER_HOUR', 10),
         input_valid_hours=_int('AI_INPUT_VALID_HOURS', 24),
         input_retention_days=_int('AI_INPUT_RETENTION_DAYS', 7),
+        result_retention_days=_int('AI_RESULT_RETENTION_DAYS', 30),
         prepare_time_limit_seconds=_int('AI_PREPARE_TIME_LIMIT_SECONDS', 120),
         budget_currency=(os.getenv('AI_BUDGET_CURRENCY', 'USD').strip().upper() or 'USD')[:3],
         user_monthly_budget=_decimal('AI_USER_MONTHLY_BUDGET', '20'),

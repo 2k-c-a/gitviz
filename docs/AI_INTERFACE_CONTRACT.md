@@ -80,6 +80,8 @@
 | `QUEUE_TIMEOUT` | 대기열에서 `AI_QUEUE_DEADLINE_SECONDS`를 넘김 |
 | `OUTCOME_UNCERTAIN` | AI 호출 중 처리자가 사라져 결과를 알 수 없음. 새 호출로 이어가지 않으며 사용자가 명시적으로 재시도(새 generation)해야 한다 |
 
+생성 작업(S7)의 코드는 §13을 따른다.
+
 그 외 handler가 정하는 코드(`TEMPORARY` 등)는 해당 단계의 문서에서 정의한다. 재시도·취소 규칙은 다음과 같다.
 
 - 일시 오류는 `running → retry_wait → queued`이며 대기 시간은 `AI_RETRY_DELAY_SECONDS`부터 2배씩(최대 600초) 늘어난다.
@@ -218,3 +220,27 @@ key 형식 오류·제공자 거절(401·403·402·모델 없음)은 422 `CREDEN
 **사용량**: 사용자 key를 써도 요청 한도(`AI_DAILY_JOB_LIMIT`)와 비용·토큰 기록(attempt, 예약·정산)은 그대로다. 사용자별 월 지출 상한(`AI_USER_MONTHLY_BUDGET`, 기본 20)은 항상 적용한다. 서버 전체 합계 상한(`AI_SERVER_MONTHLY_BUDGET`)은 0이면 끄고(기본) 0보다 클 때만 적용한다.
 
 **지원 모델**: `claude-opus-5-5-v1`(입력 $4 / 출력 $20 per 1M), `claude-sonnet-5-5-v1`($2 / $10). 둘 다 입력 24,000·출력 4,000 토큰, timeout 90초, effort low. 관리자는 `AI_ALLOWED_PROFILES`로 선택지를 줄인다. 무단 fallback은 없다: 다른 모델·제공자로 자동 전환하지 않는다.
+
+## 13. 설명·리뷰 생성 실행 (S7)
+
+`summary`/`review` handler(`generation_service.generate_handler`, `app/tasks/ai_generate.py`가 등록)는 고정된 입력·제공자·모델·사용자 key로 실제 호출을 수행한다. summary와 review는 독립된 호출이며 review 프롬프트에 summary 결과를 넣지 않는다.
+
+**순서**: ① 재검증 → 입력 복호화(무결성 해시 확인)·프롬프트·로컬 한도 → ② 재검증 → **`count_tokens`**(코드가 처음 외부로 나감) → 한도 확인 → ③ 재검증 → 비용 예약 → 생성 호출 → 정산 → 출력 검증 → 접근 재확인(`read`) → 결과·상태 commit.
+
+**재검증**(코드를 외부로 보내는 호출마다, 느린 확인을 먼저 하고 마지막에 빠른 확인): 저장소 접근·전송 허용·정책(`authorize_ai(generate)`, 비공개 저장소 차단 포함) → 처리권·취소 → 입력 `ready`·유효기간 → 동의한 `manifest_hash` 일치 → 모델 허용 → 고정된 key가 삭제·파기되지 않음. 하나라도 어긋나면 보내지 않는다. 호출 전의 접근 확인 장애(`ACCESS_CHECK_UNAVAILABLE`·`UPSTREAM_RATE_LIMIT`)만 재시도한다. 예약은 key 행(`FOR SHARE`)을 먼저, 작업 행을 나중에 잠가 key 삭제와 직렬화한다.
+
+**비용**: `count_tokens`는 과금되지 않으므로 예약·불명 처리가 없다. 예약액은 `count_tokens` 입력 + 최대 출력 기준 상한이다. 호출이 처리됐다면 결과가 쓸모없어도(검증 실패·잘림·거절·취소) 응답의 usage로 정산하고, usage가 없으면 예약액으로 정산한다. 처리되지 않았음이 확실한 실패(429·`request-id`가 있는 5xx·연결 전 실패·거절)는 예약을 해제한다. 결과를 모르면(`outcome_uncertain`) 예약을 `uncertain`으로 남겨 예산을 점유하고 작업은 `OUTCOME_UNCERTAIN`으로 실패하며 자동으로 다시 호출하지 않는다. 호출 시간 동안 DB transaction은 열려 있지 않다.
+
+**결과**(`result_store.save_validated_result`): `finish_job`의 `work`로 같은 transaction에서 `ai_results`·`ai_findings`를 만들어 결과와 상태가 함께 커밋된다. 취소가 접수됐거나 처리권·접근 권한을 잃었다면 결과를 만들지 않는다(호출 비용은 기록). `human_validation`은 `unverified`, 보관 기간은 `AI_RESULT_RETENTION_DAYS`(기본 30일). 결과 저장이 실패해도 이미 비용이 든 호출을 자동으로 되풀이하지 않는다(`RESULT_STORAGE_FAILED`, 사용자가 명시적으로 다시 시작).
+
+| 작업 `error_code` | 의미 |
+|---|---|
+| `REAUTH_REQUIRED`·`ACCESS_REVOKED`·`TRANSFER_NOT_ALLOWED` | 접근 권한·전송 허용·정책을 잃었다 |
+| `INPUT_EXPIRED`·`PREVIEW_CHANGED`·`INPUT_INTEGRITY`·`NO_REVIEWABLE_CONTENT` | 입력이 만료됐거나 동의한 범위와 다르거나 손상됐거나 보낼 파일이 없다 |
+| `PROFILE_NOT_ALLOWED`·`PROFILE_CHANGED`·`CREDENTIAL_UNAVAILABLE` | 모델이 허용되지 않거나 고정한 profile이 바뀌었거나 key가 삭제·파기됐다 |
+| `INPUT_TOO_LARGE`·`BUDGET_LIMIT` | 모델 입력 한도·사용 예산 초과(호출 전) |
+| `PROVIDER_RATE_LIMITED`·`PROVIDER_UNAVAILABLE`(재시도), `PROVIDER_AUTH`·`PROVIDER_REJECTED`·`PROVIDER_ERROR` | 제공자 오류(S6 분류) |
+| `PROVIDER_TIMEOUT`·`OUTCOME_UNCERTAIN` | 호출 결과를 알 수 없음(자동 재호출 없음) |
+| `OUTPUT_TRUNCATED`·`PROVIDER_REFUSED`·`OUTPUT_INVALID`·`OUTPUT_VALIDATION_FAILED` | 출력이 잘렸거나 거절됐거나 쓸 수 없거나 검증에 실패(부분 채택 없음, 호출 비용은 기록) |
+
+**미해결**: 실제 API와의 연동은 mock(`httpx2.MockTransport`)으로만 검증했다. `reviewable=false` 입력 차단은 S8의 API에서도 유지한다(동의 확인에서 이미 막고, 실행 시에도 `NO_REVIEWABLE_CONTENT`로 막는다).
