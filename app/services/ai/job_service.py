@@ -197,6 +197,10 @@ def _check_pinned(db: Session, owner_id, repository_id, input_id, kind: str, pin
         raise AIError(ErrorCode.CREDENTIAL_REQUIRED, '제공자·모델·API key를 확인하고 동의해야 합니다.')
     if pinned.input_id != input_id or pinned.repository_id != repository_id:
         raise AIError(ErrorCode.PREVIEW_CHANGED, '동의한 입력과 다른 입력입니다.')
+    if not pinned.profile.requires_api_key:
+        if pinned.credential_version_id is not None:
+            raise AIError(ErrorCode.PREVIEW_CHANGED, '로컬 실행에 API key를 사용할 수 없습니다.')
+        return
     status = db.execute(text("""SELECT status FROM ai_credential_versions WHERE id = :v AND owner_user_id = :o
                                 FOR SHARE"""), {'v': pinned.credential_version_id, 'o': owner_id}).scalar()
     if status != 'active':

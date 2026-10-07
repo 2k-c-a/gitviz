@@ -21,7 +21,7 @@ from pydantic import (
     model_validator,
 )
 
-CONTRACT_VERSION = "1.4"
+CONTRACT_VERSION = "1.5"
 
 _SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -604,6 +604,8 @@ ProfileId = Annotated[str, StringConstraints(pattern=PROFILE_ID_PATTERN)]
 
 
 class SupportedModel(_Strict):
+    requires_api_key: bool = True
+    execution_location: Literal['external', 'local'] = 'external'
     profile_id: str
     provider: str
     model: str
@@ -666,16 +668,21 @@ class CredentialDeleted(_Strict):
 
 class TransferConsent(_Strict):
     """전송 동의: 사용자가 확인한 코드 범위(manifest_hash)와 제공자·모델·key 버전."""
+    profile_fingerprint: Sha256Hex | None = None
     input_id: UUID
     manifest_hash: Sha256Hex
     provider: str
     profile_id: ProfileId
-    credential_version: int = Field(ge=1)
+    credential_version: int | None = Field(default=None, ge=1)
     policy_version: ShortText
 
 
 class TransferView(_Strict):
     """미리보기에서 사용자가 확인할 전송 대상(동의 화면용)."""
+    profile_fingerprint: Sha256Hex | None = None
+    requires_api_key: bool = True
+    execution_location: Literal['external', 'local'] = 'external'
+    model_digest: str | None = None
     provider: str
     profile_id: str
     model: str

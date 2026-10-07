@@ -223,8 +223,8 @@ export function consentBlockers(preview) {
   const t = preview.transfer;
   if (!t) out.push('전송 대상(제공자·모델)을 확인할 수 없습니다.');
   else {
-    if (!t.external_transfer_allowed) out.push('이 서버는 코드의 외부 전송을 허용하지 않습니다.');
-    if (!t.credential_configured) out.push(`${t.provider} API key를 먼저 등록해야 합니다.`);
+    if (t.execution_location !== 'local' && !t.external_transfer_allowed) out.push('이 서버는 코드의 외부 전송을 허용하지 않습니다.');
+    if (t.requires_api_key !== false && !t.credential_configured) out.push(`${t.provider} API key를 먼저 등록해야 합니다.`);
   }
   if (preview.token_estimate && preview.token_estimate.within_limit === false) {
     out.push('선택한 모델의 입력 토큰 한도를 넘습니다. 파일을 줄이거나 다른 모델을 고르세요.');
@@ -239,6 +239,7 @@ export function buildConsent(preview) {
   return {
     input_id: preview.input_id, manifest_hash: preview.manifest_hash, provider: t.provider, profile_id: t.profile_id,
     credential_version: t.credential_version, policy_version: preview.policy_version,
+    ...(t.profile_fingerprint ? { profile_fingerprint: t.profile_fingerprint } : {}),
   };
 }
 
@@ -246,6 +247,7 @@ export function consentStatement(preview) {
   const t = preview?.transfer;
   if (!t) return '';
   const files = (preview.files || []).filter((f) => f.content_state === 'read').length;
+  if (t.execution_location === 'local') return `선택한 ${files}개 파일의 코드와 PR 제목·설명을 같은 PC의 ${t.model}에서 처리하는 데 동의합니다. 외부 AI 제공자에게 전송하지 않으며 API 요금은 없습니다(전력·하드웨어 비용 별도). 모델 digest: ${t.model_digest || '—'}.`;
   return `선택한 ${files}개 파일의 코드(변경 diff와 주변 줄)와 PR 제목·설명이 ${t.provider} / ${t.model}(으)로 전송되는 것에 동의합니다. `
     + `사용할 키: ${t.key_hint || '—'} (v${t.credential_version ?? '?'}), 전송 정책 ${preview.policy_version}.`;
 }
@@ -337,7 +339,7 @@ export const JOB_ERRORS = {
 };
 const UNKNOWN_JOB_ERROR = { title: '작업이 실패했습니다', body: '알 수 없는 오류 코드입니다. 비용이 발생했는지 확인할 수 없으니 사용량을 확인하세요.', retry: true, costRisk: true };
 
-export function describeJob(job) {
+function describeJobState(job) {
   if (!job) return null;
   const status = job.status;
   const stage = job.stage ? (STAGE_LABEL[job.stage] || job.stage) : null;
@@ -361,6 +363,20 @@ export function describeJob(job) {
     }
     default: return { ...base, title: String(status || '알 수 없음'), body: '' };
   }
+}
+
+export function describeJob(job) {
+  const description = describeJobState(job);
+  if (!description || job.provider !== 'ollama') return description;
+  if (['cancel_requested', 'cancelled'].includes(job.status)) {
+    return { ...description, costRisk: false,
+      body: '로컬 호출이 이미 시작됐다면 연산은 끝날 수 있습니다. 취소 후 결과는 저장하지 않습니다. 제공자 API 요금은 없습니다.' };
+  }
+  if (description.costRisk) {
+    return { ...description, costRisk: false,
+      body: `${description.title}. 로컬 연산의 결과를 공개하지 않았습니다. 자동으로 다시 실행하지 않습니다. 제공자 API 요금은 없으며, 재실행하면 연산을 반복할 수 있습니다.` };
+  }
+  return description;
 }
 
 export const isTerminalStatus = (s) => s === 'succeeded' || s === 'failed' || s === 'cancelled';

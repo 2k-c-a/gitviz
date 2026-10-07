@@ -34,6 +34,7 @@ class AIAction(str, Enum):
     delete = 'delete'
     prepare = 'prepare'    # 코드 취득(외부 전송 없음)
     generate = 'generate'  # AI 제공자로 코드 전송
+    local_generate = 'local_generate'
 
     @property
     def sends_externally(self) -> bool:
@@ -67,6 +68,10 @@ def authorize_ai(db, user_id: UUID, repo_id: int, action: AIAction, policy_versi
         # 확인 장애를 권한 있음으로 추정하지 않는다.
         raise AIError(ErrorCode.ACCESS_CHECK_UNAVAILABLE, '저장소 접근 권한을 확인할 수 없습니다.',
                       retryable=True) from None
+    if action is AIAction.local_generate:
+        from app.services.ai.providers import registry
+        if not registry.is_allowed('ollama-local-v1') or policy_version not in settings.policy_versions:
+            raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '로컬 실행 또는 정책이 허용되지 않았습니다.')
     if action.sends_externally:
         if not settings.allow_external_transfer:
             raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '코드의 외부 전송이 허용되지 않았습니다.')

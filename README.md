@@ -69,6 +69,8 @@ docker compose --profile ai up -d ai-worker ai-dispatcher   # 작업 처리·발
 
 화면은 `/pages/ai-review.html?repo=<id>`(상단 메뉴 "AI 리뷰"). 운영(설정·확인·취소·불명 호출 정리·기한 삭제)은 [AI 운영 안내](docs/AI_OPERATIONS.md), 수용 상태와 출시 전 남은 확인은 [AI MVP 수용 보고](docs/AI_MVP_ACCEPTANCE.md), 화면 설계는 [AI_S9_UI_DESIGN.md](docs/AI_S9_UI_DESIGN.md)를 본다.
 
+AI는 Anthropic·OpenAI·Gemini 사용자 BYOK와 같은 PC의 Ollama를 지원한다. [지원 모델·설정·smoke 안내](docs/AI_PROVIDER_SUPPORT.md)를 참고한다. Ollama는 API key 없이 설치 모델의 digest를 고정하며, GitViz API·worker와 같은 PC의 호스트 프로세스로 실행한다. 웹 GitViz에서 각 사용자 PC의 모델을 연결하는 기능은 [후속 과제](docs/AI_LOCAL_MODEL_PLAN.md)로 남긴다. 실제 제공자·설치 모델 연동과 품질 평가는 별도로 필요하다.
+
 AI 검증(일회용 PostgreSQL·Redis 필요, `GITVIZ_TEST_REDIS_URL`은 시작 시 비워진다):
 
 ```powershell

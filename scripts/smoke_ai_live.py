@@ -40,7 +40,7 @@ def synthetic_sent():
     return prompts.SentInput(files=[file], metadata=PRTransferMetadata(title='Refactor average', body='Splits the sum into a variable.'))
 
 
-def provider_smoke(api_key: str, profile_id: str, budget: Decimal, *, provider_factory=None, official_only: bool = True) -> dict:
+def provider_smoke(api_key: str | None, profile_id: str, budget: Decimal, *, provider_factory=None, official_only: bool = True) -> dict:
     """provider 단계. 보고용 dict를 돌려준다(key는 담지 않는다). report['ok']가 False면 실패.
 
     official_only=True(기본, 실제 smoke)이면 AI_TEST_PROVIDER_BASE_URL이 설정돼 있을 때 key를 보내기 전에 거부한다: 실제 smoke는 공식 주소만 쓴다.
@@ -64,7 +64,8 @@ def provider_smoke(api_key: str, profile_id: str, budget: Decimal, *, provider_f
 
     try:
         provider.verify_credential()
-        step('key 확인(models 조회)', True, '제공자가 key와 모델 접근을 확인했습니다')
+        step('key 확인(models 조회)' if profile.requires_api_key else '설치 모델·digest 확인', True,
+             '제공자가 key와 모델 접근을 확인했습니다' if profile.requires_api_key else '설치된 로컬 모델 digest를 확인했습니다')
     except ProviderError as err:
         step('key 확인(models 조회)', False, f'{err.failure.kind} (HTTP {err.failure.http_status})')
         return report
@@ -78,7 +79,10 @@ def provider_smoke(api_key: str, profile_id: str, budget: Decimal, *, provider_f
             token_budget.check_input_limit(profile, counted)
             report.setdefault('local_estimates', {})[kind] = local
             ok = local >= counted                                 # 로컬 추정은 실제 토큰 수 이상이어야 한다(예약·한도 검사가 보수적이려면)
-            step(f'count_tokens({kind})', ok, f'제공자 {counted}토큰 / 로컬 추정 {local}토큰' + ('' if ok else ' — 로컬 추정이 실제보다 작아 예약·한도 검사가 보수적이지 않습니다. 실패로 처리합니다'))
+            step(f'count_tokens({kind})', ok,
+                 (f'Ollama 사전 tokenizer 없음: 보수적 입력 상한 {counted}토큰' if not profile.requires_api_key
+                  else f'제공자 {counted}토큰 / 로컬 추정 {local}토큰')
+                 + ('' if ok else ' — 로컬 추정이 실제보다 작아 예약·한도 검사가 보수적이지 않습니다. 실패로 처리합니다'))
             if not ok:
                 report['local_estimate_underestimates'] = True
                 return report
@@ -202,10 +206,19 @@ def main(argv=None) -> int:
             print('계획: key 확인 → count_tokens(설명·리뷰) → 예산 확인 → 설명·리뷰 각 1회 생성 → 출력 검증. 실제 호출은 --live와 --budget이 필요합니다(호출하지 않았습니다).')
             return 0
         key = os.environ.get('GITVIZ_SMOKE_API_KEY', '')
-        if not key or not args.budget or args.budget <= 0:
+        from app.services.ai.providers import registry
+        try:
+            profile = registry.get_profile(args.profile)
+        except registry.UnknownProfile:
+            print('지원하지 않는 profile입니다.')
+            return 2
+        if profile.execution_location == 'local' and not registry.is_allowed(profile.id):
+            print('AI_OLLAMA_ENABLED=1과 로컬 모델 설정이 필요합니다.')
+            return 2
+        if (profile.requires_api_key and not key) or args.budget is None or not args.budget.is_finite() or args.budget < 0 or (profile.requires_api_key and args.budget == 0):
             print('GITVIZ_SMOKE_API_KEY 환경변수와 --budget(>0)이 필요합니다. key는 명령줄 인자로 받지 않습니다.')
             return 2
-        report = provider_smoke(key, args.profile, args.budget)
+        report = provider_smoke(key or None, args.profile, args.budget)
         print(render(report, 'AI 제공자 smoke'))
         return 0 if report['ok'] else 1
     if not args.live:

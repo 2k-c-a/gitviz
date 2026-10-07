@@ -161,7 +161,8 @@ def effective_status(row: AIInput, now: datetime) -> str:
     return row.status
 
 
-def load_preview(db: Session, input_id: UUID, owner_id: UUID, *, now: datetime | None = None) -> InputPreview:
+def load_preview(db: Session, input_id: UUID, owner_id: UUID, *, now: datetime | None = None,
+                 profile_id: str | None = None) -> InputPreview:
     now = _now(now)
     row = _load_owned(db, input_id, owner_id)
     revision = db.execute(select(PRRevisionRow).where(PRRevisionRow.id == row.revision_id)).scalar_one()
@@ -183,7 +184,13 @@ def load_preview(db: Session, input_id: UUID, owner_id: UUID, *, now: datetime |
     raw_available = status == 'ready' and any(f.encrypted_payload is not None for f in stored.values())
     metadata = manifest.pr_metadata if manifest and manifest.pr_metadata else input_builder.transfer_metadata(
         revision.pr_metadata or {})
-    profile = credentials.preferred_profile(db, owner_id)
+    if profile_id is not None:
+        from app.services.ai.providers import registry
+        if not registry.is_allowed(profile_id):
+            raise AIError(ErrorCode.INVALID_SELECTION, '허용되지 않은 모델입니다.')
+        profile = registry.get_profile(profile_id)
+    else:
+        profile = credentials.preferred_profile(db, owner_id)
     token_estimate = (input_builder.estimate_tokens(sum(f.byte_count for f in read_files), metadata, len(read_files),
                                                     profile=profile)
                       if status in ('ready', 'expired') and manifest is not None else None)

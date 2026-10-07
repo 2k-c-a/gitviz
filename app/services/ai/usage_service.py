@@ -75,7 +75,8 @@ def reserve_attempt(db: Session, lease: Lease, amount: Decimal, *, now: datetime
     budgets = db.execute(select(UsageBudget).where(UsageBudget.id.in_(ids)).order_by(UsageBudget.id)
                          .with_for_update()).scalars().all()
     for budget in budgets:
-        if budget.reserved_amount + budget.spent_amount + amount > budget.amount_limit:
+        # Zero-fee local execution cannot increase cloud spend; keep its call ledger.
+        if amount > 0 and budget.reserved_amount + budget.spent_amount + amount > budget.amount_limit:
             raise AIError(ErrorCode.BUDGET_LIMIT, '사용 예산 한도에 도달했습니다.',
                           details={'scope': budget.scope})
     if db.execute(select(UsageReservation.id).where(UsageReservation.job_id == lease.job_id,
