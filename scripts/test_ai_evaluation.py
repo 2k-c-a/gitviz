@@ -505,6 +505,60 @@ class Recovery(unittest.TestCase):
         self.assertEqual((scores, saved['complete'], saved['cases']['c1']['status']), ([], False, 'interrupted'))
         self.assertAlmostEqual(saved['held'], 0.10)
 
+    def test_totals_are_derived_from_case_records_so_a_crash_right_after_done_loses_no_cost(self):
+        """사례 완료와 비용 합계가 따로 저장되면 그 사이 종료 시 합계가 이전 값으로 남는다. 합계는 사례 기록에서 계산한다."""
+        class Dies(ev.Journal):
+            def save(self):
+                super().save()
+                if any(c.get('status') == 'done' for c in self.data['cases'].values()):
+                    raise KeyboardInterrupt('done을 저장한 직후 프로세스 종료')
+
+        server = self.new_server()
+        data = ev.Journal.create(self.state, run_id='run-crash', set='final', budget=0.15, expected=2).data
+        journal = Dies(self.state, data)
+        runner = self.runner(FakeHttp(server=server, estimate='0.10', spent=('0.00',), job=UNCERTAIN_JOB), journal, budget=0.15)
+        with self.assertRaises(KeyboardInterrupt):
+            runner.run_case(case('u1'), 5)                                                       # 불명 호출($0.10)을 완료로 저장한 직후 종료
+        saved = ev.Journal.load(self.state)
+        self.assertEqual(saved.data['cases']['u1']['status'], 'done')
+        self.assertAlmostEqual(saved.data['held'], 0.10)                                          # 합계가 완료 기록과 함께 저장돼 있다
+        resumed = self.runner(FakeHttp(server=server, estimate='0.10'), saved, budget=0.15)
+        self.assertAlmostEqual(resumed.committed, 0.10)
+        second = FakeHttp(server=server, estimate='0.10')
+        resumed.http = second
+        with self.assertRaises(ev.BudgetExceeded):                                                # 예산 $0.15에서 $0.10 호출이 두 번 접수되지 않는다
+            resumed.run_case(case('u2'), 5)
+        self.assertNotIn(('POST', '/api/ai/v1/jobs'), second.calls)
+
+    def test_stale_stored_totals_are_ignored_and_recomputed_from_the_cases(self):
+        server = self.new_server()
+        journal = ev.Journal.create(self.state, run_id='run-stale', set='final', budget=1.0, expected=2)
+        runner = self.runner(FakeHttp(server=server), journal)
+        done = runner.run_case(case('c1'), 5)
+        self.assertAlmostEqual(runner.spent, 0.07)
+        stored = json.load(open(self.state, encoding='utf-8'))
+        stored['spent'], stored['held'] = 0.0, 0.0                                                # 합계만 이전 값으로 남은 상황
+        json.dump(stored, open(self.state, 'w', encoding='utf-8'))
+        again = self.runner(FakeHttp(server=server), ev.Journal.load(self.state))
+        self.assertAlmostEqual(again.spent, 0.07)                                                 # 완료 사례의 정산액이 되살아난다
+        self.assertEqual(again.run_case(case('c1'), 5).cost, done.cost)
+
+    def test_each_case_record_holds_both_the_completion_and_its_cost_in_one_write(self):
+        saves = []
+
+        class Spy(ev.Journal):
+            def save(self):
+                super().save()
+                saves.append(json.loads(json.dumps(self.data)))
+        server = self.new_server()
+        data = ev.Journal.create(self.state, run_id='run-one', set='final', budget=1.0, expected=1).data
+        self.runner(FakeHttp(server=server), Spy(self.state, data)).run_case(case('c1'), 5)
+        done_saves = [d for d in saves if d['cases']['c1']['status'] == 'done']
+        self.assertEqual(len(done_saves), 1)
+        self.assertAlmostEqual(done_saves[0]['cases']['c1']['settled'], 0.07)
+        self.assertAlmostEqual(done_saves[0]['spent'], 0.07)                                      # 완료가 저장된 그 시점의 합계가 이미 맞다
+        self.assertEqual(saves[-1]['cases']['c1']['status'], 'done')                              # 완료 저장이 마지막 쓰기다(그 뒤에 합계만 따로 쓰지 않는다)
+
     def args(self, extra=()):
         return ['--manifest', self.manifest_path, '--live', '--set', 'final', '--budget', '5', '--base-url', 'https://x', '--cookie', 'a=b',
                 '--repository-id', '1', '--out', self.tmp, *extra]
