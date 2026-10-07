@@ -86,6 +86,21 @@ class AISettings:
     server_monthly_budget: Decimal = Decimal('0')     # 0이면 서버 공유 예산을 쓰지 않는다(사용자 key는 서버 비용이 아니다)
 
 
+def test_provider_url_problem(url: str) -> str | None:
+    """통합 시험용 제공자 주소의 문제. 로컬(localhost·127.0.0.1) http(s) 주소만 허용한다(사용자 API key를 외부 주소로 보내지 않는다).
+    앱 시작 때의 설정 검증과 provider 어댑터 생성 때 **둘 다** 쓴다: 앱을 거치지 않는 독립 실행(smoke 등)도 같은 규칙을 지킨다."""
+    if not url:
+        return None
+    try:
+        parts = urlsplit(url)
+        host, _ = parts.hostname, parts.port
+    except ValueError:
+        return 'AI_TEST_PROVIDER_BASE_URL을 해석할 수 없습니다.'
+    if parts.scheme not in ('http', 'https') or host not in LOCAL_HOSTS or parts.username or parts.password:
+        return 'AI_TEST_PROVIDER_BASE_URL은 로컬(localhost·127.0.0.1) 주소만 허용합니다. 사용자 API key를 외부 주소로 보내지 않습니다.'
+    return None
+
+
 def get_ai_settings() -> AISettings:
     """매 호출마다 환경변수를 읽는다(테스트·설정 변경 반영)."""
     raw_origins = os.getenv('AI_ALLOWED_ORIGINS') or os.getenv('FRONTEND_URL', 'http://localhost:8000')
@@ -172,10 +187,9 @@ def validate_ai_settings(settings: AISettings | None = None) -> list[str]:
     else:
         if s.allowed_profiles and s.provider_profile not in s.allowed_profiles:
             problems.append('AI_PROVIDER_PROFILE이 AI_ALLOWED_PROFILES에 포함돼 있지 않습니다.')
-    if s.test_provider_base_url:
-        parts = urlsplit(s.test_provider_base_url)
-        if parts.scheme not in ('http', 'https') or parts.hostname not in LOCAL_HOSTS:
-            problems.append('AI_TEST_PROVIDER_BASE_URL은 로컬(localhost·127.0.0.1) 주소만 허용합니다. 사용자 API key를 외부 주소로 보내지 않습니다.')
+    problem = test_provider_url_problem(s.test_provider_base_url)
+    if problem:
+        problems.append(problem)
     sync_url = os.getenv('DATABASE_URL', '')
     async_url = os.getenv('DATABASE_URL_ASYNC') or sync_url
     if not sync_url:

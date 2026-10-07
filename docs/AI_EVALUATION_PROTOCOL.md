@@ -21,7 +21,13 @@ python scripts/evaluate_ai_review.py --live --set tuning --budget 3 --base-url h
 python scripts/evaluate_ai_review.py --rescore reports/ai-eval-tuning-….json --base-url https://… --cookie "gitviz_session=…"   # 사람이 판정한 뒤 재채점(호출·비용 없음)
 ```
 
-실행 → **사람이 화면에서 각 지적을 판정(유효/오탐/불확실)** → `--rescore` 순서다. `final` 세트는 `reports/FINAL_RUN_DONE.json`이 만들어지면 다시 실행되지 않는다(재판정은 `--rescore`).
+실행 → **사람이 화면에서 각 지적을 판정(유효/오탐/불확실)** → `--rescore` 순서다.
+
+**실행 기록과 중단 복구**
+- 실행을 시작하기 **전에** `reports/ai-eval-<세트>-state.json`을 원자적으로(`O_EXCL`) 만든다. 정상 종료 뒤에 남기는 표시가 아니므로, 접수 뒤 연결이 끊겨 비정상 종료해도 기록이 남고, 같은 명령은 다시 실행되지 않는다(두 번째 실행은 거부). 최종 세트는 `--fresh`로도 새로 시작할 수 없다.
+- 사례마다 진행 단계(started → submitting → accepted → done/interrupted)와 예상 상한·정산 기준을 접수 **전에** 기록하고, 접수 요청의 Idempotency-Key는 (실행 id, 사례, 단계)로 정한 결정적 값이다.
+- 중단되면 접수됐을 수 있는 작업의 예상 상한을 예산에 잡아 두고 종료 코드 3으로 끝난다. **`--resume`**으로 이어가면 같은 key로 같은 요청을 보내 서버가 이미 접수한 입력·작업을 돌려주므로 작업이 하나 더 생기지 않는다. 결과가 확인되면 잡아 둔 상한이 풀리고 실제 정산 비용으로 바뀐다. 끝난 사례는 다시 실행하지 않는다.
+- 최종 세트가 끝까지 실행되면 `reports/FINAL_RUN_DONE.json`이 만들어지고 이후에는 `--resume`도 거부된다(재판정은 `--rescore`). 조정(tuning) 세트는 `--fresh`로 이전 기록을 보관하고 새로 시작할 수 있다.
 
 ## ② 실제 연동 소량 smoke (`scripts/smoke_ai_live.py`) — 평가자가 실행
 
@@ -32,9 +38,11 @@ GITVIZ_SMOKE_API_KEY=sk-ant-… python scripts/smoke_ai_live.py provider --live 
 GITHUB_TOKEN=… python scripts/smoke_ai_live.py github --live --repo owner/name --pr 123 --path src/app.py   # 공개 저장소, 읽기 전용
 ```
 
+**주소와 key**: 실제 smoke는 **공식 주소만** 쓴다. `AI_TEST_PROVIDER_BASE_URL`이 설정돼 있으면 key를 보내기 전에 거부한다(환경변수를 비우고 실행). 어댑터도 생성할 때 이 값을 로컬 주소(localhost·127.0.0.1)로만 허용하므로 앱 시작 검증을 거치지 않는 독립 실행에서도 key가 외부 주소로 가지 않는다. `ANTHROPIC_BASE_URL` 환경변수는 무시한다.
+
 확인 항목: key 확인(models 조회) → `count_tokens`가 실제 출력 schema를 받아 토큰 수를 돌려주는가(로컬 추정이 더 큰가) → 설명·리뷰 각 1회 생성에서 **구조화 출력 schema를 제공자가 수용하는가**(거부·잘림·거절 여부) → usage와 profile 가격으로 계산한 비용이 제공자 콘솔 청구와 맞는가 → 우리 검증기 통과 → 지연·request-id. GitHub 단계: 공개 저장소 확인, PR 목록·파일 목록(목록 품질), 고정 SHA 캡처, 고정 코드 수집(blobless fetch).
 
-통과 기준: 모든 단계 OK, 로컬 추정이 실제 토큰 수 이상, 계산 비용이 콘솔 값과 근사. 하나라도 실패하면 원인(schema 거부·가격·한도·형식)을 고친 뒤 다시 실행하고 ③으로 가지 않는다. 구조화 출력 schema가 거부되면 `prompts`의 schema를 고치고 프롬프트 digest·profile 버전을 올린다.
+통과 기준: 모든 단계 OK, 로컬 추정이 실제 토큰 수 이상, 계산 비용이 콘솔 값과 근사. **로컬 토큰 추정이 제공자 `count_tokens`(또는 응답 usage의 입력 토큰)보다 작으면 실패**한다(예약·한도 검사가 보수적이지 않다). **응답에 usage가 없으면 비용을 0으로 보고하지 않고 "미확인"으로 실패 처리**한다(제공자 콘솔에서 직접 확인). 하나라도 실패하면 원인(schema 거부·가격·한도·형식)을 고친 뒤 다시 실행하고 ③으로 가지 않는다. 구조화 출력 schema가 거부되면 `prompts`의 schema를 고치고 프롬프트 digest·profile 버전을 올린다.
 
 ## ③ 사람 정답·합격 기준 확정 — 사람이 해야 함
 

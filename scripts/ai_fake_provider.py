@@ -15,7 +15,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 LOCK = threading.Lock()
-STATE = {'mode': 'ok', 'delay': 0.0, 'status': 500, 'messages': 0, 'count_tokens': 0, 'models': 0, 'keys': [], 'last_model': None,
+STATE = {'mode': 'ok', 'delay': 0.0, 'status': 500, 'count': 1200, 'messages': 0, 'count_tokens': 0, 'models': 0, 'keys': [], 'last_model': None,
          'last_schema_version': None, 'last_tools': None}
 FILE_RE = re.compile(r'<<<(\w+):BEGIN file handle=(F\d+) path=("(?:[^"\\]|\\.)*") ')
 ADDED_RE = re.compile(r'^\+ L- R(\d+) \| (.*)$')
@@ -105,18 +105,18 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/__mode':
             body = self._body()
             with LOCK:
-                STATE.update({k: body[k] for k in ('mode', 'delay', 'status') if k in body})
+                STATE.update({k: body[k] for k in ('mode', 'delay', 'status', 'count') if k in body})
             return self._json(200, {'ok': True})
         if self.path == '/__reset':
             with LOCK:
-                STATE.update({'mode': 'ok', 'delay': 0.0, 'status': 500, 'messages': 0, 'count_tokens': 0, 'models': 0, 'keys': [], 'last_model': None, 'last_tools': None})
+                STATE.update({'mode': 'ok', 'delay': 0.0, 'status': 500, 'count': 1200, 'messages': 0, 'count_tokens': 0, 'models': 0, 'keys': [], 'last_model': None, 'last_tools': None})
             return self._json(200, {'ok': True})
         key = self._note_key()
         body = self._body()
         if self.path == '/v1/messages/count_tokens':
             with LOCK:
                 STATE['count_tokens'] += 1
-            return self._json(200, {'input_tokens': 1500})
+            return self._json(200, {'input_tokens': STATE['count']})
         if self.path == '/v1/messages':
             with LOCK:
                 STATE['messages'] += 1
@@ -138,9 +138,12 @@ class Handler(BaseHTTPRequestHandler):
             user = (body.get('messages') or [{}])[0].get('content') or ''
             out = build_output(system, user, mode)
             text = '{not json' if mode == 'bad_json' else json.dumps(out)
-            return self._json(200, {'id': 'msg_fake', 'type': 'message', 'role': 'assistant', 'model': body.get('model'),
-                                    'content': [{'type': 'text', 'text': text}], 'stop_reason': 'end_turn', 'stop_sequence': None,
-                                    'usage': {'input_tokens': 1200, 'output_tokens': 300}})
+            message = {'id': 'msg_fake', 'type': 'message', 'role': 'assistant', 'model': body.get('model'),
+                       'content': [{'type': 'text', 'text': text}], 'stop_reason': 'end_turn', 'stop_sequence': None,
+                       'usage': {'input_tokens': 1200, 'output_tokens': 300}}
+            if mode == 'no_usage':                               # usage가 없는 응답(비용을 알 수 없다)
+                del message['usage']
+            return self._json(200, message)
         self._json(404, {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'x'}})
 
 

@@ -11,7 +11,7 @@ from decimal import Decimal
 import anthropic
 import httpx2
 
-from app.core.ai_settings import get_ai_settings
+from app.core.ai_settings import get_ai_settings, test_provider_url_problem
 from app.services.ai import prompts, token_budget
 from app.services.ai.providers.base import (GenerationRequest, ProviderError, ProviderFailure, ProviderProfile,
                                             ProviderResponse, TokenLimitExceeded, Usage, parse_json_object)
@@ -47,7 +47,11 @@ class AnthropicProvider:
                 raise ProviderConfigError('사용자 API key가 주입되지 않았습니다.')
             # base_url을 항상 명시한다: SDK가 읽는 ANTHROPIC_BASE_URL 환경변수가 남아 있어도 사용자 key를 다른 주소로 보내지 않는다.
             # 통합 시험만 AI_TEST_PROVIDER_BASE_URL(로컬 주소로 제한, 설정 검증이 확인)로 가짜 제공자를 쓴다.
-            base_url = get_ai_settings().test_provider_base_url or OFFICIAL_BASE_URL
+            base_url = get_ai_settings().test_provider_base_url
+            problem = test_provider_url_problem(base_url)        # 앱 시작 검증을 거치지 않는 독립 실행도 같은 규칙을 지킨다
+            if problem:
+                raise ProviderConfigError(problem)
+            base_url = base_url or OFFICIAL_BASE_URL
             client = anthropic.Anthropic(api_key=api_key, timeout=float(profile.timeout_seconds), max_retries=0,
                                          base_url=base_url)
         self.client = client
