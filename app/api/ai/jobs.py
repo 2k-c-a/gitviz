@@ -10,6 +10,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.ai.inputs import NO_STORE, _json, _request_id, _require_key, guard
@@ -29,6 +30,8 @@ def _request_hash(body) -> str:
     # Adding an optional pin must not invalidate pre-1.5 idempotency keys.
     if data['consent'].get('profile_fingerprint') is None:
         data['consent'].pop('profile_fingerprint', None)
+    if data.get('history_snapshot_id') is None:
+        data.pop('history_snapshot_id', None)                      # 이력 근거를 요청하지 않은 기존 요청의 key는 그대로 유효하다
     return idempotency.request_hash(data)
 
 
@@ -42,8 +45,18 @@ def _check_size(request: Request) -> None:
         raise AIError(ErrorCode.INPUT_TOO_LARGE, '요청이 너무 큽니다.')
 
 
+def _check_history_snapshot(db: Session, repository_id: int, snapshot_id: int | None) -> dict | None:
+    """이력 근거로 요청한 snapshot이 이 저장소의 것인지만 접수 때 확인한다(검증 통과 여부는 결과를 만들 때 기록한다)."""
+    if snapshot_id is None:
+        return None
+    found = db.execute(text('SELECT 1 FROM analysis_snapshots WHERE id = :i AND repository_id = :r'), {'i': snapshot_id, 'r': repository_id}).scalar()
+    if not found:
+        raise AIError(ErrorCode.INVALID_SELECTION, '이 저장소의 분석 결과(snapshot)가 아닙니다.')
+    return {'history_snapshot_id': snapshot_id}
+
+
 def _accept(db: Session, user_id: UUID, request: Request, *, kind: str, consent_in: TransferConsent, route: str,
-            key: str, body_hash: str, force: bool) -> JSONResponse:
+            key: str, body_hash: str, force: bool, history_snapshot_id: int | None = None) -> JSONResponse:
     """동의를 확인하고 작업을 접수한다. reviewable=false·만료·삭제된 입력과 key 불일치는 여기서 막힌다."""
     now = datetime.now(timezone.utc)
     row = input_store.load_owned(db, consent_in.input_id, user_id)                       # 남의 입력은 404
@@ -56,9 +69,10 @@ def _accept(db: Session, user_id: UUID, request: Request, *, kind: str, consent_
                  AIAction.generate if pinned.profile.requires_api_key else AIAction.local_generate,
                  consent_in.policy_version)
     fingerprint = consent.generation_fingerprint(user_id, kind, (row.input_hash or '').strip(), pinned)
+    options = _check_history_snapshot(db, row.repository_id, history_snapshot_id if kind == 'review' else None)
     result = job_service.create_job(
         db, owner_id=user_id, repository_id=row.repository_id, input_id=row.id, kind=kind, fingerprint=fingerprint,
-        route=route, idempotency_key=key, body_hash=body_hash, pinned=pinned, force_regenerate=force, now=now)
+        route=route, idempotency_key=key, body_hash=body_hash, request_options=options, pinned=pinned, force_regenerate=force, now=now)
     if result.created:
         input_store.audit(db, actor_id=user_id, repository_id=row.repository_id, action='job.created',
                           object_id=result.job.id, request_id=_request_id(request), object_type='job',
@@ -75,7 +89,7 @@ def create_job(body: CreateJobRequest, request: Request, user_id: UUID = Depends
     key = _require_key(idempotency_key)
     body_hash = _request_hash(body)
     return _accept(db, user_id, request, kind=body.kind, consent_in=body.consent, route=CREATE_ROUTE, key=key,
-                   body_hash=body_hash, force=body.force_regenerate)
+                   body_hash=body_hash, force=body.force_regenerate, history_snapshot_id=body.history_snapshot_id)
 
 
 @router.get('/jobs')

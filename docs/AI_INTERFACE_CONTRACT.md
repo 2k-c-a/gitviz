@@ -1,6 +1,6 @@
 # AI 인터페이스 계약 (S0)
 
-- 계약 버전: `1.5` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
+- 계약 버전: `1.6` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
 - 설계 근거: [요구사항 및 시스템 설계 v0.4](GitViz_AI_요구사항_및_시스템설계_v0.4.md), [구현 계획 v0.5](GitViz_AI_의존성기반_구현계획_v0.5.md) S0
 - 수집·백엔드·시각화는 모두 `app/schemas/ai.py`의 DTO를 기준으로 합니다. 이 문서와 코드가 다르면 코드가 우선이며 즉시 문서를 고칩니다.
 - 모든 DTO는 알 수 없는 필드를 거부합니다(`extra="forbid"`). 클라이언트가 `owner_user_id` 같은 값을 보내도 받지 않습니다.
@@ -126,6 +126,7 @@
 - 1.3(S8): 생성·작업·결과·지적·피드백·사용량 API DTO(`CreateJobRequest`, `RetryJobRequest`, `JobView`, `JobList`, `ResultView`, `FindingView`, `FindingList`, `FeedbackRequest`, `FeedbackView`, `UsageView`) 추가. 기존 필드·enum은 그대로다.
 - 1.4(S9): PR·파일 선택 조회 DTO(`PullSummary`, `PullList`, `PullFile`, `PullFilesView`)와 `UpdateCredentialRequest` 추가. 기존 필드·enum은 그대로다.
 - 1.5: OpenAI·Gemini BYOK, 같은 PC의 Ollama keyless 실행. 모델·transfer의 `requires_api_key`/`execution_location`, transfer의 `model_digest`/`profile_fingerprint`, 동의의 선택 `profile_fingerprint`(로컬 필수), 로컬의 null `credential_version`, 미리보기 `profile_id` 선택을 추가한다. 클라우드 key 버전 검사는 유지한다. 자세한 설정·비용·주소·복구 규칙은 [제공자 지원](AI_PROVIDER_SUPPORT.md)에 정의한다.
+- 1.6: GitViz 이력 근거(S11). 작업 생성의 선택 `history_snapshot_id`와 `/history/snapshots`, `/results/{id}/history` 조회·생성을 추가한다. 기존 요청과 멱등 key는 그대로 유효하다. 상세는 16절.
 - 이후 단계에서 임의로 enum/필드 의미를 바꾸지 않습니다. 변경은 `CONTRACT_VERSION`, 이 문서, `scripts/test_ai_contracts.py`를 같은 PR에서 고칩니다.
 - 기능별 출력 schema 버전(S6)과 API 응답 DTO(S5·S8)는 이 계약 위에 추가하며 위 정의를 재정의하지 않습니다.
 
@@ -291,3 +292,16 @@ AI 제공자를 호출하지 않고 DB에 아무것도 저장하지 않는다. �
 | `PATCH /credentials/{provider}` | `{profile_id}`: key·버전은 그대로 두고 기본 모델만 바꾼다(허용되지 않은 모델은 422). 전송 동의는 별도로 모델·key 버전을 확인한다 |
 
 GitHub 오류는 `ErrorEnvelope`로 매핑한다(404 `RESOURCE_NOT_FOUND`, 429 `UPSTREAM_RATE_LIMIT`+`Retry-After`, 503 `UPSTREAM_UNAVAILABLE`). 화면은 목록에서 본 SHA를 `POST /inputs`의 `expected_base_sha`·`expected_head_sha`로 보내며, 서버가 다시 확인해 다르면 409 `PR_CHANGED`다.
+
+## 16. GitViz 이력 근거 (S11)
+
+코드 지적과 **별개**인 불변 근거다. 분석 snapshot(`analysis_snapshots.payload`)에 이미 저장된 값만 옮기며 재계산·모델 호출·외부 전송을 하지 않는다(이력 값은 모델로 보내지 않는다). 결과 저장은 이력 근거 실패와 무관하게 성공한다(savepoint 격리).
+
+- `GET /api/ai/v1/history/snapshots?repository_id=` — 고를 수 있는 snapshot과 `eligible`, `reasons`, `reason_texts`.
+- `GET /api/ai/v1/results/{id}/history` — 결과에 붙은 근거 목록. `POST` 같은 경로 `{snapshot_id, as_of?}` — 만들거나(201) 이미 있으면 그대로(200) 돌려준다. 리뷰 결과만 가능하다. 작성자만, 저장소 접근 권한을 매번 확인한다.
+- 작업 생성의 `history_snapshot_id`(선택, 리뷰 전용): 접수 때 같은 저장소의 snapshot인지만 확인하고 결과 저장 시 근거를 붙인다.
+- 다른 저장소의 snapshot은 존재를 숨긴다(404). DB도 (snapshot, 저장소) 복합 FK로 막는다. 근거 행은 수정·삭제 불가이며 결과 삭제와 함께 사라진다.
+- **검증하지 못한 snapshot은 근거에서 제외한다**: `status=excluded`와 이유 코드만 기록하고 값은 싣지 않는다. 이유 — `integrity_failed`, `legacy_format`, `formula_unsupported`, `target_sha_missing`, `repository_identity_missing`, `repository_identity_mismatch`, `payload_incomplete`, `future_data`(리뷰 결과 시각 또는 `as_of` 이후의 자료).
+- `evidence`: `basis`(snapshot·SHA·PR base/head 비교 `relation`), `paths`(파일별 관측 횟수·소유 분포·co-change 상위·한계), `data_quality`(미식별 분모·수집 품질), `notes`. co-change 파일은 `changed_in_pr`만 알려 주는 **검토 후보**이며 누락·오류로 단정하지 않는다. 신규·이름 변경·snapshot에 없는 파일은 각각 한계 문구와 함께 표시한다.
+- 문구는 `prompts/history_v1.txt`(버전 `history-v1`, 다이제스트 고정)의 고정 템플릿이며 모델 프롬프트가 아니다.
+- 운영 snapshot 검증은 출시 전 필수 확인으로 남는다. 인증 사용자로 접근하는 실제 GitViz 경로의 확인은 별도다.

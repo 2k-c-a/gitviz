@@ -1,5 +1,5 @@
 """분석 완료 시 생성하는 불변 결과. API 조회 중에는 갱신하지 않는다."""
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, UniqueConstraint
+from sqlalchemy import Column, Index, Integer, String, DateTime, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -19,6 +19,8 @@ class AnalysisSnapshot(Base):
     payload = Column(JSON().with_variant(JSONB, "postgresql"), nullable=False)
     payload_sha256 = Column(String(64), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # AI 이력 근거가 (snapshot, 저장소) 복합 FK로 같은 저장소의 결과만 가리키게 한다(migration d4f8b2c6e1a9).
+    __table_args__ = (Index("uq_analysis_snapshots_id_repository", "id", "repository_id", unique=True),)
 
 
 class RepositoryAccess(Base):

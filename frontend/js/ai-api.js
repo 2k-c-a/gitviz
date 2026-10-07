@@ -177,6 +177,9 @@ export function createAiClient({ fetchImpl = (u, o) => fetch(u, o), now = () => 
     result: (resultId, signal) => get(`${BASE}/results/${id(resultId)}`, null, signal),
     findings: (resultId, { cursor = null, limit = 20 } = {}, signal) =>
       get(`${BASE}/results/${id(resultId)}/findings`, { cursor, limit }, signal),
+    historyOptions: (repositoryId, signal) => get(`${BASE}/history/snapshots`, { repository_id: repositoryId }, signal),
+    history: (resultId, signal) => get(`${BASE}/results/${id(resultId)}/history`, null, signal),
+    attachHistory: (resultId, snapshotId, signal) => send('POST', `${BASE}/results/${id(resultId)}/history`, { body: { snapshot_id: snapshotId }, signal }),
     putFeedback: (findingId, { verdict, note, expectedVersion }, signal) =>
       send('PUT', `${BASE}/findings/${id(findingId)}/feedback`,
         { body: { verdict, note: note || null, expected_version: expectedVersion }, signal }),

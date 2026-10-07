@@ -126,3 +126,8 @@ textarea.ai-input { width: 100%; resize: vertical; }
 .ai-project-info p { margin: 0; }
 .ai-project-row .ai-btn { flex-shrink: 0; }
 @media (max-width: 480px) { .ai-project-row { align-items: flex-start; flex-direction: column; gap: 10px; } }
+
+.ai-history h3 { font-size: 14px; margin: 14px 0 6px; overflow-wrap: anywhere; }
+.ai-history ul { margin: 4px 0 0; padding-left: 18px; }
+.ai-history li { overflow-wrap: anywhere; }
+.ai-history .ai-hist-path { border-top: 1px solid var(--border, #d0d7de); padding-top: 8px; margin-top: 10px; }

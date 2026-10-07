@@ -22,7 +22,7 @@ from sqlalchemy import select, text
 
 from app.models.ai_input import AIInput, AIInputFile
 from app.schemas.ai import InputManifest
-from app.services.ai import credentials, prompts, result_store, token_budget, usage_service, validators
+from app.services.ai import credentials, history_context, prompts, result_store, token_budget, usage_service, validators
 from app.services.ai.access import AIAction, AIError, authorize_ai
 from app.services.ai.crypto import InputCryptoError, decrypt_input
 from app.services.ai.job_runner import HandlerResult, JobContext, JobFailed, RetryableError
@@ -50,13 +50,14 @@ class JobInfo:
     consent_hash: str | None
     revision_id: UUID
     policy_version: str
+    history_snapshot_id: int | None = None
 
 
 def _load_job(ctx: JobContext) -> JobInfo:
     with ctx.session_factory() as db:
         row = db.execute(text("""
             SELECT j.owner_user_id, j.repository_id, j.input_id, j.kind, j.provider_profile, j.consent_manifest_hash,
-                   j.deleted_at, i.revision_id, i.policy_version
+                   j.deleted_at, j.request_options, i.revision_id, i.policy_version
             FROM ai_jobs j JOIN ai_inputs i ON i.id = j.input_id WHERE j.id = :j"""),
                          {'j': ctx.lease.job_id}).one_or_none()
     if row is None or row.deleted_at is not None or row.provider_profile is None:
@@ -64,7 +65,8 @@ def _load_job(ctx: JobContext) -> JobInfo:
     return JobInfo(job_id=ctx.lease.job_id, owner_id=row.owner_user_id, repository_id=row.repository_id,
                    input_id=row.input_id, kind=row.kind, profile_id=row.provider_profile,
                    consent_hash=row.consent_manifest_hash, revision_id=row.revision_id,
-                   policy_version=row.policy_version)
+                   policy_version=row.policy_version,
+                   history_snapshot_id=(row.request_options or {}).get('history_snapshot_id'))
 
 
 def _authorize(ctx: JobContext, job: JobInfo, action: AIAction, *, retryable: bool) -> None:
@@ -264,5 +266,10 @@ def generate_handler(ctx: JobContext) -> HandlerResult:
     _authorize(ctx, job, AIAction.read, retryable=False)   # 호출 중 접근 권한을 잃었다면 결과를 남기지 않는다
     _check_alive(ctx)
     lease = ctx.lease
-    return HandlerResult(work=lambda db: result_store.save_validated_result(db, lease, validated, coverage=coverage),
-                         storage_retryable=False)
+    def save(db):
+        result_id = result_store.save_validated_result(db, lease, validated, coverage=coverage)
+        if job.history_snapshot_id is not None and job.kind == 'review':
+            # 이력 근거는 부가 정보다: 같은 transaction에서 붙이되 savepoint로 격리해 실패해도 결과 저장을 막지 않는다
+            history_context.attach_safely(db, result_id, job.history_snapshot_id)
+        return result_id
+    return HandlerResult(work=save, storage_retryable=False)

@@ -477,6 +477,44 @@ def get_findings(rid: str, request: Request, cursor: str | None = None, limit: i
     return ok({'result_id': rid, 'findings': STATE['findings'].get(rid, []), 'next_cursor': None})
 
 
+@app.get('/api/ai/v1/history/snapshots')
+def history_snapshots(request: Request, repository_id: int = 0):
+    if (e := guard(request)):
+        return e
+    return ok({'repository_id': repository_id, 'snapshots': [
+        {'snapshot_id': 7, 'target_sha': 'a' * 40, 'analyzed_at': now(), 'window_start': None, 'window_end': now(), 'formula_version': 'f', 'eligible': True, 'reasons': [], 'reason_texts': []},
+        {'snapshot_id': 3, 'target_sha': 'b' * 40, 'analyzed_at': now(), 'window_start': None, 'window_end': now(), 'formula_version': 'old', 'eligible': False,
+         'reasons': ['formula_unsupported'], 'reason_texts': ['지원하지 않는 계산 버전']}]})
+
+
+def history_row(rid: str, sid: int, excluded: bool):
+    base = {'evidence_id': '00000000-0000-4000-8000-00000000000%d' % sid, 'result_id': rid, 'snapshot_id': sid, 'as_of': now(), 'created_at': now(), 'payload_hash': 'e' * 64}
+    if excluded:
+        return {**base, 'status': 'excluded', 'exclusion_reasons': ['formula_unsupported'], 'evidence': {'basis': {}, 'paths': [], 'data_quality': {}, 'notes': ['검증하지 못한 snapshot이라 근거로 쓰지 않았습니다.', '지원하지 않는 계산 버전']}}
+    return {**base, 'status': 'ok', 'exclusion_reasons': [], 'evidence': {
+        'basis': {'snapshot_id': sid, 'target_sha': 'a' * 40}, 'data_quality': {'commit_count': 42, 'unidentified_commits': 5, 'contributor_count': 4, 'merged_pr_count': 20, 'co_change_unit': 'pull_request'},
+        'notes': ['이 PR의 기준과 snapshot 기준이 같습니다.', '함께 바뀐 파일은 검토 후보일 뿐 누락이나 오류가 아닙니다.'],
+        'paths': [{'path': 'main.py', 'match': 'path', 'status': 'observed', 'observations': {'change_freq': 12, 'churn': 340, 'bugfix_count': 4},
+                   'ownership': {'observation_count': 12, 'contributor_count': 3, 'top_owner_share': 0.55},
+                   'co_change': [{'path': 'tests/test_main.py', 'co_change_count': 6, 'changed_in_pr': False, 'low_support': False}], 'limitations': []}]}}
+
+
+@app.get('/api/ai/v1/results/{rid}/history')
+def get_history(rid: str, request: Request):
+    if (e := guard(request)):
+        return e
+    return ok({'result_id': rid, 'evidence': [history_row(rid, s, x) for s, x in STATE.setdefault('history', {}).get(rid, [])]})
+
+
+@app.post('/api/ai/v1/results/{rid}/history')
+async def attach_history(rid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    body = await request.json()
+    STATE.setdefault('history', {}).setdefault(rid, []).append((body['snapshot_id'], body['snapshot_id'] == 3))
+    return ok(history_row(rid, body['snapshot_id'], body['snapshot_id'] == 3), 201)
+
+
 @app.put('/api/ai/v1/findings/{fid}/feedback')
 async def feedback(fid: str, request: Request):
     if (e := guard(request, True)):
