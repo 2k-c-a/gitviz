@@ -260,6 +260,10 @@ class BudgetExceeded(Exception):
     pass
 
 
+class RecoveryFailed(Exception):
+    """접수됐을 수 있는 작업을 복구하지 못했다. 완료로 기록하지 않고 상한을 유지한 채 멈춘다."""
+
+
 class Journal:
     """실행 상태 기록(파일). 최종 세트의 "한 번만 실행"과 중단 뒤 복구의 근거다.
 
@@ -355,53 +359,69 @@ class Runner:
     def _usage(self) -> dict:
         return self.call('GET', '/api/ai/v1/usage').json()
 
+    def _get_job(self, job_id: str, *, recovering: bool) -> dict:
+        resp = self.call('GET', f'/api/ai/v1/jobs/{job_id}')
+        if resp.status_code != 200:
+            try:
+                code = (resp.json().get('error') or {}).get('code')
+            except ValueError:
+                code = None
+            raise RecoveryFailed(f'작업 {job_id}를 조회하지 못했습니다(HTTP {resp.status_code} {code}). 접수된 작업이 있을 수 있어 상한을 예산에 유지합니다.')
+        return resp.json()
+
     def run_case(self, case: dict, repository_id: int, kind: str = 'review') -> CaseScore:
         j, cid = self.journal, case['id']
         rec = j.case(cid) if j else {}
         if rec.get('status') == 'done':
             return CaseScore(**rec['score'])                             # 이미 끝난 사례는 다시 실행하지 않는다
         in_flight = rec.get('status') in IN_FLIGHT
-        if j and rec.get('held'):
-            self.held = max(0.0, self.held - rec['held'])               # 중단되며 잡아 둔 상한: 이제 다시 확인하므로 풀고, 결과에 따라 다시 잡는다
-            j.update(cid, held=0.0)
-            self._save_totals()
+        # 복구 중에는 처리 결과를 확인할 때까지 이전에 잡아 둔 상한과 접수 상태를 그대로 둔다(중간에 다시 끊겨도 잃지 않는다).
+        prev_held = float(rec.get('held') or 0.0) if in_flight else 0.0
+        estimate = float(rec.get('estimate') or 0.0) if in_flight else 0.0
         usage_before = rec['usage_before'] if in_flight and 'usage_before' in rec else float(self._usage()['user_spent'])
-        if j:
+        if j and not in_flight:
             j.update(cid, status='started', usage_before=usage_before)
-        created = self.call('POST', '/api/ai/v1/inputs', {'repository_id': repository_id, 'pr_number': case['pr_number'], 'expected_base_sha': case['base_sha'],
-                                                           'expected_head_sha': case['head_sha'], 'selected_paths': case['selected_paths']}, self.key(cid, 'input'))
-        if created.status_code not in (200, 202):
-            return CaseScore(cid, 'not_started', created.json().get('error', {}).get('code'), note='입력을 만들지 못했습니다')
-        input_id = created.json()['input_id']
-        preview = self._wait(lambda: (lambda p: p if p['status'] != 'building' else None)(self.call('GET', f'/api/ai/v1/inputs/{input_id}').json()))
-        if preview['status'] != 'ready' or not preview.get('reviewable'):
-            return CaseScore(cid, 'not_started', preview['status'], note='실행할 수 있는 입력이 아닙니다(reviewable=false 포함)')
-        estimate = float((preview.get('token_estimate') or {}).get('estimated_max_cost') or 0)
-        if not in_flight:                                                # 이미 접수했을 수 있는 작업을 복구할 때는 새 비용이 아니므로 막지 않는다
-            remaining = self.budget - self.committed
-            if estimate > remaining:
-                raise BudgetExceeded(f'{cid}: 예상 비용 상한 ${estimate:.4f}가 남은 평가 예산 ${remaining:.4f}'
-                                     f'(정산 ${self.spent:.4f} + 결과를 모르는 호출의 상한 ${self.held:.4f} 반영)을 넘습니다.')
-            server_remaining = float(self._usage().get('user_remaining') or 0)
-            if estimate > server_remaining:
-                raise BudgetExceeded(f'{cid}: 예상 비용 상한 ${estimate:.4f}가 계정의 남은 월 한도 ${server_remaining:.4f}를 넘습니다.')
-        t = preview['transfer']
-        consent = {'input_id': input_id, 'manifest_hash': preview['manifest_hash'], 'provider': t['provider'], 'profile_id': t['profile_id'],
-                   'credential_version': t['credential_version'], 'policy_version': preview['policy_version']}
-        if j:
-            j.update(cid, status='submitting', estimate=estimate, input_id=input_id)     # 접수 요청을 보내기 **전에** 기록한다
-        job = self.call('POST', '/api/ai/v1/jobs', {'kind': kind, 'consent': consent, 'force_regenerate': False}, self.key(cid, 'job'))
-        if job.status_code not in (200, 202):
+        job_id = rec.get('job_id') if in_flight else None
+        if job_id is None:
+            if in_flight and rec.get('job_body'):
+                body = rec['job_body']                                   # 접수 여부가 불명확하면 **최초 요청 본문 그대로** 같은 key로 다시 보낸다
+            else:
+                created = self.call('POST', '/api/ai/v1/inputs', {'repository_id': repository_id, 'pr_number': case['pr_number'], 'expected_base_sha': case['base_sha'],
+                                                                   'expected_head_sha': case['head_sha'], 'selected_paths': case['selected_paths']}, self.key(cid, 'input'))
+                if created.status_code not in (200, 202):
+                    return CaseScore(cid, 'not_started', created.json().get('error', {}).get('code'), note='입력을 만들지 못했습니다')
+                input_id = created.json()['input_id']
+                preview = self._wait(lambda: (lambda p: p if p['status'] != 'building' else None)(self.call('GET', f'/api/ai/v1/inputs/{input_id}').json()))
+                if preview['status'] != 'ready' or not preview.get('reviewable'):
+                    return CaseScore(cid, 'not_started', preview['status'], note='실행할 수 있는 입력이 아닙니다(reviewable=false 포함)')
+                estimate = float((preview.get('token_estimate') or {}).get('estimated_max_cost') or 0)
+                remaining = self.budget - self.committed
+                if estimate > remaining:
+                    raise BudgetExceeded(f'{cid}: 예상 비용 상한 ${estimate:.4f}가 남은 평가 예산 ${remaining:.4f}'
+                                         f'(정산 ${self.spent:.4f} + 결과를 모르는 호출의 상한 ${self.held:.4f} 반영)을 넘습니다.')
+                server_remaining = float(self._usage().get('user_remaining') or 0)
+                if estimate > server_remaining:
+                    raise BudgetExceeded(f'{cid}: 예상 비용 상한 ${estimate:.4f}가 계정의 남은 월 한도 ${server_remaining:.4f}를 넘습니다.')
+                t = preview['transfer']
+                body = {'kind': kind, 'consent': {'input_id': input_id, 'manifest_hash': preview['manifest_hash'], 'provider': t['provider'], 'profile_id': t['profile_id'],
+                                                  'credential_version': t['credential_version'], 'policy_version': preview['policy_version']}, 'force_regenerate': False}
+                if j:                                                    # 접수 요청을 보내기 **전에** 요청 본문과 함께 기록한다
+                    j.update(cid, status='submitting', estimate=estimate, input_id=input_id, job_body=body)
+            job = self.call('POST', '/api/ai/v1/jobs', body, self.key(cid, 'job'))
+            if job.status_code not in (200, 202):
+                if in_flight:                                            # 복구 중 접수 응답이 거절이면 상태를 알 수 없다: 완료로 기록하지 않고 상한을 유지한 채 멈춘다
+                    raise RecoveryFailed(f'{cid}: 이전에 접수했을 수 있는 작업을 같은 요청으로 복구하지 못했습니다(HTTP {job.status_code} '
+                                         f'{(job.json().get("error") or {}).get("code")}). 제공자 콘솔과 GitViz에서 작업이 있는지 확인하세요.')
+                if j:
+                    j.update(cid, status='pending')
+                return CaseScore(cid, 'not_started', job.json().get('error', {}).get('code'), note='작업을 접수하지 못했습니다')
+            job_id = job.json()['job_id']
             if j:
-                j.update(cid, status='pending')
-            return CaseScore(cid, 'not_started', job.json().get('error', {}).get('code'), note='작업을 접수하지 못했습니다')
-        job_id = job.json()['job_id']
-        if j:
-            j.update(cid, status='accepted', job_id=job_id)
+                j.update(cid, status='accepted', job_id=job_id)
         try:
-            done = self._wait(lambda: (lambda x: x if x['status'] in ('succeeded', 'failed', 'cancelled') else None)(self.call('GET', f'/api/ai/v1/jobs/{job_id}').json()))
+            done = self._wait(lambda: (lambda x: x if x['status'] in ('succeeded', 'failed', 'cancelled') else None)(self._get_job(job_id, recovering=in_flight)))
         except TimeoutError:
-            self.held += estimate                                  # 끝나지 않은 호출: 결과·비용을 모른다
+            self.held = max(0.0, self.held - prev_held) + estimate     # 끝나지 않은 호출: 결과·비용을 모른다
             score = CaseScore(cid, 'timeout', 'OUTCOME_UNKNOWN', exposure=estimate, uncertain=True, note='시간 안에 끝나지 않았습니다')
             score.job_id = job_id
             self._finish(cid, score, held=estimate)
@@ -417,7 +437,7 @@ class Runner:
         exposure = max(settled, estimate) if uncertain else settled
         self.spent += settled
         held = max(0.0, exposure - settled) if uncertain else 0.0
-        self.held += held
+        self.held = max(0.0, self.held - prev_held) + held             # 확인된 결과로 이전 상한을 바꾼다
         score = score_case(case, done, findings, settled, coverage=coverage, coverage_source=source, exposure=exposure)
         score.job_id, score.result_id = job_id, done.get('result_id')
         self._finish(cid, score, held=held)
@@ -438,15 +458,17 @@ class Runner:
         raise TimeoutError('시간 안에 끝나지 않았습니다.')
 
     def interrupted(self, case_id: str, error: str) -> float:
-        """실행 도중 예외(연결 끊김 등)로 중단됐다. 접수했을 수 있는 작업의 상한을 예산에 잡고 기록한다(--resume으로 복구)."""
+        """실행 도중 예외(연결 끊김 등)로 중단됐다. 접수했을 수 있는 작업의 상한을 예산에 잡고 기록한다(--resume으로 복구).
+        복구 중 다시 끊겨도 이미 잡아 둔 상한과 접수 상태는 그대로 유지하고 중복해서 더하지 않는다."""
         j = self.journal
         rec = j.case(case_id) if j else {}
-        held = float(rec.get('estimate') or 0.0) if rec.get('status') in IN_FLIGHT else 0.0
-        self.held += held
+        in_flight = rec.get('status') in IN_FLIGHT
+        target = float(rec.get('estimate') or 0.0) if in_flight else 0.0
+        self.held += max(0.0, target - float(rec.get('held') or 0.0))
         if j:
-            j.update(case_id, status='interrupted' if rec.get('status') in IN_FLIGHT else rec.get('status', 'pending'), held=held, error=error)
+            j.update(case_id, status='interrupted' if in_flight else rec.get('status', 'pending'), held=target if in_flight else float(rec.get('held') or 0.0), error=error)
             self._save_totals()
-        return held
+        return target
 
 
 def run_set(runner: Runner, cases: list[dict], repository_id: int, *, continue_after_uncertain: bool = False) -> tuple[list[CaseScore], str | None]:
@@ -458,10 +480,14 @@ def run_set(runner: Runner, cases: list[dict], repository_id: int, *, continue_a
         except BudgetExceeded as exc:
             stopped = str(exc)
             break
+        except RecoveryFailed as exc:                                # 복구 불가: 완료로 기록하지 않고 상한을 유지한 채 멈춘다(확인 후 다시 --resume)
+            runner.interrupted(case['id'], 'RecoveryFailed')
+            stopped = str(exc)
+            break
         except Exception as exc:                                     # 연결 끊김 등: 접수됐을 수 있으므로 상한을 잡고 기록한 뒤 멈춘다
             runner.interrupted(case['id'], type(exc).__name__)
             stopped = (f'{case["id"]}: 실행 도중 오류({type(exc).__name__})로 중단했습니다. 이미 접수된 작업이 있을 수 있으니 같은 명령을 다시 실행하지 말고 '
-                       f'--resume으로 이어가세요(같은 요청 key로 기존 작업을 복구합니다).')
+                       f'--resume으로 이어가세요(저장된 작업 id로 조회하고, 접수 여부가 불명확할 때만 최초 요청 그대로 같은 key로 다시 보냅니다).')
             break
         scores.append(score)
         if score.uncertain and not continue_after_uncertain:

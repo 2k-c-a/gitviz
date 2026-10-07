@@ -190,10 +190,12 @@ class FakeResponse:
 class FakeHttp:
     """GitViz API를 흉내 낸다. 실제 API처럼 분석 범위는 **결과 API**에만 있고 작업 응답에는 입력 단계의 값만 있다."""
 
-    def __init__(self, estimate='0.10', reviewable=True, spent=('0.00', '0.07'), job=None, remaining='20.0', findings=None, server=None, fail=None):
+    def __init__(self, estimate='0.10', reviewable=True, spent=('0.00', '0.07'), job=None, remaining='20.0', findings=None, server=None, fail=None, manifest_hash='c' * 64, credential_version=1, fail_after_job_post=False, fail_all=False):
         self.calls, self.estimate, self.reviewable, self.spent, self.remaining = [], estimate, reviewable, list(spent), remaining
         self.server = server if server is not None else {'inputs': {}, 'jobs': {}, 'created': 0}      # 같은 Idempotency-Key는 같은 자원을 돌려준다(실제 서버 규칙)
         self.fail = fail                                                                           # 경로를 받아 True면 연결이 끊긴 것처럼 예외를 낸다
+        self.manifest_hash, self.credential_version, self.fail_after_job_post, self.fail_all = manifest_hash, credential_version, fail_after_job_post, fail_all
+        self.server.setdefault('bodies', {})
         self.cookies = type('Cookies', (), {'set': staticmethod(lambda *a, **k: None)})()
         self.job = job or {'status': 'succeeded', 'result_id': 'r1', 'error_code': None, 'coverage': {**COMPLETE, 'analysis_coverage': 'none'}}   # 입력 단계 coverage
         self.findings = findings if findings is not None else [finding(start=10, verdict='valid')]
@@ -204,6 +206,8 @@ class FakeHttp:
     def request(self, method, url, json=None, headers=None, timeout=None):
         path = url.split('://', 1)[1].split('/', 1)[1]
         self.calls.append((method, '/' + path))
+        if self.fail_all:
+            raise ConnectionError('연결이 끊겼습니다')
         if path == 'api/ai/v1/usage':
             return FakeResponse(200, {'user_spent': self.spent.pop(0) if len(self.spent) > 1 else self.spent[0], 'user_remaining': self.remaining})
         key = (headers or {}).get('Idempotency-Key')
@@ -211,12 +215,17 @@ class FakeHttp:
             self.server['inputs'].setdefault(key, 'i1')
             return FakeResponse(202, {'input_id': self.server['inputs'][key]})
         if path == 'api/ai/v1/inputs/i1':
-            return FakeResponse(200, {'status': 'ready', 'reviewable': self.reviewable, 'manifest_hash': 'c' * 64, 'policy_version': 'p',
-                                      'token_estimate': {'estimated_max_cost': self.estimate}, 'transfer': {'provider': 'anthropic', 'profile_id': 'x', 'credential_version': 1}})
+            return FakeResponse(200, {'status': 'ready', 'reviewable': self.reviewable, 'manifest_hash': self.manifest_hash, 'policy_version': 'p',
+                                      'token_estimate': {'estimated_max_cost': self.estimate}, 'transfer': {'provider': 'anthropic', 'profile_id': 'x', 'credential_version': self.credential_version}})
         if path == 'api/ai/v1/jobs' and method == 'POST':
+            if key in self.server['jobs'] and self.server['bodies'][key] != json:                           # 같은 key에 다른 요청 본문: 실제 서버는 409
+                return FakeResponse(409, {'error': {'code': 'IDEMPOTENCY_CONFLICT'}})
             if key not in self.server['jobs']:
                 self.server['created'] += 1
                 self.server['jobs'][key] = f'j{self.server["created"]}'                                 # 새 key일 때만 새 작업이 생긴다
+                self.server['bodies'][key] = json
+            if self.fail_after_job_post:                                                               # 서버는 접수했지만 응답이 유실됐다
+                raise ConnectionError('응답이 유실됐습니다')
             return FakeResponse(202, {'job_id': self.server['jobs'][key]})
         if path.startswith('api/ai/v1/jobs/') and method == 'GET':
             if self.fail and self.fail(path):
@@ -406,6 +415,95 @@ class Recovery(unittest.TestCase):
         scores, stopped = ev.run_set(runner, [case('c1')], 5)
         self.assertEqual((scores, runner.held), ([], 0.0))                                       # 작업이 접수됐을 가능성이 없으면 상한을 잡지 않는다
         self.assertIn('--resume', stopped)
+
+    def new_server(self):
+        return {'inputs': {}, 'jobs': {}, 'created': 0}
+
+    def test_second_interruption_during_recovery_keeps_the_held_upper_bound(self):
+        server = self.new_server()
+        journal = ev.Journal.create(self.state, run_id='run-p1', set='final', budget=1.0, expected=1)
+        ev.run_set(self.runner(FakeHttp(server=server, fail=lambda p: True), journal), [case('c1')], 5)      # 접수 뒤 끊김: 상한 $0.10
+        self.assertAlmostEqual(ev.Journal.load(self.state).data['held'], 0.10)
+        # 복구 중에 다시 모든 요청이 끊긴다
+        again_journal = ev.Journal.load(self.state)
+        runner = self.runner(FakeHttp(server=server, fail_all=True), again_journal)
+        scores, stopped = ev.run_set(runner, [case('c1')], 5)
+        saved = ev.Journal.load(self.state).data
+        self.assertEqual((scores, saved['cases']['c1']['status'], saved['complete']), ([], 'interrupted', False))
+        self.assertAlmostEqual(saved['held'], 0.10)                                                          # $0.10 → $0가 되지 않는다
+        self.assertAlmostEqual(saved['cases']['c1']['held'], 0.10)
+        self.assertAlmostEqual(runner.held, 0.10)                                                            # 중복해서 더하지도 않는다
+        self.assertEqual(saved['cases']['c1']['job_id'], 'j1')                                               # 접수 상태 유지
+        # 세 번째 시도에서 복구되면 그때 상한이 풀린다
+        final = self.runner(FakeHttp(server=server), ev.Journal.load(self.state))
+        scores, stopped = ev.run_set(final, [case('c1')], 5)
+        self.assertEqual((stopped, scores[0].status, server['created']), (None, 'succeeded', 1))
+        self.assertAlmostEqual(final.held, 0.0)
+
+    def test_recovery_checks_the_existing_job_and_never_resends_with_a_new_consent(self):
+        server = self.new_server()
+        journal = ev.Journal.create(self.state, run_id='run-p2', set='final', budget=1.0, expected=1)
+        ev.run_set(self.runner(FakeHttp(server=server, fail=lambda p: True), journal), [case('c1')], 5)
+        # 중단 사이 key·모델이 바뀌어 새 미리보기의 동의(manifest·key 버전)가 달라졌다
+        changed = FakeHttp(server=server, manifest_hash='d' * 64, credential_version=2)
+        runner = self.runner(changed, ev.Journal.load(self.state))
+        scores, stopped = ev.run_set(runner, [case('c1')], 5)
+        self.assertEqual((stopped, [s.status for s in scores], scores[0].job_id), (None, ['succeeded'], 'j1'))
+        self.assertEqual(server['created'], 1)
+        self.assertNotIn(('POST', '/api/ai/v1/jobs'), changed.calls)                                         # 저장된 job_id로 조회만 했다(409를 만들지 않는다)
+        self.assertNotIn(('POST', '/api/ai/v1/inputs'), changed.calls)
+        self.assertTrue(ev.Journal.load(self.state).data['complete'])
+
+    def test_when_acceptance_is_unknown_the_original_request_body_is_resent_with_the_same_key(self):
+        server = self.new_server()
+        journal = ev.Journal.create(self.state, run_id='run-p3', set='final', budget=1.0, expected=1)
+        lost = FakeHttp(server=server, fail_after_job_post=True)                                               # 서버는 접수했지만 응답을 못 받았다
+        scores, stopped = ev.run_set(self.runner(lost, journal), [case('c1')], 5)
+        self.assertEqual((scores, server['created']), ([], 1))
+        saved = ev.Journal.load(self.state).data['cases']['c1']
+        self.assertEqual((saved['status'], saved.get('job_id'), saved['job_body']['consent']['manifest_hash']), ('interrupted', None, 'c' * 64))
+        changed = FakeHttp(server=server, manifest_hash='d' * 64, credential_version=2)                       # 이어가는 사이 동의가 달라졌다
+        scores, stopped = ev.run_set(self.runner(changed, ev.Journal.load(self.state)), [case('c1')], 5)
+        self.assertEqual((stopped, [s.status for s in scores], server['created']), (None, ['succeeded'], 1))   # 최초 본문 그대로 재전송 → 같은 작업
+        self.assertNotIn(('GET', '/api/ai/v1/inputs/i1'), changed.calls)                                       # 새 미리보기를 쓰지 않는다
+        posts = [c for c in changed.calls if c == ('POST', '/api/ai/v1/jobs')]
+        self.assertEqual(len(posts), 1)
+
+    def test_unrecoverable_job_is_not_recorded_as_complete_and_keeps_its_hold(self):
+        server = self.new_server()
+        journal = ev.Journal.create(self.state, run_id='run-p4', set='final', budget=1.0, expected=1)
+        ev.run_set(self.runner(FakeHttp(server=server, fail_after_job_post=True), journal), [case('c1')], 5)   # 접수 여부 불명(job_id 없음)
+        deny = FakeHttp(server=server)                                                                          # 재전송이 거절되는 경우(서버가 접수 기록을 잃은 것처럼)
+        original = deny.request
+
+        def reject(method, url, **kw):
+            if url.endswith('/api/ai/v1/jobs') and method == 'POST':
+                deny.calls.append((method, '/api/ai/v1/jobs'))
+                return FakeResponse(409, {'error': {'code': 'IDEMPOTENCY_CONFLICT'}})
+            return original(method, url, **kw)
+        deny.request = reject
+        runner = self.runner(deny, ev.Journal.load(self.state))
+        scores, stopped = ev.run_set(runner, [case('c1')], 5)
+        saved = ev.Journal.load(self.state).data
+        self.assertEqual((scores, saved['complete'], saved['cases']['c1']['status']), ([], False, 'interrupted'))      # 완료로 기록하지 않는다
+        self.assertAlmostEqual(saved['held'], 0.10)                                                             # 상한 유지
+        self.assertIn('확인', stopped)
+
+    def test_a_job_that_vanished_is_unresolved_not_complete(self):
+        server = self.new_server()
+        journal = ev.Journal.create(self.state, run_id='run-p5', set='final', budget=1.0, expected=1)
+        ev.run_set(self.runner(FakeHttp(server=server, fail=lambda p: True), journal), [case('c1')], 5)
+
+        class Gone(FakeHttp):
+            def request(self, method, url, **kw):
+                if '/api/ai/v1/jobs/' in url and method == 'GET':
+                    return FakeResponse(404, {'error': {'code': 'RESOURCE_NOT_FOUND'}})
+                return super().request(method, url, **kw)
+        runner = self.runner(Gone(server=server), ev.Journal.load(self.state))
+        scores, stopped = ev.run_set(runner, [case('c1')], 5)
+        saved = ev.Journal.load(self.state).data
+        self.assertEqual((scores, saved['complete'], saved['cases']['c1']['status']), ([], False, 'interrupted'))
+        self.assertAlmostEqual(saved['held'], 0.10)
 
     def args(self, extra=()):
         return ['--manifest', self.manifest_path, '--live', '--set', 'final', '--budget', '5', '--base-url', 'https://x', '--cookie', 'a=b',
