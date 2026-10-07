@@ -40,14 +40,21 @@ def synthetic_sent():
     return prompts.SentInput(files=[file], metadata=PRTransferMetadata(title='Refactor average', body='Splits the sum into a variable.'))
 
 
-def provider_smoke(api_key: str, profile_id: str, budget: Decimal, *, provider_factory=None) -> dict:
-    """provider 단계. 보고용 dict를 돌려준다(key는 담지 않는다). report['ok']가 False면 실패."""
+def provider_smoke(api_key: str, profile_id: str, budget: Decimal, *, provider_factory=None, official_only: bool = True) -> dict:
+    """provider 단계. 보고용 dict를 돌려준다(key는 담지 않는다). report['ok']가 False면 실패.
+
+    official_only=True(기본, 실제 smoke)이면 AI_TEST_PROVIDER_BASE_URL이 설정돼 있을 때 key를 보내기 전에 거부한다: 실제 smoke는 공식 주소만 쓴다.
+    False는 로컬 가짜 제공자로 이 도구를 시험하는 테스트 전용이다(주소는 어댑터가 로컬만 허용한다)."""
     from app.services.ai import prompts, token_budget, validators
     from app.services.ai.providers import registry
     from app.services.ai.providers.base import GenerationRequest, ProviderError, TokenLimitExceeded
+    from app.core.ai_settings import get_ai_settings
     profile = registry.get_profile(profile_id)
+    if official_only and get_ai_settings().test_provider_base_url:
+        return {'profile': profile.id, 'model': profile.model, 'ok': False, 'cost_usd': None, 'cost_known': False, 'steps': [
+            {'step': '제공자 주소', 'ok': False, 'detail': 'AI_TEST_PROVIDER_BASE_URL이 설정돼 있습니다. 실제 smoke는 공식 주소만 사용하므로 key를 보내지 않았습니다(환경변수를 비우세요)'}]}
     provider = (provider_factory or registry.create_provider)(profile, api_key=api_key)
-    report = {'profile': profile.id, 'model': profile.model, 'steps': [], 'ok': False, 'cost_usd': '0'}
+    report = {'profile': profile.id, 'model': profile.model, 'steps': [], 'ok': False, 'cost_usd': None, 'cost_known': False}
     sent = synthetic_sent()
     requests = {kind: prompts.render_request(kind, sent) for kind in ('summary', 'review')}
 
@@ -69,9 +76,12 @@ def provider_smoke(api_key: str, profile_id: str, budget: Decimal, *, provider_f
             local = provider.estimate_tokens(req)
             counts[kind] = (req, counted)
             token_budget.check_input_limit(profile, counted)
-            step(f'count_tokens({kind})', True, f'제공자 {counted}토큰 / 로컬 추정 {local}토큰' + ('' if local >= counted else ' — 로컬 추정이 실제보다 작다(보수적이지 않음)'))
-            if local < counted:
+            report.setdefault('local_estimates', {})[kind] = local
+            ok = local >= counted                                 # 로컬 추정은 실제 토큰 수 이상이어야 한다(예약·한도 검사가 보수적이려면)
+            step(f'count_tokens({kind})', ok, f'제공자 {counted}토큰 / 로컬 추정 {local}토큰' + ('' if ok else ' — 로컬 추정이 실제보다 작아 예약·한도 검사가 보수적이지 않습니다. 실패로 처리합니다'))
+            if not ok:
                 report['local_estimate_underestimates'] = True
+                return report
         except (ProviderError, TokenLimitExceeded) as err:
             step(f'count_tokens({kind})', False, getattr(getattr(err, 'failure', None), 'kind', type(err).__name__))
             return report
@@ -92,21 +102,31 @@ def provider_smoke(api_key: str, profile_id: str, budget: Decimal, *, provider_f
             report['uncertain_cost_possible'] = bool(f.outcome_uncertain)
             return report
         latency = time.monotonic() - started
-        cost = response.cost if response.cost is not None else None
-        spent += cost or Decimal(0)
+        cost = response.cost
         u = response.usage
-        step(f'생성({kind}) 응답', response.finish == 'complete' and response.usable,
+        usable = response.finish == 'complete' and response.usable
+        step(f'생성({kind}) 응답', usable,
              f'finish={response.finish}, 파싱={"됨" if response.parsed is not None else response.parse_error}, 지연 {latency:.1f}초, request-id {response.request_id}, '
              f'usage 입력 {u.billed_input_tokens if u else "없음"}/출력 {u.output_tokens if u else "없음"}, 비용 {cost if cost is not None else "usage 없음(알 수 없음)"}')
-        if response.finish != 'complete' or not response.usable:
+        if not usable:
             if response.finish == 'refused':
                 report['refusal_category'] = response.refusal_category
             return report
+        if u is None or cost is None:                              # usage가 없으면 비용을 확인할 수 없다: 0으로 보고하지 않고 실패
+            step(f'비용 확인({kind})', False, '응답에 usage가 없어 비용을 확인할 수 없습니다(0이 아니라 미확인). 제공자 콘솔의 사용 내역으로 직접 확인하세요')
+            report['cost_unverified'] = True
+            return report
+        local = report['local_estimates'][kind]
+        if u.billed_input_tokens > local:
+            step(f'토큰 추정 확인({kind})', False, f'응답 usage의 입력 토큰 {u.billed_input_tokens}이 로컬 추정 {local}보다 큽니다(보수적이지 않음)')
+            report['local_estimate_underestimates'] = True
+            return report
+        spent += cost
         validated = validators.validate_output(kind, response, sent, revision_id=UUID(int=2))
         step(f'출력 검증({kind})', validated.ok, '파일·줄·인용 참조가 맞음(내용의 정확성은 확인하지 않음)' if validated.ok else '문제: ' + ', '.join(sorted({i.code for i in validated.issues})))
         if not validated.ok:
             return report
-    report['cost_usd'] = str(spent)
+    report['cost_usd'], report['cost_known'] = str(spent), True
     report['ok'] = all(s['ok'] for s in report['steps'])
     return report
 
@@ -155,8 +175,10 @@ def render(report: dict, title: str) -> str:
     lines = [f'# {title}', '']
     for s in report['steps']:
         lines.append(f'- [{"OK" if s["ok"] else "실패"}] {s["step"]}: {s["detail"]}')
-    for key in ('max_cost_upper_bound_usd', 'cost_usd', 'refusal_category', 'uncertain_cost_possible', 'local_estimate_underestimates'):
-        if key in report and report[key] not in (None, False, '0'):
+    if 'cost_known' in report:
+        lines.append('- 비용: ' + (str(report['cost_usd']) if report['cost_known'] else '미확인(0이 아닙니다 — 제공자 콘솔로 확인하세요)'))
+    for key in ('max_cost_upper_bound_usd', 'refusal_category', 'uncertain_cost_possible', 'local_estimate_underestimates', 'cost_unverified'):
+        if report.get(key) not in (None, False):
             lines.append(f'- {key}: {report[key]}')
     lines += ['', f'결과: {"통과" if report["ok"] else "실패"}', '(구조 검증 통과는 내용이 옳다는 뜻이 아닙니다. 이 smoke는 연동·schema·비용 계산을 확인할 뿐 모델 정확도를 평가하지 않습니다.)']
     return '\n'.join(lines)

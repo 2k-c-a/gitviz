@@ -190,6 +190,19 @@ class BaseUrl(unittest.TestCase):
                 self.assertEqual(problems == [], ok)
 
 
+    def test_adapter_itself_refuses_a_non_local_override_even_when_the_app_never_validated_settings(self):
+        """앱 시작 시 설정 검증을 거치지 않는 독립 실행(smoke 등)도 사용자 key를 외부 주소로 보내지 않는다."""
+        for url in ('https://api.evil.example', 'http://10.0.0.5:80', 'http://127.0.0.1@evil.example', 'http://localhost.evil.example', 'ftp://127.0.0.1',
+                    'http://user:pw@127.0.0.1:9', 'http://127.0.0.1:notaport'):
+            with self.subTest(url=url), patch.dict(os.environ, {'AI_ENABLED': '0', 'AI_TEST_PROVIDER_BASE_URL': url}):
+                with self.assertRaises(ProviderConfigError):
+                    AnthropicProvider(PROFILE, api_key=API_KEY)
+                with self.assertRaises(ProviderConfigError):
+                    registry.create_provider(PROFILE, api_key=API_KEY)
+        with patch.dict(os.environ, {'AI_ENABLED': '0', 'AI_TEST_PROVIDER_BASE_URL': 'http://localhost:8123'}):
+            self.assertEqual(str(AnthropicProvider(PROFILE, api_key=API_KEY).client.base_url).rstrip('/'), 'http://localhost:8123')
+
+
 class Responses(unittest.TestCase):
     def test_success_fields_usage_and_cost(self):
         provider, _ = make_provider(lambda r: ok())

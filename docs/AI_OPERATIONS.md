@@ -23,7 +23,7 @@ python scripts/ai_ops.py check
 
 설정·migration·Redis를 점검하고 문제가 있으면 종료 코드 1이다. 잘못된 설정이면 앱이 시작되지 않는다(`require_valid_ai_settings`).
 
-- **운영에서 비워야 하는 값**: `AI_TEST_PROVIDER_BASE_URL`(통합 시험 전용, 로컬 주소만 허용). 사용자 key는 이 값이 없으면 항상 공식 주소로만 간다. `ANTHROPIC_BASE_URL`·`ANTHROPIC_API_KEY` 환경변수는 AI 기능이 **무시**한다(`check`가 남아 있으면 알려 준다).
+- **운영에서 비워야 하는 값**: `AI_TEST_PROVIDER_BASE_URL`(통합 시험 전용, 로컬 주소만 허용 — 앱 시작 검증과 provider 어댑터 생성 때 모두 확인한다). 사용자 key는 이 값이 없으면 항상 공식 주소로만 간다. `ANTHROPIC_BASE_URL`·`ANTHROPIC_API_KEY` 환경변수는 AI 기능이 **무시**한다(`check`가 남아 있으면 알려 준다).
 - **키 교체(암호화 키)**: 새 키를 `AI_*_ENCRYPTION_KEYS`에 `버전:hex`로 **추가**하고 `*_KEY_VERSION`을 새 버전으로 바꾼다. 옛 버전 키는 기존 암호문을 읽는 동안 남겨 둔다. 원문 코드는 보관 기간이 지나면 지워지므로 옛 키는 그 뒤에 제거할 수 있다. 사용자 key는 사용자가 key를 교체하면 새 암호화 키로 다시 저장된다.
 - **예산·한도**: `AI_USER_MONTHLY_BUDGET`(개인 지출 상한, 항상 적용), `AI_SERVER_MONTHLY_BUDGET`(0이면 끔, 서버 합계 상한), `AI_DAILY_JOB_LIMIT`, `AI_ALLOWED_PROFILES`(사용자가 고를 수 있는 모델). 비용은 사용자 key의 계정에 청구된다.
 

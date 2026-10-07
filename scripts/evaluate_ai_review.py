@@ -13,6 +13,7 @@
 """
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -259,20 +260,87 @@ class BudgetExceeded(Exception):
     pass
 
 
+class Journal:
+    """실행 상태 기록(파일). 최종 세트의 "한 번만 실행"과 중단 뒤 복구의 근거다.
+
+    - **시작 전에 원자적으로 만든다**(`O_CREAT|O_EXCL`): 같은 명령을 다시 실행하거나 동시에 두 번 실행해도 두 번째는 만들지 못한다.
+      정상 종료 뒤에 남기는 표시가 아니므로, 접수 뒤 연결이 끊겨 비정상 종료해도 기록이 남는다.
+    - 사례마다 진행 단계(started → submitting → accepted → done / interrupted)와 예상 상한·정산 기준(usage_before)을 접수 **전에** 저장한다.
+    - 갱신은 임시 파일에 쓰고 `os.replace`로 바꿔 부분 기록이 남지 않게 한다."""
+
+    def __init__(self, path, data):
+        self.path, self.data = Path(path), data
+
+    @classmethod
+    def create(cls, path, **header):
+        data = {**header, 'started_at': time.strftime('%Y-%m-%dT%H:%M:%S'), 'cases': {}, 'spent': 0.0, 'held': 0.0, 'complete': False, 'stopped': None}
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)          # 이미 있으면 FileExistsError
+        try:
+            os.write(fd, json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8'))
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        return cls(path, data)
+
+    @classmethod
+    def load(cls, path):
+        return cls(path, json.loads(Path(path).read_text(encoding='utf-8')))
+
+    def save(self):
+        tmp = self.path.with_name(self.path.name + '.tmp')
+        with open(tmp, 'w', encoding='utf-8') as f:
+            f.write(json.dumps(self.data, ensure_ascii=False, indent=2))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, self.path)
+
+    def case(self, case_id: str) -> dict:
+        return self.data['cases'].setdefault(case_id, {'status': 'pending'})
+
+    def update(self, case_id: str, **fields):
+        self.case(case_id).update(fields)
+        self.save()
+
+    def totals(self, spent: float, held: float):
+        self.data['spent'], self.data['held'] = spent, held
+        self.save()
+
+
+IN_FLIGHT = ('submitting', 'accepted', 'interrupted')      # 서버가 작업을 이미 접수했을 수 있는 단계
+
+
 class Runner:
     """배포된(또는 통합 검증용) GitViz에 HTTP로 접속해 사례를 실행한다. http는 쿠키·Origin이 설정된 requests.Session 같은 객체다.
 
     예산: 정산된 비용(spent)과 **결과를 모르는 호출의 상한(held)**을 모두 반영한다. 불명 호출은 정산액이 늘지 않아도 비용이 이미 나갔을 수 있으므로
-    그 호출의 예상 상한을 예산에서 빼지 않고 계속 잡아 둔다. 서버가 알려 주는 남은 월 한도(user_remaining)도 함께 확인한다."""
+    그 호출의 예상 상한을 예산에서 빼지 않고 계속 잡아 둔다. 서버가 알려 주는 남은 월 한도(user_remaining)도 함께 확인한다.
+
+    journal이 있으면 접수 요청의 Idempotency-Key를 (실행 id, 사례, 단계)로 정해 **결정적**으로 만들고 진행 단계를 접수 전에 기록한다. 중단된 실행을
+    다시 이어가면 같은 key로 같은 요청을 보내 서버가 이미 접수한 입력·작업을 그대로 돌려주므로 작업이 하나 더 생기지 않는다."""
 
     def __init__(self, http, base_url: str, *, budget: float, csrf_token: str | None = None, poll_seconds: float = 3.0, timeout: float = 600.0,
-                 sleep=time.sleep):
+                 sleep=time.sleep, journal: 'Journal | None' = None):
         self.http, self.base, self.budget, self.spent, self.held = http, base_url.rstrip('/'), float(budget), 0.0, 0.0
-        self.csrf, self.poll, self.timeout, self.sleep = csrf_token, poll_seconds, timeout, sleep
+        self.csrf, self.poll, self.timeout, self.sleep, self.journal = csrf_token, poll_seconds, timeout, sleep, journal
+        if journal is not None:
+            self.spent, self.held = float(journal.data.get('spent', 0.0)), float(journal.data.get('held', 0.0))
 
     @property
     def committed(self) -> float:
         return self.spent + self.held
+
+    def key(self, case_id: str, step: str) -> str:
+        import hashlib
+        import uuid
+        if self.journal is None:
+            return uuid.uuid4().hex
+        return hashlib.sha256(f'{self.journal.data["run_id"]}|{case_id}|{step}'.encode()).hexdigest()[:48]
+
+    def _save_totals(self):
+        if self.journal is not None:
+            self.journal.totals(self.spent, self.held)
 
     def call(self, method, path, body=None, key=None):
         headers = {'Origin': self.base}
@@ -288,36 +356,56 @@ class Runner:
         return self.call('GET', '/api/ai/v1/usage').json()
 
     def run_case(self, case: dict, repository_id: int, kind: str = 'review') -> CaseScore:
-        import uuid
-        usage_before = float(self._usage()['user_spent'])
+        j, cid = self.journal, case['id']
+        rec = j.case(cid) if j else {}
+        if rec.get('status') == 'done':
+            return CaseScore(**rec['score'])                             # 이미 끝난 사례는 다시 실행하지 않는다
+        in_flight = rec.get('status') in IN_FLIGHT
+        if j and rec.get('held'):
+            self.held = max(0.0, self.held - rec['held'])               # 중단되며 잡아 둔 상한: 이제 다시 확인하므로 풀고, 결과에 따라 다시 잡는다
+            j.update(cid, held=0.0)
+            self._save_totals()
+        usage_before = rec['usage_before'] if in_flight and 'usage_before' in rec else float(self._usage()['user_spent'])
+        if j:
+            j.update(cid, status='started', usage_before=usage_before)
         created = self.call('POST', '/api/ai/v1/inputs', {'repository_id': repository_id, 'pr_number': case['pr_number'], 'expected_base_sha': case['base_sha'],
-                                                           'expected_head_sha': case['head_sha'], 'selected_paths': case['selected_paths']}, uuid.uuid4().hex)
+                                                           'expected_head_sha': case['head_sha'], 'selected_paths': case['selected_paths']}, self.key(cid, 'input'))
         if created.status_code not in (200, 202):
-            return CaseScore(case['id'], 'not_started', created.json().get('error', {}).get('code'), note='입력을 만들지 못했습니다')
+            return CaseScore(cid, 'not_started', created.json().get('error', {}).get('code'), note='입력을 만들지 못했습니다')
         input_id = created.json()['input_id']
         preview = self._wait(lambda: (lambda p: p if p['status'] != 'building' else None)(self.call('GET', f'/api/ai/v1/inputs/{input_id}').json()))
         if preview['status'] != 'ready' or not preview.get('reviewable'):
-            return CaseScore(case['id'], 'not_started', preview['status'], note='실행할 수 있는 입력이 아닙니다(reviewable=false 포함)')
+            return CaseScore(cid, 'not_started', preview['status'], note='실행할 수 있는 입력이 아닙니다(reviewable=false 포함)')
         estimate = float((preview.get('token_estimate') or {}).get('estimated_max_cost') or 0)
-        remaining = self.budget - self.committed
-        if estimate > remaining:
-            raise BudgetExceeded(f'{case["id"]}: 예상 비용 상한 ${estimate:.4f}가 남은 평가 예산 ${remaining:.4f}'
-                                 f'(정산 ${self.spent:.4f} + 결과를 모르는 호출의 상한 ${self.held:.4f} 반영)을 넘습니다.')
-        server_remaining = float(self._usage().get('user_remaining') or 0)
-        if estimate > server_remaining:
-            raise BudgetExceeded(f'{case["id"]}: 예상 비용 상한 ${estimate:.4f}가 계정의 남은 월 한도 ${server_remaining:.4f}를 넘습니다.')
+        if not in_flight:                                                # 이미 접수했을 수 있는 작업을 복구할 때는 새 비용이 아니므로 막지 않는다
+            remaining = self.budget - self.committed
+            if estimate > remaining:
+                raise BudgetExceeded(f'{cid}: 예상 비용 상한 ${estimate:.4f}가 남은 평가 예산 ${remaining:.4f}'
+                                     f'(정산 ${self.spent:.4f} + 결과를 모르는 호출의 상한 ${self.held:.4f} 반영)을 넘습니다.')
+            server_remaining = float(self._usage().get('user_remaining') or 0)
+            if estimate > server_remaining:
+                raise BudgetExceeded(f'{cid}: 예상 비용 상한 ${estimate:.4f}가 계정의 남은 월 한도 ${server_remaining:.4f}를 넘습니다.')
         t = preview['transfer']
         consent = {'input_id': input_id, 'manifest_hash': preview['manifest_hash'], 'provider': t['provider'], 'profile_id': t['profile_id'],
                    'credential_version': t['credential_version'], 'policy_version': preview['policy_version']}
-        job = self.call('POST', '/api/ai/v1/jobs', {'kind': kind, 'consent': consent, 'force_regenerate': False}, uuid.uuid4().hex)
+        if j:
+            j.update(cid, status='submitting', estimate=estimate, input_id=input_id)     # 접수 요청을 보내기 **전에** 기록한다
+        job = self.call('POST', '/api/ai/v1/jobs', {'kind': kind, 'consent': consent, 'force_regenerate': False}, self.key(cid, 'job'))
         if job.status_code not in (200, 202):
-            return CaseScore(case['id'], 'not_started', job.json().get('error', {}).get('code'), note='작업을 접수하지 못했습니다')
+            if j:
+                j.update(cid, status='pending')
+            return CaseScore(cid, 'not_started', job.json().get('error', {}).get('code'), note='작업을 접수하지 못했습니다')
         job_id = job.json()['job_id']
+        if j:
+            j.update(cid, status='accepted', job_id=job_id)
         try:
-            done = self._wait(lambda: (lambda j: j if j['status'] in ('succeeded', 'failed', 'cancelled') else None)(self.call('GET', f'/api/ai/v1/jobs/{job_id}').json()))
+            done = self._wait(lambda: (lambda x: x if x['status'] in ('succeeded', 'failed', 'cancelled') else None)(self.call('GET', f'/api/ai/v1/jobs/{job_id}').json()))
         except TimeoutError:
             self.held += estimate                                  # 끝나지 않은 호출: 결과·비용을 모른다
-            return CaseScore(case['id'], 'timeout', 'OUTCOME_UNKNOWN', exposure=estimate, uncertain=True, note='시간 안에 끝나지 않았습니다')
+            score = CaseScore(cid, 'timeout', 'OUTCOME_UNKNOWN', exposure=estimate, uncertain=True, note='시간 안에 끝나지 않았습니다')
+            score.job_id = job_id
+            self._finish(cid, score, held=estimate)
+            return score
         findings, coverage, source = [], dict(done.get('coverage') or {}), ('input' if done.get('coverage') else 'none')
         if done['status'] == 'succeeded':
             result = self.call('GET', f'/api/ai/v1/results/{done["result_id"]}').json()          # 분석 범위는 결과 API가 기준이다
@@ -328,11 +416,17 @@ class Runner:
         uncertain = bool(done.get('outcome_uncertain')) or done.get('error_code') in UNCERTAIN_CODES
         exposure = max(settled, estimate) if uncertain else settled
         self.spent += settled
-        if uncertain:
-            self.held += max(0.0, exposure - settled)
+        held = max(0.0, exposure - settled) if uncertain else 0.0
+        self.held += held
         score = score_case(case, done, findings, settled, coverage=coverage, coverage_source=source, exposure=exposure)
         score.job_id, score.result_id = job_id, done.get('result_id')
+        self._finish(cid, score, held=held)
         return score
+
+    def _finish(self, case_id, score, *, held=0.0):
+        if self.journal is not None:
+            self.journal.update(case_id, status='done', score=score.__dict__, held=held)
+            self._save_totals()
 
     def _wait(self, condition):
         deadline = time.monotonic() + self.timeout
@@ -342,6 +436,42 @@ class Runner:
                 return value
             self.sleep(self.poll)
         raise TimeoutError('시간 안에 끝나지 않았습니다.')
+
+    def interrupted(self, case_id: str, error: str) -> float:
+        """실행 도중 예외(연결 끊김 등)로 중단됐다. 접수했을 수 있는 작업의 상한을 예산에 잡고 기록한다(--resume으로 복구)."""
+        j = self.journal
+        rec = j.case(case_id) if j else {}
+        held = float(rec.get('estimate') or 0.0) if rec.get('status') in IN_FLIGHT else 0.0
+        self.held += held
+        if j:
+            j.update(case_id, status='interrupted' if rec.get('status') in IN_FLIGHT else rec.get('status', 'pending'), held=held, error=error)
+            self._save_totals()
+        return held
+
+
+def run_set(runner: Runner, cases: list[dict], repository_id: int, *, continue_after_uncertain: bool = False) -> tuple[list[CaseScore], str | None]:
+    """사례를 차례로 실행한다. 예산·불명 호출·예외로 멈추면 (지금까지의 점수, 중단 사유)를 돌려준다. 이미 끝난 사례는 다시 실행하지 않는다."""
+    scores, stopped = [], None
+    for case in cases:
+        try:
+            score = runner.run_case(case, repository_id)
+        except BudgetExceeded as exc:
+            stopped = str(exc)
+            break
+        except Exception as exc:                                     # 연결 끊김 등: 접수됐을 수 있으므로 상한을 잡고 기록한 뒤 멈춘다
+            runner.interrupted(case['id'], type(exc).__name__)
+            stopped = (f'{case["id"]}: 실행 도중 오류({type(exc).__name__})로 중단했습니다. 이미 접수된 작업이 있을 수 있으니 같은 명령을 다시 실행하지 말고 '
+                       f'--resume으로 이어가세요(같은 요청 key로 기존 작업을 복구합니다).')
+            break
+        scores.append(score)
+        if score.uncertain and not continue_after_uncertain:
+            stopped = f'{score.case_id}: 호출 결과를 알 수 없어 평가를 중단했습니다(제공자 콘솔에서 확인하세요).'
+            break
+    if runner.journal is not None:
+        runner.journal.data['stopped'] = stopped
+        runner.journal.data['complete'] = stopped is None and len(scores) == len(cases)
+        runner.journal.save()
+    return scores, stopped
 
 
 def rescore(report: dict, cases: list[dict], http, base_url: str) -> list[CaseScore]:
@@ -376,6 +506,8 @@ def main(argv=None) -> int:
     ap.add_argument('--cookie', help='평가자 세션 쿠키(gitviz_session=…). 화면에 출력하지 않는다')
     ap.add_argument('--repository-id', type=int, help='GitViz의 저장소 id(평가 대상 저장소를 미리 등록해 둔 것)')
     ap.add_argument('--continue-after-uncertain', action='store_true', help='결과를 알 수 없는 호출이 생겨도 계속한다(기본은 중단, 그 호출의 상한은 예산에 계속 반영)')
+    ap.add_argument('--resume', action='store_true', help='중단된 실행을 이어간다(접수된 작업은 같은 요청 key로 복구하고 새로 만들지 않는다)')
+    ap.add_argument('--fresh', action='store_true', help='조정 세트만: 이전 실행 기록을 보관하고 새로 시작한다(최종 세트는 불가)')
     ap.add_argument('--rescore', help='이전 실행 보고서(.json)를 사람이 판정한 뒤의 상태로 다시 채점한다(제공자 호출·비용 없음)')
     ap.add_argument('--out', default=str(ROOT / 'reports'))
     args = ap.parse_args(argv)
@@ -409,44 +541,53 @@ def main(argv=None) -> int:
             print('실제 호출은 하지 않았습니다(--live와 --budget 필요).')
         return 1 if problems else 0
     if problems:
-        print('평가 세트에 문제가 있어 실행하지 않습니다:', *problems, sep='\n- ')
+        print('평가 세트에 문제가 있어 실행하지 않습니다:', *problems, sep=chr(10) + '- ')
         return 2
     if not (args.budget and args.budget > 0 and args.base_url and args.cookie and args.repository_id):
         print('--live에는 --budget(>0), --base-url, --cookie, --repository-id가 모두 필요합니다.')
         return 2
-    marker = Path(args.out) / 'FINAL_RUN_DONE.json'
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    marker = out / 'FINAL_RUN_DONE.json'
+    state_path = out / f'ai-eval-{args.set}-state.json'
     if args.set == 'final' and (manifest.get('final_run_done') or marker.exists()):
-        print('최종 세트는 이미 실행됐습니다. 조정 후 한 번만 실행해 보고하세요(재판정은 --rescore).')
+        print('최종 세트는 이미 실행을 마쳤습니다. 조정 후 한 번만 실행해 보고하세요(재판정은 --rescore).')
         return 2
+    cases = cases_of(manifest, args.set)
+    if args.resume:
+        if not state_path.exists():
+            print('이어갈 실행 기록이 없습니다.')
+            return 2
+        journal = Journal.load(state_path)
+        if journal.data.get('set') != args.set or journal.data.get('complete'):
+            print('이미 완료됐거나 다른 세트의 실행 기록입니다. 결과는 --rescore로 확인하세요.')
+            return 2
+    else:
+        if args.fresh and args.set == 'tuning' and state_path.exists():
+            state_path.rename(state_path.with_name(f'{state_path.name}.{time.strftime("%Y%m%d-%H%M%S")}.old'))
+        try:
+            import uuid
+            journal = Journal.create(state_path, run_id=uuid.uuid4().hex, set=args.set, budget=args.budget, expected=len(cases))   # 시작 전에 원자적으로 남긴다
+        except FileExistsError:
+            print('이 세트의 실행 기록이 이미 있습니다(중단됐을 수 있습니다). 같은 명령을 다시 실행하지 않습니다: --resume으로 이어가면 접수된 작업을 같은 key로 복구합니다'
+                  + (' (조정 세트는 --fresh로 새로 시작할 수 있습니다).' if args.set == 'tuning' else '(최종 세트는 새로 시작할 수 없습니다).'))
+            return 2
     import requests
     http = requests.Session()
     name, _, value = args.cookie.partition('=')
     http.cookies.set(name, value)
-    runner = Runner(http, args.base_url, budget=args.budget)
-    scores, stopped = [], None
-    cases = cases_of(manifest, args.set)
-    for case in cases:
-        try:
-            score = runner.run_case(case, args.repository_id)
-        except BudgetExceeded as exc:
-            stopped = str(exc)
-            break
-        scores.append(score)
-        if score.uncertain and not args.continue_after_uncertain:
-            stopped = f'{score.case_id}: 호출 결과를 알 수 없어 평가를 중단했습니다(제공자 콘솔에서 확인하세요).'
-            break
+    runner = Runner(http, args.base_url, budget=args.budget, journal=journal)
+    scores, stopped = run_set(runner, cases, args.repository_id, continue_after_uncertain=args.continue_after_uncertain)
     summary = summarize(scores, manifest.get('criteria'), expected_cases=len(cases), stopped=stopped)
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime('%Y%m%d-%H%M%S')
-    (out / f'ai-eval-{args.set}-{stamp}.json').write_text(json.dumps({'mode': 'live', 'set': args.set, 'summary': summary, 'cases': [s.__dict__ for s in scores]},
-                                                                      ensure_ascii=False, indent=2), encoding='utf-8')
+    (out / f'ai-eval-{args.set}-{stamp}.json').write_text(json.dumps({'mode': 'live', 'set': args.set, 'run_id': journal.data['run_id'], 'summary': summary,
+                                                                      'cases': [s.__dict__ for s in scores]}, ensure_ascii=False, indent=2), encoding='utf-8')
     report = render_report(args.set, 'live', scores, summary)
     (out / f'ai-eval-{args.set}-{stamp}.md').write_text(report, encoding='utf-8')
-    if args.set == 'final':
-        marker.write_text(json.dumps({'ran_at': stamp, 'cases': len(scores)}), encoding='utf-8')     # 최종 세트는 한 번만
+    if args.set == 'final' and journal.data.get('complete'):
+        marker.write_text(json.dumps({'ran_at': stamp, 'cases': len(scores), 'run_id': journal.data['run_id']}), encoding='utf-8')
     print(report)
-    return 0
+    return 0 if journal.data.get('complete') else 3          # 3: 중단(--resume으로 이어갈 수 있다)
 
 
 if __name__ == '__main__':
