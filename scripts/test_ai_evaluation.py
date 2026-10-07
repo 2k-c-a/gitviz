@@ -26,7 +26,8 @@ def manifest(tuning=None, final=None, **over):
     return data
 
 
-def finding(path='a.py', start=10, end=10, side='RIGHT', verdict='unverified', title='t'):
+def finding(path='a.py', start=10, end=None, side='RIGHT', verdict='unverified', title='t'):
+    end = start if end is None else end
     return {'finding': {'title': title, 'human_validation': verdict, 'location': {'path': path, 'side': side, 'start_line': start, 'end_line': end}}}
 
 
@@ -67,6 +68,19 @@ class Manifest(unittest.TestCase):
         self.assertTrue(any('negative_control' in b for b in ev.release_blockers({**m, 'sets': {**m['sets'], 'final': [case('f1', 'c')]}})))
 
 
+COMPLETE = {'inventory_coverage': 'complete', 'selected_content_coverage': 'complete', 'analysis_coverage': 'complete', 'selected_files': 1, 'pr_total_files': 1, 'limitations': []}
+JOB_OK = {'status': 'succeeded', 'error_code': None}
+
+
+def scored(c, findings, cost=0.1, job=None, coverage=COMPLETE, source='result', exposure=None):
+    return ev.score_case(c, job or JOB_OK, findings, cost, coverage=coverage, coverage_source=source, exposure=exposure)
+
+
+def clean_pair():
+    """끝까지 실행되고 모든 지적이 사람이 판정한 두 사례(결함 있음 + 결함 없는 대조)."""
+    return [scored(case(), [finding(start=10, verdict='valid')]), scored(case('neg', truths=[], negative_control=True), [])]
+
+
 class Scoring(unittest.TestCase):
     def test_line_overlap_with_tolerance_and_same_side(self):
         truth = {'path': 'a.py', 'side': 'RIGHT', 'start_line': 10, 'end_line': 12}
@@ -75,39 +89,92 @@ class Scoring(unittest.TestCase):
         self.assertFalse(ev.overlaps(truth, finding(side='LEFT')['finding']))
         self.assertFalse(ev.overlaps(truth, finding(path='b.py')['finding']))
 
-    def test_case_score_separates_found_defects_unmatched_findings_and_human_verdicts(self):
+    def test_position_match_is_only_a_candidate_a_false_positive_is_not_a_discovery(self):
+        c = case()                                                                                  # 정답: a.py RIGHT 10-12
+        fp = scored(c, [finding(start=11, verdict='false_positive')])
+        self.assertEqual((fp.matched_truths, fp.candidate_truths, len(fp.pending), fp.verdicts['false_positive']), (0, 1, 0, 1))   # 위치가 겹쳐도 발견이 아니다
+        self.assertEqual(ev.summarize([fp])['recall_on_known_defects'], 0.0)                         # 재현율 100%로 나오지 않는다
+        for verdict in ('unverified', 'uncertain'):
+            pending = scored(c, [finding(start=11, verdict=verdict)])
+            self.assertEqual((pending.matched_truths, pending.candidate_truths, len(pending.pending)), (0, 1, 1))   # 사람이 확인할 때까지 발견이 아니다
+        valid = scored(c, [finding(start=11, verdict='valid')])
+        self.assertEqual((valid.matched_truths, len(valid.pending)), (1, 0))
+        mixed = scored(c, [finding(start=11, verdict='false_positive'), finding(start=12, verdict='valid')])
+        self.assertEqual(mixed.matched_truths, 1)                                                    # 다른 지적이 같은 결함을 확인하면 발견
+
+    def test_case_score_separates_confirmed_pending_and_unmatched(self):
         c = case(truths=[{'path': 'a.py', 'side': 'RIGHT', 'start_line': 10, 'end_line': 12}, {'path': 'a.py', 'side': 'RIGHT', 'start_line': 40, 'end_line': 41}])
-        findings = [finding(start=11, end=11, verdict='valid'), finding(start=12, end=12, verdict='unverified'), finding(path='z.py', start=3, end=3, verdict='false_positive', title='x')]
-        score = ev.score_case(c, {'status': 'succeeded', 'coverage': {'analysis_coverage': 'complete'}}, findings, 0.07)
-        self.assertEqual((score.truths, score.matched_truths, score.findings, score.matched_findings), (2, 1, 3, 2))   # 같은 정답에 겹친 두 지적은 정답 1개만 찾은 것
+        findings = [finding(start=11, end=11, verdict='valid'), finding(start=41, verdict='unverified'), finding(path='z.py', start=3, end=3, verdict='false_positive', title='x')]
+        score = scored(c, findings, 0.07)
+        self.assertEqual((score.truths, score.matched_truths, score.candidate_truths, score.findings), (2, 1, 2, 3))
+        self.assertEqual([p['lines'] for p in score.pending], [[41, 41]])
         self.assertEqual(score.unmatched, [{'path': 'z.py', 'lines': [3, 3], 'side': 'RIGHT', 'title': 'x', 'human_validation': 'false_positive'}])
         self.assertEqual(score.verdicts, {'valid': 1, 'false_positive': 1, 'uncertain': 0, 'unverified': 1})
 
-    def test_summary_counts_unjudged_separately_and_does_not_invent_a_verdict(self):
-        a = ev.score_case(case(), {'status': 'succeeded', 'coverage': {'analysis_coverage': 'complete'}},
-                          [finding(start=10, verdict='valid'), finding(path='q.py', verdict='uncertain'), finding(path='r.py', verdict='unverified')], 0.1)
-        b = ev.score_case(case('c2', truths=[], negative_control=True), {'status': 'failed', 'error_code': 'OUTCOME_UNCERTAIN', 'coverage': {}}, [], 0.05)
-        summary = ev.summarize([a, b])
-        self.assertEqual((summary['cases'], summary['succeeded'], summary['failed']), (2, 1, ['c2']))
+    def test_summary_counts_only_confirmed_discoveries_and_reports_the_rest_separately(self):
+        a = scored(case(), [finding(start=10, verdict='valid'), finding(path='q.py', verdict='uncertain'), finding(path='r.py', verdict='unverified')])
+        summary = ev.summarize([a, scored(case('neg', truths=[], negative_control=True), [])])
         self.assertEqual((summary['known_defects'], summary['known_defects_found'], summary['recall_on_known_defects']), (1, 1, 1.0))
         self.assertEqual((summary['human_verdicts']['valid'], summary['unjudged_findings'], summary['precision_among_human_judged']), (1, 2, 1.0))
-        self.assertAlmostEqual(summary['cost_usd'], 0.15)
-        self.assertIn('합의한 통과 기준이 없어', summary['verdict'])                               # 기준이 없으면 합격/불합격을 만들지 않는다
-        none = ev.summarize([ev.score_case(case('n', truths=[], negative_control=True), {'status': 'succeeded', 'coverage': {}}, [], 0.0)])
+        self.assertEqual(summary['verdict'], 'hold')                                                 # 미판정 지적이 남아 있다
+        none = ev.summarize([scored(case('n', truths=[], negative_control=True), [])])
         self.assertEqual((none['recall_on_known_defects'], none['precision_among_human_judged']), (None, None))   # 분모가 없으면 0이 아니라 없음
 
-    def test_criteria_pass_and_fail(self):
-        s = [ev.score_case(case(), {'status': 'succeeded', 'coverage': {}}, [finding(start=10, verdict='valid')], 0.2)]
-        self.assertEqual(ev.summarize(s, {'min_recall': 0.5, 'min_precision': 0.5, 'max_cost_per_case_usd': 0.5})['verdict'], 'pass')
-        self.assertEqual(ev.summarize(s, {'min_recall': 1.1})['verdict'], 'fail')
-        self.assertEqual(ev.summarize(s, {'max_cost_per_case_usd': 0.1})['verdict'], 'fail')
-        weak = [ev.score_case(case(), {'status': 'succeeded', 'coverage': {}}, [], 0.0)]
-        self.assertEqual(ev.summarize(weak, {'min_precision': 0.5})['verdict'], 'fail')           # 판정된 지적이 없으면 기준을 채우지 못한 것
+    def test_verdict_is_held_whenever_the_evaluation_is_incomplete_or_unjudged(self):
+        crit = {'min_recall': 0.5, 'min_precision': 0.5, 'max_cost_per_case_usd': 1}
+        self.assertEqual(ev.summarize(clean_pair(), crit, expected_cases=2)['verdict'], 'pass')      # 모두 끝나고 판정된 경우에만 합격
+        failed_control = [clean_pair()[0], ev.score_case(case('neg', truths=[], negative_control=True), {'status': 'failed', 'error_code': 'OUTPUT_VALIDATION_FAILED'}, [], 0.1)]
+        s = ev.summarize(failed_control, crit, expected_cases=2)                                      # 수치 기준은 모두 넘지만 대조 사례가 실패했다
+        self.assertEqual(s['verdict'], 'hold')
+        self.assertTrue(any('neg' in r and '끝나지 않았' in r for r in s['hold_reasons']))
+        s = ev.summarize(clean_pair()[:1], crit, expected_cases=2)                                    # 사례 누락
+        self.assertEqual(s['verdict'], 'hold')
+        self.assertTrue(any('1개만 실행' in r for r in s['hold_reasons']))
+        s = ev.summarize(clean_pair(), crit, expected_cases=2, stopped='예산')                        # 예산 중단
+        self.assertEqual((s['verdict'], s['stopped_early']), ('hold', '예산'))
+        s = ev.summarize([scored(case(), [finding(start=10, verdict='valid')], job={'status': 'succeeded'}, coverage={**COMPLETE, 'analysis_coverage': 'partial'})], crit, expected_cases=1)
+        self.assertEqual(s['verdict'], 'hold')                                                        # 분석 범위가 완전하지 않다
+        s = ev.summarize([scored(case(), [finding(start=10, verdict='valid')], coverage={}, source='none')], crit, expected_cases=1)
+        self.assertEqual(s['verdict'], 'hold')                                                        # 분석 범위를 확인하지 못했다
+        control_with_finding = [clean_pair()[0], scored(case('neg', truths=[], negative_control=True), [finding(path='x.py', verdict='unverified')])]
+        self.assertEqual(ev.summarize(control_with_finding, crit, expected_cases=2)['verdict'], 'hold')   # 대조 사례의 지적은 사람이 판정해야 한다
+        self.assertEqual(ev.summarize([scored(case(), [finding(start=11, verdict='unverified')])], crit)['verdict'], 'hold')   # 확인 대기
 
-    def test_report_does_not_claim_correctness(self):
-        s = [ev.score_case(case(), {'status': 'succeeded', 'coverage': {'analysis_coverage': 'complete'}}, [finding(start=10)], 0.1)]
-        text = ev.render_report('tuning', 'live', s, ev.summarize(s))
+    def test_uncertain_calls_hold_the_verdict_and_keep_their_exposure(self):
+        job = {'status': 'failed', 'error_code': 'OUTCOME_UNCERTAIN', 'outcome_uncertain': True}
+        u = ev.score_case(case('u'), job, [], 0.0, exposure=0.10)
+        self.assertEqual((u.uncertain, u.cost, u.exposure), (True, 0.0, 0.10))
+        s = ev.summarize([u], {'max_cost_per_case_usd': 1}, expected_cases=1)
+        self.assertEqual((s['verdict'], s['uncertain_calls'], s['exposure_usd'], s['cost_usd']), ('hold', ['u'], 0.10, 0.0))
+        self.assertTrue(ev.score_case(case('t'), {'status': 'failed', 'error_code': 'PROVIDER_TIMEOUT'}, [], 0.0).uncertain)
+
+    def test_criteria_pass_fail_and_missing(self):
+        s = ev.summarize(clean_pair(), None, expected_cases=2)
+        self.assertEqual(s['verdict'], 'criteria_missing')                                            # 기준이 없으면 합격/불합격을 만들지 않는다
+        self.assertEqual(ev.summarize(clean_pair(), {'min_recall': 1.1}, expected_cases=2)['verdict'], 'fail')
+        self.assertEqual(ev.summarize(clean_pair(), {'max_cost_per_case_usd': 0.01}, expected_cases=2)['verdict'], 'fail')
+        weak = [scored(case(), [], cost=0.0)]
+        self.assertEqual(ev.summarize(weak, {'min_precision': 0.5}, expected_cases=1)['verdict'], 'fail')   # 판정된 지적이 없으면 기준을 채우지 못한 것
+        self.assertEqual(ev.summarize(weak, {'min_recall': 0.1}, expected_cases=1)['verdict'], 'fail')
+
+    def test_findings_on_negative_controls_are_reported_as_false_positive_candidates(self):
+        control = scored(case('neg', truths=[], negative_control=True), [finding(path='x.py', verdict='false_positive'), finding(path='y.py', verdict='false_positive')])
+        self.assertTrue(control.negative_control)
+        summary = ev.summarize([clean_pair()[0], control], expected_cases=2)
+        self.assertEqual((summary['negative_control_findings'], summary['false_positives']), (2, 2))
+        self.assertIn('결함 없는 대조 사례에서 나온 지적 2건', ev.render_report('tuning', 'live', [clean_pair()[0], control], summary))
+
+    def test_cost_criterion_uses_exposure_not_only_settled_cost(self):
+        s = [scored(case(), [finding(start=10, verdict='valid')], cost=0.0, exposure=0.9)]
+        self.assertEqual(ev.summarize(s, {'max_cost_per_case_usd': 0.5}, expected_cases=1)['verdict'], 'fail')
+
+    def test_report_does_not_claim_correctness_and_lists_hold_reasons(self):
+        s = [scored(case(), [finding(start=10, verdict='unverified')])]
+        summary = ev.summarize(s, expected_cases=1)
+        text = ev.render_report('tuning', 'live', s, summary)
         self.assertIn('구조 검증 통과는 내용이 옳다는 뜻이 아닙니다', text)
+        self.assertIn('보류 사유', text)
+        self.assertIn('**hold**', text)
         for bad in ('오류 없음', '문제 없음', '정확합니다'):
             self.assertNotIn(bad, text)
 
@@ -121,10 +188,12 @@ class FakeResponse:
 
 
 class FakeHttp:
-    """GitViz API를 흉내 내는 http. 호출 순서와 접수 여부를 기록한다."""
+    """GitViz API를 흉내 낸다. 실제 API처럼 분석 범위는 **결과 API**에만 있고 작업 응답에는 입력 단계의 값만 있다."""
 
-    def __init__(self, estimate='0.10', reviewable=True, spent=('0.00', '0.07')):
-        self.calls, self.estimate, self.reviewable, self.spent = [], estimate, reviewable, list(spent)
+    def __init__(self, estimate='0.10', reviewable=True, spent=('0.00', '0.07'), job=None, remaining='20.0', findings=None):
+        self.calls, self.estimate, self.reviewable, self.spent, self.remaining = [], estimate, reviewable, list(spent), remaining
+        self.job = job or {'status': 'succeeded', 'result_id': 'r1', 'error_code': None, 'coverage': {**COMPLETE, 'analysis_coverage': 'none'}}   # 입력 단계 coverage
+        self.findings = findings if findings is not None else [finding(start=10, verdict='valid')]
 
     def get(self, url, **kw):
         return FakeResponse(200, {'token': 'csrf'})
@@ -133,7 +202,7 @@ class FakeHttp:
         path = url.split('://', 1)[1].split('/', 1)[1]
         self.calls.append((method, '/' + path))
         if path == 'api/ai/v1/usage':
-            return FakeResponse(200, {'user_spent': self.spent.pop(0) if len(self.spent) > 1 else self.spent[0]})
+            return FakeResponse(200, {'user_spent': self.spent.pop(0) if len(self.spent) > 1 else self.spent[0], 'user_remaining': self.remaining})
         if path == 'api/ai/v1/inputs' and method == 'POST':
             return FakeResponse(202, {'input_id': 'i1'})
         if path == 'api/ai/v1/inputs/i1':
@@ -142,22 +211,37 @@ class FakeHttp:
         if path == 'api/ai/v1/jobs' and method == 'POST':
             return FakeResponse(202, {'job_id': 'j1'})
         if path == 'api/ai/v1/jobs/j1':
-            return FakeResponse(200, {'status': 'succeeded', 'result_id': 'r1', 'coverage': {'analysis_coverage': 'complete'}})
+            return FakeResponse(200, self.job)
+        if path == 'api/ai/v1/results/r1':
+            return FakeResponse(200, {'coverage': COMPLETE})
         if path.startswith('api/ai/v1/results/r1/findings'):
-            return FakeResponse(200, {'findings': [finding(start=10)]})
+            return FakeResponse(200, {'findings': self.findings})
         raise AssertionError(path)
+
+
+UNCERTAIN_JOB = {'status': 'failed', 'result_id': None, 'error_code': 'OUTCOME_UNCERTAIN', 'outcome_uncertain': True, 'coverage': {**COMPLETE, 'analysis_coverage': 'none'}}
 
 
 class RunnerTests(unittest.TestCase):
     def runner(self, http, budget):
         return ev.Runner(http, 'https://gitviz.example', budget=budget, sleep=lambda s: None, timeout=5)
 
-    def test_runs_a_case_and_scores_it(self):
+    def test_runs_a_case_and_reads_the_analysis_scope_from_the_result_api(self):
         http = FakeHttp()
         score = self.runner(http, 1.0).run_case(case(), 5)
         self.assertEqual((score.status, score.matched_truths, score.findings), ('succeeded', 1, 1))
         self.assertAlmostEqual(score.cost, 0.07)
-        self.assertIn(('POST', '/api/ai/v1/jobs'), http.calls)
+        self.assertEqual((score.coverage['analysis_coverage'], score.coverage_source), ('complete', 'result'))   # 작업 응답의 입력 단계 값(none)이 아니다
+        self.assertIn(('GET', '/api/ai/v1/results/r1'), http.calls)
+        self.assertEqual((score.job_id, score.result_id), ('j1', 'r1'))
+
+    def test_failed_job_reports_the_input_stage_coverage_as_such_not_as_analysis(self):
+        http = FakeHttp(job={'status': 'failed', 'error_code': 'OUTPUT_VALIDATION_FAILED', 'coverage': {**COMPLETE, 'analysis_coverage': 'none'}})
+        score = self.runner(http, 1.0).run_case(case(), 5)
+        self.assertEqual(score.coverage_source, 'input')
+        summary = ev.summarize([score], expected_cases=1)
+        self.assertEqual(summary['analysis_coverage'], {'complete': 0, 'partial': 0, 'none': 0})      # 분석 범위로 집계하지 않는다
+        self.assertEqual(summary['verdict'], 'hold')
 
     def test_budget_guard_stops_before_any_provider_transfer(self):
         http = FakeHttp(estimate='0.50')
@@ -170,11 +254,46 @@ class RunnerTests(unittest.TestCase):
         with self.assertRaises(ev.BudgetExceeded):                                               # 남은 0.08 < 0.10
             runner.run_case(case('c2'), 5)
 
+    def test_an_uncertain_call_keeps_its_upper_bound_in_the_budget(self):
+        runner = self.runner(FakeHttp(estimate='0.10', spent=('0.00',), job=UNCERTAIN_JOB), 0.15)
+        first = runner.run_case(case('u1'), 5)
+        self.assertEqual((first.uncertain, first.cost, first.exposure), (True, 0.0, 0.10))        # 정산액은 0이지만 비용이 나갔을 수 있다
+        self.assertAlmostEqual(runner.held, 0.10)
+        second_http = FakeHttp(estimate='0.10', spent=('0.00',), job=UNCERTAIN_JOB)
+        runner.http = second_http
+        with self.assertRaises(ev.BudgetExceeded):                                               # 예산 $0.15에서 $0.10 호출 두 개가 접수되면 안 된다
+            runner.run_case(case('u2'), 5)
+        self.assertNotIn(('POST', '/api/ai/v1/jobs'), second_http.calls)
+
+    def test_accounts_remaining_monthly_limit_is_also_respected(self):
+        http = FakeHttp(estimate='0.50', remaining='0.20')
+        with self.assertRaises(ev.BudgetExceeded):
+            self.runner(http, 5.0).run_case(case(), 5)
+        self.assertNotIn(('POST', '/api/ai/v1/jobs'), http.calls)
+
+    def test_a_job_that_never_finishes_is_treated_as_uncertain(self):
+        http = FakeHttp(job={'status': 'running', 'coverage': COMPLETE})
+        runner = ev.Runner(http, 'https://gitviz.example', budget=1.0, sleep=lambda s: None, timeout=0.05)
+        score = runner.run_case(case(), 5)
+        self.assertEqual((score.status, score.uncertain, score.exposure), ('timeout', True, 0.10))
+        self.assertAlmostEqual(runner.held, 0.10)
+
     def test_not_reviewable_input_is_reported_not_run(self):
         http = FakeHttp(reviewable=False)
         score = self.runner(http, 1.0).run_case(case(), 5)
         self.assertEqual((score.status, 'reviewable' in score.note), ('not_started', True))
         self.assertNotIn(('POST', '/api/ai/v1/jobs'), http.calls)
+
+    def test_rescore_rereads_human_verdicts_without_calling_the_provider(self):
+        first = FakeHttp(findings=[finding(start=11, verdict='unverified')])
+        score = self.runner(first, 1.0).run_case(case(), 5)
+        self.assertEqual((score.matched_truths, len(score.pending)), (0, 1))
+        report = {'set': 'tuning', 'summary': {'expected_cases': 1}, 'cases': [score.__dict__]}
+        judged = FakeHttp(findings=[finding(start=11, verdict='valid')])                         # 사람이 화면에서 valid로 판정
+        again = ev.rescore(report, [case()], judged, 'https://gitviz.example')
+        self.assertEqual((again[0].matched_truths, len(again[0].pending), again[0].cost, again[0].coverage_source), (1, 0, score.cost, 'result'))
+        self.assertTrue(all(c[0] == 'GET' for c in judged.calls))                               # 읽기만 한다: 접수·전송 없음
+        self.assertEqual(ev.summarize(again, {'min_recall': 0.5}, expected_cases=1)['verdict'], 'pass')
 
 
 class Cli(unittest.TestCase):
@@ -185,30 +304,33 @@ class Cli(unittest.TestCase):
             self.assertEqual(ev.main(['--live']), 2)
             self.assertEqual(ev.main(['--live', '--budget', '0', '--base-url', 'x', '--cookie', 'a=b', '--repository-id', '1']), 2)
             self.assertEqual(ev.main(['--live', '--budget', '5']), 2)
+            self.assertEqual(ev.main(['--rescore', 'x.json']), 2)
             session.assert_not_called()
 
     def test_check_release_reports_open_items_with_a_failing_exit_code(self):
         self.assertEqual(ev.main(['--check-release']), 1)
 
-    def test_invalid_manifest_blocks_a_live_run(self):
+    def manifest_file(self, data):
         import tempfile
-        bad = manifest(tuning=[case('t', 'b', head_sha='x')])
-        with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False, encoding='utf-8') as f:
-            json.dump(bad, f)
-        try:
-            self.assertEqual(ev.main(['--manifest', f.name, '--live', '--budget', '5', '--base-url', 'x', '--cookie', 'a=b', '--repository-id', '1']), 2)
-        finally:
-            os.unlink(f.name)
+        f = tempfile.NamedTemporaryFile('w', suffix='.json', delete=False, encoding='utf-8')
+        json.dump(data, f)
+        f.close()
+        self.addCleanup(os.unlink, f.name)
+        return f.name
+
+    def test_invalid_manifest_blocks_a_live_run(self):
+        path = self.manifest_file(manifest(tuning=[case('t', 'b', head_sha='x')]))
+        self.assertEqual(ev.main(['--manifest', path, '--live', '--budget', '5', '--base-url', 'x', '--cookie', 'a=b', '--repository-id', '1']), 2)
 
     def test_final_set_runs_once(self):
         import tempfile
-        done = manifest(final_run_done=True)
-        with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False, encoding='utf-8') as f:
-            json.dump(done, f)
-        try:
-            self.assertEqual(ev.main(['--manifest', f.name, '--live', '--set', 'final', '--budget', '5', '--base-url', 'x', '--cookie', 'a=b', '--repository-id', '1']), 2)
-        finally:
-            os.unlink(f.name)
+        path = self.manifest_file(manifest(final_run_done=True))
+        args = ['--manifest', path, '--live', '--set', 'final', '--budget', '5', '--base-url', 'x', '--cookie', 'a=b', '--repository-id', '1']
+        self.assertEqual(ev.main(args), 2)
+        marker_dir = tempfile.mkdtemp()                                                          # 표시 파일만 있어도 다시 실행하지 않는다
+        open(os.path.join(marker_dir, 'FINAL_RUN_DONE.json'), 'w').write('{}')
+        self.assertEqual(ev.main(['--manifest', self.manifest_file(manifest()), '--live', '--set', 'final', '--budget', '5', '--base-url', 'x', '--cookie', 'a=b',
+                                  '--repository-id', '1', '--out', marker_dir]), 2)
 
 
 if __name__ == '__main__':

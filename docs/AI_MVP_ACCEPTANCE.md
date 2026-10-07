@@ -20,7 +20,8 @@
 | 검증 | 파일 | 결과 |
 |---|---|---|
 | **통합**(실제 PG·Redis + app 서버·dispatcher·Celery worker·가짜 제공자 프로세스 + HTTP) | `scripts/verify_ai_mvp_integration.py` | 16개 통과 |
-| 평가 도구(채점·세트 분리·예산 보호) | `scripts/test_ai_evaluation.py` | 15개 통과 |
+| 평가 도구(채점·세트 분리·예산 보호·보류 판정·재채점) | `scripts/test_ai_evaluation.py` | 25개 통과 |
+| smoke 도구(로컬 가짜 제공자로 검증, 실제 호출 없음) | `scripts/test_ai_smoke.py` | 6개 통과 |
 | 운영 도구·기한 삭제 | `scripts/test_ai_ops.py` | 7개 통과 |
 | 생성 실행(S7) | `scripts/test_ai_generation.py` | 40개 통과 |
 | 생성·결과·피드백 API(S8) | `scripts/test_ai_api.py` | 34개 통과 |
@@ -59,7 +60,9 @@
 
 **하지 않은 이유**: 평가에는 평가자 본인의 API key·별도 예산·**사람이 붙인 정답이 있는 공개 자료**가 필요하다. 이 환경에는 key가 없고, 정답이 있는 실제 평가 세트는 사람이 마련해야 한다(임의로 만들어 채우지 않았다).
 
-**준비된 것**: `scripts/evaluate_ai_review.py`(채점·세트 분리·예산 보호·보고서), `scripts/fixtures/ai/evaluation_manifest.json`(구조 + 하네스 점검용 합성 조정 사례 2개). 합성 사례는 정확도 평가에 쓰지 않으며 `final` 세트는 비어 있다.
+**절차**: [AI_EVALUATION_PROTOCOL.md](AI_EVALUATION_PROTOCOL.md) — ① 평가 도구 점검(완료) → ② 실제 연동 소량 smoke(`scripts/smoke_ai_live.py`, 평가자가 실행) → ③ 사람 정답·합격 기준 확정 → ④ 모델 평가.
+
+**준비된 것**: `scripts/evaluate_ai_review.py`(채점·세트 분리·예산 보호·보고서·`--rescore`). 위치 일치는 후보일 뿐 사람이 valid로 판정한 지적만 발견으로 세고, 결과를 모르는 호출의 상한은 예산에 계속 반영하며, 미완료·중단·미판정이 있으면 판정을 보류한다. 분석 범위는 결과 API에서 읽는다, `scripts/fixtures/ai/evaluation_manifest.json`(구조 + 하네스 점검용 합성 조정 사례 2개). 합성 사례는 정확도 평가에 쓰지 않으며 `final` 세트는 비어 있다.
 
 **출시 전에 해야 할 일** (`python scripts/evaluate_ai_review.py --check-release`가 현재 남은 항목을 출력한다):
 1. 공개 저장소(license 확인)의 고정 base/head SHA와 사람 정답을 모아 `tuning`·`final`을 만든다. 결함이 있는 사례와 결함이 없는 사례(negative_control)를 섞고 언어·변경 크기를 다양하게 한다.

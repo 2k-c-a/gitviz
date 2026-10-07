@@ -77,6 +77,7 @@ python scripts/test_ai_ops.py
 python scripts/test_ai_evaluation.py
 node scripts/test_ai_frontend.cjs
 python scripts/evaluate_ai_review.py --check-release   # 실제 모델 평가(별도 예산)에서 남은 항목
+python scripts/test_ai_smoke.py               # smoke 도구(실제 호출은 smoke_ai_live.py --live, docs/AI_EVALUATION_PROTOCOL.md)
 ```
 
 ## 분석 이력·비교 API
