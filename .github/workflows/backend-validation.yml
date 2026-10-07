@@ -48,6 +48,7 @@ jobs:
       - run: python scripts/test_ai_credentials.py
       - run: python scripts/test_ai_credential_api.py
       - run: python scripts/test_ai_generation.py
+      - run: python scripts/test_ai_api.py
       - run: python scripts/test_ai_output_validation.py
   ai-queue:
     # 실제 PostgreSQL·Redis와 별도 Celery worker 프로세스로 outbox → 큐 → worker 경로를 검증한다.

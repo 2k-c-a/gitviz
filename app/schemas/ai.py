@@ -6,7 +6,7 @@
 import hashlib
 import json
 import re
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -21,7 +21,7 @@ from pydantic import (
     model_validator,
 )
 
-CONTRACT_VERSION = "1.2"
+CONTRACT_VERSION = "1.3"
 
 _SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -686,3 +686,94 @@ class TransferView(_Strict):
 
 
 InputPreview.model_rebuild()   # 뒤에 정의된 TransferView 참조를 확정한다
+
+
+# ── 생성·결과·피드백 API (S8) ───────────────────────────────────────────
+
+class CreateJobRequest(_Strict):
+    """POST /jobs: 동의한 전송 내용(코드 범위·제공자·모델·key 버전)으로 설명·리뷰 생성을 접수한다."""
+    kind: Literal["summary", "review"]
+    consent: TransferConsent
+    force_regenerate: bool = False        # 이미 성공한 같은 설정의 결과가 있어도 새 generation을 만든다
+
+
+class RetryJobRequest(_Strict):
+    """POST /jobs/{id}/retry: 실패·취소된 작업의 명시적 재생성. 비용·전송이 다시 생기므로 동의를 다시 받는다."""
+    consent: TransferConsent
+
+
+class JobView(JobState):
+    """작업 상태 응답. stage는 실행 중일 때만 있고 모델 진행률은 알려주지 않는다."""
+    repository_id: int
+    input_id: UUID
+    generation: int = Field(ge=0)
+    provider: str | None = None
+    model: str | None = None
+    outcome_uncertain: bool = False       # 호출 결과를 몰라 비용이 이미 발생했을 수 있다
+    created_at: datetime
+    finished_at: datetime | None = None
+
+
+class JobList(_Strict):
+    jobs: list[JobView]
+    next_cursor: str | None = None
+
+
+class ResultView(_Strict):
+    """GET /results/{id}: 검증을 통과한 불변 결과. human_validation은 모델 결과의 사람 검토 상태(저장 시 unverified)다."""
+    result_id: UUID
+    job_id: UUID
+    kind: Literal["summary", "review"]
+    repository_id: int
+    input_id: UUID
+    payload: dict[str, Any]
+    payload_hash: Sha256Hex
+    coverage: Coverage
+    structure_validation: StructureValidation
+    human_validation: HumanValidation
+    provider: str | None = None
+    model: str | None = None
+    finding_count: int = Field(ge=0)
+    created_at: datetime
+    expires_at: datetime
+
+
+class FeedbackRequest(_Strict):
+    verdict: Verdict
+    note: Annotated[str, StringConstraints(max_length=2000)] | None = None
+    expected_version: int = Field(ge=0)    # 처음이면 0, 수정이면 마지막으로 본 version
+
+
+class FeedbackView(_Strict):
+    verdict: Verdict
+    note: str | None = None
+    version: int = Field(ge=1)
+    updated_at: datetime
+
+
+class FindingView(_Strict):
+    finding_id: UUID
+    result_id: UUID
+    source_file_id: UUID
+    finding: Finding                       # human_validation에는 내 피드백이 반영된다(원본 결과는 바뀌지 않는다)
+    quote: str | None = None
+    feedback: FeedbackView | None = None
+
+
+class FindingList(_Strict):
+    result_id: UUID
+    findings: list[FindingView]
+    next_cursor: str | None = None
+
+
+class UsageView(_Strict):
+    period_start: date
+    currency: str
+    user_limit: str
+    user_spent: str
+    user_reserved: str
+    user_remaining: str
+    server_budget_enabled: bool
+    uncertain_reservations: int = Field(ge=0)
+    daily_jobs_used: int = Field(ge=0)
+    daily_job_limit: int = Field(ge=0)

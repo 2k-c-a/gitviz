@@ -1,6 +1,6 @@
 # AI 인터페이스 계약 (S0)
 
-- 계약 버전: `1.2` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
+- 계약 버전: `1.3` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
 - 설계 근거: [요구사항 및 시스템 설계 v0.4](GitViz_AI_요구사항_및_시스템설계_v0.4.md), [구현 계획 v0.5](GitViz_AI_의존성기반_구현계획_v0.5.md) S0
 - 수집·백엔드·시각화는 모두 `app/schemas/ai.py`의 DTO를 기준으로 합니다. 이 문서와 코드가 다르면 코드가 우선이며 즉시 문서를 고칩니다.
 - 모든 DTO는 알 수 없는 필드를 거부합니다(`extra="forbid"`). 클라이언트가 `owner_user_id` 같은 값을 보내도 받지 않습니다.
@@ -123,6 +123,7 @@
 - 필드·enum 값 **추가**는 minor 증가, 의미 변경·삭제·이름 변경은 major 증가이며 소비자 합의가 필요합니다.
 - 1.1(S5): `InputManifest.pr_metadata`(AI로 보내는 PR 제목·설명) 추가. 기존 필드는 그대로이며 manifest_hash에 PR 설명이 반영된다.
 - 1.2(BYOK): 사용자 key 관리 DTO(`CredentialView` 등)·`TransferConsent`·`InputPreview.transfer` 추가, ErrorCode `CREDENTIAL_REQUIRED`·`CREDENTIAL_INVALID`(422) 추가.
+- 1.3(S8): 생성·작업·결과·지적·피드백·사용량 API DTO(`CreateJobRequest`, `RetryJobRequest`, `JobView`, `JobList`, `ResultView`, `FindingView`, `FindingList`, `FeedbackRequest`, `FeedbackView`, `UsageView`) 추가. 기존 필드·enum은 그대로다.
 - 이후 단계에서 임의로 enum/필드 의미를 바꾸지 않습니다. 변경은 `CONTRACT_VERSION`, 이 문서, `scripts/test_ai_contracts.py`를 같은 PR에서 고칩니다.
 - 기능별 출력 schema 버전(S6)과 API 응답 DTO(S5·S8)는 이 계약 위에 추가하며 위 정의를 재정의하지 않습니다.
 
@@ -247,3 +248,30 @@ key 형식 오류·제공자 거절(401·403·402·모델 없음)은 422 `CREDEN
 | `OUTPUT_TRUNCATED`·`PROVIDER_REFUSED`·`OUTPUT_INVALID`·`OUTPUT_VALIDATION_FAILED` | 출력이 잘렸거나 거절됐거나 쓸 수 없거나 검증에 실패(부분 채택 없음, 호출 비용은 기록) |
 
 **미해결**: 실제 API와의 연동은 mock(`httpx2.MockTransport`)으로만 검증했다. `reviewable=false` 입력 차단은 S8의 API에서도 유지한다(동의 확인에서 이미 막고, 실행 시에도 `NO_REVIEWABLE_CONTENT`로 막는다).
+
+## 14. 생성·결과·피드백 API (S8)
+
+새 실행 로직은 없다. 접수·조회·상태 전이는 S4~S7의 서비스(`consent.resolve_consent`, `job_service`, `result_store`)를 그대로 쓴다. 모든 경로는 로그인·AI 기능 켜짐·(변경 요청은) CSRF를 요구하고 응답은 `Cache-Control: private, no-store`다. GET은 작업·코드 취득·외부 호출을 시작하지 않는다.
+
+| 메서드·경로 | 설명 |
+|---|---|
+| `POST /jobs` | `{kind: summary\|review, consent: TransferConsent, force_regenerate}` + `Idempotency-Key`. 새로 접수하면 **202**, 기존 작업(같은 key 재전송, 같은 fingerprint의 진행 중 작업, 이미 성공한 결과)을 돌려주면 **200** |
+| `GET /jobs?repository_id=` | 내 작업 목록(필수 `repository_id`, 선택 `kind`·`status`·`input_id`·`limit`≤50·`cursor`). 최신순 keyset `(created_at, id)`라 같은 시각이어도 중복·누락이 없다 |
+| `GET /jobs/{id}` | `JobView`: 상태·`stage`(실행 중일 때만)·coverage·`result_id`·`error_code`·`outcome_uncertain`·`retry_after_seconds` |
+| `POST /jobs/{id}/cancel` | 대기 중이면 즉시 `cancelled`(200), 실행 중이면 `cancel_requested`(202), 종료된 작업은 변화 없음. 저장소 권한과 무관(본인 작업) |
+| `POST /jobs/{id}/retry` | 실패·취소된 생성 작업을 새 generation으로 다시 시작. `{consent}`와 `Idempotency-Key` 필요 |
+| `DELETE /jobs/{id}` | 끝난 작업과 결과·지적·피드백 삭제(진행 중이면 422, 비용 기록은 남음) |
+| `GET /results/{id}` | 불변 결과(`payload`·`payload_hash`·`coverage`·`human_validation=unverified`) |
+| `GET /results/{id}/findings` | 지적 목록(ordinal keyset, `limit`·`cursor`). 내 피드백이 `finding.human_validation`·`feedback`에 덧입혀진다 |
+| `PUT /findings/{id}/feedback` | `{verdict, note?, expected_version}`. 처음이면 0, 아니면 마지막으로 본 version |
+| `GET /usage` | 이번 달 개인 지출·예약·남은 한도, 불명 예약 수, 일일 요청 사용량 |
+
+**접수 검증**(`POST /jobs`, `/retry`): 입력 소유자(남의 입력은 404) → 같은 key의 재전송이면 처음 작업 반환(그 사이 key가 바뀌었어도) → 현재 저장소 접근·전송 허용(`generate`, 비공개 저장소 차단) → `resolve_consent`: 입력 `ready`·만료(410 `INPUT_EXPIRED`; 삭제된 입력 포함)·동의한 `manifest_hash`·정책 버전·허용 모델·**읽을 파일 존재(`reviewable=false`이면 422 `INVALID_STATE`, `details.reason=NO_REVIEWABLE_CONTENT`)**·모델 토큰 한도·key 존재와 버전 → 일일 한도(429 `USER_LIMIT`). 같은 key·다른 요청은 409 `IDEMPOTENCY_CONFLICT`, Idempotency-Key가 없으면 422 `INVALID_STATE`.
+
+**조회 권한**: 본인 자료만(남의 것은 404로 존재를 숨김)이고 저장소 접근 권한은 매 요청 다시 확인한다(잃으면 404). 삭제된 작업·결과는 404, 보관 기간이 지난 결과는 410 `RESULT_EXPIRED`.
+
+**재시도 규칙**: 자동 재시도는 worker가 호출 전 실패에 대해서만 한다. `OUTCOME_UNCERTAIN`·`RESULT_LOST` 등 이미 처리됐을 수 있는 호출은 사용자가 `/retry`(또는 `force_regenerate`)로 명시적으로 요청해야 새 generation이 만들어지고, 그때 동의·key·예산을 다시 확인한다. 불명 호출의 예약은 정리될 때까지 예산을 점유한다(`GET /usage`의 `uncertain_reservations`).
+
+**피드백**: 결과 작성자만 쓸 수 있고(남의 지적은 404) `expected_version`이 다르면 409 `VERSION_CONFLICT`(`details.current_version`). 지적 행을 잠가 동시 요청 중 하나만 성공한다. 원본 결과·지적은 바뀌지 않으며(DB trigger) 피드백은 별도 행이다. 감사 기록에는 메모 본문이 없다.
+
+**미해결**: `reviewable=false` 차단은 접수 경로(동의 확인)와 실행 경로(`NO_REVIEWABLE_CONTENT`) 모두에서 유지한다. 프런트 연결은 S9다.
