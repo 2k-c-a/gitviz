@@ -1,4 +1,4 @@
-import { nextQuery } from './viz-state.js';
+import { nextQuery, parseState } from './viz-state.js';
 
 export async function loadNavbar() {
 
@@ -40,6 +40,14 @@ window.goPage = function(page, repoId, snapshotId){
 
   location.href =
     ROOT + page + '.html' + nextQuery(location.search, repoId, snapshotId);
+};
+
+/* AI 리뷰: 지금 주소에 repo가 명시돼 있을 때만 그 저장소로 간다. 없으면 저장소를 고르게 하는 화면으로 간다
+   (localStorage·기본 repo=1 같은 숨은 기본값을 쓰지 않는다. snapshot·정렬 상태도 가져가지 않는다). */
+window.goAiReview = function(){
+  const isPage = window.location.pathname.includes('/pages/');
+  const repo = parseState(location.search).repo;
+  location.href = (isPage ? './' : './pages/') + 'ai-review.html' + (repo != null ? `?repo=${repo}` : '');
 };
 
 window.goHome = function(){
