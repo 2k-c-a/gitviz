@@ -399,6 +399,51 @@ class Eligibility(HistoryCase):
             history_context.build_history_evidence(self.db, result2, sid2)
         self.assertEqual(ctx.exception.code, ErrorCode.VERSION_CONFLICT)
 
+    def test_a_concurrent_winner_is_compared_with_this_requests_as_of(self):
+        # 판정과 저장 사이에 다른 요청이 근거를 먼저 저장하는 경쟁: UNIQUE 충돌 뒤에도 요청 시점의 판정과 비교해야 한다
+        owner, repo, result_id, _ = self.review(['main.py'])
+        sid, _ = self.snapshot(repo, window_end=now() - timedelta(days=1))
+        real = history_context.snapshot_eligibility
+        calls = []
+
+        def racing(db, snapshot, *, as_of):
+            reasons = real(db, snapshot, as_of=as_of)
+            if not calls:
+                calls.append(1)
+                with S.Session() as other:                                                                   # 먼저 도착한 요청이 as_of 없이 ok로 저장한다
+                    self.assertEqual(history_context.build_history_evidence(other, result_id, sid).status, 'ok')
+                    other.commit()
+            return reasons
+        with patch.object(history_context, 'snapshot_eligibility', side_effect=racing):
+            with self.assertRaises(AIError) as ctx:
+                history_context.build_history_evidence(self.db, result_id, sid, as_of=now() - timedelta(days=3))   # 이 요청의 시점에서는 미래 자료
+        self.assertEqual((ctx.exception.code, ctx.exception.details['reason']), (ErrorCode.VERSION_CONFLICT, 'HISTORY_AS_OF_CONFLICT'))
+        self.db.rollback()
+        self.assertEqual([(r['status']) for r in self.db.execute(text('SELECT status FROM ai_evidence')).mappings()], ['ok'])
+
+    def test_concurrent_requests_with_different_as_of_never_return_two_judgements(self):
+        for _ in range(3):
+            owner, repo, result_id, _ = self.review(['main.py'])
+            sid, _ = self.snapshot(repo, window_end=now() - timedelta(days=1))
+            barrier, outcomes = threading.Barrier(2), []
+
+            def run(as_of):
+                with S.Session() as db:
+                    barrier.wait()
+                    try:
+                        row = history_context.build_history_evidence(db, result_id, sid, as_of=as_of)
+                        db.commit()
+                        outcomes.append(('row', row.status))
+                    except AIError as e:
+                        db.rollback()
+                        outcomes.append(('error', e.code))
+            threads = [threading.Thread(target=run, args=(a,)) for a in (None, now() - timedelta(days=3))]
+            [t.start() for t in threads]
+            [t.join() for t in threads]
+            self.assertEqual(len({o for o in outcomes if o[0] == 'row'}), 1, outcomes)                       # 서로 다른 판정을 둘 다 돌려주지 않는다
+            self.assertEqual(sorted(o[0] for o in outcomes), ['error', 'row'], outcomes)
+            self.assertEqual(self.scalar('SELECT count(*) FROM ai_evidence WHERE result_id = :r', r=result_id), 1)
+
     def test_multiple_reasons_are_all_reported_and_options_list_them(self):
         owner, repo, result_id, _ = self.review(['main.py'])
         bad, _ = self.snapshot(repo, hash_format='legacy-v1', formula='old', target_sha='x')
@@ -663,6 +708,26 @@ class Api(Gen):
         self.assertEqual(self.post_job(self.consent, snap, 'r4').status_code, 200)                           # 이미 있으면 중복 없음
         self.assertEqual(self.rows('SELECT count(*) AS n FROM ai_evidence')[0]['n'], 2)
         self.assertEqual(self.rows("SELECT count(*) AS n FROM audit_events WHERE action = 'history.attached'")[0]['n'], 2)
+
+    def test_retry_with_the_same_key_recovers_an_attachment_that_failed(self):
+        owner, repo, input_id, r = self.start_review()
+        job_id = r.json()['job_id']
+        w = SimpleNamespace(owner=owner, repo=repo, input_id=input_id, job=SimpleNamespace(id=UUID(job_id)), kind='review')
+        self.output = self.valid_output('review', w.job.id)
+        self.assertEqual(self.run_job(w), 'succeeded')
+        snap = self.snap(repo)
+        real = history_context.build_history_evidence
+        with patch.object(history_context, 'build_history_evidence', side_effect=RuntimeError('boom')):
+            with self.assertRaises(RuntimeError):
+                self.post_job(self.consent, snap, 'again')                                                   # 멱등 key는 확정됐지만 첨부가 실패
+        self.assertEqual(self.rows('SELECT count(*) AS n FROM ai_evidence')[0]['n'], 0)
+        retry = self.post_job(self.consent, snap, 'again')                                                   # 같은 key 재전송
+        self.assertEqual((retry.status_code, retry.json()['job_id']), (200, job_id), retry.text)
+        self.assertEqual([(x['snapshot_id'], x['status']) for x in self.rows('SELECT snapshot_id, status FROM ai_evidence')], [(snap, 'ok')])
+        again = self.post_job(self.consent, snap, 'again')                                                   # 세 번째는 중복 없이 그대로
+        self.assertEqual((again.status_code, self.rows('SELECT count(*) AS n FROM ai_evidence')[0]['n']), (200, 1))
+        self.assertEqual(self.rows("SELECT count(*) AS n FROM audit_events WHERE action = 'history.attached'")[0]['n'], 1)
+        self.assertIs(history_context.build_history_evidence, real)
 
     def test_reusing_an_in_progress_review_never_drops_a_different_snapshot_silently(self):
         owner, repo, input_id, r = self.start_review()

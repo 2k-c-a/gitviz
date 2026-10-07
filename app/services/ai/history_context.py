@@ -220,12 +220,7 @@ def build_history_evidence(db: Session, result_id: UUID, snapshot_id: int, *, as
     effective = ctx.created_at if as_of is None else min(ctx.created_at, as_of if as_of.tzinfo else as_of.replace(tzinfo=timezone.utc))
     reasons = snapshot_eligibility(db, snapshot, as_of=effective)
     if existing is not None:
-        # 근거는 불변이고 (결과, snapshot)당 하나다. 요청한 평가 시점에서도 같은 판정(상태·이유)일 때만 기존 근거를 돌려준다:
-        # 더 이른 시점이라 미래 자료가 되거나 반대로 더 늦은 시점에서 풀리는 경우에 다른 시점의 판정을 조용히 돌려주지 않는다.
-        if sorted(reasons) != sorted(existing.exclusion_reasons or []):
-            raise AIError(ErrorCode.VERSION_CONFLICT, '이미 다른 평가 시점으로 만든 이력 근거가 있어 이 시점의 판정과 다릅니다.',
-                          details={'reason': 'HISTORY_AS_OF_CONFLICT', 'existing_as_of': existing.as_of.isoformat(), 'requested_as_of': effective.isoformat()})
-        return existing
+        return _same_judgement(existing, reasons, effective)
     payload = _excluded_payload(snapshot, ctx, reasons) if reasons else _build_payload(db, ctx, snapshot, _finding_paths(db, result_id))
     row = AIEvidence(result_id=result_id, owner_user_id=ctx.owner_user_id, repository_id=ctx.repository_id, kind='history', snapshot_id=snapshot.id,
                      snapshot_sha256=snapshot.payload_sha256, status='excluded' if reasons else 'ok', exclusion_reasons=reasons, as_of=effective,
@@ -236,9 +231,19 @@ def build_history_evidence(db: Session, result_id: UUID, snapshot_id: int, *, as
             db.flush()
     except IntegrityError:                                         # 동시에 같은 근거를 만든 경우: 먼저 저장된 것을 쓴다
         db.expire_all()
-        return db.execute(select(AIEvidence).where(AIEvidence.result_id == result_id, AIEvidence.snapshot_id == snapshot_id,
-                                                   AIEvidence.kind == 'history')).scalar_one()
+        winner = db.execute(select(AIEvidence).where(AIEvidence.result_id == result_id, AIEvidence.snapshot_id == snapshot_id,
+                                                     AIEvidence.kind == 'history')).scalar_one()
+        return _same_judgement(winner, reasons, effective)           # 먼저 저장된 것도 이 요청의 평가 시점으로 다시 비교한다
     return row
+
+
+def _same_judgement(existing: AIEvidence, reasons: list[str], effective: datetime) -> AIEvidence:
+    """근거는 불변이고 (결과, snapshot)당 하나다. 요청한 평가 시점에서도 같은 판정(상태·이유)일 때만 기존 근거를 돌려준다:
+    더 이른 시점이라 미래 자료가 되거나 반대로 더 늦은 시점에서 풀리는 경우에 다른 시점의 판정을 조용히 돌려주지 않는다."""
+    if sorted(reasons) != sorted(existing.exclusion_reasons or []):
+        raise AIError(ErrorCode.VERSION_CONFLICT, '이미 다른 평가 시점으로 만든 이력 근거가 있어 이 시점의 판정과 다릅니다.',
+                      details={'reason': 'HISTORY_AS_OF_CONFLICT', 'existing_as_of': existing.as_of.isoformat(), 'requested_as_of': effective.isoformat()})
+    return existing
 
 
 def attach_safely(db: Session, result_id: UUID, snapshot_id: int) -> UUID | None:
