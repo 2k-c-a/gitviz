@@ -244,6 +244,20 @@ def _unchanged(db, owner_id, active, preferred_profile_id, now) -> RegisterResul
     return RegisterResult(view, False, None)
 
 
+def set_preferred_profile(db: Session, owner_id: UUID, provider: str, profile_id: str, *,
+                          now: datetime | None = None) -> CredentialView:
+    """key와 버전은 그대로 두고 기본 모델만 바꾼다(미리보기의 예상 비용·전송 대상이 이 모델 기준이 된다)."""
+    active = get_active(db, owner_id, provider)
+    if active is None:
+        db.rollback()
+        raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '등록된 API key가 없습니다.')
+    profile = registry.PROFILES.get(profile_id)
+    if profile is None or profile.provider != provider or not registry.is_allowed(profile_id):
+        db.rollback()
+        raise AIError(ErrorCode.INVALID_SELECTION, '지원하지 않거나 허용되지 않은 모델입니다.')
+    return _unchanged(db, owner_id, active, profile_id, _now(now)).credential
+
+
 def _store(db, owner_id, provider, key, fingerprint, profile, validated_at, request_id, now) -> RegisterResult:
     settings = get_ai_settings()
     db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"),

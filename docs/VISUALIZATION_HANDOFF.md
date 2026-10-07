@@ -113,3 +113,22 @@ GitHub OAuth 로그인 후 GitViz 저장소를 분석하고 코드분석 목록�
 - 완료 모달의 커밋 수는 수집 기본 브랜치 누적 건수이고 결과 화면은 분석 구간 건수다. 이번 GitViz는 각각 91/86, Hello-World는 3/0이었다. “수집 커밋”과 “관측 구간 커밋”으로 구분한다.
 
 인수 확인: 타임라인→네트워크→코드분석에서 같은 repo/snapshot이 유지되고, 파일 상세 설명도 같은 스냅샷의 기간과 실제 정렬 정책을 가리켜야 한다. 이번 웹 테스트에서 화면 이동의 repo=2/snapshot=2 유지와 상세 API 조회는 성공했다. 시각화 코드는 이번 검증에서 변경하지 않았다.
+
+## AI 리뷰 화면 계약 — S9
+
+화면: `frontend/pages/ai-review.html` (설계: [AI_S9_UI_DESIGN.md](AI_S9_UI_DESIGN.md), API: [AI_INTERFACE_CONTRACT.md](AI_INTERFACE_CONTRACT.md)). 시각화 화면의 `snapshot`·`sort_by` 상태와 별개이며 서로 섞지 않는다.
+
+**주소가 유일한 기준**: `?repo=<id>&pr=<번호>&input=<uuid>&job=<uuid>`(재실행은 `&retry=<job>`, 새 generation은 `&force=1`). `repo`가 없으면 아무것도 불러오지 않고 저장소 선택을 안내한다. localStorage·기본 repo=1·마지막 작업 기억을 쓰지 않는다. 시각화 화면의 `goPage`가 옮기는 `snapshot`은 AI 화면으로 가져가지 않는다(`goAiReview`는 `repo`만 옮긴다). 저장소가 바뀌면 PR·입력·작업을 가져가지 않으며, 응답의 `repository_id`가 주소와 다르면 그리지 않는다.
+
+**상태 표시 규칙**
+- 작업 상태는 `queued`/`running`(+`stage`)/`retry_wait`/`cancel_requested`/`succeeded`/`failed`/`cancelled`를 따로 보인다. 모델 진행률(%)을 만들지 않는다.
+- coverage는 PR 전체 / 선택 코드 확보 / 분석 범위를 따로 말한다. 실행 전 `analysis_coverage=none`은 "아직 분석 전"이며 실패가 아니다.
+- **지적 0건**은 "분석한 범위에서 모델이 지적을 보고하지 않았다. 문제가 없다는 뜻이 아니다. 사람 검증 전"으로 쓴다. "오류 없음·문제 없음·이상 없음"을 쓰지 않는다. 구조 검증 통과는 "내용이 옳다는 보증이 아님"을 함께 쓴다. 사람 검증은 유효/오탐/불확실/미검증 개수로 보인다.
+- `OUTCOME_UNCERTAIN`·`PROVIDER_TIMEOUT`·`RESULT_LOST`는 "비용이 발생했을 수 있음"과 "자동으로 다시 실행하지 않음"을 알리고, 재실행은 사용자가 누를 때만 동의를 다시 받아 시작한다.
+- 결과가 이전 SHA의 것이면(현재 PR head와 다름) 그렇게 표시한다.
+
+**원본 코드 위치**: 지적의 `location(path, side, start_line, end_line)`은 입력의 고정 diff 줄 번호다. 근거 보기는 `GET /inputs/{input_id}/files/{source_file_id}?side=&start_line=&end_line=`로 앞뒤 6줄을 불러 해당 범위를 강조한다. 입력 보관 기간이 지나면 410 `INPUT_EXPIRED`이며, 그때는 결과에 저장된 `quote`만 보이고 이유를 설명한다.
+
+**출력 안전**: 서버·모델이 준 문자열(PR 제목·설명, 코드, 지적, 요약)은 `textContent`로만 넣는다. 외부 URL·이미지·링크를 데이터에서 만들지 않는다. API key는 입력 즉시 비우고 응답에는 마스킹 힌트만 쓰며 URL·저장소·콘솔에 남기지 않는다.
+
+**검증**: `node scripts/test_ai_frontend.cjs`(순수 모듈), `scripts/test_ai_pulls_api.py`, 브라우저 확인용 모의 서버 `scripts/ai_ui_mock_server.py`. 운영 DB 스냅샷 검증(`verify_snapshot_integration.py`)은 출시 전 필수 확인이며 S9에서는 미확인이다.

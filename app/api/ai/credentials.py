@@ -8,7 +8,7 @@ from app.api.ai.inputs import NO_STORE, _json, _request_id, guard
 from app.core.ai_settings import get_ai_settings
 from app.core.database import get_db
 from app.schemas.ai import (CredentialChange, CredentialDeleted, CredentialList, ErrorCode, ProvidersResponse,
-                            RegisterKeyRequest, SupportedProvider)
+                            RegisterKeyRequest, SupportedProvider, UpdateCredentialRequest)
 from app.services.ai import credentials
 from app.services.ai.access import AIError
 from app.services.ai.providers import registry
@@ -44,6 +44,13 @@ def put_credential(body: RegisterKeyRequest, request: Request, provider: str = P
         verify=body.verify, request_id=_request_id(request))
     return _json(CredentialChange(credential=result.credential, changed=result.changed,
                                   previous_version=result.previous_version))
+
+
+@router.patch('/credentials/{provider}')
+def patch_credential(body: UpdateCredentialRequest, provider: str = ProviderPath, user_id: UUID = Depends(guard),
+                     db: Session = Depends(get_db)):
+    """기본 모델만 바꾼다(key 재입력 불필요). 전송 동의는 별도로 모델·key 버전을 확인한다."""
+    return _json(credentials.set_preferred_profile(db, user_id, provider, body.profile_id))
 
 
 @router.delete('/credentials/{provider}')

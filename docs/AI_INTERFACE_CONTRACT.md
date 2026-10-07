@@ -1,6 +1,6 @@
 # AI 인터페이스 계약 (S0)
 
-- 계약 버전: `1.3` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
+- 계약 버전: `1.4` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
 - 설계 근거: [요구사항 및 시스템 설계 v0.4](GitViz_AI_요구사항_및_시스템설계_v0.4.md), [구현 계획 v0.5](GitViz_AI_의존성기반_구현계획_v0.5.md) S0
 - 수집·백엔드·시각화는 모두 `app/schemas/ai.py`의 DTO를 기준으로 합니다. 이 문서와 코드가 다르면 코드가 우선이며 즉시 문서를 고칩니다.
 - 모든 DTO는 알 수 없는 필드를 거부합니다(`extra="forbid"`). 클라이언트가 `owner_user_id` 같은 값을 보내도 받지 않습니다.
@@ -124,6 +124,7 @@
 - 1.1(S5): `InputManifest.pr_metadata`(AI로 보내는 PR 제목·설명) 추가. 기존 필드는 그대로이며 manifest_hash에 PR 설명이 반영된다.
 - 1.2(BYOK): 사용자 key 관리 DTO(`CredentialView` 등)·`TransferConsent`·`InputPreview.transfer` 추가, ErrorCode `CREDENTIAL_REQUIRED`·`CREDENTIAL_INVALID`(422) 추가.
 - 1.3(S8): 생성·작업·결과·지적·피드백·사용량 API DTO(`CreateJobRequest`, `RetryJobRequest`, `JobView`, `JobList`, `ResultView`, `FindingView`, `FindingList`, `FeedbackRequest`, `FeedbackView`, `UsageView`) 추가. 기존 필드·enum은 그대로다.
+- 1.4(S9): PR·파일 선택 조회 DTO(`PullSummary`, `PullList`, `PullFile`, `PullFilesView`)와 `UpdateCredentialRequest` 추가. 기존 필드·enum은 그대로다.
 - 이후 단계에서 임의로 enum/필드 의미를 바꾸지 않습니다. 변경은 `CONTRACT_VERSION`, 이 문서, `scripts/test_ai_contracts.py`를 같은 PR에서 고칩니다.
 - 기능별 출력 schema 버전(S6)과 API 응답 DTO(S5·S8)는 이 계약 위에 추가하며 위 정의를 재정의하지 않습니다.
 
@@ -277,3 +278,15 @@ key 형식 오류·제공자 거절(401·403·402·모델 없음)은 422 `CREDEN
 **피드백**: 결과 작성자만 쓸 수 있고(남의 지적은 404) `expected_version`이 다르면 409 `VERSION_CONFLICT`(`details.current_version`). 지적 행을 잠근 채 존재·작성자·만료를 다시 확인하므로(그 사이 결과가 삭제됐다면 404) 동시 요청 중 하나만 성공한다. 원본 결과·지적은 바뀌지 않으며(DB trigger) 피드백은 별도 행이다. 감사 기록에는 메모 본문이 없다.
 
 **미해결**: `reviewable=false` 차단은 접수 경로(동의 확인)와 실행 경로(`NO_REVIEWABLE_CONTENT`) 모두에서 유지한다. 프런트 연결은 S9다.
+
+## 15. PR·파일 선택 조회와 기본 모델 변경 (S9)
+
+AI 제공자를 호출하지 않고 DB에 아무것도 저장하지 않는다. 로그인·AI 기능 켜짐을 요구하고 응답은 `Cache-Control: private, no-store`다. 저장소 접근은 `prepare` 권한(외부 AI 전송이 아님)으로 매번 확인한다.
+
+| 메서드·경로 | 설명 |
+|---|---|
+| `GET /pulls?repository_id=&state=open\|closed\|merged&limit≤50&cursor=` | 현재 GitHub PR 목록(`PullList`). cursor는 서명된 값이며 저장소·state·limit에 묶인다 |
+| `GET /pulls/{n}/files?repository_id=&limit≤100&cursor=` | PR 전체 파일 목록 한 페이지(`PullFilesView`): 현재 `base_sha`·`head_sha`, `pr_total_files`, `inventory_coverage`(complete/partial/unknown). **고정 입력이 아니다** |
+| `PATCH /credentials/{provider}` | `{profile_id}`: key·버전은 그대로 두고 기본 모델만 바꾼다(허용되지 않은 모델은 422). 전송 동의는 별도로 모델·key 버전을 확인한다 |
+
+GitHub 오류는 `ErrorEnvelope`로 매핑한다(404 `RESOURCE_NOT_FOUND`, 429 `UPSTREAM_RATE_LIMIT`+`Retry-After`, 503 `UPSTREAM_UNAVAILABLE`). 화면은 목록에서 본 SHA를 `POST /inputs`의 `expected_base_sha`·`expected_head_sha`로 보내며, 서버가 다시 확인해 다르면 409 `PR_CHANGED`다.

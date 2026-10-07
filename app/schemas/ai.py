@@ -21,7 +21,7 @@ from pydantic import (
     model_validator,
 )
 
-CONTRACT_VERSION = "1.3"
+CONTRACT_VERSION = "1.4"
 
 _SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -777,3 +777,52 @@ class UsageView(_Strict):
     uncertain_reservations: int = Field(ge=0)
     daily_jobs_used: int = Field(ge=0)
     daily_job_limit: int = Field(ge=0)
+
+
+# ── PR·파일 선택 화면용 조회 (S9) ───────────────────────────────────────
+
+class PullSummary(_Strict):
+    number: int = Field(gt=0)
+    github_pr_id: int
+    title: str = Field(max_length=1000)
+    state: Literal["open", "closed", "merged"]
+    draft: bool = False
+    author_login: str | None = None
+    base_ref: str | None = None
+    base_sha: GitSha
+    head_ref: str | None = None
+    head_sha: GitSha
+    head_repo_full_name: str | None = None
+    head_repo_deleted: bool = False
+    is_fork: bool = False
+    updated_at: str | None = None
+
+
+class PullList(_Strict):
+    items: list[PullSummary]
+    next_cursor: str | None = None
+
+
+class PullFile(_Strict):
+    path: str = Field(max_length=2000)
+    old_path: str | None = Field(default=None, max_length=2000)
+    change_type: ChangeType
+    additions: int = Field(ge=0, default=0)
+    deletions: int = Field(ge=0, default=0)
+    blob_sha: str | None = None
+    has_patch: bool = False
+
+
+class PullFilesView(_Strict):
+    """PR 전체 파일 목록의 한 페이지. 고정 입력이 아니다: 입력을 만들 때 base/head SHA를 다시 확인한다."""
+    files: list[PullFile]
+    base_sha: GitSha
+    head_sha: GitSha
+    pr_total_files: int | None = Field(default=None, ge=0)
+    inventory_coverage: InventoryCoverage
+    next_cursor: str | None = None
+
+
+class UpdateCredentialRequest(_Strict):
+    """PATCH /credentials/{provider}: key는 그대로 두고 기본 모델만 바꾼다."""
+    profile_id: ProfileId
