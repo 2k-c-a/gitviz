@@ -14,26 +14,33 @@ from app.schemas.ai import ErrorCode, FeedbackView, Verdict
 from app.services.ai.access import AIError, ensure_owner
 
 
-def load_finding_owner(db: Session, finding_id: UUID, owner_id: UUID, now: datetime):
-    """지적과 그 결과의 작성자·저장소·만료를 확인한다. 남의 자료는 존재를 숨긴다."""
+def load_finding_owner(db: Session, finding_id: UUID, owner_id: UUID, now: datetime, *, lock: bool = False):
+    """지적과 그 결과의 작성자·저장소·만료를 확인한다. 남의 자료는 존재를 숨긴다.
+
+    lock=True이면 지적 행을 잠근 채 확인한다: 잠근 뒤에는 삭제(cascade)가 끝나기를 기다리게 되고, 이미 삭제됐다면 행이
+    조회되지 않아 404가 된다."""
     row = db.execute(text("""
         SELECT f.id, f.result_id, r.owner_user_id, r.repository_id, r.expires_at
         FROM ai_findings f JOIN ai_results r ON r.id = f.result_id JOIN ai_jobs j ON j.id = r.job_id
-        WHERE f.id = :f AND j.deleted_at IS NULL"""), {'f': finding_id}).one_or_none()
-    if row is None:
-        raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '지적을 찾을 수 없습니다.')
-    ensure_owner(row.owner_user_id, owner_id)
-    if row.expires_at <= now:
-        raise AIError(ErrorCode.RESULT_EXPIRED, '결과의 보관 기간이 지났습니다.')
+        WHERE f.id = :f AND j.deleted_at IS NULL""" + (" FOR UPDATE OF f" if lock else "")),
+                     {'f': finding_id}).one_or_none()
+    try:
+        if row is None:
+            raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '지적을 찾을 수 없습니다.')
+        ensure_owner(row.owner_user_id, owner_id)
+        if row.expires_at <= now:
+            raise AIError(ErrorCode.RESULT_EXPIRED, '결과의 보관 기간이 지났습니다.')
+    except AIError:
+        db.rollback()                              # 잠금을 풀고 끝낸다
+        raise
     return row
 
 
 def put_feedback(db: Session, finding_id: UUID, owner_id: UUID, verdict: Verdict, note: str | None,
                  expected_version: int, *, request_id: str = '-', now: datetime | None = None) -> FeedbackView:
     now = now or datetime.now(timezone.utc)
-    info = load_finding_owner(db, finding_id, owner_id, now)
-    db.rollback()
-    db.execute(text("SELECT 1 FROM ai_findings WHERE id = :f FOR UPDATE"), {'f': finding_id})     # 같은 지적의 동시 요청 직렬화
+    # 지적 행을 잠근 채 존재·작성자·만료를 확인한다(같은 지적의 동시 요청도 직렬화). 그 전에 삭제됐다면 404다.
+    info = load_finding_owner(db, finding_id, owner_id, now, lock=True)
     current = db.execute(text("SELECT version FROM finding_feedback WHERE finding_id = :f AND author_user_id = :a"),
                          {'f': finding_id, 'a': owner_id}).scalar()
     if (current or 0) != expected_version:

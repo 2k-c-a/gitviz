@@ -127,6 +127,11 @@ def list_jobs(db: Session, owner_id: UUID, repository_id: int, *, kind: str | No
     return [_view(r, now) for r in rows], next_cursor
 
 
+def job_deleted_error() -> AIError:
+    return AIError(ErrorCode.RESOURCE_NOT_FOUND, '이 요청으로 만들어진 작업은 삭제됐습니다. 새 Idempotency-Key로 다시 요청해 주세요.',
+                   details={'reason': 'JOB_DELETED'})
+
+
 def existing_for_key(db: Session, owner_id: UUID, route: str, key: str, body_hash: str, now: datetime) -> UUID | None:
     """같은 Idempotency-Key의 재전송이면 처음 만든 작업 id. 다른 요청이면 IDEMPOTENCY_CONFLICT."""
     row = db.execute(text("""SELECT request_hash, resource_id FROM request_idempotency
@@ -138,8 +143,11 @@ def existing_for_key(db: Session, owner_id: UUID, route: str, key: str, body_has
         raise AIError(ErrorCode.IDEMPOTENCY_CONFLICT, '같은 Idempotency-Key로 다른 요청을 보낼 수 없습니다.')
     if row.resource_id is None:
         return None
-    return db.execute(text("SELECT id FROM ai_jobs WHERE id = :j AND owner_user_id = :o AND deleted_at IS NULL"),
-                      {'j': row.resource_id, 'o': owner_id}).scalar()
+    alive = db.execute(text("SELECT deleted_at IS NULL FROM ai_jobs WHERE id = :j AND owner_user_id = :o"),
+                       {'j': row.resource_id, 'o': owner_id}).scalar()
+    if not alive:
+        raise job_deleted_error()                  # 삭제된 작업에 묶인 key: 같은 요청으로 새 작업(재과금)을 만들지 않는다
+    return row.resource_id
 
 
 def delete_job(db: Session, job_id: UUID, owner_id: UUID, *, request_id: str = '-', now: datetime | None = None) -> None:

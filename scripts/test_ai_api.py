@@ -481,6 +481,40 @@ class CancelRetryDelete(ApiCase):
         self.assertEqual(usage['uncertain_reservations'], 1)                                  # 불명 호출의 예약은 정리될 때까지 남는다
         self.assertEqual(self.client.get(f'/api/ai/v1/jobs/{job_id}').json()['status'], 'failed')   # 원래 작업은 바뀌지 않는다
 
+    def test_idempotency_key_of_a_deleted_job_never_creates_a_new_job(self):
+        w = self.ready()
+        first = self.post_job(w, 'review', key='del-key')
+        job_id = first.json()['job_id']
+        self.assertEqual(self.client.post(f'/api/ai/v1/jobs/{job_id}/cancel', headers=self.headers()).status_code, 200)
+        self.assertEqual(self.client.delete(f'/api/ai/v1/jobs/{job_id}', headers=self.headers()).status_code, 200)
+        before = self.counts()
+        replay = self.post_job(w, 'review', key='del-key')
+        error = self.error(replay, 404, 'RESOURCE_NOT_FOUND')
+        self.assertEqual(error['details'], {'reason': 'JOB_DELETED'})
+        self.assertEqual(self.counts(), before)                                              # 새 작업·outbox·예약이 생기지 않았다
+        # 공통 create_job 경로도 같은 규칙이다
+        from app.services.ai import consent
+        pinned = C.pinned_for(self.db, w.owner, w.repo, w.input_id, manifest_hash=self.input_row(w.input_id)['manifest_hash'].strip())
+        body_hash = canonical_hash({'kind': 'review', 'consent': self.consent(w), 'force_regenerate': False})
+        with self.assertRaises(AIError) as ctx:
+            job_service.create_job(self.db, owner_id=w.owner, repository_id=w.repo, input_id=w.input_id, kind='review',
+                                   fingerprint=canonical_hash('anything'), route=jobs_api.CREATE_ROUTE, idempotency_key='del-key',
+                                   body_hash=body_hash, pinned=pinned)
+        self.assertEqual((ctx.exception.code, ctx.exception.details), (ErrorCode.RESOURCE_NOT_FOUND, {'reason': 'JOB_DELETED'}))
+        self.assertEqual(self.counts(), before)
+        self.assertEqual(self.post_job(w, 'review', key='new-key').status_code, 202)           # 새 key는 새 요청이다
+        # retry 경로: 삭제된 retry 작업의 key도 유지된다
+        cancelled = self.post_job(w, 'summary', key='s1').json()['job_id']
+        self.client.post(f'/api/ai/v1/jobs/{cancelled}/cancel', headers=self.headers())
+        retried = self.client.post(f'/api/ai/v1/jobs/{cancelled}/retry', headers=self.headers('rr'), json={'consent': self.consent(w)})
+        self.assertEqual(retried.status_code, 202)
+        self.client.post(f'/api/ai/v1/jobs/{retried.json()["job_id"]}/cancel', headers=self.headers())
+        self.client.delete(f'/api/ai/v1/jobs/{retried.json()["job_id"]}', headers=self.headers())
+        before = self.counts()
+        again = self.client.post(f'/api/ai/v1/jobs/{cancelled}/retry', headers=self.headers('rr'), json={'consent': self.consent(w)})
+        self.assertEqual(self.error(again, 404, 'RESOURCE_NOT_FOUND')['details'], {'reason': 'JOB_DELETED'})
+        self.assertEqual(self.counts(), before)
+
     def test_retry_is_refused_for_succeeded_prepare_and_foreign_jobs(self):
         w = self.succeeded()
         self.error(self.client.post(f'/api/ai/v1/jobs/{w.job_id}/retry', headers=self.headers('x'), json={'consent': self.consent(w)}),
@@ -540,6 +574,7 @@ class Feedback(ApiCase):
         super().setUp()
         self.w = self.ready()
         job_id = UUID(self.post_job(self.w).json()['job_id'])
+        self.job_id = job_id
         handle = self.handle_of(job_id)
         self.output = {'schema_version': 'review-output-v1', 'findings': [
             self.finding(handle, title=f'finding {i}', priority=i) for i in (1, 2, 3)]}
@@ -619,6 +654,74 @@ class Feedback(ApiCase):
         [t.join() for t in threads]
         self.assertEqual(sorted(outcomes), [200, 409, 409, 409])
         self.assertEqual(self.scalar('SELECT count(*) FROM finding_feedback'), 1)
+
+    def test_result_deleted_while_feedback_is_being_saved_is_a_404_not_a_server_error(self):
+        """소유자 확인과 저장 사이에 삭제가 끝나는 경쟁. 확인 직후(잠금 전)에 삭제를 끼워 넣는다."""
+        from app.services.ai import feedback_service, job_views
+        real_load = feedback_service.load_finding_owner
+        calls = []
+
+        def racing(db, finding_id, owner_id, now, *, lock=False):
+            calls.append(lock)
+
+            def delete():
+                with S.Session() as other:
+                    job_views.delete_job(other, self.job_id, self.w.owner)
+            # put_feedback 안의 확인(두 번째 호출)과 저장 사이에 삭제가 끝나는 상황. 잠금 확인이면 잠그기 직전,
+            # 잠금 없는 확인이면 확인 직후(그 틈에 삭제되면 이후 INSERT가 외래키 오류가 난다)에 끼워 넣는다.
+            if len(calls) == 2 and lock:
+                delete()
+            row = real_load(db, finding_id, owner_id, now, lock=lock)
+            if len(calls) == 2 and not lock:
+                delete()
+            return row
+        with patch.object(feedback_service, 'load_finding_owner', side_effect=racing):
+            r = self.put(note='late')
+        self.error(r, 404, 'RESOURCE_NOT_FOUND')
+        self.assertEqual([self.scalar('SELECT count(*) FROM finding_feedback'), self.scalar('SELECT count(*) FROM ai_findings')], [0, 0])
+
+    def test_a_delete_that_arrives_while_the_finding_is_locked_waits_and_the_feedback_survives_or_is_removed_with_it(self):
+        from app.services.ai import feedback_service, job_views
+        results = {}
+        started = threading.Event()
+        real_load = feedback_service.load_finding_owner
+
+        def slow(db, finding_id, owner_id, now, *, lock=False):
+            row = real_load(db, finding_id, owner_id, now, lock=lock)
+            if lock:
+                started.set()
+                import time
+                time.sleep(0.6)                               # 잠금을 쥔 채 지연: 삭제는 기다려야 한다
+            return row
+
+        def delete():
+            started.wait(5)
+            with S.Session() as other:
+                job_views.delete_job(other, self.job_id, self.w.owner)
+            results['deleted'] = True
+        t = threading.Thread(target=delete)
+        t.start()
+        with patch.object(feedback_service, 'load_finding_owner', side_effect=slow):
+            r = self.put()
+        t.join(10)
+        self.assertEqual((r.status_code, results.get('deleted')), (200, True))                 # 저장이 먼저 끝나고 삭제가 뒤따른다
+        self.assertEqual(self.scalar('SELECT count(*) FROM finding_feedback'), 0)              # 삭제가 피드백까지 지웠다
+        self.error(self.put(expected_version=1), 404, 'RESOURCE_NOT_FOUND')
+
+    def test_expiry_and_owner_are_rechecked_after_the_lock(self):
+        from app.services.ai import feedback_service
+        real_load = feedback_service.load_finding_owner
+        calls = []
+
+        def spy(db, finding_id, owner_id, now, *, lock=False):
+            calls.append(lock)
+            return real_load(db, finding_id, owner_id, now, lock=lock)
+        with patch.object(feedback_service, 'load_finding_owner', side_effect=spy):
+            self.assertEqual(self.put().status_code, 200)
+        self.assertEqual(calls, [False, True])                                                # API의 사전 확인 뒤 저장은 잠금 상태에서 다시 확인한다
+        self.bypass("UPDATE ai_results SET expires_at = now() - interval '1 minute'")
+        self.error(self.put(expected_version=1, verdict='uncertain'), 410, 'RESULT_EXPIRED')
+        self.assertEqual(self.rows('SELECT version FROM finding_feedback')[0]['version'], 1)
 
     def test_findings_are_paged_by_ordinal(self):
         first = self.client.get(f'/api/ai/v1/results/{self.result_id}/findings', params={'limit': 2}).json()
