@@ -690,15 +690,22 @@ class Budget(Case):
             self.assertEqual(self.budgets()['user'][1], Decimal('1.25'))
             self.assertEqual(self.code_of(usage_service.reserve_attempt, self.db, lease, Decimal('1')), ErrorCode.INVALID_STATE)
 
+    def requeue_after_settled_attempt(self, job, now=T0):
+        """정산된 attempt의 작업을 다시 queued로 돌린다. fail_job은 이미 처리된 호출을 재시도하지 않으므로(S7 복구 규칙)
+        예산 계산을 보려는 이 테스트는 상태를 직접 되돌린다."""
+        self.db.execute(text("UPDATE ai_attempts SET status = 'failed', finished_at = :n WHERE job_id = :j AND status = 'started'"),
+                        {'n': now, 'j': job.id})
+        self.db.execute(text("""UPDATE ai_jobs SET status = 'queued', lease_token = NULL, lease_until = NULL
+                                WHERE id = :j"""), {'j': job.id})
+        self.db.commit()
+
     def test_each_attempt_is_tracked_separately_across_retries(self):
         with env(AI_USER_MONTHLY_BUDGET=10, AI_SERVER_MONTHLY_BUDGET=100):
             world, job, lease = self.claimed()
             usage_service.reserve_attempt(self.db, lease, Decimal('1'), now=T0)
             usage_service.settle_attempt(self.db, job.id, 1, Decimal('0.4'))
             self.db.commit()
-            job_service.fail_job(self.db, lease, 'BAD_OUTPUT', retryable=True, now=T0)       # 출력 검증 실패 → 재생성
-            self.db.execute(text("UPDATE ai_jobs SET status = 'queued' WHERE id = :j"), {'j': job.id})
-            self.db.commit()
+            self.requeue_after_settled_attempt(job)                                           # 출력 검증 실패 → 재생성
             lease2 = job_service.claim_job(self.db, job.id, now=T0 + timedelta(hours=1))
             usage_service.reserve_attempt(self.db, lease2, Decimal('1'), now=T0)
             usage_service.settle_attempt(self.db, job.id, 2, Decimal('0.6'))
@@ -750,9 +757,7 @@ class Budget(Case):
             usage_service.settle_attempt(self.db, job.id, 1, Decimal('6'))                    # 예약보다 많이 나온 실제 비용
             self.db.commit()
             self.assertEqual(self.budgets()['user'], (0, Decimal('6')))
-            job_service.fail_job(self.db, lease, 'E', retryable=True, now=T0)
-            self.db.execute(text("UPDATE ai_jobs SET status = 'queued' WHERE id = :j"), {'j': job.id})
-            self.db.commit()
+            self.requeue_after_settled_attempt(job)
             lease2 = job_service.claim_job(self.db, job.id, now=T0 + timedelta(hours=1))
             self.assertEqual(self.code_of(usage_service.reserve_attempt, self.db, lease2, Decimal('0.01'), now=T0),
                              ErrorCode.BUDGET_LIMIT)
@@ -893,15 +898,15 @@ class ReservationSafety(Case):
         self.assertEqual(job_service.fail_job(self.db, lease, 'TIMEOUT', retryable=True, now=T0), 'failed')
         self.assertEqual(self.job_row(job.id)['error_code'], 'OUTCOME_UNCERTAIN')
 
-    def test_released_or_settled_reservation_still_allows_retry(self):
-        resolvers = (lambda j: usage_service.release_attempt(self.db, j, 1),
-                     lambda j: usage_service.settle_attempt(self.db, j, 1, Decimal('0.5')))
-        for n, resolve in enumerate(resolvers):
+    def test_released_reservation_allows_retry_but_a_settled_call_never_does(self):
+        resolvers = ((lambda j: usage_service.release_attempt(self.db, j, 1), 'retry_wait'),     # 호출이 처리되지 않았다
+                     (lambda j: usage_service.settle_attempt(self.db, j, 1, Decimal('0.5')), 'failed'))   # 이미 처리·정산됨
+        for n, (resolve, expected) in enumerate(resolvers):
             world, job, lease = self.claimed(self.make_world(), fingerprint=H(str(n + 1)))
             usage_service.reserve_attempt(self.db, lease, Decimal('1'), now=T0)
             resolve(job.id)
             self.db.commit()
-            self.assertEqual(job_service.fail_job(self.db, lease, 'TEMP', retryable=True, now=T0), 'retry_wait')
+            self.assertEqual(job_service.fail_job(self.db, lease, 'TEMP', retryable=True, now=T0), expected)
 
     def test_finish_cleans_up_open_reservations(self):
         world, job, lease = self.claimed()

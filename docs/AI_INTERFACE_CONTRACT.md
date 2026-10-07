@@ -78,6 +78,7 @@
 | `LEASE_EXPIRED` | 처리자가 사라져 처리권이 만료됨(attempt 기록에만 남고 재시도 대기로 전환) |
 | `ATTEMPTS_EXHAUSTED` | 최대 시도 횟수(`AI_MAX_ATTEMPTS`) 소진 |
 | `QUEUE_TIMEOUT` | 대기열에서 `AI_QUEUE_DEADLINE_SECONDS`를 넘김 |
+| `RESULT_LOST` | AI 호출은 처리·정산됐지만 결과를 저장하기 전에 처리자가 사라짐. 같은 작업으로 다시 호출하지 않으며 사용자가 명시적으로 재시도(새 generation)해야 한다 |
 | `OUTCOME_UNCERTAIN` | AI 호출 중 처리자가 사라져 결과를 알 수 없음. 새 호출로 이어가지 않으며 사용자가 명시적으로 재시도(새 generation)해야 한다 |
 
 생성 작업(S7)의 코드는 §13을 따른다.
@@ -231,7 +232,9 @@ key 형식 오류·제공자 거절(401·403·402·모델 없음)은 422 `CREDEN
 
 **비용**: `count_tokens`는 과금되지 않으므로 예약·불명 처리가 없다. 예약액은 `count_tokens` 입력 + 최대 출력 기준 상한이다. 호출이 처리됐다면 결과가 쓸모없어도(검증 실패·잘림·거절·취소) 응답의 usage로 정산하고, usage가 없으면 예약액으로 정산한다. 처리되지 않았음이 확실한 실패(429·`request-id`가 있는 5xx·연결 전 실패·거절)는 예약을 해제한다. 결과를 모르면(`outcome_uncertain`) 예약을 `uncertain`으로 남겨 예산을 점유하고 작업은 `OUTCOME_UNCERTAIN`으로 실패하며 자동으로 다시 호출하지 않는다. 호출 시간 동안 DB transaction은 열려 있지 않다.
 
-**결과**(`result_store.save_validated_result`): `finish_job`의 `work`로 같은 transaction에서 `ai_results`·`ai_findings`를 만들어 결과와 상태가 함께 커밋된다. 취소가 접수됐거나 처리권·접근 권한을 잃었다면 결과를 만들지 않는다(호출 비용은 기록). `human_validation`은 `unverified`, 보관 기간은 `AI_RESULT_RETENTION_DAYS`(기본 30일). 결과 저장이 실패해도 이미 비용이 든 호출을 자동으로 되풀이하지 않는다(`RESULT_STORAGE_FAILED`, 사용자가 명시적으로 다시 시작).
+**복구**: 처리권이 만료된 작업은 현재 attempt의 호출 기록(미정산·불명·정산 완료 예약)으로 호출 여부를 판단한다. 호출 전이면 재시도하고, 결과를 모르면 `OUTCOME_UNCERTAIN`, 정산까지 끝났다면 `RESULT_LOST`로 실패시키며 어느 쪽도 자동으로 다시 호출하지 않는다. `fail_job`도 이미 처리된 호출이 있는 attempt는 재시도 대기로 돌리지 않는다.
+
+**결과**(`result_store.save_validated_result`): `finish_job`의 `work`로 같은 transaction에서 `ai_results`·`ai_findings`를 만들어 결과와 상태가 함께 커밋된다. 취소가 접수됐거나 처리권·접근 권한을 잃었다면 결과를 만들지 않는다(호출 비용은 기록). `coverage`는 입력의 값을 유지하고 `analysis_coverage`만 실제로 모델에 보낸 범위로 채운다(선택한 파일을 모두 보내고 선택 코드를 모두 확보했으면 `complete`, 일부면 `partial`, 없으면 `none`). `human_validation`은 `unverified`, 보관 기간은 `AI_RESULT_RETENTION_DAYS`(기본 30일). 결과 저장이 실패해도 이미 비용이 든 호출을 자동으로 되풀이하지 않는다(`RESULT_STORAGE_FAILED`, 사용자가 명시적으로 다시 시작).
 
 | 작업 `error_code` | 의미 |
 |---|---|

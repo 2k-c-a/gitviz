@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.ai_settings import get_ai_settings
 from app.models.ai_result import AIFinding, AIResult
-from app.schemas.ai import HumanValidation, StructureValidation, canonical_hash
+from app.schemas.ai import ContentCoverage, Coverage, HumanValidation, StructureValidation, canonical_hash
 from app.services.ai.lease import Lease
 from app.services.ai.validators import ValidatedResult
 
@@ -21,6 +21,23 @@ from app.services.ai.validators import ValidatedResult
 def finding_fingerprint(path: str, side: str, start_line: int, end_line: int, category: str, title: str) -> str:
     """같은 위치·같은 주제의 지적을 재생성 사이에도 알아보기 위한 해시(피드백 이력 연결용). 모델 문장 전체는 넣지 않는다."""
     return canonical_hash(['finding-v1', path, side, start_line, end_line, category, title.casefold()])
+
+
+def result_coverage(input_coverage: dict, sent_files: int) -> dict:
+    """결과의 분석 범위. 입력(준비 단계)의 coverage는 그대로 두고 analysis_coverage만 실제로 모델에 보낸 범위로 채운다.
+
+    선택한 파일을 모두 보냈으면 complete, 일부만 보냈으면 partial, 하나도 못 보냈으면 none이다.
+    선택 범위 밖(PR의 나머지 파일)은 inventory·limitations(not_selected)가 따로 나타낸다.
+    """
+    base = Coverage(**input_coverage)
+    selected = base.selected_files
+    if sent_files <= 0 or base.selected_content_coverage is ContentCoverage.none:
+        analysis = ContentCoverage.none
+    elif sent_files >= selected and base.selected_content_coverage is ContentCoverage.complete:
+        analysis = ContentCoverage.complete
+    else:
+        analysis = ContentCoverage.partial
+    return base.model_copy(update={'analysis_coverage': analysis}).model_dump(mode='json')
 
 
 def save_validated_result(db: Session, lease: Lease, validated: ValidatedResult, *, coverage: dict,

@@ -60,6 +60,19 @@ def _has_unresolved_reservation(db: Session, job_id: UUID) -> bool:
                               AND status IN ('reserved', 'uncertain') LIMIT 1"""), {'j': job_id}).first() is not None
 
 
+def _call_state(db: Session, job_id: UUID, attempt_no: int) -> str:
+    """이 attempt에서 제공자 호출이 일어났는가: 'none'(호출 전) / 'uncertain'(결과 모름) / 'settled'(처리·정산됨).
+
+    정산이 끝난 예약도 호출이 처리됐다는 기록이다. 미정산 예약만 보면 정산 직후·결과 저장 전에 중단된 작업을
+    '호출 전'으로 오판해 과금 호출을 되풀이한다.
+    """
+    statuses = set(db.execute(text("""SELECT status FROM usage_reservations WHERE job_id = :j AND attempt_no = :n"""),
+                              {'j': job_id, 'n': attempt_no}).scalars())
+    if statuses & {'reserved', 'uncertain'}:
+        return 'uncertain'
+    return 'settled' if 'settled' in statuses else 'none'
+
+
 def _close_open_reservations(db: Session, lease: Lease, *, succeeded: bool) -> bool:
     """확정 시점에 남은 reserved 예약을 정리한다. 정리한 것이 불명(uncertain)이면 True.
 
@@ -360,7 +373,7 @@ def fail_job(db: Session, lease: Lease, error_code: str, *, retryable: bool = Fa
         _close_attempt(db, lease, 'failed', 'OUTCOME_UNCERTAIN', now)
         _terminal(db, lease, 'failed', 'OUTCOME_UNCERTAIN', now)
         final = 'failed'
-    elif retryable and row.attempt_count < get_ai_settings().max_attempts:
+    elif retryable and row.attempt_count < get_ai_settings().max_attempts             and _call_state(db, lease.job_id, lease.attempt_no) == 'none':        # 이미 처리된 호출은 자동으로 되풀이하지 않는다
         due = now + timedelta(seconds=retry_delay(row.attempt_count))
         _close_attempt(db, lease, 'failed', error_code, now)
         db.execute(text("""UPDATE ai_jobs SET status = 'retry_wait', error_code = :e, next_attempt_at = :due,
@@ -387,7 +400,7 @@ def recover_expired(db: Session, *, now: datetime | None = None, limit: int = 10
     """
     now = _now(now)
     max_attempts = get_ai_settings().max_attempts
-    stats = {'retried': 0, 'uncertain': 0, 'exhausted': 0, 'cancelled': 0}
+    stats = {'retried': 0, 'uncertain': 0, 'exhausted': 0, 'cancelled': 0, 'result_lost': 0}
     rows = db.execute(text("""
         SELECT id, status, attempt_count, kind FROM ai_jobs
         WHERE status IN ('running', 'cancel_requested') AND lease_until < :now
@@ -395,7 +408,8 @@ def recover_expired(db: Session, *, now: datetime | None = None, limit: int = 10
     for row in rows:
         lease = Lease(job_id=row.id, token=uuid4(), attempt_no=row.attempt_count, owner_user_id=None,
                       repository_id=0, kind=row.kind)
-        called = _has_unresolved_reservation(db, row.id)
+        state = _call_state(db, row.id, row.attempt_count)
+        called = state == 'uncertain' or _has_unresolved_reservation(db, row.id)
         if called:
             usage_service.mark_uncertain(db, row.id, row.attempt_count)
         if row.status == 'cancel_requested':
@@ -405,6 +419,11 @@ def recover_expired(db: Session, *, now: datetime | None = None, limit: int = 10
         elif called:
             _terminal(db, lease, 'failed', 'OUTCOME_UNCERTAIN', now)
             stats['uncertain'] += 1
+        elif state == 'settled':
+            # 호출은 처리·정산됐지만 결과를 저장하지 못했다. 같은 작업으로 다시 호출하지 않는다(새 generation은 사용자가 요청).
+            _close_attempt(db, lease, 'failed', 'RESULT_LOST', now)
+            _terminal(db, lease, 'failed', 'RESULT_LOST', now)
+            stats['result_lost'] += 1
         else:
             _close_attempt(db, lease, 'failed', 'LEASE_EXPIRED', now)
             if row.attempt_count < max_attempts:
