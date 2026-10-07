@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.api.ai.inputs import NO_STORE, _json, _request_id, _require_key, guard
 from app.core.database import get_db
 from app.schemas.ai import CreateJobRequest, ErrorCode, JobList, JobStatus, RetryJobRequest, TransferConsent
-from app.services.ai import consent, idempotency, input_store, job_service, job_views
+from app.services.ai import consent, history_context, idempotency, input_store, job_service, job_views
 from app.services.ai.access import AIAction, AIError, authorize_ai
 from app.services.ai.content_policy import POLICY_VERSION
 
@@ -55,6 +55,20 @@ def _check_history_snapshot(db: Session, repository_id: int, snapshot_id: int | 
     return {'history_snapshot_id': snapshot_id}
 
 
+def _attach_to_reused(db: Session, user_id: UUID, request: Request, job, repository_id: int, snapshot_id: int) -> None:
+    """끝난 같은 리뷰를 재사용할 때, 이번에 지정한 snapshot의 이력 근거를 그 결과에 붙인다(이미 있으면 그대로)."""
+    result_id = db.execute(text('SELECT id FROM ai_results WHERE job_id = :j'), {'j': job.id}).scalar()
+    if result_id is None:
+        return
+    before = {e.id for e in history_context.list_evidence(db, result_id)}
+    evidence = history_context.build_history_evidence(db, result_id, snapshot_id)
+    if evidence.id not in before:
+        input_store.audit(db, actor_id=user_id, repository_id=repository_id, action='history.attached', object_id=result_id,
+                          request_id=_request_id(request), object_type='result',
+                          details={'snapshot_id': snapshot_id, 'status': evidence.status, 'reasons': list(evidence.exclusion_reasons or []), 'via': 'job_reuse'})
+    db.commit()
+
+
 def _accept(db: Session, user_id: UUID, request: Request, *, kind: str, consent_in: TransferConsent, route: str,
             key: str, body_hash: str, force: bool, history_snapshot_id: int | None = None) -> JSONResponse:
     """동의를 확인하고 작업을 접수한다. reviewable=false·만료·삭제된 입력과 key 불일치는 여기서 막힌다."""
@@ -73,6 +87,8 @@ def _accept(db: Session, user_id: UUID, request: Request, *, kind: str, consent_
     result = job_service.create_job(
         db, owner_id=user_id, repository_id=row.repository_id, input_id=row.id, kind=kind, fingerprint=fingerprint,
         route=route, idempotency_key=key, body_hash=body_hash, request_options=options, pinned=pinned, force_regenerate=force, now=now)
+    if not result.created and options and result.job.status == 'succeeded':
+        _attach_to_reused(db, user_id, request, result.job, row.repository_id, options['history_snapshot_id'])
     if result.created:
         input_store.audit(db, actor_id=user_id, repository_id=row.repository_id, action='job.created',
                           object_id=result.job.id, request_id=_request_id(request), object_type='job',

@@ -300,6 +300,8 @@ GitHub 오류는 `ErrorEnvelope`로 매핑한다(404 `RESOURCE_NOT_FOUND`, 429 `
 - `GET /api/ai/v1/history/snapshots?repository_id=` — 고를 수 있는 snapshot과 `eligible`, `reasons`, `reason_texts`.
 - `GET /api/ai/v1/results/{id}/history` — 결과에 붙은 근거 목록. `POST` 같은 경로 `{snapshot_id, as_of?}` — 만들거나(201) 이미 있으면 그대로(200) 돌려준다. 리뷰 결과만 가능하다. 작성자만, 저장소 접근 권한을 매번 확인한다.
 - 작업 생성의 `history_snapshot_id`(선택, 리뷰 전용): 접수 때 같은 저장소의 snapshot인지만 확인하고 결과 저장 시 근거를 붙인다.
+- 같은 리뷰를 재사용할 때(지문 일치): 끝난 작업이면 이번에 지정한 snapshot의 근거를 그 결과에 붙이고(이미 있으면 그대로) 200을 돌려준다. 진행 중인 작업은 고정 설정을 바꾸지 않으므로, 다른 snapshot을 지정하면 조용히 무시하지 않고 409 `VERSION_CONFLICT`(`details.reason=HISTORY_SNAPSHOT_DIFFERS`)로 알린다(완료 후 `POST /results/{id}/history`).
+- 근거는 (결과, snapshot)당 하나다. 이미 있는 근거에 다른 `as_of`를 주면, 그 시점의 판정(상태·이유)이 기존과 같을 때만 기존 근거를 돌려주고 다르면 409 `VERSION_CONFLICT`(`details.reason=HISTORY_AS_OF_CONFLICT`)다.
 - 다른 저장소의 snapshot은 존재를 숨긴다(404). DB도 (snapshot, 저장소) 복합 FK로 막는다. 근거 행은 수정·삭제 불가이며 결과 삭제와 함께 사라진다.
 - **검증하지 못한 snapshot은 근거에서 제외한다**: `status=excluded`와 이유 코드만 기록하고 값은 싣지 않는다. 이유 — `integrity_failed`, `legacy_format`, `formula_unsupported`, `target_sha_missing`, `repository_identity_missing`, `repository_identity_mismatch`, `payload_incomplete`, `future_data`(리뷰 결과 시각 또는 `as_of` 이후의 자료).
 - `evidence`: `basis`(snapshot·SHA·PR base/head 비교 `relation`), `paths`(파일별 관측 횟수·소유 분포·co-change 상위·한계), `data_quality`(미식별 분모·수집 품질), `notes`. co-change 파일은 `changed_in_pr`만 알려 주는 **검토 후보**이며 누락·오류로 단정하지 않는다. 신규·이름 변경·snapshot에 없는 파일은 각각 한계 문구와 함께 표시한다.

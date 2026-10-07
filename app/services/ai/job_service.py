@@ -156,6 +156,11 @@ def _create_job(db: Session, *, owner_id, repository_id, input_id, kind, fingerp
         reusable = in_progress_ok or (latest.status == 'succeeded' and not force_regenerate)
         if reusable and kind == 'prepare' and not _prepared_input_usable(db, latest.input_id, now):
             reusable = False          # 만료됐거나 더는 실행에 쓸 수 없는 입력은 새로 준비한다
+        wanted = (request_options or {}).get('history_snapshot_id')
+        if reusable and kind == 'review' and wanted is not None and latest.status in IN_PROGRESS_STATUSES                 and (latest.request_options or {}).get('history_snapshot_id') != wanted:
+            # 진행 중인 작업의 고정 설정은 바꾸지 않는다. 요청한 snapshot을 조용히 버리지 않고 알려, 완료 후 근거를 붙이게 한다.
+            raise AIError(ErrorCode.VERSION_CONFLICT, '같은 리뷰가 이미 진행 중이라 다른 이력 snapshot을 지정할 수 없습니다. 완료 후 결과에 이력 근거를 붙여 주세요.',
+                          details={'reason': 'HISTORY_SNAPSHOT_DIFFERS'})
         if reusable:
             idempotency.complete(db, entry, latest.id)
             db.commit()
