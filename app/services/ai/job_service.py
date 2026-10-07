@@ -135,6 +135,9 @@ def _create_job(db: Session, *, owner_id, repository_id, input_id, kind, fingerp
         if existing is not None and existing.deleted_at is None and existing.owner_user_id == owner_id:
             db.commit()
             return CreateResult(existing, False, 'idempotency')
+        # key가 가리키던 작업이 삭제됐다. TTL 동안 key는 그 작업에 묶여 있으므로 새 작업을 만들지 않는다.
+        raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '이 요청으로 만들어진 작업은 삭제됐습니다. 새 Idempotency-Key로 다시 요청해 주세요.',
+                      details={'reason': 'JOB_DELETED'})
 
     if input_factory is None:
         _check_input(db, owner_id, repository_id, input_id, kind, now)

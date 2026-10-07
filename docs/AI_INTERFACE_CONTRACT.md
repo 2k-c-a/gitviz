@@ -272,6 +272,8 @@ key 형식 오류·제공자 거절(401·403·402·모델 없음)은 422 `CREDEN
 
 **재시도 규칙**: 자동 재시도는 worker가 호출 전 실패에 대해서만 한다. `OUTCOME_UNCERTAIN`·`RESULT_LOST` 등 이미 처리됐을 수 있는 호출은 사용자가 `/retry`(또는 `force_regenerate`)로 명시적으로 요청해야 새 generation이 만들어지고, 그때 동의·key·예산을 다시 확인한다. 불명 호출의 예약은 정리될 때까지 예산을 점유한다(`GET /usage`의 `uncertain_reservations`).
 
-**피드백**: 결과 작성자만 쓸 수 있고(남의 지적은 404) `expected_version`이 다르면 409 `VERSION_CONFLICT`(`details.current_version`). 지적 행을 잠가 동시 요청 중 하나만 성공한다. 원본 결과·지적은 바뀌지 않으며(DB trigger) 피드백은 별도 행이다. 감사 기록에는 메모 본문이 없다.
+**삭제와 Idempotency-Key**: 작업을 삭제해도 그 작업에 묶인 key는 TTL(24시간) 동안 유지된다. 같은 key·같은 요청을 다시 보내면 새 작업(재과금)을 만들지 않고 404 `RESOURCE_NOT_FOUND`(`details.reason=JOB_DELETED`)로 끝난다. 다시 요청하려면 새 key를 쓴다. 공통 `create_job` 경로(입력 준비 포함)에도 같은 규칙이 적용된다.
+
+**피드백**: 결과 작성자만 쓸 수 있고(남의 지적은 404) `expected_version`이 다르면 409 `VERSION_CONFLICT`(`details.current_version`). 지적 행을 잠근 채 존재·작성자·만료를 다시 확인하므로(그 사이 결과가 삭제됐다면 404) 동시 요청 중 하나만 성공한다. 원본 결과·지적은 바뀌지 않으며(DB trigger) 피드백은 별도 행이다. 감사 기록에는 메모 본문이 없다.
 
 **미해결**: `reviewable=false` 차단은 접수 경로(동의 확인)와 실행 경로(`NO_REVIEWABLE_CONTENT`) 모두에서 유지한다. 프런트 연결은 S9다.
