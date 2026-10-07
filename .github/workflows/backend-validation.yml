@@ -52,6 +52,7 @@ jobs:
       - run: python scripts/test_ai_generation.py
       - run: python scripts/test_ai_api.py
       - run: python scripts/test_ai_pulls_api.py
+      - run: python scripts/test_ai_history_context.py
       - run: python scripts/test_ai_ops.py
       - run: python scripts/test_ai_evaluation.py
       - run: python scripts/test_ai_smoke.py

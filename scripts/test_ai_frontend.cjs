@@ -705,6 +705,27 @@ test('프로젝트 선택: 본인 목록 조회·취소 신호와 응답 검증'
   await assert.rejects(unauth.myProjects(), e => e.code === 'AUTH_REQUIRED');
 });
 
+test('이력 근거: snapshot 값만 옮기고 후보·제외 이유를 오류로 단정하지 않는다', async () => {
+  const s = await js('ai-state.js');
+  const ok = s.historyEvidenceSummary({ status: 'ok', exclusion_reasons: [], evidence: { notes: ['n1'], data_quality: { commit_count: 42, unidentified_commits: 5, co_change_unit: 'pull_request' },
+    paths: [{ path: 'b.py', match: 'old_path', matched_path: 'a.py', status: 'observed', observations: { change_freq: 3, churn: 9, bugfix_count: 0 },
+      ownership: { observation_count: 3, contributor_count: 1, top_owner_share: 1 }, co_change: [{ path: 't.py', co_change_count: 6, changed_in_pr: false, low_support: true }], limitations: ['x'] }] } });
+  assert.equal(ok.excluded, false);
+  assert.deepEqual(ok.quality.map((q) => [q.label, q.value]), [['커밋', '42'], ['작성자 미식별 커밋', '5'], ['함께 변경 단위', 'pull_request']]);
+  const p = ok.paths[0];
+  assert.equal(p.matched, 'a.py');
+  assert.deepEqual(p.observations, ['변경 3회', 'churn 9', '버그 수정 0회']);
+  assert.deepEqual(p.coChange, [{ path: 't.py', count: 6, changedInPr: false, lowSupport: true }]);
+  const ex = s.historyEvidenceSummary({ status: 'excluded', exclusion_reasons: ['formula_unsupported'], evidence: { notes: ['제외'], paths: [{ path: 'leak.py' }] } });
+  assert.deepEqual([ex.excluded, ex.paths, ex.reasons], [true, [], ['formula_unsupported']]);   // 제외된 snapshot의 값은 싣지 않는다
+  const { createAiClient } = await js('ai-api.js');
+  const calls = [];
+  const c = createAiClient({ fetchImpl: async (u) => { calls.push(String(u)); return { ok: true, status: 200, json: async () => ({ result_id: 'x', evidence: [], snapshots: [], repository_id: 1 }) }; } });
+  await c.history('00000000-0000-4000-8000-000000000001');
+  await c.historyOptions(5);
+  assert.ok(calls[0].endsWith('/results/00000000-0000-4000-8000-000000000001/history') && calls[1].includes('/history/snapshots?repository_id=5'));
+});
+
 (async () => {
   let failed = 0;
   for (const [name, fn] of tests) {

@@ -429,3 +429,27 @@ export function locationText(loc) {
   const range = loc.start_line === loc.end_line ? `${loc.start_line}` : `${loc.start_line}-${loc.end_line}`;
   return `${loc.path}:${range} (${SIDE_LABEL[loc.side] || loc.side})`;
 }
+
+/* ── GitViz 이력 근거(S11): 분석 snapshot에서 옮긴 값만 보여 준다. 코드 지적과 섞지 않고, 누락·오류로 단정하지 않는다. ── */
+export const HISTORY_NOTE = '아래는 GitViz 분석 snapshot에 저장된 이력 통계입니다. AI가 만든 지적이 아니며 코드가 틀렸다는 근거도 아닙니다.';
+export const HISTORY_STATUS_LABEL = { observed: '이력 관측됨', low_support: '관측 적음', no_history: '이력 없음', no_observations: '관측 기간 내 변경 없음', not_in_snapshot: 'snapshot에 없음' };
+
+export function historyEvidenceSummary(row) {
+  const ev = row.evidence || {};
+  const basis = ev.basis || {};
+  if (row.status !== 'ok') {
+    return { excluded: true, reasons: row.exclusion_reasons || [], notes: ev.notes || [], paths: [], basis, quality: [] };
+  }
+  const q = ev.data_quality || {};
+  const quality = [
+    ['커밋', q.commit_count], ['작성자 미식별 커밋', q.unidentified_commits], ['기여자', q.contributor_count],
+    ['병합 PR', q.merged_pr_count], ['함께 변경 단위', q.co_change_unit]].filter(([, v]) => v !== undefined && v !== null)
+    .map(([label, value]) => ({ label, value: String(value) }));
+  const paths = (ev.paths || []).map((p) => ({
+    path: p.path, matched: p.match === 'old_path' ? p.matched_path : null, status: HISTORY_STATUS_LABEL[p.status] || p.status,
+    observations: p.observations ? [`변경 ${p.observations.change_freq}회`, `churn ${p.observations.churn}`, `버그 수정 ${p.observations.bugfix_count}회`] : [],
+    ownership: p.ownership ? [`관측 ${p.ownership.observation_count}건`, `기여자 ${p.ownership.contributor_count}명`, `최다 기여 비중 ${Math.round((p.ownership.top_owner_share || 0) * 100)}%`] : [],
+    coChange: (p.co_change || []).map((c) => ({ path: c.path, count: c.co_change_count, changedInPr: !!c.changed_in_pr, lowSupport: !!c.low_support })),
+    limitations: p.limitations || [] }));
+  return { excluded: false, reasons: [], notes: ev.notes || [], paths, basis, quality };
+}

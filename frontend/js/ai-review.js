@@ -710,6 +710,44 @@ async function renderResult(token, holder, job) {
       result.kind === 'review' ? h('span', { text: ` ${S.humanValidationText(sum)}${cursor ? ' (불러온 지적 기준)' : ''}` }) : null,
       h('div', { class: 'ai-muted', text: `${S.STRUCTURE_NOTE} ${S.MODEL_NOTE}` }));
   }
+  const historyBox = h('div', { class: 'ai-history' });
+  async function drawHistory() {                                      // 이력 근거는 부가 정보: 실패해도 결과와 지적은 그대로 보인다
+    let rows;
+    try { rows = (await api.history(result.result_id, token.signal)).evidence; } catch (e) { if (e?.name === 'AbortError' || !token.current()) return; return mount(historyBox, h('p', { class: 'ai-muted', text: '이력 근거를 불러오지 못했습니다. 코드 리뷰 결과에는 영향이 없습니다.' })); }
+    if (!token.current()) return;
+    const parts = [h('p', { class: 'ai-muted', text: S.HISTORY_NOTE })];
+    for (const row of rows) {
+      const v = S.historyEvidenceSummary(row);
+      const sha = row.evidence?.basis?.target_sha;
+      parts.push(h('h3', { text: `분석 snapshot #${row.snapshot_id}${sha ? ` · SHA ${S.shortSha(sha)}` : ''}` }));
+      if (v.excluded) {
+        parts.push(h('div', { class: 'ai-banner warn' }, h('div', { class: 'ai-banner-title', text: '검증하지 못해 근거로 쓰지 않았습니다' }),
+          h('div', { class: 'ai-banner-body', text: (v.notes.length ? v.notes : v.reasons).join(' · ') })));
+        continue;
+      }
+      parts.push(...v.notes.map((n) => h('p', { class: 'ai-muted', text: n })));
+      if (v.quality.length) parts.push(dl(v.quality.map((x) => [x.label, x.value])));
+      for (const p of v.paths) {
+        parts.push(h('div', { class: 'ai-hist-path' }, h('code', { text: p.path }), ' ', chip(p.status, 'info'), p.matched ? h('span', { class: 'ai-muted', text: ` (이전 경로 ${p.matched}의 이력)` }) : null,
+          p.observations.length ? h('div', { text: p.observations.join(' · ') }) : null, p.ownership.length ? h('div', { text: p.ownership.join(' · ') }) : null,
+          p.coChange.length ? h('div', {}, h('b', { text: '함께 자주 바뀐 파일(검토 후보)' }), h('ul', {}, p.coChange.map((c) => h('li', { text: `${c.path} · ${c.count}회${c.changedInPr ? ' · 이 PR에서도 변경됨' : ''}${c.lowSupport ? ' · 관측 적음' : ''}` })))) : null,
+          p.limitations.length ? h('ul', { class: 'ai-muted' }, p.limitations.map((l) => h('li', { text: l }))) : null));
+      }
+    }
+    if (!rows.length) {
+      let opts = [];
+      try { opts = (await api.historyOptions(route.repo, token.signal)).snapshots.filter((o) => o.eligible); } catch (e) { if (e?.name === 'AbortError' || !token.current()) return; }
+      if (!token.current()) return;
+      if (!opts.length) parts.push(h('p', { class: 'ai-muted', text: '사용할 수 있는 검증된 분석 snapshot이 없습니다.' }));
+      else {
+        const sel = h('select', { class: 'ai-input', 'aria-label': '분석 snapshot' }, opts.map((o) => h('option', { value: String(o.snapshot_id), text: `#${o.snapshot_id} · SHA ${S.shortSha(o.target_sha)} · ${fmtTime(o.analyzed_at)}` })));
+        const status = h('div', { class: 'ai-inline', role: 'status' });
+        const attach = button('이력 근거 붙이기', async () => { await run(attach, status, async () => { await api.attachHistory(result.result_id, Number(sel.value), token.signal); await drawHistory(); }); });
+        parts.push(h('div', { class: 'ai-row' }, sel, attach), status);
+      }
+    }
+    mount(historyBox, parts);
+  }
   async function reloadFindings() {
     try {
       let all = [], next = null, first = true;
@@ -798,11 +836,13 @@ async function renderResult(token, holder, job) {
         ['결과 보관', `${fmtTime(result.expires_at)}까지`]]),
       summaryBox),
     result.kind === 'review' ? h('section', { class: 'ai-card' }, h('h2', { text: `지적 ${result.finding_count}건` }), listBox) : h('section', { class: 'ai-card' }, summaryBody()),
+    result.kind === 'review' ? h('section', { class: 'ai-card' }, h('h2', { text: 'GitViz 이력 근거' }), historyBox) : null,
     h('section', { class: 'ai-card' }, h('div', { class: 'ai-row' },
       link('같은 입력으로 새로 실행', { repo: route.repo, input: result.input_id, force: true }, 'btn-secondary ai-btn'), link('PR 선택으로', { repo: route.repo }, 'btn-secondary ai-btn'),
       button('이 작업 삭제', () => ctx.removeJob(), { cls: 'btn-secondary danger' }))));
   drawStale();
   drawFindings();
+  if (result.kind === 'review') drawHistory();
 }
 
 /* ───────────────────────── 시작 ───────────────────────── */

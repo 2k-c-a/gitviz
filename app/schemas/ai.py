@@ -22,7 +22,7 @@ from pydantic import (
     model_validator,
 )
 
-CONTRACT_VERSION = "1.5"
+CONTRACT_VERSION = "1.6"
 
 _SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -744,6 +744,7 @@ class CreateJobRequest(_Strict):
     kind: Literal["summary", "review"]
     consent: TransferConsent
     force_regenerate: bool = False        # 이미 성공한 같은 설정의 결과가 있어도 새 generation을 만든다
+    history_snapshot_id: int | None = Field(default=None, ge=1)   # 리뷰 결과에 붙일 GitViz 이력 근거의 분석 snapshot(선택, 코드 전송과 무관)
 
 
 class RetryJobRequest(_Strict):
@@ -875,3 +876,46 @@ class PullFilesView(_Strict):
 class UpdateCredentialRequest(_Strict):
     """PATCH /credentials/{provider}: key는 그대로 두고 기본 모델만 바꾼다."""
     profile_id: ProfileId
+
+
+# ── GitViz 이력 근거 (S11) ──────────────────────────────────────────────
+
+class HistoryOptionView(_Strict):
+    """이력 근거로 고를 수 있는 분석 snapshot. eligible=false이면 이유와 함께 근거로 쓸 수 없다."""
+    snapshot_id: int
+    target_sha: str
+    analyzed_at: datetime
+    window_start: datetime | None = None
+    window_end: datetime
+    formula_version: str
+    eligible: bool
+    reasons: list[str] = Field(default_factory=list)
+    reason_texts: list[str] = Field(default_factory=list)
+
+
+class HistoryOptions(_Strict):
+    repository_id: int
+    snapshots: list[HistoryOptionView]
+
+
+class AttachHistoryRequest(_Strict):
+    snapshot_id: int = Field(ge=1)
+    as_of: datetime | None = None          # 평가 시점(리뷰 결과 생성 시각보다 이른 시각만 의미가 있다: 그 이후의 이력은 미래 자료로 제외)
+
+
+class HistoryEvidenceView(_Strict):
+    """분석 snapshot에서 옮긴 이력 근거(코드 지적과 별개). evidence에는 basis·paths·data_quality·notes가 있다."""
+    evidence_id: UUID
+    result_id: UUID
+    snapshot_id: int
+    status: Literal["ok", "excluded"]
+    exclusion_reasons: list[str] = Field(default_factory=list)
+    as_of: datetime
+    created_at: datetime
+    payload_hash: Sha256Hex
+    evidence: dict[str, Any]
+
+
+class HistoryEvidenceList(_Strict):
+    result_id: UUID
+    evidence: list[HistoryEvidenceView]
