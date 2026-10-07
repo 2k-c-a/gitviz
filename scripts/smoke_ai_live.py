@@ -56,7 +56,7 @@ def provider_smoke(api_key: str | None, profile_id: str, budget: Decimal, *, pro
     provider = (provider_factory or registry.create_provider)(profile, api_key=api_key)
     report = {'profile': profile.id, 'model': profile.model, 'steps': [], 'ok': False, 'cost_usd': None, 'cost_known': False}
     sent = synthetic_sent()
-    requests = {kind: prompts.render_request(kind, sent) for kind in ('summary', 'review')}
+    requests = {kind: prompts.render_request(kind, sent, prompt_version=profile.prompt_version(kind)) for kind in ('summary', 'review')}
 
     def step(name, ok, detail=''):
         report['steps'].append({'step': name, 'ok': ok, 'detail': detail})
@@ -126,7 +126,7 @@ def provider_smoke(api_key: str | None, profile_id: str, budget: Decimal, *, pro
             report['local_estimate_underestimates'] = True
             return report
         spent += cost
-        validated = validators.validate_output(kind, response, sent, revision_id=UUID(int=2))
+        validated = validators.validate_output(kind, response, sent, revision_id=UUID(int=2), schema_version=profile.schema_version(kind))
         step(f'출력 검증({kind})', validated.ok, '파일·줄·인용 참조가 맞음(내용의 정확성은 확인하지 않음)' if validated.ok else '문제: ' + ', '.join(sorted({i.code for i in validated.issues})))
         if not validated.ok:
             return report

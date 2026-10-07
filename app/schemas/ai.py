@@ -10,6 +10,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Annotated, Any, Literal
 from uuid import UUID
+from app.schemas.ai_output_limits import REVIEW_LIMITS, SUMMARY_LIMITS
 
 from pydantic import (
     AfterValidator,
@@ -409,11 +410,11 @@ class Finding(_Strict):
     title: ShortText
     category: ShortText
     priority: int = Field(ge=1)
-    condition: LongText
-    impact: LongText
+    condition: Annotated[str, StringConstraints(min_length=1, max_length=REVIEW_LIMITS['condition'])]
+    impact: Annotated[str, StringConstraints(min_length=1, max_length=REVIEW_LIMITS['impact'])]
     evidence_ids: list[ShortText] = Field(min_length=1)
-    verification: LongText
-    suggestion: LongText | None = None
+    verification: Annotated[str, StringConstraints(min_length=1, max_length=REVIEW_LIMITS['verification'])]
+    suggestion: Annotated[str, StringConstraints(min_length=1, max_length=REVIEW_LIMITS['suggestion'])] | None = None
     limitations: list[Limitation] = Field(default_factory=list)
     location: CodeLocation
     human_validation: HumanValidation = HumanValidation.unverified
@@ -597,6 +598,47 @@ class SummaryOutput(_StrictOutput):
 
 
 # ── 사용자 API key(BYOK)·제공자 선택·전송 동의 (S6.5) ───────────────────────────
+class ModelLocationV2(ModelLocation):
+    quote: Annotated[str, StringConstraints(min_length=3, max_length=REVIEW_LIMITS['location.quote'])]
+
+
+class ModelFindingV2(ModelFinding):
+    title: Annotated[str, StringConstraints(min_length=1, max_length=REVIEW_LIMITS['title'])]
+    condition: Annotated[str, StringConstraints(min_length=1, max_length=REVIEW_LIMITS['condition'])]
+    impact: Annotated[str, StringConstraints(min_length=1, max_length=REVIEW_LIMITS['impact'])]
+    verification: Annotated[str, StringConstraints(min_length=1, max_length=REVIEW_LIMITS['verification'])]
+    suggestion: Annotated[str, StringConstraints(min_length=1, max_length=REVIEW_LIMITS['suggestion'])] | None = None
+    location: ModelLocationV2
+    limitations: list[Annotated[str, StringConstraints(min_length=1, max_length=REVIEW_LIMITS['limitations[]'])]] = Field(default_factory=list, max_length=3)
+
+
+class ReviewOutputV2(ReviewOutput):
+    findings: list[ModelFindingV2] = Field(max_length=MAX_FINDINGS)
+
+    @model_validator(mode='after')
+    def _version(self):
+        if self.schema_version != 'review-output-v2':
+            raise ValueError('schema_version이 올바르지 않습니다.')
+        return self
+
+
+class FileChangeV2(FileChange):
+    summary: Annotated[str, StringConstraints(min_length=1, max_length=SUMMARY_LIMITS['file_changes[].summary'])]
+
+
+class SummaryOutputV2(SummaryOutput):
+    overview: Annotated[str, StringConstraints(min_length=1, max_length=SUMMARY_LIMITS['overview'])]
+    author_intent: Annotated[str, StringConstraints(min_length=1, max_length=SUMMARY_LIMITS['author_intent'])] | None = None
+    file_changes: list[FileChangeV2] = Field(max_length=MAX_FILE_CHANGES)
+    unknowns: list[Annotated[str, StringConstraints(min_length=1, max_length=SUMMARY_LIMITS['unknowns[]'])]] = Field(max_length=20)
+
+    @model_validator(mode='after')
+    def _version(self):
+        if self.schema_version != 'summary-output-v2':
+            raise ValueError('schema_version이 올바르지 않습니다.')
+        return self
+
+
 # API key는 요청 본문으로만 들어오고(SecretStr: 실수로 로그에 찍혀도 가려진다) 응답에는 마스킹된 힌트만 나간다.
 
 PROFILE_ID_PATTERN = r"^[a-z0-9][a-z0-9._-]{2,63}$"

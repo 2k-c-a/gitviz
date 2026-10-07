@@ -66,6 +66,22 @@ PROFILES['ollama-local-v1'] = replace(PROFILES[DEFAULT_PROFILE_ID], id='ollama-l
     execution_location='local', context_window=32768, max_input_tokens=24000, bytes_per_token=1,
     timeout_seconds=90, endpoint='http://127.0.0.1:11434')
 
+# Keep v1 immutable so accepted jobs retain their consent and cost limits.
+# The larger input allowance is a new selectable profile for each cloud model.
+for _previous_id in ('claude-opus-5-5-v1', 'claude-sonnet-5-5-v1', 'gpt-5.4-v1', 'gemini-3.5-flash-lite-v1'):
+    _previous = PROFILES[_previous_id]
+    _expanded_id = _previous_id.removesuffix('-v1') + '-v2'
+    PROFILES[_expanded_id] = replace(_previous, id=_expanded_id,
+        display_name=_previous.display_name + ' (입력 64K)', max_input_tokens=64_000)
+
+
+for _previous_id in ('claude-opus-5-5-v2', 'claude-sonnet-5-5-v2', 'gpt-5.4-v2', 'gemini-3.5-flash-lite-v2'):
+    _previous = PROFILES[_previous_id]
+    _expanded_id = _previous_id.removesuffix('-v2') + '-v3'
+    PROFILES[_expanded_id] = replace(_previous, id=_expanded_id,
+        display_name=_previous.display_name + ' · 확장 출력', summary_prompt='summary-v2', review_prompt='review-v2',
+        summary_schema='summary-output-v2', review_schema='review-output-v2')
+
 
 class UnknownProfile(Exception):
     pass
@@ -103,7 +119,8 @@ def current_profile() -> ProviderProfile:
 
 
 def profiles_of(provider: str) -> list[ProviderProfile]:
-    return [get_profile(p.id) for p in PROFILES.values() if p.provider == provider]
+    profiles = [get_profile(p.id) for p in PROFILES.values() if p.provider == provider]
+    return sorted(profiles, key=lambda p: (p.max_input_tokens, p.id.rsplit('-v', 1)[-1]), reverse=True)
 
 
 def supported_options() -> list[dict]:
@@ -112,13 +129,15 @@ def supported_options() -> list[dict]:
     out = []
     for info in PROVIDERS.values():
         models = [{
-            'profile_id': p.id, 'provider': p.provider, 'model': p.model, 'display_name': p.display_name,
+            'profile_id': p.id, 'provider': p.provider, 'model': p.model,
+            'display_name': (PROFILES[p.id.removesuffix('-v3') + '-v1'].display_name
+                             if p.id.endswith('-v3') else p.display_name),
             'currency': p.currency, 'input_price_per_mtok': str(p.input_price_per_mtok),
             'output_price_per_mtok': str(p.output_price_per_mtok), 'price_version': p.price_version,
             'context_window': p.context_window, 'max_input_tokens': p.max_input_tokens,
             'max_output_tokens': p.max_output_tokens, 'allowed': p.id in allowed,
             'requires_api_key': p.requires_api_key, 'execution_location': p.execution_location}
-            for p in profiles_of(info.id)]
+            for p in profiles_of(info.id) if p.id.endswith('-v3') or p.execution_location == 'local']
         out.append({'id': info.id, 'display_name': info.display_name, 'key_format': info.key_format, 'models': models})
     return out
 

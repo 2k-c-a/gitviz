@@ -148,7 +148,7 @@ def _prepare(ctx: JobContext, job: JobInfo):
     sent = prompts.build_sent_input(manifest, payloads, file_ids)
     if not sent.files:
         raise JobFailed('NO_REVIEWABLE_CONTENT')
-    rendered = prompts.render_request(job.kind, sent)
+    rendered = prompts.render_request(job.kind, sent, prompt_version=provider.profile.prompt_version(job.kind))
     request = GenerationRequest(kind=job.kind, system=rendered.system, user=rendered.user)
     try:
         token_budget.check_input_limit(provider.profile, provider.estimate_tokens(request))
@@ -254,9 +254,12 @@ def generate_handler(ctx: JobContext) -> HandlerResult:
     _check_alive(ctx)                                      # 취소·처리권 상실 이후에는 결과를 공개하지 않는다
     if response.finish != 'complete':
         raise JobFailed(_FINISH_ERRORS.get(response.finish, 'OUTPUT_INVALID'))
-    validated = validators.validate_output(job.kind, response, sent, revision_id=job.revision_id)
+    validated = validators.validate_output(job.kind, response, sent, revision_id=job.revision_id,
+                                           schema_version=profile.schema_version(job.kind))
     if not validated.ok:
-        logger.info('output rejected job=%s issues=%s', job.job_id, sorted({i.code for i in validated.issues}))
+        logger.info('output rejected job=%s issues=%s length_fields=%s', job.job_id,
+                    sorted({i.code for i in validated.issues}),
+                    sorted({i.path for i in validated.issues if i.code == 'schema_string_too_long'}))
         raise JobFailed('OUTPUT_VALIDATION_FAILED')
     _authorize(ctx, job, AIAction.read, retryable=False)   # 호출 중 접근 권한을 잃었다면 결과를 남기지 않는다
     _check_alive(ctx)

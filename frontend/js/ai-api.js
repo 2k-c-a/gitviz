@@ -117,6 +117,18 @@ export function createAiClient({ fetchImpl = (u, o) => fetch(u, o), now = () => 
   const id = (v) => encodeURIComponent(v);
 
   return {
+    async myProjects(signal) {
+      let res;
+      try { res = await fetchImpl('/repositories/mine', { credentials: 'same-origin', cache: 'no-store', signal }); }
+      catch (e) { if (e?.name === 'AbortError') throw e; throw new AiApiError('서버에 연결할 수 없습니다.', { code: 'NETWORK', retryable: true }); }
+      if (!res.ok) throw new AiApiError('프로젝트 목록을 불러오지 못했습니다.', { status: res.status, code: res.status === 401 ? 'AUTH_REQUIRED' : null });
+      let projects;
+      try { projects = await res.json(); } catch { /* 검증에서 거부 */ }
+      if (!Array.isArray(projects) || projects.some((p) => !p || !Number.isSafeInteger(p.id) || p.id <= 0)) {
+        throw new AiApiError('프로젝트 목록 응답을 해석할 수 없습니다.', { status: res.status, code: 'BAD_RESPONSE' });
+      }
+      return projects;
+    },
     /* 로그인 확인: 로그인하지 않았으면 null */
     async me(signal) {
       let res;

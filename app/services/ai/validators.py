@@ -12,7 +12,7 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from app.schemas.ai import (CodeLocation, Finding, HumanValidation, ModelFinding, ReviewOutput, StructureValidation,
-                            SummaryOutput, canonical_hash)
+                            SummaryOutput, ReviewOutputV2, SummaryOutputV2, canonical_hash)
 from app.services.ai.prompts import SentFile, SentInput
 from app.services.ai.providers.base import MAX_RAW_OUTPUT_BYTES, ProviderResponse, parse_json_object
 
@@ -148,9 +148,9 @@ def _check_finding(index: int, finding: ModelFinding, sent: SentInput, issues: l
     return file, evidence
 
 
-def _validate_review(data: dict, sent: SentInput, revision_id: UUID) -> ValidatedResult:
+def _validate_review(data: dict, sent: SentInput, revision_id: UUID, *, expanded=False) -> ValidatedResult:
     try:
-        output = ReviewOutput.model_validate(_normalize('review', data))
+        output = (ReviewOutputV2 if expanded else ReviewOutput).model_validate(_normalize('review', data))
     except ValidationError as exc:
         return _fail('review', _schema_issues(exc))
     issues: list[Issue] = []
@@ -191,9 +191,9 @@ def _validate_review(data: dict, sent: SentInput, revision_id: UUID) -> Validate
                            payload_hash=canonical_hash(payload), findings=findings)
 
 
-def _validate_summary(data: dict, sent: SentInput) -> ValidatedResult:
+def _validate_summary(data: dict, sent: SentInput, *, expanded=False) -> ValidatedResult:
     try:
-        output = SummaryOutput.model_validate(_normalize('summary', data))
+        output = (SummaryOutputV2 if expanded else SummaryOutput).model_validate(_normalize('summary', data))
     except ValidationError as exc:
         return _fail('summary', _schema_issues(exc))
     issues: list[Issue] = []
@@ -228,14 +228,18 @@ def _validate_summary(data: dict, sent: SentInput) -> ValidatedResult:
                            payload_hash=canonical_hash(payload), summary=output)
 
 
-def validate_output(kind: str, output, sent: SentInput, *, revision_id: UUID) -> ValidatedResult:
+def validate_output(kind: str, output, sent: SentInput, *, revision_id: UUID, schema_version=None) -> ValidatedResult:
     """output은 파싱된 dict, JSON 문자열 또는 ProviderResponse. sent는 실제로 보낸 자료(manifest의 읽은 파일).
 
     구조·참조가 모두 맞으면 ok=True이며 payload/findings를 돌려준다. 그래도 human_validation은 unverified다.
     """
     if kind not in ('summary', 'review'):
         raise ValueError('kind는 summary 또는 review여야 합니다.')
+    version = schema_version or f'{kind}-output-v1'
+    if version not in (f'{kind}-output-v1', f'{kind}-output-v2'):
+        raise ValueError('지원하지 않는 출력 schema입니다.')
     data, issues = _parse(kind, output)
     if data is None:
         return _fail(kind, issues)
-    return _validate_review(data, sent, revision_id) if kind == 'review' else _validate_summary(data, sent)
+    return (_validate_review(data, sent, revision_id, expanded=version.endswith('-v2')) if kind == 'review'
+            else _validate_summary(data, sent, expanded=version.endswith('-v2')))
