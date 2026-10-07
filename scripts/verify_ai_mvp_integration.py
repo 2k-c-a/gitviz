@@ -520,12 +520,23 @@ class EvaluationHarness(Stack):
     def test_harness_scores_a_real_run_and_respects_the_budget(self):
         import evaluate_ai_review as ev
         api, repo = self.world()
-        score = ev.Runner(api.http, self.base, budget=5.0, poll_seconds=0.5, timeout=90).run_case(self.case(), repo)
-        self.assertEqual((score.status, score.findings, score.matched_truths, score.truths), ('succeeded', 1, 1, 1))
+        runner = ev.Runner(api.http, self.base, budget=5.0, poll_seconds=0.5, timeout=90)
+        score = runner.run_case(self.case(), repo)
+        self.assertEqual((score.status, score.findings, score.truths), ('succeeded', 1, 1))
         self.assertGreater(score.cost, 0)
-        self.assertEqual(score.coverage['analysis_coverage'], 'complete')
-        summary = ev.summarize([score])
-        self.assertEqual((summary['recall_on_known_defects'], summary['unjudged_findings']), (1.0, 1))      # 사람이 판정하기 전의 지적은 미판정으로 센다
+        self.assertEqual((score.coverage['analysis_coverage'], score.coverage_source), ('complete', 'result'))   # 결과 API에서 읽은 분석 범위
+        # 위치가 겹쳐도 사람이 확인하기 전에는 발견이 아니다: 후보·확인 대기로만 센다
+        self.assertEqual((score.candidate_truths, score.matched_truths, len(score.pending)), (1, 0, 1))
+        held = ev.summarize([score], {'min_recall': 0.5}, expected_cases=1)
+        self.assertEqual((held['verdict'], held['pending_confirmation']), ('hold', 1))
+        self.assertEqual(self.messages(), 1)
+        # 사람이 화면(API)에서 유효로 판정한 뒤 재채점한다 — 제공자를 다시 호출하지 않는다
+        findings = api.get(f'/api/ai/v1/results/{score.result_id}/findings').json()['findings']
+        api.json(api.call('PUT', f'/api/ai/v1/findings/{findings[0]["finding_id"]}/feedback', {'verdict': 'valid', 'expected_version': 0}), 200)
+        report = {'set': 'tuning', 'summary': {'expected_cases': 1}, 'cases': [score.__dict__]}
+        again = ev.rescore(report, [self.case()], api.http, self.base)
+        self.assertEqual((again[0].matched_truths, len(again[0].pending), again[0].coverage_source), (1, 0, 'result'))
+        self.assertEqual(ev.summarize(again, {'min_recall': 0.5}, expected_cases=1)['verdict'], 'pass')
         self.assertEqual(self.messages(), 1)
         before = self.messages()
         with self.assertRaises(ev.BudgetExceeded):                                                           # 예산이 부족하면 전송(접수) 전에 멈춘다

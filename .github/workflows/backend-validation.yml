@@ -52,6 +52,7 @@ jobs:
       - run: python scripts/test_ai_pulls_api.py
       - run: python scripts/test_ai_ops.py
       - run: python scripts/test_ai_evaluation.py
+      - run: python scripts/test_ai_smoke.py
       - run: node scripts/test_ai_frontend.cjs
       - run: python scripts/test_ai_output_validation.py
   ai-queue:
