@@ -99,6 +99,39 @@ export function createIntent(newKey) {
   };
 }
 
+/* 접수 여부를 알 수 없는 오류: 네트워크 오류·5xx·깨진 응답. 서버가 처리했을 수 있으므로 같은 멱등 key로 다시 보내야 한다. */
+export function isAmbiguousError(err) {
+  const status = err?.status ?? 0;
+  return status === 0 || status >= 500 || err?.code === 'NETWORK' || err?.code === 'BAD_RESPONSE';
+}
+
+/* 접수 응답이 올바른가: 작업·입력 id가 uuid이고 지금 보는 저장소의 것이어야 한다 */
+export function isAcceptedFor(out, idField, repo) {
+  return !!out && typeof out === 'object' && toUuid(out[idField]) != null && out.repository_id === repo;
+}
+
+/* 접수 요청(POST /inputs·/jobs·/retry) 한 번.
+   - key는 요청 내용으로 정한다(같은 내용 = 같은 key).
+   - 응답을 검증하기 전에는 key를 버리지 않는다. 202인데 JSON이 깨졌거나 `{}`처럼 틀린 응답, 네트워크·5xx 오류는
+     "접수됐는지 모른다"이므로 key를 유지해 같은 key로 다시 보낸다(서버가 같은 작업을 돌려준다 — 새 작업·비용이 생기지 않는다).
+   - 서버가 분명히 거절했을 때(4xx 오류 응답)와 검증된 접수 응답을 받았을 때만 key를 끝낸다. */
+export async function submitWithIntent(intent, payload, send, validate) {
+  const key = intent.keyFor(payload);
+  let out;
+  try {
+    out = await send(key);
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;                         // 취소는 서버 결과를 모른다: key 유지
+    intent.settle(isAmbiguousError(err) ? 0 : err.status);
+    throw err;
+  }
+  if (!validate(out)) {
+    throw Object.assign(new Error('접수 응답을 확인할 수 없습니다.'), { status: 0, code: 'BAD_RESPONSE', details: {} });   // key 유지
+  }
+  intent.settle(200);
+  return out;
+}
+
 /* ── 표시 포맷 ── */
 export const shortSha = (sha) => (typeof sha === 'string' && sha ? sha.slice(0, 7) : '—');
 
@@ -140,7 +173,13 @@ export const LIMITATION_LABEL = {
 };
 export const limitationLabel = (code) => LIMITATION_LABEL[code] || `알 수 없는 사유(${String(code).slice(0, 40)})`;
 
-export const CONTENT_STATE_LABEL = { read: '전송됨', excluded: '제외됨', failed: '가져오기 실패' };
+/* read는 "코드를 확보했다"는 뜻이다. 아직 어디로도 보내지 않았으므로 "전송됨"이라고 쓰지 않는다.
+   준비가 끝나 실행할 수 있으면 "전송 예정", 그렇지 않으면(준비 중·만료) "코드 확보됨". */
+export const CONTENT_STATE_LABEL = { read: '코드 확보됨', excluded: '제외됨', failed: '가져오기 실패' };
+export function contentStateLabel(state, previewStatus) {
+  if (state === 'read') return previewStatus === 'ready' ? '전송 예정' : CONTENT_STATE_LABEL.read;
+  return CONTENT_STATE_LABEL[state] || String(state);
+}
 export const CHANGE_LABEL = { added: '추가', modified: '수정', deleted: '삭제', renamed: '이름 변경' };
 
 /* ── coverage: 목록(PR 전체) / 선택 코드 확보 / 분석을 따로 말한다 ── */

@@ -398,6 +398,112 @@ test('api: 멱등 key 생성은 호출마다 다르다', async () => {
   for (const k of keys) assert.match(k, /^[\x21-\x7e]{1,255}$/);
 });
 
+/* ───────────────────────── 접수 응답 유실·재전송 ───────────────────────── */
+/* 모의 서버: Idempotency-Key가 같으면 같은 작업을 돌려준다(실제 서버와 같은 규칙). 작업·generation 수를 센다. */
+function fakeAcceptServer(repo = 5) {
+  const byKey = new Map();
+  const jobs = [];
+  return {
+    jobs, byKey,
+    accept(key) {
+      if (!byKey.has(key)) { const job = { job_id: `00000000-0000-4000-8000-${String(jobs.length + 1).padStart(12, '0')}`, repository_id: repo, generation: jobs.length }; jobs.push(job); byKey.set(key, job); }
+      return byKey.get(key);
+    },
+  };
+}
+const payloadJob = { kind: 'review', consent: { input_id: U1, manifest_hash: 'c'.repeat(64) }, force_regenerate: false };
+
+test('접수: 202인데 응답 JSON이 깨졌어도 같은 key로 다시 보내 작업이 늘지 않는다', async () => {
+  const s = await js('ai-state.js');
+  const { createAiClient, newIdempotencyKey } = await js('ai-api.js');
+  const server = fakeAcceptServer();
+  const intent = s.createIntent(newIdempotencyKey);
+  let broken = true;
+  const client = createAiClient({ fetchImpl: async (url, opts = {}) => {
+    if (url === '/api/auth/csrf') return res(200, { token: 't' });
+    const job = server.accept(opts.headers['Idempotency-Key']);          // 서버는 접수했다
+    return broken ? res(202, undefined) : res(202, job);                  // 첫 응답은 본문이 깨져 도착한다
+  } });
+  const send = (key) => client.createJob(payloadJob, key);
+  const valid = (o) => s.isAcceptedFor(o, 'job_id', 5);
+  await assert.rejects(() => s.submitWithIntent(intent, payloadJob, send, valid), (e) => e.status === 202 && e.code === 'BAD_RESPONSE' && s.isAmbiguousError(e));
+  assert.equal(server.jobs.length, 1);
+  broken = false;
+  const out = await s.submitWithIntent(intent, payloadJob, send, valid);   // 사용자가 다시 누른다
+  assert.equal(server.jobs.length, 1);                                    // 새 작업·generation이 생기지 않았다
+  assert.equal(out.job_id, server.jobs[0].job_id);
+  assert.equal(server.byKey.size, 1);                                     // 두 번 다 같은 key
+  const later = await s.submitWithIntent(intent, payloadJob, (key) => Promise.resolve(server.accept(key)), valid);   // 접수가 확인된 뒤의 새 요청은 새 key
+  assert.notEqual(later.job_id, out.job_id);
+  assert.equal(server.jobs.length, 2);
+});
+
+test('접수: 검증 전에는 key를 버리지 않는다({} 응답·다른 저장소·id 없음·uuid 아님)', async () => {
+  const s = await js('ai-state.js');
+  let n = 0;
+  const server = fakeAcceptServer(5);
+  const intent = s.createIntent(() => `k${++n}`);
+  const valid = (o) => s.isAcceptedFor(o, 'job_id', 5);
+  const bad = [{}, null, [], { job_id: 'not-a-uuid', repository_id: 5 }, { job_id: U1, repository_id: 6 }, { job_id: U1 }, 'ok'];
+  for (const response of bad) {
+    const calls = [];
+    await assert.rejects(() => s.submitWithIntent(intent, payloadJob, async (key) => { calls.push(key); server.accept(key); return response; }, valid),
+      (e) => e.code === 'BAD_RESPONSE' && e.status === 0, JSON.stringify(response));
+    assert.deepEqual(calls, ['k1']);                                      // 같은 key
+  }
+  assert.equal(n, 1);                                                    // key가 한 번도 새로 만들어지지 않았다
+  assert.equal(server.jobs.length, 1);
+  const ok = await s.submitWithIntent(intent, payloadJob, async (key) => server.accept(key), valid);
+  assert.equal(ok.job_id, server.jobs[0].job_id);
+  assert.equal(server.jobs.length, 1);
+});
+
+test('접수: 접수 여부를 모르는 오류는 key 유지, 서버가 분명히 거절하면 key 종료', async () => {
+  const s = await js('ai-state.js');
+  const { AiApiError } = await js('ai-api.js');
+  const valid = (o) => s.isAcceptedFor(o, 'job_id', 5);
+  const ambiguous = [new AiApiError('x', { status: 0, code: 'NETWORK' }), new AiApiError('x', { status: 503, code: 'UPSTREAM_UNAVAILABLE' }), new AiApiError('x', { status: 500, code: 'BAD_RESPONSE' }),
+    new AiApiError('x', { status: 502, code: null }), new AiApiError('x', { status: 202, code: 'BAD_RESPONSE' }), Object.assign(new Error('x'), { name: 'AbortError' })];
+  for (const err of ambiguous) {
+    let n = 0;
+    const intent = s.createIntent(() => `k${++n}`);
+    await assert.rejects(() => s.submitWithIntent(intent, payloadJob, async () => { throw err; }, valid));
+    await assert.rejects(() => s.submitWithIntent(intent, payloadJob, async () => { throw err; }, valid));
+    assert.equal(n, 1, `${err.status}/${err.code}/${err.name}`);          // 두 번 모두 같은 key
+  }
+  for (const [status, code] of [[409, 'PREVIEW_CHANGED'], [422, 'CREDENTIAL_REQUIRED'], [410, 'INPUT_EXPIRED'], [429, 'USER_LIMIT'], [403, 'CSRF_FAILED'], [404, 'RESOURCE_NOT_FOUND']]) {
+    let n = 0;
+    const intent = s.createIntent(() => `k${++n}`);
+    await assert.rejects(() => s.submitWithIntent(intent, payloadJob, async () => { throw new AiApiError('x', { status, code }); }, valid));
+    await assert.rejects(() => s.submitWithIntent(intent, payloadJob, async () => { throw new AiApiError('x', { status, code }); }, valid));
+    assert.equal(n, 2, code);                                              // 분명한 거절 뒤에는 새 요청
+  }
+});
+
+test('접수: isAcceptedFor / isAmbiguousError 경계', async () => {
+  const s = await js('ai-state.js');
+  assert.equal(s.isAcceptedFor({ input_id: U1, repository_id: 5 }, 'input_id', 5), true);
+  assert.equal(s.isAcceptedFor({ input_id: U1.toUpperCase(), repository_id: 5 }, 'input_id', 5), true);
+  assert.equal(s.isAcceptedFor({ input_id: U1, repository_id: '5' }, 'input_id', 5), false);
+  assert.equal(s.isAcceptedFor(undefined, 'job_id', 5), false);
+  assert.equal(s.isAmbiguousError({ status: 422, code: 'INVALID_SELECTION' }), false);
+  assert.equal(s.isAmbiguousError({ status: 404, code: 'RESOURCE_NOT_FOUND' }), false);
+  assert.equal(s.isAmbiguousError(undefined), true);
+});
+
+test('미리보기: 코드 확보 상태를 "전송됨"이라고 표시하지 않는다', async () => {
+  const s = await js('ai-state.js');
+  assert.equal(s.contentStateLabel('read', 'ready'), '전송 예정');
+  assert.equal(s.contentStateLabel('read', 'building'), '코드 확보됨');
+  assert.equal(s.contentStateLabel('read', 'expired'), '코드 확보됨');
+  assert.equal(s.contentStateLabel('excluded', 'ready'), '제외됨');
+  assert.equal(s.contentStateLabel('failed', 'ready'), '가져오기 실패');
+  for (const status of ['building', 'ready', 'failed', 'expired']) {
+    for (const state of ['read', 'excluded', 'failed']) assert.ok(!s.contentStateLabel(state, status).includes('전송됨'), `${state}/${status}`);
+  }
+  for (const label of Object.values(s.CONTENT_STATE_LABEL)) assert.ok(!label.includes('전송됨'));
+});
+
 /* ───────────────────────── 폴링 ───────────────────────── */
 const apiErr = async (status, extra = {}) => {
   const { AiApiError } = await js('ai-api.js');

@@ -400,16 +400,13 @@ async function renderFiles(token) {
     if (makeBtn.disabled) return;
     makeBtn.disabled = true;
     const body = { repository_id: route.repo, pr_number: pr, expected_base_sha: state.base, expected_head_sha: state.head, selected_paths: [...state.selected].sort() };
-    const key = intents.input.keyFor(body);
     try {
-      const out = await api.createInput(body, key, token.signal);
-      intents.input.settle(200);
+      const out = await S.submitWithIntent(intents.input, body, (key) => api.createInput(body, key, token.signal),
+        (o) => S.isAcceptedFor(o, 'input_id', route.repo));
       if (!token.current()) return;
-      if (out.repository_id !== route.repo) throw Object.assign(new Error('x'), { status: 0, code: 'BAD_RESPONSE' });
       navigate({ repo: route.repo, pr, input: out.input_id });
     } catch (e) {
       if (e?.name === 'AbortError' || !token.current()) return;
-      intents.input.settle(e.status);
       makeBtn.disabled = false;
       const d = showError(e, { onRetry: create });
       if (d.code === 'PR_CHANGED') { state.drift = true; makeBtn.disabled = true; }
@@ -489,22 +486,14 @@ async function renderPreview(token) {
     if (!consent || !st.checked) return;
     st.busy = true; draw();
     try {
-      let out;
-      if (st.retryJob) {
-        const key = intents.retry.keyFor({ retry: route.retry, consent });
-        out = await api.retryJob(route.retry, consent, key, token.signal);
-        intents.retry.settle(200);
-      } else {
-        const payload = { kind, consent, force_regenerate: route.force };
-        out = await api.createJob(payload, intents.job.keyFor(payload), token.signal);
-        intents.job.settle(200);
-      }
+      const valid = (o) => S.isAcceptedFor(o, 'job_id', route.repo);
+      const out = st.retryJob
+        ? await S.submitWithIntent(intents.retry, { retry: route.retry, consent }, (key) => api.retryJob(route.retry, consent, key, token.signal), valid)
+        : await S.submitWithIntent(intents.job, { kind, consent, force_regenerate: route.force }, (key) => api.createJob({ kind, consent, force_regenerate: route.force }, key, token.signal), valid);
       if (!token.current()) return;
-      if (out.repository_id !== route.repo) throw Object.assign(new Error('x'), { status: 0, code: 'BAD_RESPONSE' });
       navigate({ repo: route.repo, job: out.job_id });
     } catch (e) {
       if (e?.name === 'AbortError' || !token.current()) return;
-      (st.retryJob ? intents.retry : intents.job).settle(e.status);
       st.busy = false; st.checked = false; draw();
       const d = showError(e, { onRetry: () => submit(kind) });
       if (d.action === 'keys') openKeys();
@@ -535,7 +524,7 @@ async function renderPreview(token) {
         return [h('tr', { class: `ai-frow ${f.content_state}` },
           h('td', { class: 'ai-file-path' }, f.old_path ? `${f.old_path} → ${f.path}` : f.path),
           h('td', { text: S.CHANGE_LABEL[f.change_type] || f.change_type }),
-          h('td', {}, chip(S.CONTENT_STATE_LABEL[f.content_state] || f.content_state, f.content_state === 'read' ? 'ok' : 'warn'),
+          h('td', {}, chip(S.contentStateLabel(f.content_state, p.status), f.content_state === 'read' ? 'ok' : 'warn'),
             f.exclusion_reason ? h('div', { class: 'ai-muted', text: S.limitationLabel(f.exclusion_reason) }) : null),
           h('td', { text: S.fmtBytes(f.byte_count) }),
           h('td', { class: 'ai-muted', text: f.hunks?.length ? `${f.hunks.length}개 (${f.hunks.map((x) => `${x.new_start}+${x.new_lines}`).slice(0, 4).join(', ')}${f.hunks.length > 4 ? ', …' : ''})` : '—' }),
@@ -574,7 +563,7 @@ async function renderPreview(token) {
       p.status === 'building' ? null : h('section', { class: 'ai-card' }, h('h2', { text: '전송 범위' }),
         dl(S.coverageLines(cov, { beforeRun: true }).map((l) => [l.label, l.value]).concat([['범위 요약', S.scopeSummary(cov)]])),
         S.coverageLimitations(cov).length ? h('div', { class: 'ai-limits' }, '제외·누락 사유: ', S.coverageLimitations(cov).map((l) => chip(l, 'warn'))) : null,
-        h('p', { class: 'ai-muted', text: `전송되는 파일 ${filesRead.length}개 / 선택 ${p.files.length}개. 제외된 파일은 AI에 보내지 않습니다.` }),
+        h('p', { class: 'ai-muted', text: `코드를 확보한 파일 ${filesRead.length}개 / 선택 ${p.files.length}개. 동의하고 실행하기 전에는 아무것도 전송되지 않으며, 제외된 파일은 실행해도 AI에 보내지 않습니다.` }),
         fileList),
       p.status === 'ready' && est ? h('section', { class: 'ai-card' }, h('h2', { text: '예상 비용' }),
         dl([['입력 토큰(추정)', `${S.fmtTokens(est.input_tokens)} ${est.limit ? `/ 한도 ${S.fmtTokens(est.limit)}` : ''}`],
