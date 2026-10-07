@@ -5,6 +5,7 @@
 - task: ai.prepare_job / ai.generate_job. 같은 메시지가 두 번 와도 claim_job이 한 번만 처리하게 한다.
 """
 import logging
+import os
 import signal
 import threading
 import time
@@ -12,7 +13,7 @@ from uuid import UUID
 
 from app.core.celery_app import celery
 from app.core.database import SessionLocal
-from app.services.ai import credentials, input_store, job_runner, job_service, outbox
+from app.services.ai import credentials, input_store, job_runner, job_service, outbox, result_store
 
 logger = logging.getLogger('gitviz.ai.dispatch')
 
@@ -20,6 +21,7 @@ QUEUE_BY_EVENT = {outbox.EVENT_PREPARE: 'ai_prepare', outbox.EVENT_GENERATE: 'ai
 TASK_BY_EVENT = {outbox.EVENT_PREPARE: 'ai.prepare_job', outbox.EVENT_GENERATE: 'ai.generate_job'}
 DISPATCH_INTERVAL = 2.0
 MAINTENANCE_INTERVAL = 30.0
+CONNECT_TIMEOUT = 3
 
 from app.tasks import ai_generate, ai_prepare  # noqa: E402,F401  (운영 prepare·생성 handler 등록)
 
@@ -40,7 +42,11 @@ def generate_job(job_id: str) -> str:
 def publish_event(event: outbox.OutboxEvent) -> None:
     """Redis 발행이 실패하면 예외를 올려 outbox가 재시도하게 한다."""
     # 발행 연결만 짧은 timeout을 쓴다(실패는 outbox가 재시도). 기존 분석 task의 설정은 건드리지 않는다.
-    with celery.connection_for_write(transport_options={'socket_connect_timeout': 3, 'socket_timeout': 10}) as conn:
+    # Celery의 기본 연결 재시도는 닫힌 Redis 앞에서 1분 넘게 막힌다(통합 검증에서 64초 확인). 짧게 한 번만 시도하고 실패하면
+    # 예외를 올려 outbox가 backoff 후 다시 발행하게 한다: 그동안 dispatcher의 다른 발행·유지관리가 밀리지 않는다.
+    with celery.connection_for_write(connect_timeout=CONNECT_TIMEOUT, transport_options={
+            'socket_connect_timeout': CONNECT_TIMEOUT, 'socket_timeout': 10}) as conn:
+        conn.ensure_connection(max_retries=1, interval_start=0, interval_step=0.2, interval_max=0.5, timeout=CONNECT_TIMEOUT + 2)
         celery.send_task(TASK_BY_EVENT[event.event_type], args=[str(event.job_id)],
                          queue=QUEUE_BY_EVENT[event.event_type], retry=False, connection=conn)
 
@@ -57,6 +63,8 @@ def maintenance_once(session_factory=SessionLocal) -> dict:
         stats['inputs'] = input_store.run_input_maintenance(db)
     with session_factory() as db:
         stats['credentials'] = credentials.run_credential_maintenance(db)
+    with session_factory() as db:
+        stats['results_purged'] = result_store.purge_expired_results(db)
     return stats
 
 
@@ -80,7 +88,9 @@ def main() -> None:
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
-    run_forever(stop)
+    # 운영 기본값(발행 2초·유지관리 30초). 통합 시험·운영 조정을 위해 환경변수로 바꿀 수 있다.
+    run_forever(stop, dispatch_interval=float(os.getenv('AI_DISPATCH_INTERVAL_SECONDS', DISPATCH_INTERVAL)),
+                maintenance_interval=float(os.getenv('AI_MAINTENANCE_INTERVAL_SECONDS', MAINTENANCE_INTERVAL)))
 
 
 if __name__ == '__main__':

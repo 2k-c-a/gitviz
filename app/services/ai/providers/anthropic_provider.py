@@ -11,6 +11,7 @@ from decimal import Decimal
 import anthropic
 import httpx2
 
+from app.core.ai_settings import get_ai_settings
 from app.services.ai import prompts, token_budget
 from app.services.ai.providers.base import (GenerationRequest, ProviderError, ProviderFailure, ProviderProfile,
                                             ProviderResponse, TokenLimitExceeded, Usage, parse_json_object)
@@ -19,6 +20,7 @@ _SAFE_CONNECT_ERRORS = (httpx2.ConnectError, httpx2.ConnectTimeout, httpx2.PoolT
                         httpx2.UnsupportedProtocol)
 _FINISH_BY_STOP_REASON = {'end_turn': 'complete', 'max_tokens': 'truncated', 'refusal': 'refused'}
 MAX_RETRY_AFTER = 3600
+OFFICIAL_BASE_URL = 'https://api.anthropic.com'
 
 
 class ProviderConfigError(Exception):
@@ -43,7 +45,11 @@ class AnthropicProvider:
             # 서버 공용 key로 대체하지 않는다. 호출하는 쪽이 작업에 고정된 사용자 key를 주입해야 한다.
             if not api_key:
                 raise ProviderConfigError('사용자 API key가 주입되지 않았습니다.')
-            client = anthropic.Anthropic(api_key=api_key, timeout=float(profile.timeout_seconds), max_retries=0)
+            # base_url을 항상 명시한다: SDK가 읽는 ANTHROPIC_BASE_URL 환경변수가 남아 있어도 사용자 key를 다른 주소로 보내지 않는다.
+            # 통합 시험만 AI_TEST_PROVIDER_BASE_URL(로컬 주소로 제한, 설정 검증이 확인)로 가짜 제공자를 쓴다.
+            base_url = get_ai_settings().test_provider_base_url or OFFICIAL_BASE_URL
+            client = anthropic.Anthropic(api_key=api_key, timeout=float(profile.timeout_seconds), max_retries=0,
+                                         base_url=base_url)
         self.client = client
 
     def __repr__(self) -> str:

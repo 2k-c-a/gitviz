@@ -74,3 +74,21 @@ def save_validated_result(db: Session, lease: Lease, validated: ValidatedResult,
                                             finding.title)))
     db.flush()
     return result.id
+
+
+def purge_expired_results(db: Session, *, now: datetime | None = None, limit: int = 100) -> int:
+    """보관 기간(AI_RESULT_RETENTION_DAYS)이 지난 결과를 지적·피드백과 함께 삭제한다.
+
+    작업 행은 비용 기록과 감사를 위해 남기되 삭제된 것으로 표시한다(조회에서 사라지고, 같은 Idempotency-Key 재전송은
+    새 작업을 만들지 않고 JOB_DELETED로 끝난다). 여러 처리자가 동시에 돌아도 SKIP LOCKED로 겹치지 않는다."""
+    now = now or datetime.now(timezone.utc)
+    rows = db.execute(text("""SELECT r.id, r.job_id FROM ai_results r WHERE r.expires_at <= :now
+                              ORDER BY r.expires_at LIMIT :l FOR UPDATE OF r SKIP LOCKED"""), {'now': now, 'l': limit}).all()
+    for row in rows:
+        db.execute(text("DELETE FROM ai_results WHERE id = :i"), {'i': row.id})
+        db.execute(text("UPDATE ai_jobs SET deleted_at = :now, updated_at = :now WHERE id = :j AND deleted_at IS NULL"), {'now': now, 'j': row.job_id})
+    if rows:
+        db.execute(text("""INSERT INTO audit_events (action, object_type, request_id, details)
+                           VALUES ('result.expired_purged', 'result', 'maintenance', CAST(:d AS jsonb))"""), {'d': '{"count": %d}' % len(rows)})
+    db.commit()
+    return len(rows)
