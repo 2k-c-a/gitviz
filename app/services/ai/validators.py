@@ -33,11 +33,11 @@ class ValidatedResult:
     ok: bool
     structure_validation: StructureValidation
     human_validation: HumanValidation = HumanValidation.unverified
-    issues: list[Issue] = field(default_factory=list)
-    payload: dict | None = None
+    issues: list[Issue] = field(default_factory=list, repr=False)
+    payload: dict | None = field(default=None, repr=False)
     payload_hash: str | None = None
-    findings: list[Finding] = field(default_factory=list)
-    summary: SummaryOutput | None = None
+    findings: list[Finding] = field(default_factory=list, repr=False)
+    summary: SummaryOutput | None = field(default=None, repr=False)
 
 
 def _fail(kind: str, issues: list[Issue]) -> ValidatedResult:

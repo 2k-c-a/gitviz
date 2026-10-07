@@ -15,7 +15,6 @@ from app.services.ai import prompts, token_budget
 from app.services.ai.providers.base import (GenerationRequest, ProviderError, ProviderFailure, ProviderProfile,
                                             ProviderResponse, TokenLimitExceeded, Usage, parse_json_object)
 
-COUNT_SCHEMA_MARGIN_TOKENS = 400        # count_tokens에 포함되지 않는 출력 schema 지시분의 여유
 _SAFE_CONNECT_ERRORS = (httpx2.ConnectError, httpx2.ConnectTimeout, httpx2.PoolTimeout, httpx2.ProxyError,
                         httpx2.UnsupportedProtocol)
 _FINISH_BY_STOP_REASON = {'end_turn': 'complete', 'max_tokens': 'truncated', 'refusal': 'refused'}
@@ -77,11 +76,13 @@ class AnthropicProvider:
     def count_tokens(self, request: GenerationRequest) -> int:
         """제공자의 토큰 수 계산(코드가 전송되므로 사용자 동의 이후에만 호출한다). 과금되지 않는 호출이다."""
         try:
+            # 실제 호출과 같은 출력 schema(output_config)를 넣어야 schema가 차지하는 토큰이 계산에 포함된다.
             result = self.client.messages.count_tokens(model=self.profile.model, system=request.system,
-                                                       messages=self._messages(request))
+                                                       messages=self._messages(request),
+                                                       output_config=self._params(request)['output_config'])
         except Exception as exc:
             raise ProviderError(self.classify_error(exc, billable=False)) from None
-        return int(result.input_tokens) + COUNT_SCHEMA_MARGIN_TOKENS
+        return int(result.input_tokens)
 
     def verify_credential(self) -> None:
         """사용자 key가 이 profile의 모델을 쓸 수 있는지 제공자에 확인한다(모델 조회: 코드를 보내지 않고 과금되지 않는다)."""
@@ -163,8 +164,11 @@ class AnthropicProvider:
                 return failure('rate_limited', retryable=True, retry_after=_retry_after(exc.response.headers), **common)
             if status in (408, 504):                      # 중간 게이트웨이/서버 timeout: 처리됐을 수 있다
                 return failure('response_lost', uncertain=True, **common)
-            if status >= 500:                             # 500·502·503·529: 처리되지 않은 서버 오류
-                return failure('server_error', retryable=True, **common)
+            if status >= 500:
+                if request_id:                            # 제공자가 직접 낸 오류 응답(request-id 헤더): 처리되지 않았다
+                    return failure('server_error', retryable=True, **common)
+                # 출처를 알 수 없는 5xx(프록시·게이트웨이): 요청이 제공자에 닿아 처리됐을 수 있다. 자동 재시도 금지.
+                return failure('response_lost', retryable=not billable, uncertain=True, **common)
             kinds = {401: 'auth_failed', 403: 'auth_failed', 402: 'billing_error', 404: 'model_unavailable',
                      413: 'input_too_large'}
             return failure(kinds.get(status, 'request_rejected'), **common)

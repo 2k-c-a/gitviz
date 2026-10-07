@@ -98,8 +98,8 @@ def create_job(db: Session, *, owner_id: UUID, repository_id: int, input_id: UUI
 
     재사용 규칙은 두 가지로 구분한다.
     - Idempotency-Key: 같은 key·같은 요청이면 처음 만든 job을 그대로, 다른 요청이면 IDEMPOTENCY_CONFLICT.
-    - fingerprint: 새 key라도 같은 (owner, kind, fingerprint)의 최신 generation이 진행 중이면 그것을,
-      성공했고 force_regenerate가 아니면 그 결과를 재사용한다. 실패·취소·강제 재생성은 새 generation이다.
+    - fingerprint: 새 key라도 같은 (owner, kind, fingerprint)의 최신 generation이 진행 중이고 같은 key 버전에 고정돼 있으면
+      그것을, 성공했고 force_regenerate가 아니면 그 결과를 재사용한다(성공 결과는 key와 무관). 실패·취소·강제 재생성은 새 generation이다.
     """
     try:
         return _create_job(db, owner_id=owner_id, repository_id=repository_id, input_id=input_id, kind=kind,
@@ -132,7 +132,12 @@ def _create_job(db: Session, *, owner_id, repository_id, input_id, kind, fingerp
         .order_by(AIJob.generation.desc()).limit(1).with_for_update()
         .execution_options(populate_existing=True)).scalar_one_or_none()      # 다른 경로가 바꾼 상태를 반영
     if latest is not None and latest.deleted_at is None:
-        reusable = latest.status in IN_PROGRESS_STATUSES or (latest.status == 'succeeded' and not force_regenerate)
+        # 끝난 결과는 어느 key로 만들었든 재사용할 수 있다. 진행 중 작업은 동의한 key 버전과 같을 때만 재사용한다:
+        # 다른 버전에 고정된 작업을 돌려주면 사용자가 동의한 key와 다른 key로 비용·전송이 일어난다.
+        # 다르면 새 generation을 만들고, 기존 작업의 고정 설정은 건드리지 않는다.
+        in_progress_ok = latest.status in IN_PROGRESS_STATUSES and (
+            kind == 'prepare' or latest.credential_version_id == pinned.credential_version_id)
+        reusable = in_progress_ok or (latest.status == 'succeeded' and not force_regenerate)
         if reusable and kind == 'prepare' and not _prepared_input_usable(db, latest.input_id, now):
             reusable = False          # 만료됐거나 더는 실행에 쓸 수 없는 입력은 새로 준비한다
         if reusable:
