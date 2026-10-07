@@ -76,6 +76,7 @@ class AISettings:
     provider_profile: str = 'claude-opus-5-5-v1'      # 사용자가 아직 모델을 고르지 않았을 때의 기본 profile
     allowed_profiles: tuple[str, ...] = ()            # 비어 있으면 등록된 모든 profile 허용
     credential_verify_limit_per_hour: int = 10
+    test_provider_base_url: str = ''                  # 통합 시험 전용: 로컬 가짜 제공자 주소(운영에서는 비워 둔다)
     input_valid_hours: int = 24
     input_retention_days: int = 7
     result_retention_days: int = 30
@@ -111,6 +112,7 @@ def get_ai_settings() -> AISettings:
         provider_profile=os.getenv('AI_PROVIDER_PROFILE', '').strip() or 'claude-opus-5-5-v1',
         allowed_profiles=tuple(p.strip() for p in os.getenv('AI_ALLOWED_PROFILES', '').split(',') if p.strip()),
         credential_verify_limit_per_hour=_int('AI_CREDENTIAL_VERIFY_LIMIT_PER_HOUR', 10),
+        test_provider_base_url=os.getenv('AI_TEST_PROVIDER_BASE_URL', '').strip(),
         input_valid_hours=_int('AI_INPUT_VALID_HOURS', 24),
         input_retention_days=_int('AI_INPUT_RETENTION_DAYS', 7),
         result_retention_days=_int('AI_RESULT_RETENTION_DAYS', 30),
@@ -170,6 +172,10 @@ def validate_ai_settings(settings: AISettings | None = None) -> list[str]:
     else:
         if s.allowed_profiles and s.provider_profile not in s.allowed_profiles:
             problems.append('AI_PROVIDER_PROFILE이 AI_ALLOWED_PROFILES에 포함돼 있지 않습니다.')
+    if s.test_provider_base_url:
+        parts = urlsplit(s.test_provider_base_url)
+        if parts.scheme not in ('http', 'https') or parts.hostname not in LOCAL_HOSTS:
+            problems.append('AI_TEST_PROVIDER_BASE_URL은 로컬(localhost·127.0.0.1) 주소만 허용합니다. 사용자 API key를 외부 주소로 보내지 않습니다.')
     sync_url = os.getenv('DATABASE_URL', '')
     async_url = os.getenv('DATABASE_URL_ASYNC') or sync_url
     if not sync_url:

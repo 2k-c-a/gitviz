@@ -50,6 +50,8 @@ jobs:
       - run: python scripts/test_ai_generation.py
       - run: python scripts/test_ai_api.py
       - run: python scripts/test_ai_pulls_api.py
+      - run: python scripts/test_ai_ops.py
+      - run: python scripts/test_ai_evaluation.py
       - run: node scripts/test_ai_frontend.cjs
       - run: python scripts/test_ai_output_validation.py
   ai-queue:
@@ -86,3 +88,5 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt
       - run: python scripts/test_ai_queue_integration.py
+      # 실제 PostgreSQL·Redis + app 서버·dispatcher·worker·가짜 제공자 프로세스 + HTTP(실제 제공자·GitHub 없음)
+      - run: python scripts/verify_ai_mvp_integration.py

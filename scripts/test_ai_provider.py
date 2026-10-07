@@ -167,6 +167,29 @@ class RequestShape(unittest.TestCase):
             AnthropicProvider(dataclasses.replace(PROFILE, provider='other'), api_key=API_KEY)
 
 
+class BaseUrl(unittest.TestCase):
+    """사용자 API key가 가는 주소는 코드가 정한다. 남아 있는 환경변수로 다른 주소로 바뀌면 key가 새어 나간다."""
+
+    def test_stray_anthropic_base_url_env_never_redirects_the_users_key(self):
+        with patch.dict(os.environ, {'ANTHROPIC_BASE_URL': 'http://evil.example', 'AI_TEST_PROVIDER_BASE_URL': ''}):
+            provider = AnthropicProvider(PROFILE, api_key=API_KEY)
+            self.assertEqual(str(provider.client.base_url).rstrip('/'), 'https://api.anthropic.com')
+
+    def test_test_only_override_is_used_and_restricted_to_loopback(self):
+        with patch.dict(os.environ, {'AI_TEST_PROVIDER_BASE_URL': 'http://127.0.0.1:9999', 'ANTHROPIC_BASE_URL': 'http://evil.example'}):
+            self.assertEqual(str(AnthropicProvider(PROFILE, api_key=API_KEY).client.base_url).rstrip('/'), 'http://127.0.0.1:9999')
+        env = {'AI_ENABLED': '1', 'AI_INPUT_ENCRYPTION_KEYS': 'v1:' + 'a1' * 32, 'AI_INPUT_KEY_VERSION': 'v1',
+               'AI_CREDENTIAL_ENCRYPTION_KEYS': 'c1:' + 'b2' * 32, 'AI_CREDENTIAL_KEY_VERSION': 'c1',
+               'AI_ALLOWED_ORIGINS': 'http://localhost:8000', 'DATABASE_URL': 'postgresql://u:p@localhost/db',
+               'DATABASE_URL_ASYNC': '', 'DATABASE_SSL_CA': '', 'AI_PROVIDER_PROFILE': 'claude-opus-5-5-v1', 'AI_ALLOWED_PROFILES': ''}
+        for url, ok in (('http://127.0.0.1:8123', True), ('http://localhost:8123', True), ('', True),
+                        ('https://api.evil.example', False), ('http://10.0.0.5:80', False), ('ftp://127.0.0.1', False),
+                        ('http://127.0.0.1.evil.example', False)):
+            with self.subTest(url=url), patch.dict(os.environ, {**env, 'AI_TEST_PROVIDER_BASE_URL': url}):
+                problems = [p for p in ai_settings.validate_ai_settings() if 'AI_TEST_PROVIDER_BASE_URL' in p]
+                self.assertEqual(problems == [], ok)
+
+
 class Responses(unittest.TestCase):
     def test_success_fields_usage_and_cost(self):
         provider, _ = make_provider(lambda r: ok())
