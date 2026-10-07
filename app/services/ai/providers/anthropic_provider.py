@@ -76,7 +76,7 @@ class AnthropicProvider:
             'system': request.system,
             'messages': self._messages(request),
             'output_config': {'effort': self.profile.effort,
-                              'format': {'type': 'json_schema', 'schema': prompts.output_schema(request.kind)}},
+                              'format': {'type': 'json_schema', 'schema': prompts.output_schema(request.kind, self.profile.schema_version(request.kind))}},
         }
 
     def estimate_tokens(self, request: GenerationRequest) -> int:

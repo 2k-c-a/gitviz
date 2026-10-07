@@ -115,3 +115,14 @@ textarea.ai-input { width: 100%; resize: vertical; }
 }
 
 [hidden] { display: none !important; }
+
+.ai-project-dialog { box-sizing: border-box; width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 20px; border: 1px solid var(--border); border-radius: var(--r-lg, 12px); background: var(--bg); color: var(--text); overflow-y: auto; }
+.ai-project-dialog::backdrop { background: rgba(0, 0, 0, .45); }
+.ai-project-dialog h2 { font-size: 18px; margin: 0; }
+.ai-project-list { margin-top: 16px; }
+.ai-project-row { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 16px 0; border-top: 1px solid var(--border); }
+.ai-project-info { min-width: 0; }
+.ai-project-info h3 { font-size: 14px; margin: 0 0 6px; overflow-wrap: anywhere; }
+.ai-project-info p { margin: 0; }
+.ai-project-row .ai-btn { flex-shrink: 0; }
+@media (max-width: 480px) { .ai-project-row { align-items: flex-start; flex-direction: column; gap: 10px; } }

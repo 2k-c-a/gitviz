@@ -31,7 +31,7 @@ def estimate_input_tokens(profile: ProviderProfile, kind: str, *, payload_bytes:
 
     system 프롬프트 크기, 파일마다의 머리줄, 줄 번호 표기(줄당 약 14바이트)를 포함한다.
     """
-    system_bytes = len(prompts.system_template(kind).encode('utf-8'))
+    system_bytes = len(prompts.system_template(kind, profile.prompt_version(kind)).encode('utf-8'))
     # payload는 unified diff 바이트다. 렌더링은 줄마다 번호 머리를 붙이므로 그만큼 늘어난다(보수적 배율).
     rendered_payload = math.ceil(payload_bytes * prompts.RENDER_EXPANSION)
     total = (system_bytes + rendered_payload + description_chars * 3 + DESCRIPTION_OVERHEAD_BYTES

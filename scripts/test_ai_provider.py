@@ -571,5 +571,47 @@ class TokenBudget(unittest.TestCase):
                 prompts.verify_prompt_digests()
 
 
+class ExpandedInputProfileTests(unittest.TestCase):
+    def test_expanded_profiles_preserve_old_contract_and_cost_settings(self):
+        for old_id in ('claude-opus-5-5-v1', 'claude-sonnet-5-5-v1', 'gpt-5.4-v1', 'gemini-3.5-flash-lite-v1'):
+            with self.subTest(profile=old_id):
+                old = registry.get_profile(old_id)
+                new = registry.get_profile(old_id.removesuffix('-v1') + '-v2')
+                self.assertEqual(old.max_input_tokens, 24_000)
+                self.assertEqual(new.max_input_tokens, 64_000)
+                self.assertNotEqual(old.fingerprint(), new.fingerprint())
+                self.assertEqual(dataclasses.replace(new, id=old.id, display_name=old.display_name,
+                    max_input_tokens=old.max_input_tokens).fingerprint(), old.fingerprint())
+                self.assertEqual(registry.profiles_of(old.provider)[0].max_input_tokens, 64_000)
+
+    def test_expanded_limit_boundary_and_context_guard(self):
+        for pid in ('claude-opus-5-5-v2', 'claude-sonnet-5-5-v2', 'gpt-5.4-v2', 'gemini-3.5-flash-lite-v2'):
+            profile = registry.get_profile(pid)
+            token_budget.check_input_limit(profile, 64_000)
+            with self.assertRaises(TokenLimitExceeded):
+                token_budget.check_input_limit(profile, 64_001)
+            with self.assertRaises(TokenLimitExceeded):
+                token_budget.check_input_limit(dataclasses.replace(profile, context_window=65_000), 64_000)
+            self.assertGreater(token_budget.max_cost(profile, 64_000), token_budget.max_cost(profile, 24_000))
+
+    def test_expanded_adapter_rejects_over_limit_before_network(self):
+        for provider_id in ('anthropic', 'openai', 'gemini'):
+            profile = registry.profiles_of(provider_id)[0]
+            recorder = Recorder(lambda req: self.fail('over-limit request reached network'))
+            client = httpx2.Client(transport=httpx2.MockTransport(recorder))
+            adapter = registry.create_provider(profile, api_key=API_KEY, client=client)
+            # UTF-8 payload alone exceeds the conservative local input allowance.
+            req = GenerationRequest(kind='review', system='', user='x' * 170_000)
+            with self.assertRaises(ProviderError if provider_id == 'anthropic' else TokenLimitExceeded):
+                adapter.generate(req)
+            self.assertEqual(len(recorder.requests), 0)
+            client.close()
+
+    def test_local_model_keeps_its_context_limit(self):
+        local = registry.get_profile('ollama-local-v1')
+        self.assertEqual(local.max_input_tokens, 24_000)
+        self.assertLessEqual(local.max_input_tokens + local.max_output_tokens, local.context_window)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

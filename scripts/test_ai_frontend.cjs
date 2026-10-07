@@ -685,6 +685,26 @@ test('poll: onUpdate 안에서 stop해도 다음 조회를 예약하지 않는�
 });
 
 /* ───────────────────────── 실행 ───────────────────────── */
+test('프로젝트 선택: 본인 목록 조회·취소 신호와 응답 검증', async () => {
+  const { createAiClient } = await js('ai-api.js');
+  const controller = new AbortController();
+  const projects = [{ id: 2, url: 'https://github.com/team/repo' }];
+  const client = createAiClient({ fetchImpl: async (url, options) => {
+    assert.equal(url, '/repositories/mine');
+    assert.equal(options.credentials, 'same-origin');
+    assert.equal(options.cache, 'no-store');
+    assert.equal(options.signal, controller.signal);
+    return { ok: true, status: 200, json: async () => projects };
+  } });
+  assert.deepEqual(await client.myProjects(controller.signal), projects);
+  for (const body of [{}, [null], [{id:0}], [{id:'2'}]]) {
+    const bad = createAiClient({ fetchImpl: async () => ({ok:true,status:200,json:async()=>body}) });
+    await assert.rejects(bad.myProjects(), e => e.code === 'BAD_RESPONSE');
+  }
+  const unauth = createAiClient({ fetchImpl: async () => ({ok:false,status:401}) });
+  await assert.rejects(unauth.myProjects(), e => e.code === 'AUTH_REQUIRED');
+});
+
 (async () => {
   let failed = 0;
   for (const [name, fn] of tests) {

@@ -17,12 +17,15 @@ from uuid import UUID
 from app.schemas.ai import (ChangeType, ContentState, DiffLine, DiffLineKind, InputManifest, PRTransferMetadata,
                             REVIEW_SCHEMA_VERSION, SUMMARY_SCHEMA_VERSION)
 from app.services.ai.difftext import diff_lines
+from app.schemas.ai_output_limits import REVIEW_LIMITS, SUMMARY_LIMITS
 
 PROMPT_DIR = Path(__file__).parent
 PLACEHOLDER = '{{BOUNDARY}}'
 PROMPT_FILES = {'summary': 'summary_v1.txt', 'review': 'review_v1.txt'}
 # 프롬프트 파일을 바꾸면 이 값과 profile의 prompt 버전을 함께 올려야 한다.
 PROMPT_DIGESTS = {
+    'review_v2.txt': '19b10205cfc0ba11978efe8629b161c191dc7a696321d7d520b6a48a3583b721',
+    'summary_v2.txt': 'a57aaccd4e04a215abcff9156281b21ee8ab6085800668e0c48d1e667adb7b29',
     'summary_v1.txt': 'c28f0c4a3bf56bfd576c30480bc3f463e2d01e25a30e3808bdff1fbca6ee3311',
     'review_v1.txt': '08e36f662a9e0eb6ee5691b903aaee67ab225cc110566e37ddfe481eab038841',
 }
@@ -30,8 +33,16 @@ RENDER_EXPANSION = 1.5          # unified diff 바이트 → 렌더링된 줄 �
 
 
 @lru_cache(maxsize=None)
-def system_template(kind: str) -> str:
-    return (PROMPT_DIR / PROMPT_FILES[kind]).read_text(encoding='utf-8')
+def system_template(kind: str, version: str | None = None) -> str:
+    version = version or f'{kind}-v1'
+    if version not in (f'{kind}-v1', f'{kind}-v2'):
+        raise ValueError('지원하지 않는 프롬프트 버전입니다.')
+    text = (PROMPT_DIR / f'{version.replace("-", "_")}.txt').read_text(encoding='utf-8')
+    if version.endswith('-v2'):
+        limits = REVIEW_LIMITS if kind == 'review' else SUMMARY_LIMITS
+        text += '\n# Field length limits (Unicode characters, not tokens)\n'
+        text += '\n'.join(f'- {field}: at most {limit} characters.' for field, limit in limits.items())
+    return text
 
 
 def file_digest(filename: str) -> str:
@@ -143,12 +154,12 @@ class RenderedPrompt:
     boundary: str = field(repr=False)
 
 
-def render_request(kind: str, sent: SentInput) -> RenderedPrompt:
+def render_request(kind: str, sent: SentInput, *, prompt_version=None) -> RenderedPrompt:
     corpus = [sent.metadata.title, sent.metadata.body]
     for f in sent.files:
         corpus += [f.path, f.old_path or '', f.language or ''] + [l.text for l in f.lines]
     boundary = new_boundary(corpus)
-    return RenderedPrompt(system=system_template(kind).replace(PLACEHOLDER, boundary),
+    return RenderedPrompt(system=system_template(kind, prompt_version).replace(PLACEHOLDER, boundary),
                           user=render_user_message(boundary, sent), boundary=boundary)
 
 
@@ -184,5 +195,21 @@ OUTPUT_SCHEMAS = {'summary': SUMMARY_JSON_SCHEMA, 'review': REVIEW_JSON_SCHEMA}
 SCHEMA_VERSIONS = {'summary': SUMMARY_SCHEMA_VERSION, 'review': REVIEW_SCHEMA_VERSION}
 
 
-def output_schema(kind: str) -> dict:
-    return OUTPUT_SCHEMAS[kind]
+def output_schema(kind: str, schema_version=None, *, enforce_lengths=False) -> dict:
+    version = schema_version or f'{kind}-output-v1'
+    if version == f'{kind}-output-v1':
+        return OUTPUT_SCHEMAS[kind]
+    if version != f'{kind}-output-v2':
+        raise ValueError('지원하지 않는 출력 schema입니다.')
+    # Template leaves share _STR/_INT; JSON round-trip creates distinct field nodes.
+    schema = json.loads(json.dumps(OUTPUT_SCHEMAS[kind]))
+    schema['properties']['schema_version'] = {'type': 'string', 'enum': [version]}
+    limits = REVIEW_LIMITS if kind == 'review' else SUMMARY_LIMITS
+    for path, limit in limits.items():
+        current = schema['properties']['findings']['items'] if kind == 'review' else schema
+        for part in path.split('.'):
+            current = current['properties'][part.removesuffix('[]')]
+            if part.endswith('[]'): current = current['items']
+        current['description'] = f'At most {limit} Unicode characters. Be concise.'
+        if enforce_lengths: current['maxLength'] = limit
+    return schema

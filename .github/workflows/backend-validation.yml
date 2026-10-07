@@ -57,6 +57,7 @@ jobs:
       - run: python scripts/test_ai_smoke.py
       - run: node scripts/test_ai_frontend.cjs
       - run: python scripts/test_ai_output_validation.py
+      - run: python scripts/test_ai_output_limits.py
   ai-queue:
     # 실제 PostgreSQL·Redis와 별도 Celery worker 프로세스로 outbox → 큐 → worker 경로를 검증한다.
     runs-on: ubuntu-latest

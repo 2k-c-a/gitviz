@@ -33,8 +33,8 @@ def local_endpoint(url):
     return url.rstrip('/')
 
 
-def strict_schema(kind):
-    schema = copy.deepcopy(prompts.output_schema(kind))
+def strict_schema(kind, schema_version=None, *, enforce_lengths=False):
+    schema = copy.deepcopy(prompts.output_schema(kind, schema_version, enforce_lengths=enforce_lengths))
     def visit(node):
         if isinstance(node, dict):
             node.pop('default', None)
@@ -65,6 +65,9 @@ class JsonProvider:
 
     def headers(self, key):
         return {}
+
+    def output_schema(self, kind):
+        return strict_schema(kind, self.profile.schema_version(kind), enforce_lengths=self.profile.provider == 'openai')
 
     def classify_error(self, exc):
         if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)):
@@ -106,7 +109,7 @@ class JsonProvider:
         # Include output schema, which is also part of the provider's input.
         import json
         return token_budget.estimate_prompt_tokens(self.profile, request.system,
-                    request.user + json.dumps(strict_schema(request.kind)))
+                    request.user + json.dumps(self.output_schema(request.kind)))
 
     def output_limit(self, request):
         limit = self.profile.max_output_tokens if request.max_output_tokens is None else request.max_output_tokens
@@ -134,7 +137,7 @@ class OpenAIProvider(JsonProvider):
     def params(self, request):
         return {'model': self.profile.model, 'instructions': request.system, 'input': request.user,
                 'text': {'format': {'type': 'json_schema', 'name': 'gitviz_' + request.kind,
-                                   'strict': True, 'schema': strict_schema(request.kind)}}}
+                                   'strict': True, 'schema': self.output_schema(request.kind)}}}
 
     def verify_credential(self):
         self.call('/models/' + self.profile.model, method='GET')
@@ -176,7 +179,7 @@ class GeminiProvider(JsonProvider):
         return {'systemInstruction': {'parts': [{'text': request.system}]},
                 'contents': [{'role': 'user', 'parts': [{'text': request.user}]}],
                 'generationConfig': {'responseMimeType': 'application/json',
-                                     'responseJsonSchema': strict_schema(request.kind)}}
+                                     'responseJsonSchema': self.output_schema(request.kind)}}
 
     def verify_credential(self):
         self.call('/models/' + self.profile.model, method='GET')

@@ -186,6 +186,19 @@ class Gen(S.InputCase):
 
 
 class HappyPath(Gen):
+    def test_expanded_output_is_prompted_validated_and_stored(self):
+        w = self.world('review', profile_id='claude-opus-5-5-v3')
+        self.output['schema_version'] = 'review-output-v2'
+        self.output['findings'][0]['condition'] = '가' * 6000
+        self.assertEqual(self.run_job(w), 'succeeded')
+        row = self.rows('SELECT payload FROM ai_results WHERE job_id=:i', i=w.job.id)[0]
+        self.assertEqual(len(row['payload']['findings'][0]['condition']), 6000)
+        self.assertEqual(row['payload']['schema_version'], 'review-output-v2')
+        import json
+        request = json.loads(self.messages_calls()[0][2])
+        self.assertIn('condition: at most 6000 characters', request['system'])
+        self.assertEqual(request['output_config']['format']['schema']['properties']['schema_version']['enum'], ['review-output-v2'])
+
     def test_review_runs_the_pinned_flow_and_stores_an_immutable_result(self):
         w = self.world('review')
         self.assertEqual(self.run_job(w), 'succeeded')
