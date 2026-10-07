@@ -25,9 +25,9 @@ class PinnedConfig:
     provider: str
     profile: ProviderProfile
     profile_fingerprint: str
-    credential_version_id: UUID
-    credential_version: int
-    key_hint: str
+    credential_version_id: UUID | None
+    credential_version: int | None
+    key_hint: str | None
     input_id: UUID
     repository_id: int
     manifest_hash: str
@@ -42,14 +42,18 @@ def resolve_consent(db: Session, owner_id: UUID, consent: TransferConsent, *, no
     """동의를 현재 상태와 대조해 고정할 설정을 돌려준다. 본인 입력·본인 key만 쓸 수 있다."""
     now = now or datetime.now(timezone.utc)
     settings = get_ai_settings()
-    if not settings.allow_external_transfer:
-        raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '코드의 외부 전송이 허용되지 않았습니다.')
     if consent.policy_version not in settings.policy_versions:
         raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '허용되지 않은 전송 정책 버전입니다.')
 
     profile = registry.PROFILES.get(consent.profile_id)
     if profile is None or profile.provider != consent.provider or consent.provider not in registry.PROVIDERS:
         raise AIError(ErrorCode.INVALID_SELECTION, '지원하지 않는 제공자 또는 모델입니다.')
+    profile = registry.get_profile(consent.profile_id)
+    if profile.execution_location == 'external' and not settings.allow_external_transfer:
+        raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '코드의 외부 전송이 허용되지 않았습니다.')
+    if (consent.profile_fingerprint is not None and consent.profile_fingerprint != profile.fingerprint()
+            or not profile.requires_api_key and consent.profile_fingerprint != profile.fingerprint()):
+        raise AIError(ErrorCode.PREVIEW_CHANGED, '모델 설정이 확인한 뒤 바뀌었습니다.')
     if not registry.is_allowed(profile.id):
         raise AIError(ErrorCode.PREVIEW_CHANGED, '이 모델은 더 이상 허용되지 않습니다. 모델을 다시 선택해 주세요.')
 
@@ -78,6 +82,13 @@ def resolve_consent(db: Session, owner_id: UUID, consent: TransferConsent, *, no
         raise AIError(ErrorCode.INPUT_TOO_LARGE, '선택한 모델의 입력 토큰 한도를 넘습니다.',
                       details={'estimated_tokens': estimate.input_tokens, 'limit': estimate.limit})
 
+    if not profile.requires_api_key:
+        if consent.credential_version is not None:
+            raise AIError(ErrorCode.PREVIEW_CHANGED, '로컬 실행은 API key를 사용하지 않습니다.')
+        return PinnedConfig(provider=profile.provider, profile=profile, profile_fingerprint=profile.fingerprint(),
+                            credential_version_id=None, credential_version=None, key_hint=None,
+                            input_id=row.id, repository_id=row.repository_id,
+                            manifest_hash=consent.manifest_hash, policy_version=row.policy_version)
     found = credentials.get_active(db, owner_id, profile.provider)
     if found is None:
         raise AIError(ErrorCode.CREDENTIAL_REQUIRED, f'{profile.provider} API key를 먼저 등록해 주세요.')

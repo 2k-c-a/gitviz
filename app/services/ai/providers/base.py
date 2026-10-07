@@ -50,6 +50,10 @@ class ProviderProfile:
     review_prompt: str
     summary_schema: str
     review_schema: str
+    requires_api_key: bool = True
+    execution_location: str = 'external'
+    model_digest: str = ''
+    endpoint: str = ''
 
     def prompt_version(self, kind: str) -> str:
         return {JobKind.summary.value: self.summary_prompt, JobKind.review.value: self.review_prompt}[kind]
@@ -60,6 +64,11 @@ class ProviderProfile:
     def fingerprint(self) -> str:
         """작업 fingerprint에 넣는 profile 전체(모델·가격·한도·timeout·프롬프트·schema) 해시."""
         data = {k: (str(v) if isinstance(v, Decimal) else v) for k, v in self.__dict__.items()}
+        # Preserve fingerprints of existing Anthropic jobs.
+        for key, default in [('requires_api_key', True), ('execution_location', 'external'),
+                             ('model_digest', ''), ('endpoint', '')]:
+            if data[key] == default:
+                del data[key]
         return canonical_hash(data)
 
 

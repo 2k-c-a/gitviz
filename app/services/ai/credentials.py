@@ -31,7 +31,9 @@ from app.services.ai.providers import registry
 from app.services.ai.providers.base import ProviderError, ProviderProfile
 
 ACTIVE_JOB_STATUSES = ('queued', 'running', 'retry_wait', 'cancel_requested')
-KEY_PATTERNS = {'anthropic': re.compile(r'^sk-ant-[A-Za-z0-9_-]{16,380}$')}
+KEY_PATTERNS = {'anthropic': re.compile(r'^sk-ant-[A-Za-z0-9_-]{16,380}$'),
+                'openai': re.compile(r'^sk-[A-Za-z0-9_-]{16,396}$'),
+                'gemini': re.compile(r'^[A-Za-z0-9_-]{16,400}$')}
 HINT_PREFIX = {'anthropic': 7}
 VERIFY_WINDOW = timedelta(hours=1)
 
@@ -134,8 +136,10 @@ def preferred_profile(db: Session, owner_id: UUID) -> ProviderProfile:
 def transfer_view(db: Session, owner_id: UUID, profile: ProviderProfile) -> TransferView:
     found = get_active(db, owner_id, profile.provider)
     return TransferView(provider=profile.provider, profile_id=profile.id, model=profile.model,
+                        requires_api_key=profile.requires_api_key, execution_location=profile.execution_location,
+                        model_digest=profile.model_digest or None, profile_fingerprint=profile.fingerprint(),
                         external_transfer_allowed=get_ai_settings().allow_external_transfer,
-                        credential_configured=found is not None,
+                        credential_configured=found is not None or not profile.requires_api_key,
                         credential_version=found[1].version if found else None,
                         key_hint=found[1].key_hint if found else None)
 
@@ -389,5 +393,5 @@ def provider_for_job(db: Session, job_id: UUID, **provider_kwargs):
     if (profile.fingerprint() != job.profile_fingerprint or profile.provider != job.provider
             or profile.model != job.model):
         raise CredentialUnavailable('profile_changed')   # 고정한 모델·가격·한도가 달라졌다. 같은 동의로 보낼 수 없다
-    secret = open_secret_for_job(db, job_id)
+    secret = open_secret_for_job(db, job_id) if profile.requires_api_key else None
     return registry.create_provider(profile, api_key=secret, **provider_kwargs)

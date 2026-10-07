@@ -24,6 +24,14 @@ MAX_BODY_BYTES = 8192
 CREATE_ROUTE = 'POST /api/ai/v1/jobs'
 
 
+def _request_hash(body) -> str:
+    data = body.model_dump(mode='json')
+    # Adding an optional pin must not invalidate pre-1.5 idempotency keys.
+    if data['consent'].get('profile_fingerprint') is None:
+        data['consent'].pop('profile_fingerprint', None)
+    return idempotency.request_hash(data)
+
+
 def authorize_read(db: Session, user_id: UUID, repository_id: int) -> None:
     """현재 저장소 접근 권한을 매번 다시 확인한다(권한을 잃은 자료는 존재를 숨긴다)."""
     authorize_ai(db, user_id, repository_id, AIAction.read, POLICY_VERSION)
@@ -43,8 +51,10 @@ def _accept(db: Session, user_id: UUID, request: Request, *, kind: str, consent_
     if replay is not None:                                                                # 재전송은 처음 접수한 작업을 그대로
         authorize_read(db, user_id, row.repository_id)
         return _json(job_views.get_job(db, replay, user_id, now=now), 200)
-    authorize_ai(db, user_id, row.repository_id, AIAction.generate, consent_in.policy_version)
     pinned = consent.resolve_consent(db, user_id, consent_in, now=now)
+    authorize_ai(db, user_id, row.repository_id,
+                 AIAction.generate if pinned.profile.requires_api_key else AIAction.local_generate,
+                 consent_in.policy_version)
     fingerprint = consent.generation_fingerprint(user_id, kind, (row.input_hash or '').strip(), pinned)
     result = job_service.create_job(
         db, owner_id=user_id, repository_id=row.repository_id, input_id=row.id, kind=kind, fingerprint=fingerprint,
@@ -63,7 +73,7 @@ def create_job(body: CreateJobRequest, request: Request, user_id: UUID = Depends
                idempotency_key: str | None = Header(None, alias='Idempotency-Key')):
     _check_size(request)
     key = _require_key(idempotency_key)
-    body_hash = idempotency.request_hash(body.model_dump(mode='json'))
+    body_hash = _request_hash(body)
     return _accept(db, user_id, request, kind=body.kind, consent_in=body.consent, route=CREATE_ROUTE, key=key,
                    body_hash=body_hash, force=body.force_regenerate)
 
@@ -112,7 +122,7 @@ def retry_job(job_id: UUID, body: RetryJobRequest, request: Request, user_id: UU
         raise AIError(ErrorCode.INVALID_STATE, '실패하거나 취소된 작업만 다시 시작할 수 있습니다.')
     if body.consent.input_id != row.input_id:
         raise AIError(ErrorCode.PREVIEW_CHANGED, '이 작업의 입력과 다른 입력에 동의했습니다.')
-    body_hash = idempotency.request_hash(body.model_dump(mode='json'))
+    body_hash = _request_hash(body)
     return _accept(db, user_id, request, kind=row.kind, consent_in=body.consent,
                    route=f'POST /api/ai/v1/jobs/{job_id}/retry', key=key, body_hash=body_hash, force=True)
 

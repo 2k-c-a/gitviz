@@ -162,7 +162,7 @@ class Rejections(Api):
         self.error(self.put('sk-ant-api03-has space inside123456'), 422, 'CREDENTIAL_INVALID')
         self.error(self.client.put('/api/ai/v1/credentials/BAD PROVIDER', json={'api_key': KEY_A}, headers=self.headers()),
                    422, 'INVALID_SELECTION')
-        self.error(self.client.put('/api/ai/v1/credentials/openai', json={'api_key': KEY_A}, headers=self.headers()),
+        self.error(self.client.put('/api/ai/v1/credentials/unsupported', json={'api_key': KEY_A}, headers=self.headers()),
                    422, 'INVALID_SELECTION')
         self.error(self.put(profile_id='gpt-5-v1'), 422, 'INVALID_SELECTION')
         r = self.client.put(URL, content='{"api_key": "' + 'a' * 5000 + '"}',

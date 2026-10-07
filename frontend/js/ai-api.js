@@ -148,7 +148,7 @@ export function createAiClient({ fetchImpl = (u, o) => fetch(u, o), now = () => 
       get(`${BASE}/pulls/${id(pr)}/files`, { repository_id: repositoryId, cursor, limit }, signal),
 
     createInput: (body, idempotencyKey, signal) => send('POST', `${BASE}/inputs`, { body, idempotencyKey, signal }),
-    input: (inputId, signal) => get(`${BASE}/inputs/${id(inputId)}`, null, signal),
+    input: (inputId, signal, profileId = null) => get(`${BASE}/inputs/${id(inputId)}`, { profile_id: profileId }, signal),
     inputFile: (inputId, fileId, { side, startLine, endLine } = {}, signal) =>
       get(`${BASE}/inputs/${id(inputId)}/files/${id(fileId)}`, { side, start_line: startLine, end_line: endLine }, signal),
     deleteInput: (inputId, signal) => send('DELETE', `${BASE}/inputs/${id(inputId)}`, { signal }),

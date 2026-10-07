@@ -31,6 +31,15 @@ def free_port():
 
 
 class Smoke(unittest.TestCase):
+    def test_local_live_cli_accepts_no_key_with_zero_budget(self):
+        with patch.dict(os.environ, {'AI_OLLAMA_ENABLED': '1', 'AI_OLLAMA_MODEL_DIGEST': 'a' * 64,
+                                   'GITVIZ_SMOKE_API_KEY': '', 'AI_TEST_PROVIDER_BASE_URL': ''}), \
+             patch.object(smoke, 'provider_smoke', return_value={'ok': True, 'steps': [], 'cost_usd': '0',
+                                                               'cost_known': True}) as run, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(smoke.main(['provider', '--profile', 'ollama-local-v1', '--live', '--budget', '0']), 0)
+            run.assert_called_once_with(None, 'ollama-local-v1', Decimal('0'))
+
     @classmethod
     def setUpClass(cls):
         cls.port = free_port()

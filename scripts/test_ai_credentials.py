@@ -168,7 +168,7 @@ class Registration(Base):
         self.assertIsNone(result.credential.validated_at)
         self.assertEqual(ok_verifier.calls, [])
         with self.assertRaises(AIError) as ctx:
-            credentials.register_key(self.db, owner, 'openai', KEY_B, verifier=ok_verifier)
+            credentials.register_key(self.db, owner, 'unsupported', KEY_B, verifier=ok_verifier)
         self.assertEqual(ctx.exception.code, ErrorCode.INVALID_SELECTION)
         for bad in ('gpt-4-v1', 'nonexistent-profile'):
             with self.assertRaises(AIError) as ctx:
@@ -491,7 +491,7 @@ class AccessControl(Base):
 class Providers(Base):
     def test_supported_options_list_prices_limits_and_server_allow_list(self):
         options = registry.supported_options()
-        self.assertEqual([p['id'] for p in options], ['anthropic'])
+        self.assertEqual([p['id'] for p in options], ['anthropic', 'openai', 'gemini', 'ollama'])
         models = {m['profile_id']: m for m in options[0]['models']}
         self.assertEqual(set(models), {OPUS, SONNET})
         self.assertEqual((models[OPUS]['model'], models[OPUS]['input_price_per_mtok'], models[OPUS]['output_price_per_mtok']),

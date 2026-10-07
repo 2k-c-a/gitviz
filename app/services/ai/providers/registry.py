@@ -6,7 +6,8 @@
 - 다른 제공자·모델로의 자동 대체(fallback)는 없다. 외부 송신 대상이 달라지면 사용자의 확인 범위가 달라지므로
   새 선택과 새 전송 동의가 필요하다.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import os
 from decimal import Decimal
 
 from app.core.ai_settings import get_ai_settings
@@ -25,6 +26,9 @@ class ProviderInfo:
 
 PROVIDERS: dict[str, ProviderInfo] = {
     'anthropic': ProviderInfo('anthropic', 'Anthropic', 'sk-ant-로 시작하는 API key'),
+    'openai': ProviderInfo('openai', 'OpenAI', 'sk-로 시작하는 API key'),
+    'gemini': ProviderInfo('gemini', 'Google Gemini', 'Google AI Studio API key'),
+    'ollama': ProviderInfo('ollama', 'Ollama (같은 PC)', 'API key 불필요'),
 }
 
 
@@ -49,6 +53,19 @@ PROFILES: dict[str, ProviderProfile] = {p.id: p for p in (
     _anthropic_profile('claude-sonnet-5-5-v1', 'Claude Sonnet 5.5', 'claude-sonnet-5-5', '2.00', '10.00', 1_000_000),
 )}
 
+PROFILES['gpt-5.4-v1'] = replace(PROFILES[DEFAULT_PROFILE_ID], id='gpt-5.4-v1', provider='openai',
+    model='gpt-5.4-2026-03-05', display_name='GPT-5.4', price_version='2026-10-07',
+    input_price_per_mtok=Decimal('2.50'), output_price_per_mtok=Decimal('15'), effort='none', bytes_per_token=1)
+PROFILES['gemini-3.5-flash-lite-v1'] = replace(PROFILES[DEFAULT_PROFILE_ID], id='gemini-3.5-flash-lite-v1',
+    provider='gemini', model='gemini-3.5-flash-lite', display_name='Gemini 3.5 Flash-Lite',
+    price_version='2026-10-07', input_price_per_mtok=Decimal('0.30'), output_price_per_mtok=Decimal('2.50'),
+    bytes_per_token=1)
+PROFILES['ollama-local-v1'] = replace(PROFILES[DEFAULT_PROFILE_ID], id='ollama-local-v1', provider='ollama',
+    model='qwen2.5-coder:7b', display_name='로컬 Ollama', price_version='local-no-provider-fee',
+    input_price_per_mtok=Decimal('0'), output_price_per_mtok=Decimal('0'), requires_api_key=False,
+    execution_location='local', context_window=32768, max_input_tokens=24000, bytes_per_token=1,
+    timeout_seconds=90, endpoint='http://127.0.0.1:11434')
+
 
 class UnknownProfile(Exception):
     pass
@@ -59,6 +76,10 @@ class UnknownProvider(Exception):
 
 
 def get_profile(profile_id: str) -> ProviderProfile:
+    if profile_id == 'ollama-local-v1':
+        return replace(PROFILES[profile_id], model=os.getenv('AI_OLLAMA_MODEL', 'qwen2.5-coder:7b').strip(),
+                       model_digest=os.getenv('AI_OLLAMA_MODEL_DIGEST', '').strip(),
+                       endpoint=os.getenv('AI_OLLAMA_URL', 'http://127.0.0.1:11434').strip())
     try:
         return PROFILES[profile_id]
     except KeyError:
@@ -68,7 +89,8 @@ def get_profile(profile_id: str) -> ProviderProfile:
 def allowed_profile_ids() -> list[str]:
     """서버 관리자가 허용한 profile(AI_ALLOWED_PROFILES). 비어 있으면 등록된 모든 profile."""
     allowed = get_ai_settings().allowed_profiles
-    return [pid for pid in PROFILES if not allowed or pid in allowed]
+    return [pid for pid in PROFILES if (not allowed or pid in allowed)
+            and (pid != 'ollama-local-v1' or os.getenv('AI_OLLAMA_ENABLED', '0') == '1')]
 
 
 def is_allowed(profile_id: str) -> bool:
@@ -81,7 +103,7 @@ def current_profile() -> ProviderProfile:
 
 
 def profiles_of(provider: str) -> list[ProviderProfile]:
-    return [p for p in PROFILES.values() if p.provider == provider]
+    return [get_profile(p.id) for p in PROFILES.values() if p.provider == provider]
 
 
 def supported_options() -> list[dict]:
@@ -94,7 +116,8 @@ def supported_options() -> list[dict]:
             'currency': p.currency, 'input_price_per_mtok': str(p.input_price_per_mtok),
             'output_price_per_mtok': str(p.output_price_per_mtok), 'price_version': p.price_version,
             'context_window': p.context_window, 'max_input_tokens': p.max_input_tokens,
-            'max_output_tokens': p.max_output_tokens, 'allowed': p.id in allowed}
+            'max_output_tokens': p.max_output_tokens, 'allowed': p.id in allowed,
+            'requires_api_key': p.requires_api_key, 'execution_location': p.execution_location}
             for p in profiles_of(info.id)]
         out.append({'id': info.id, 'display_name': info.display_name, 'key_format': info.key_format, 'models': models})
     return out
@@ -105,4 +128,8 @@ def create_provider(profile: ProviderProfile, *, api_key: str | None = None, **k
     if profile.provider == 'anthropic':
         from app.services.ai.providers.anthropic_provider import AnthropicProvider
         return AnthropicProvider(profile, api_key=api_key, **kwargs)
+    from app.services.ai.providers.json_provider import OpenAIProvider, GeminiProvider, OllamaProvider
+    adapter = {'openai': OpenAIProvider, 'gemini': GeminiProvider, 'ollama': OllamaProvider}.get(profile.provider)
+    if adapter:
+        return adapter(profile, api_key=api_key, **kwargs)
     raise UnknownProvider(f'지원하지 않는 provider: {profile.provider}')

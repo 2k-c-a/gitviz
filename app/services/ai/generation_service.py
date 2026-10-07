@@ -96,7 +96,8 @@ def revalidate(ctx: JobContext, job: JobInfo) -> None:
     가장 오래 걸리는 접근 권한·전송 정책 확인(GitHub)을 먼저 하고, 마지막에 처리권·취소·입력·동의·모델·key를 한 번에 확인한다.
     그래야 느린 확인 중에 일어난 key 삭제·취소가 호출 직전 확인에 반영된다.
     """
-    _authorize(ctx, job, AIAction.generate, retryable=True)
+    profile = registry.get_profile(job.profile_id)
+    _authorize(ctx, job, AIAction.generate if profile.requires_api_key else AIAction.local_generate, retryable=True)
     _check_alive(ctx)
     with ctx.session_factory() as db:
         inp = db.execute(text("""SELECT status, valid_until, manifest_hash FROM ai_inputs WHERE id = :i"""),
@@ -111,7 +112,7 @@ def revalidate(ctx: JobContext, job: JobInfo) -> None:
         raise JobFailed('PREVIEW_CHANGED')              # 동의한 코드 범위와 다르다
     if not registry.is_allowed(job.profile_id):
         raise JobFailed('PROFILE_NOT_ALLOWED')
-    if key is None or key.status == 'deleted' or not key.has_secret:
+    if profile.requires_api_key and (key is None or key.status == 'deleted' or not key.has_secret):
         raise JobFailed('CREDENTIAL_UNAVAILABLE')       # 삭제·파기된 key로는 보내지 않는다
 
 
@@ -176,7 +177,7 @@ def _reserve(ctx: JobContext, job: JobInfo, amount: Decimal) -> None:
         locked = db.execute(text("""SELECT v.status, v.encrypted_key IS NOT NULL AS has_secret
                                     FROM ai_credential_versions v WHERE v.id = (SELECT credential_version_id FROM ai_jobs
                                     WHERE id = :j) FOR SHARE"""), {'j': job.job_id}).one_or_none()
-        if locked is None or locked.status == 'deleted' or not locked.has_secret:
+        if registry.get_profile(job.profile_id).requires_api_key and (locked is None or locked.status == 'deleted' or not locked.has_secret):
             raise JobFailed('CREDENTIAL_UNAVAILABLE')
         try:
             usage_service.reserve_attempt(db, ctx.lease, amount)
@@ -231,11 +232,17 @@ def generate_handler(ctx: JobContext) -> HandlerResult:
         token_budget.check_input_limit(profile, counted)
     except TokenLimitExceeded:
         raise JobFailed('INPUT_TOO_LARGE') from None
+    call = lambda: provider.generate(request)
+    if hasattr(provider, 'prepare_generation'):
+        try:
+            call = provider.prepare_generation(request)
+        except ProviderError as err:
+            raise _provider_failure(err.failure) from None
     revalidate(ctx, job)                                   # 3. 생성 호출 직전
     reserved = token_budget.max_cost(profile, counted)
     _reserve(ctx, job, reserved)
     try:
-        response = provider.generate(request)
+        response = call()
     except ProviderError as err:
         raise _after_failed_call(ctx, err) from None
     except Exception as exc:                               # 어떤 이유로든 호출 결과를 알 수 없다

@@ -408,6 +408,8 @@ class Runner:
                 t = preview['transfer']
                 body = {'kind': kind, 'consent': {'input_id': input_id, 'manifest_hash': preview['manifest_hash'], 'provider': t['provider'], 'profile_id': t['profile_id'],
                                                   'credential_version': t['credential_version'], 'policy_version': preview['policy_version']}, 'force_regenerate': False}
+                if t.get('profile_fingerprint'):
+                    body['consent']['profile_fingerprint'] = t['profile_fingerprint']
                 if j:                                                    # 접수 요청을 보내기 **전에** 요청 본문과 함께 기록한다
                     j.update(cid, status='submitting', estimate=estimate, input_id=input_id, job_body=body)
             job = self.call('POST', '/api/ai/v1/jobs', body, self.key(cid, 'job'))

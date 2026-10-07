@@ -190,6 +190,18 @@ def validate_ai_settings(settings: AISettings | None = None) -> list[str]:
     problem = test_provider_url_problem(s.test_provider_base_url)
     if problem:
         problems.append(problem)
+    if os.getenv('AI_OLLAMA_ENABLED', '0') == '1':
+        import re
+        from app.services.ai.providers.json_provider import local_endpoint, ProviderConfigError
+        try:
+            local_endpoint(os.getenv('AI_OLLAMA_URL', 'http://127.0.0.1:11434'))
+        except ProviderConfigError:
+            problems.append('AI_OLLAMA_URL은 같은 PC의 loopback HTTP 주소와 포트여야 합니다.')
+        if not re.fullmatch(r'(?:sha256:)?[0-9a-f]{64}', os.getenv('AI_OLLAMA_MODEL_DIGEST', '')):
+            problems.append('AI_OLLAMA_MODEL_DIGEST에 설치된 모델의 전체 digest가 필요합니다.')
+        model = os.getenv('AI_OLLAMA_MODEL', 'qwen2.5-coder:7b')
+        if not re.fullmatch(r'[a-zA-Z0-9._/-]+:[a-zA-Z0-9._-]+', model) or model.endswith(':cloud'):
+            problems.append('AI_OLLAMA_MODEL은 설치된 로컬 모델의 이름:태그여야 합니다.')
     sync_url = os.getenv('DATABASE_URL', '')
     async_url = os.getenv('DATABASE_URL_ASYNC') or sync_url
     if not sync_url:

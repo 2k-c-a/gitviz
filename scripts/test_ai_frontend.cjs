@@ -36,6 +36,41 @@ const test = (name, fn) => tests.push([name, fn]);
 const U1 = '11111111-1111-4111-8111-111111111111';
 const U2 = '22222222-2222-4222-8222-222222222222';
 
+test('로컬 동의: key·외부 전송 없이 모델 fingerprint를 고정한다', async () => {
+  const S = await js('ai-state.js');
+  const preview = { input_id: U1, status: 'ready', execution_valid: true, reviewable: true,
+    manifest_hash: 'a'.repeat(64), policy_version: 'code-transfer-v1', files: [{ content_state: 'read' }],
+    transfer: { provider: 'ollama', profile_id: 'ollama-local-v1', model: 'qwen2.5-coder:7b',
+      execution_location: 'local', requires_api_key: false, external_transfer_allowed: false,
+      credential_configured: true, credential_version: null, profile_fingerprint: 'b'.repeat(64), model_digest: 'c'.repeat(64) } };
+  assert.deepEqual(S.consentBlockers(preview), []);
+  assert.equal(S.buildConsent(preview).credential_version, null);
+  assert.equal(S.buildConsent(preview).profile_fingerprint, 'b'.repeat(64));
+  assert.match(S.consentStatement(preview), /같은 PC/);
+  assert.match(S.consentStatement(preview), /API 요금은 없습니다/);
+  const cloud = { ...preview, transfer: { ...preview.transfer, execution_location: 'external', requires_api_key: true, credential_configured: false } };
+  assert.equal(S.buildConsent(cloud), null);
+  assert.equal(S.consentBlockers(cloud).length, 2);
+});
+
+test('미리보기 API: 선택 profile을 query로 보낸다', async () => {
+  const { createAiClient } = await js('ai-api.js');
+  let url;
+  const api = createAiClient({ fetchImpl: async (u) => { url = String(u); return { ok: true, status: 200, json: async () => ({}) }; } });
+  await api.input(U1, undefined, 'gpt-5.4-v1');
+  assert.match(url, /profile_id=gpt-5.4-v1/);
+});
+
+test('로컬 중단 안내: 외부 API 과금 위험과 구분한다', async () => {
+  const S = await js('ai-state.js');
+  const local = S.describeJob({ provider: 'ollama', status: 'failed', error_code: 'PROVIDER_TIMEOUT', outcome_uncertain: true });
+  assert.equal(local.costRisk, false);
+  assert.match(local.body, /API 요금은 없/);
+  assert.match(local.body, /자동으로 다시 실행하지 않습니다/);
+  const cloud = S.describeJob({ provider: 'openai', status: 'failed', error_code: 'PROVIDER_TIMEOUT', outcome_uncertain: true });
+  assert.equal(cloud.costRisk, true);
+});
+
 /* ───────────────────────── 주소 ───────────────────────── */
 test('주소: repo가 없으면 어떤 값도 쓰지 않는다(기본 저장소 없음)', async () => {
   const s = await js('ai-state.js');

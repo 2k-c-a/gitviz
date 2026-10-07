@@ -154,6 +154,20 @@ class ManifestRules(unittest.TestCase):
 
 
 class RequestRules(unittest.TestCase):
+    def test_keyless_local_consent_has_a_typed_profile_pin(self):
+        from app.schemas.ai import TransferConsent, TransferView
+        consent = TransferConsent(input_id=JOB_ID, manifest_hash=H64, provider='ollama',
+                                  profile_id='ollama-local-v1', credential_version=None,
+                                  profile_fingerprint=H64, policy_version='code-transfer-v1')
+        self.assertIsNone(consent.credential_version)
+        self.assertEqual(consent.profile_fingerprint, H64)
+        with self.assertRaises(ValidationError):
+            TransferConsent(**{**consent.model_dump(), 'profile_fingerprint': 'bad'})
+        view = TransferView(provider='ollama', profile_id='ollama-local-v1', model='local:tag',
+                            external_transfer_allowed=False, credential_configured=True,
+                            execution_location='local', requires_api_key=False, model_digest=H64)
+        self.assertFalse(view.requires_api_key)
+
     base = {'repository_id': 14, 'pr_number': 27, 'expected_base_sha': SHA_A,
             'expected_head_sha': SHA_B, 'selected_paths': ['app/services/session.py']}
 

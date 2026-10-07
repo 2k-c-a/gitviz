@@ -124,10 +124,11 @@ def _preview_response(db: Session, input_id: UUID, user_id: UUID, now: datetime)
 
 
 @router.get('/inputs/{input_id}')
-def get_input(input_id: UUID, user_id: UUID = Depends(guard), db: Session = Depends(get_db)):
+def get_input(input_id: UUID, user_id: UUID = Depends(guard), db: Session = Depends(get_db),
+              profile_id: str | None = Query(None, max_length=64)):
     row = input_store.load_owned(db, input_id, user_id)
     authorize_ai(db, user_id, row.repository_id, AIAction.read, POLICY_VERSION)   # 접근 권한은 매번 다시 확인
-    return _json(input_store.load_preview(db, input_id, user_id))
+    return _json(input_store.load_preview(db, input_id, user_id, profile_id=profile_id))
 
 
 @router.get('/inputs/{input_id}/files/{file_id}')
