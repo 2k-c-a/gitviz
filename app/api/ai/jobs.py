@@ -55,9 +55,9 @@ def _check_history_snapshot(db: Session, repository_id: int, snapshot_id: int | 
     return {'history_snapshot_id': snapshot_id}
 
 
-def _attach_to_reused(db: Session, user_id: UUID, request: Request, job, repository_id: int, snapshot_id: int) -> None:
+def _attach_to_reused(db: Session, user_id: UUID, request: Request, job_id: UUID, repository_id: int, snapshot_id: int) -> None:
     """끝난 같은 리뷰를 재사용할 때, 이번에 지정한 snapshot의 이력 근거를 그 결과에 붙인다(이미 있으면 그대로)."""
-    result_id = db.execute(text('SELECT id FROM ai_results WHERE job_id = :j'), {'j': job.id}).scalar()
+    result_id = db.execute(text('SELECT id FROM ai_results WHERE job_id = :j'), {'j': job_id}).scalar()
     if result_id is None:
         return
     before = {e.id for e in history_context.list_evidence(db, result_id)}
@@ -77,6 +77,12 @@ def _accept(db: Session, user_id: UUID, request: Request, *, kind: str, consent_
     replay = job_views.existing_for_key(db, user_id, route, key, body_hash, now)
     if replay is not None:                                                                # 재전송은 처음 접수한 작업을 그대로
         authorize_read(db, user_id, row.repository_id)
+        if kind == 'review' and history_snapshot_id is not None:
+            # 멱등 key는 첨부보다 먼저 확정되므로, 첨부가 실패한 뒤의 재전송은 여기서 미완료 첨부를 복구한다(이미 있으면 그대로).
+            status = db.execute(text('SELECT status FROM ai_jobs WHERE id = :j'), {'j': replay}).scalar()
+            if status == 'succeeded':
+                options = _check_history_snapshot(db, row.repository_id, history_snapshot_id)
+                _attach_to_reused(db, user_id, request, replay, row.repository_id, options['history_snapshot_id'])
         return _json(job_views.get_job(db, replay, user_id, now=now), 200)
     pinned = consent.resolve_consent(db, user_id, consent_in, now=now)
     authorize_ai(db, user_id, row.repository_id,
@@ -88,7 +94,7 @@ def _accept(db: Session, user_id: UUID, request: Request, *, kind: str, consent_
         db, owner_id=user_id, repository_id=row.repository_id, input_id=row.id, kind=kind, fingerprint=fingerprint,
         route=route, idempotency_key=key, body_hash=body_hash, request_options=options, pinned=pinned, force_regenerate=force, now=now)
     if not result.created and options and result.job.status == 'succeeded':
-        _attach_to_reused(db, user_id, request, result.job, row.repository_id, options['history_snapshot_id'])
+        _attach_to_reused(db, user_id, request, result.job.id, row.repository_id, options['history_snapshot_id'])
     if result.created:
         input_store.audit(db, actor_id=user_id, repository_id=row.repository_id, action='job.created',
                           object_id=result.job.id, request_id=_request_id(request), object_type='job',
