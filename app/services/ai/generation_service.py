@@ -128,7 +128,7 @@ def _prepare(ctx: JobContext, job: JobInfo):
             raise _credential_failure(exc.reason) from None
         row = db.execute(select(AIInput).where(AIInput.id == job.input_id)).scalar_one()
         manifest = InputManifest(**row.manifest)
-        coverage = dict(row.coverage)
+        input_coverage = dict(row.coverage)
         stored = db.execute(select(AIInputFile).where(AIInputFile.input_id == row.id)).scalars().all()
         payloads, file_ids = {}, {}
         for f in stored:
@@ -153,7 +153,7 @@ def _prepare(ctx: JobContext, job: JobInfo):
         token_budget.check_input_limit(provider.profile, provider.estimate_tokens(request))
     except TokenLimitExceeded:
         raise JobFailed('INPUT_TOO_LARGE') from None
-    return provider, request, sent, coverage
+    return provider, request, sent, result_store.result_coverage(input_coverage, len(sent.files))
 
 
 def _provider_failure(failure: ProviderFailure):
