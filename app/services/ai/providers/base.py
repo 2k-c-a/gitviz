@@ -80,8 +80,8 @@ class Usage:
 class GenerationRequest:
     """한 번의 호출. tools·fallback·sampling 옵션이 없다(필드 자체가 없다)."""
     kind: str
-    system: str
-    user: str
+    system: str = field(repr=False)       # 코드가 들어 있으므로 repr·로그에 나오지 않게 한다
+    user: str = field(repr=False)
     max_output_tokens: int | None = None      # None이면 profile 값
 
 
@@ -91,8 +91,8 @@ class ProviderResponse:
     request_id: str | None
     model: str | None
     finish: str                       # complete | truncated | refused | empty | incomplete
-    text: str
-    parsed: dict | None
+    text: str = field(repr=False)     # 모델 출력(코드 인용 포함)은 repr에 나오지 않게 한다
+    parsed: dict | None = field(repr=False)
     parse_error: str | None
     usage: Usage | None
     cost: Decimal | None              # profile 가격으로 계산한 추정액. usage가 없으면 None

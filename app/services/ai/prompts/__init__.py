@@ -55,7 +55,7 @@ class SentFile:
     change_type: ChangeType
     side_availability: str
     language: str | None
-    lines: list[DiffLine]
+    lines: list[DiffLine] = field(repr=False)
     left_text: dict[int, str] = field(init=False, repr=False)
     right_text: dict[int, str] = field(init=False, repr=False)
 
@@ -70,8 +70,8 @@ class SentFile:
 @dataclass
 class SentInput:
     """모델에 실제로 보낸 자료: 파일(줄 번호 포함)과 PR 설명."""
-    files: list[SentFile]
-    metadata: PRTransferMetadata
+    files: list[SentFile] = field(repr=False)
+    metadata: PRTransferMetadata = field(repr=False)
 
     @property
     def has_description(self) -> bool:
@@ -138,9 +138,9 @@ def render_user_message(boundary: str, sent: SentInput) -> str:
 
 @dataclass(frozen=True)
 class RenderedPrompt:
-    system: str
-    user: str
-    boundary: str
+    system: str = field(repr=False)
+    user: str = field(repr=False)
+    boundary: str = field(repr=False)
 
 
 def render_request(kind: str, sent: SentInput) -> RenderedPrompt:

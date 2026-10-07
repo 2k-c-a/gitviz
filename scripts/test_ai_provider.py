@@ -268,12 +268,24 @@ class FailureClassification(unittest.TestCase):
             self.assertEqual(self.fail(lambda r: httpx2.Response(429, json=error_json(), headers=header)).retry_after,
                              expected)
 
-    def test_unprocessed_server_errors_are_safe_to_retry(self):
+    def test_provider_server_errors_with_a_request_id_are_safe_to_retry(self):
         for status in (500, 502, 503, 529):
             with self.subTest(status=status):
-                f = self.fail(lambda r: httpx2.Response(status, json=error_json()))
-                self.assertEqual((f.kind, f.retryable, f.outcome_uncertain), ('server_error', True, False))
+                f = self.fail(lambda r: httpx2.Response(status, json=error_json(), headers={'request-id': 'req_abc'}))
+                self.assertEqual((f.kind, f.retryable, f.outcome_uncertain, f.request_id), ('server_error', True, False, 'req_abc'))
                 self.assertEqual(f.error_code, 'PROVIDER_UNAVAILABLE')
+
+    def test_5xx_of_unknown_origin_may_have_been_processed(self):
+        """request-id가 없는 5xx(프록시·게이트웨이·로드밸런서)는 제공자가 처리한 뒤 만든 응답일 수 있다."""
+        bodies = (lambda s: httpx2.Response(s, text='<html>Bad Gateway</html>'),
+                  lambda s: httpx2.Response(s, json=error_json()),                 # 본문이 제공자 형식이어도 헤더가 없으면 확신할 수 없다
+                  lambda s: httpx2.Response(s))
+        for status in (500, 502, 503, 529):
+            for make in bodies:
+                with self.subTest(status=status):
+                    f = self.fail(lambda r: make(status))
+                    self.assertEqual((f.kind, f.retryable, f.outcome_uncertain), ('response_lost', False, True))
+                    self.assertEqual(f.error_code, 'PROVIDER_TIMEOUT')
 
     def test_gateway_timeouts_may_have_been_processed(self):
         for status in (408, 504):
@@ -353,11 +365,45 @@ class FailureClassification(unittest.TestCase):
 class CountTokens(unittest.TestCase):
     def test_count_tokens_is_a_separate_unbilled_call(self):
         provider, rec = make_provider(lambda r: httpx2.Response(200, json={'input_tokens': 1234}))
-        self.assertEqual(provider.count_tokens(request()), 1234 + 400)
+        self.assertEqual(provider.count_tokens(request()), 1234)             # 여유분을 임의로 더하지 않는다
         self.assertEqual((rec.requests[0].url.path, rec.calls), ('/v1/messages/count_tokens', 1))
         body = json.loads(rec.requests[0].content)
-        self.assertEqual(set(body), {'model', 'system', 'messages'})
+        self.assertEqual(set(body), {'model', 'system', 'messages', 'output_config'})
         self.assertEqual(body['model'], PROFILE.model)
+
+    def test_count_tokens_includes_the_exact_output_schema_that_generate_sends(self):
+        for kind in ('summary', 'review'):
+            with self.subTest(kind=kind):
+                provider, rec = make_provider(lambda r: httpx2.Response(200, json={'input_tokens': 10}))
+                req = request(kind)
+                provider.count_tokens(req)
+                counted = json.loads(rec.requests[0].content)
+                provider, rec = make_provider(lambda r: httpx2.Response(200, json=message_json()))
+                provider.generate(req)
+                sent = json.loads(rec.requests[0].content)
+                self.assertEqual(counted['output_config'], sent['output_config'])
+                self.assertEqual(counted['output_config']['format']['schema'], prompts.output_schema(kind))
+                self.assertEqual((counted['model'], counted['system'], counted['messages']),
+                                 (sent['model'], sent['system'], sent['messages']))
+
+    def test_unknown_origin_5xx_on_count_tokens_is_retryable_without_billing_uncertainty(self):
+        provider, _ = make_provider(lambda r: httpx2.Response(502, text='bad gateway'))
+        with self.assertRaises(ProviderError) as ctx:
+            provider.count_tokens(request())
+        f = ctx.exception.failure
+        self.assertEqual((f.retryable, f.outcome_uncertain), (True, False))
+
+    def test_request_and_response_objects_do_not_expose_bodies_in_repr(self):
+        req = request()
+        resp = provider_response = make_provider(lambda r: httpx2.Response(200, json=message_json(
+            text=json.dumps({'schema_version': 'review-output-v1', 'findings': [], 'note': CODE_MARKER}))))[0].generate(req)
+        sent = sent_input()
+        rendered = prompts.render_request('review', sent)
+        shown = ' '.join(repr(o) + str(o) for o in (req, resp, sent, sent.files[0], rendered))
+        self.assertNotIn(CODE_MARKER, shown)
+        self.assertNotIn('def f():', shown)
+        self.assertIn('review', repr(req))
+        self.assertIn('finish', repr(provider_response))
 
     def test_count_tokens_failures_are_never_billing_uncertain(self):
         provider, _ = make_provider(lambda r: httpx2.ReadTimeout('slow'))

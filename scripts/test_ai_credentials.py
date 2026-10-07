@@ -249,6 +249,51 @@ class Replacement(Base):
             credentials.open_secret_for_job(self.db, queued.id)
         self.assertEqual(ctx.exception.reason, 'purged')
 
+    def test_in_progress_job_is_reused_only_for_the_same_key_version(self):
+        owner, repo, input_id, _ = self.prepared()
+        self.register(owner, KEY_A)
+        fp = canonical_hash('same-generation')
+        v1_job = self.job(owner, repo, input_id, fingerprint=fp, key='k1')
+        again = job_service.create_job(                                                  # 같은 key 버전: 진행 중 작업 재사용
+            self.db, owner_id=owner, repository_id=repo, input_id=input_id, kind='review', fingerprint=fp,
+            route='POST /api/ai/v1/jobs', idempotency_key='k1b', body_hash=canonical_hash('b1'),
+            pinned=self.pinned(owner, repo, input_id), now=T0 + timedelta(minutes=1))
+        self.assertEqual((again.created, again.job.id), (False, v1_job.id))
+        self.register(owner, KEY_B)                                                       # key 교체 후 새 key에 동의
+        v2 = job_service.create_job(
+            self.db, owner_id=owner, repository_id=repo, input_id=input_id, kind='review', fingerprint=fp,
+            route='POST /api/ai/v1/jobs', idempotency_key='k2', body_hash=canonical_hash('b2'),
+            pinned=self.pinned(owner, repo, input_id), now=T0 + timedelta(minutes=1))
+        self.assertTrue(v2.created)                                                       # v1 작업을 돌려주지 않는다
+        self.assertNotEqual(v2.job.id, v1_job.id)
+        self.assertEqual(v2.job.generation, v1_job.generation + 1)
+        self.assertEqual(credentials.open_secret_for_job(self.db, v2.job.id), KEY_B)
+        old = self.job_row(v1_job.id)                                                     # 기존 작업은 그대로 v1에 고정
+        self.assertNotEqual(old['credential_version_id'], self.job_row(v2.job.id)['credential_version_id'])
+        self.assertEqual(old['status'], 'queued')
+        self.assertEqual(credentials.open_secret_for_job(self.db, v1_job.id), KEY_A)
+        # 같은 Idempotency-Key 재전송은 처음 만든 작업(v2)을 그대로 돌려준다
+        replay = job_service.create_job(
+            self.db, owner_id=owner, repository_id=repo, input_id=input_id, kind='review', fingerprint=fp,
+            route='POST /api/ai/v1/jobs', idempotency_key='k2', body_hash=canonical_hash('b2'),
+            pinned=self.pinned(owner, repo, input_id), now=T0 + timedelta(minutes=2))
+        self.assertEqual((replay.created, replay.job.id), (False, v2.job.id))
+
+    def test_succeeded_result_is_reused_even_with_a_different_key(self):
+        owner, repo, input_id, _ = self.prepared()
+        self.register(owner, KEY_A)
+        fp = canonical_hash('done')
+        done = self.job(owner, repo, input_id, fingerprint=fp, key='d1')
+        lease = job_service.claim_job(self.db, done.id, now=T0 + timedelta(minutes=2))
+        job_service.finish_job(self.db, lease, 'succeeded', now=T0 + timedelta(minutes=3))
+        self.register(owner, KEY_B)
+        reused = job_service.create_job(
+            self.db, owner_id=owner, repository_id=repo, input_id=input_id, kind='review', fingerprint=fp,
+            route='POST /api/ai/v1/jobs', idempotency_key='d2', body_hash=canonical_hash('x'),
+            pinned=self.pinned(owner, repo, input_id), now=T0 + timedelta(minutes=4))
+        self.assertEqual((reused.created, reused.job.id), (False, done.id))
+        self.assertEqual(self.scalar('SELECT count(*) FROM ai_jobs WHERE kind = $$review$$'), 1)
+
     def test_job_creation_races_with_replacement_consistently(self):
         owner, repo, input_id, _ = self.prepared()
         self.register(owner)
@@ -470,7 +515,7 @@ class Providers(Base):
         provider.verify_credential()
         self.assertEqual(calls, [('GET', '/v1/models/claude-opus-5-5', b'')])             # 코드·프롬프트는 보내지 않는다
         for status, kind in ((401, 'auth_failed'), (403, 'auth_failed'), (404, 'model_unavailable'), (429, 'rate_limited'),
-                             (500, 'server_error')):
+                             (500, 'response_lost')):          # request-id 없는 5xx는 출처를 알 수 없다
             client = anthropic.Anthropic(api_key=KEY_A, max_retries=0, http_client=anthropic.DefaultHttpxClient(
                 transport=httpx2.MockTransport(lambda r, s=status: httpx2.Response(
                     s, json={'type': 'error', 'error': {'type': 'x', 'message': f'bad {KEY_A}'}}))))

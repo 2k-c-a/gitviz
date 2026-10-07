@@ -166,14 +166,15 @@
 - 프롬프트 파일은 `PROMPT_DIGESTS`로 고정된다. 내용을 바꾸면 테스트가 실패하므로 새 버전 파일과 profile을 만든다.
 - 신뢰할 수 없는 자료(PR 설명·코드)는 요청마다 새로 만든 무작위 경계 토큰 블록 안에만 들어가고 system 프롬프트에는 코드가 없다. 모든 diff 줄은 실제 줄 번호(`= L8 R8 | …`)와 함께 보낸다.
 
-**토큰·비용** (`token_budget.py`): 미리보기(`InputPreview.token_estimate`)와 호출 전 검사는 외부로 보내지 않는 로컬 보수적 추정(`bytes_per_token`)이다. 입력 토큰이 `limit`를 넘으면(`within_limit=false`) 호출 전에 거부한다(`input_too_large`, 과금 없음). 정확한 값은 사용자 동의 이후 실행 직전 `count_tokens`(과금되지 않는 별도 호출)로 확인한다. 비용은 `Decimal`이며 올림한다. 예약액 `estimated_max_cost`는 추정 입력 + 최대 출력 기준 상한, 정산액은 응답 usage 기준이다. usage가 없거나 올바르지 않으면 비용은 `null`(알 수 없음, 0이 아님)이며 호출자는 예약액으로 추정 정산한다.
+**토큰·비용** (`token_budget.py`): 미리보기(`InputPreview.token_estimate`)와 호출 전 검사는 외부로 보내지 않는 로컬 보수적 추정(`bytes_per_token`)이다. 입력 토큰이 `limit`를 넘으면(`within_limit=false`) 호출 전에 거부한다(`input_too_large`, 과금 없음). 정확한 값은 사용자 동의 이후 실행 직전 `count_tokens`(과금되지 않는 별도 호출, 실제 호출과 같은 출력 schema 포함)로 확인한다. `count_tokens`도 코드를 외부로 보내므로 동의·권한·키 확인 이후에만 호출한다. 비용은 `Decimal`이며 올림한다. 예약액 `estimated_max_cost`는 추정 입력 + 최대 출력 기준 상한, 정산액은 응답 usage 기준이다. usage가 없거나 올바르지 않으면 비용은 `null`(알 수 없음, 0이 아님)이며 호출자는 예약액으로 추정 정산한다.
 
 **실패 분류** (`ProviderFailure`): `outcome_uncertain=false`이면 요청이 처리되지 않았음이 확실하다(예약 해제). `retryable`이면 backoff 후 자동으로 다시 호출해도 안전하다. `outcome_uncertain=true`이면 처리·과금 여부를 모르므로 예약을 `uncertain`으로 남기고 **자동 재호출하지 않는다**.
 
 | 분류 `kind` | 상황 | retryable | outcome_uncertain | 작업 error_code |
 |---|---|---|---|---|
 | `rate_limited` | 429 (`retry_after`는 1~3600초) | 예 | 아니오 | `PROVIDER_RATE_LIMITED` |
-| `server_error` | 500·502·503·529 | 예 | 아니오 | `PROVIDER_UNAVAILABLE` |
+| `server_error` | 500·502·503·529 중 제공자가 낸 응답(`request-id` 헤더 있음) | 예 | 아니오 | `PROVIDER_UNAVAILABLE` |
+| `response_lost` | `request-id` 없는 5xx(프록시·게이트웨이: 처리됐을 수 있음) | 아니오 | **예** | `PROVIDER_TIMEOUT` |
 | `connection_failed` | 연결·연결 timeout·pool timeout(서버에 닿기 전) | 예 | 아니오 | `PROVIDER_UNAVAILABLE` |
 | `timeout` | 응답 대기·전송 중 timeout | 아니오 | **예** | `PROVIDER_TIMEOUT` |
 | `response_lost` | 408·504, 응답 중 연결 끊김, 형식이 깨진 200 응답 | 아니오 | **예** | `PROVIDER_TIMEOUT` |
@@ -210,7 +211,7 @@ key 형식 오류·제공자 거절(401·403·402·모델 없음)은 422 `CREDEN
 
 **저장·접근**: 사용자별 AES-GCM 암호화(`AI_CREDENTIAL_ENCRYPTION_KEYS`, 입력 코드 키와 분리, AAD=`credential:{owner}:{version_id}`라 다른 사용자·버전으로 옮기면 복호화 실패). 교체하면 새 버전이 active, 옛 버전은 retired(되살릴 수 없음)이며 암호문은 **그 버전에 고정된 비종료 작업이 없을 때** 삭제된다. DB 트리거가 암호문·소유자·상태 변경을 막고, key 원문은 로그·큐·작업 옵션·audit·idempotency에 들어가지 않는다(작업에는 `credential_version_id`만 있다).
 
-**작업 고정**: 생성 작업(`summary`/`review`)은 만들 때 `provider`·`model`·`provider_profile`·`profile_fingerprint`·`credential_version_id`·`consent_manifest_hash`를 기록하고 바꿀 수 없다(DB 트리거). 이후 key·모델을 바꿔도 진행 중 작업은 고정된 설정으로 실행된다. 고정한 profile 값이 바뀌었거나 key가 삭제·파기됐으면 실행하지 않는다(`CredentialUnavailable`). 설정이 없는 생성 작업은 422 `CREDENTIAL_REQUIRED`, key 버전이 바뀌어 있으면 409 `PREVIEW_CHANGED`. `prepare` 작업은 key가 필요 없다. 작업 fingerprint는 key 버전을 넣지 않는다(같은 입력·같은 모델이면 key를 바꿔도 결과 재사용).
+**작업 고정**: 생성 작업(`summary`/`review`)은 만들 때 `provider`·`model`·`provider_profile`·`profile_fingerprint`·`credential_version_id`·`consent_manifest_hash`를 기록하고 바꿀 수 없다(DB 트리거). 이후 key·모델을 바꿔도 진행 중 작업은 고정된 설정으로 실행된다. 고정한 profile 값이 바뀌었거나 key가 삭제·파기됐으면 실행하지 않는다(`CredentialUnavailable`). 설정이 없는 생성 작업은 422 `CREDENTIAL_REQUIRED`, key 버전이 바뀌어 있으면 409 `PREVIEW_CHANGED`. `prepare` 작업은 key가 필요 없다. 작업 fingerprint는 key 버전을 넣지 않는다. 재사용: 끝난(succeeded) 결과는 key가 달라도 재사용하지만, **진행 중 작업은 동의한 key 버전과 같은 버전에 고정된 경우에만** 재사용한다. 다르면 새 generation을 만들고 기존 작업의 고정 설정은 바꾸지 않는다.
 
 **전송 동의** `TransferConsent{input_id, manifest_hash, provider, profile_id, credential_version, policy_version}`: 미리보기(`InputPreview.transfer`)에 보이는 제공자·모델·마스킹 key·보낼 코드 범위(manifest_hash)를 사용자가 확인한 값이다. 서버는 전송 허용·정책 버전·허용 모델·입력 소유자/준비 완료/유효기간·manifest 일치·읽을 파일 존재(`reviewable`)·모델 토큰 한도·key 존재와 버전 일치를 모두 확인하고, 하나라도 다르면 거부한다(`PREVIEW_CHANGED` 등). `reviewable=false` 입력 차단은 S8 완료 조건으로 유지한다.
 
