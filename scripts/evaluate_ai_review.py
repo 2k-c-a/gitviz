@@ -290,9 +290,19 @@ class Journal:
 
     @classmethod
     def load(cls, path):
-        return cls(path, json.loads(Path(path).read_text(encoding='utf-8')))
+        journal = cls(path, json.loads(Path(path).read_text(encoding='utf-8')))
+        journal.derive()                                                  # 저장된 합계는 믿지 않고 사례 기록에서 다시 계산한다
+        return journal
+
+    def derive(self):
+        """비용 합계는 사례 기록(settled·held)에서 계산한 값이다. 사례 완료와 비용 합계가 따로 저장되면 그 사이에 종료됐을 때 합계가 이전 값으로
+        남아 예산을 넘겨 접수하게 되므로, 합계는 별도로 쓰지 않고 항상 사례 기록에서 만든다(사례 한 건의 저장이 곧 합계의 저장이다)."""
+        cases = self.data['cases'].values()
+        self.data['spent'] = round(sum(float(c.get('settled') or 0.0) for c in cases), 6)
+        self.data['held'] = round(sum(float(c.get('held') or 0.0) for c in cases), 6)
 
     def save(self):
+        self.derive()
         tmp = self.path.with_name(self.path.name + '.tmp')
         with open(tmp, 'w', encoding='utf-8') as f:
             f.write(json.dumps(self.data, ensure_ascii=False, indent=2))
@@ -305,10 +315,6 @@ class Journal:
 
     def update(self, case_id: str, **fields):
         self.case(case_id).update(fields)
-        self.save()
-
-    def totals(self, spent: float, held: float):
-        self.data['spent'], self.data['held'] = spent, held
         self.save()
 
 
@@ -329,7 +335,8 @@ class Runner:
         self.http, self.base, self.budget, self.spent, self.held = http, base_url.rstrip('/'), float(budget), 0.0, 0.0
         self.csrf, self.poll, self.timeout, self.sleep, self.journal = csrf_token, poll_seconds, timeout, sleep, journal
         if journal is not None:
-            self.spent, self.held = float(journal.data.get('spent', 0.0)), float(journal.data.get('held', 0.0))
+            journal.derive()
+            self.spent, self.held = float(journal.data['spent']), float(journal.data['held'])
 
     @property
     def committed(self) -> float:
@@ -341,10 +348,6 @@ class Runner:
         if self.journal is None:
             return uuid.uuid4().hex
         return hashlib.sha256(f'{self.journal.data["run_id"]}|{case_id}|{step}'.encode()).hexdigest()[:48]
-
-    def _save_totals(self):
-        if self.journal is not None:
-            self.journal.totals(self.spent, self.held)
 
     def call(self, method, path, body=None, key=None):
         headers = {'Origin': self.base}
@@ -424,7 +427,7 @@ class Runner:
             self.held = max(0.0, self.held - prev_held) + estimate     # 끝나지 않은 호출: 결과·비용을 모른다
             score = CaseScore(cid, 'timeout', 'OUTCOME_UNKNOWN', exposure=estimate, uncertain=True, note='시간 안에 끝나지 않았습니다')
             score.job_id = job_id
-            self._finish(cid, score, held=estimate)
+            self._finish(cid, score, held=estimate, settled=0.0)
             return score
         findings, coverage, source = [], dict(done.get('coverage') or {}), ('input' if done.get('coverage') else 'none')
         if done['status'] == 'succeeded':
@@ -440,13 +443,13 @@ class Runner:
         self.held = max(0.0, self.held - prev_held) + held             # 확인된 결과로 이전 상한을 바꾼다
         score = score_case(case, done, findings, settled, coverage=coverage, coverage_source=source, exposure=exposure)
         score.job_id, score.result_id = job_id, done.get('result_id')
-        self._finish(cid, score, held=held)
+        self._finish(cid, score, held=held, settled=settled)
         return score
 
-    def _finish(self, case_id, score, *, held=0.0):
+    def _finish(self, case_id, score, *, held=0.0, settled=0.0):
         if self.journal is not None:
-            self.journal.update(case_id, status='done', score=score.__dict__, held=held)
-            self._save_totals()
+            # 완료 상태·점수·정산액·상한을 **한 번의 원자적 저장**으로 기록한다(합계는 이 기록에서 계산되므로 따로 어긋날 수 없다).
+            self.journal.update(case_id, status='done', score=score.__dict__, held=held, settled=settled)
 
     def _wait(self, condition):
         deadline = time.monotonic() + self.timeout
@@ -467,7 +470,6 @@ class Runner:
         self.held += max(0.0, target - float(rec.get('held') or 0.0))
         if j:
             j.update(case_id, status='interrupted' if in_flight else rec.get('status', 'pending'), held=target if in_flight else float(rec.get('held') or 0.0), error=error)
-            self._save_totals()
         return target
 
 
