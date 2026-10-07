@@ -8,7 +8,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ai_test_support as support  # noqa: E402
@@ -376,6 +376,29 @@ class Eligibility(HistoryCase):
         late = history_context.build_history_evidence(self.db, result2, sid2, as_of=now() + timedelta(days=30))
         self.assertEqual(late.status, 'ok')                                                                  # as_of는 더 엄격하게만 작용한다(결과 시각보다 늦게 못 잡는다)
 
+    def test_existing_evidence_is_not_returned_for_an_as_of_that_judges_differently(self):
+        # 더 이른 평가 시점에서는 미래 자료가 되는데 이미 ok로 만든 근거를 조용히 돌려주면 안 된다
+        owner, repo, result_id, _ = self.review(['main.py'])
+        sid, _ = self.snapshot(repo, window_end=now() - timedelta(days=1))
+        ok = history_context.build_history_evidence(self.db, result_id, sid)
+        self.db.commit()
+        self.assertEqual(ok.status, 'ok')
+        with self.assertRaises(AIError) as ctx:
+            history_context.build_history_evidence(self.db, result_id, sid, as_of=now() - timedelta(days=3))
+        self.assertEqual((ctx.exception.code, ctx.exception.details['reason']), (ErrorCode.VERSION_CONFLICT, 'HISTORY_AS_OF_CONFLICT'))
+        self.assertEqual(self.evidence_count(), 1)                                                           # 새 행도 만들지 않는다
+        same = history_context.build_history_evidence(self.db, result_id, sid, as_of=now() - timedelta(hours=1))
+        self.assertEqual(same.id, ok.id)                                                                     # 같은 판정이면 기존 근거
+        # 반대로 이른 시점으로 excluded를 만든 뒤 풀리는 늦은 시점을 요청해도 다른 판정을 돌려주지 않는다
+        owner2, repo2, result2, _ = self.review(['main.py'])
+        sid2, _ = self.snapshot(repo2, window_end=now() - timedelta(days=1))
+        early = history_context.build_history_evidence(self.db, result2, sid2, as_of=now() - timedelta(days=3))
+        self.db.commit()
+        self.assertEqual((early.status, early.exclusion_reasons), ('excluded', ['future_data']))
+        with self.assertRaises(AIError) as ctx:
+            history_context.build_history_evidence(self.db, result2, sid2)
+        self.assertEqual(ctx.exception.code, ErrorCode.VERSION_CONFLICT)
+
     def test_multiple_reasons_are_all_reported_and_options_list_them(self):
         owner, repo, result_id, _ = self.review(['main.py'])
         bad, _ = self.snapshot(repo, hash_format='legacy-v1', formula='old', target_sha='x')
@@ -412,7 +435,7 @@ class Safety(HistoryCase):
         self.assertIsNone(history_context.attach_safely(self.db, uuid4(), sid))
 
 
-from test_ai_generation import Gen, USAGE  # noqa: E402  (생성 실행 테스트의 공용 대역)
+from test_ai_generation import Gen, USAGE, USER_KEY  # noqa: E402  (생성 실행 테스트의 공용 대역)
 
 
 class WithGeneration(Gen):
@@ -602,6 +625,62 @@ class Api(Gen):
         summary = self.client.post('/api/ai/v1/jobs', json={'kind': 'summary', 'consent': consent, 'history_snapshot_id': mine}, headers=self.headers('k3'))
         self.assertEqual(self.job_row(summary.json()['job_id'])['request_options'], {})                      # 설명 작업에는 이력 근거가 없다
         self.err(self.client.post('/api/ai/v1/jobs', json={'kind': 'review', 'consent': consent, 'history_snapshot_id': 0}, headers=self.headers('k4')), 422, 'INVALID_SELECTION')
+
+    def start_review(self, snapshot=None, key='r1'):
+        owner, repo = self.make_user(), self.make_repo()
+        _, _, input_id, _ = self.prepared(owner, repo, now=now(), pr_number=7)
+        C.ensure_credential(self.db, owner, key=USER_KEY)
+        self.login(owner)
+        consent = {'input_id': str(input_id), 'manifest_hash': self.input_row(input_id)['manifest_hash'].strip(), 'provider': 'anthropic', 'profile_id': C.OPUS,
+                   'credential_version': 1, 'policy_version': 'code-transfer-v1'}
+        self.consent = consent
+        return owner, repo, input_id, self.post_job(consent, snapshot, key)
+
+    def post_job(self, consent, snapshot, key):
+        body = {'kind': 'review', 'consent': consent}
+        if snapshot is not None:
+            body['history_snapshot_id'] = snapshot
+        return self.client.post('/api/ai/v1/jobs', json=body, headers=self.headers(key))
+
+    def test_reusing_a_finished_review_attaches_the_newly_requested_snapshot(self):
+        owner, repo = None, None
+        first = self.start_review()
+        owner, repo, input_id, r = first
+        self.assertEqual(r.status_code, 202, r.text)
+        job_id = r.json()['job_id']
+        w = SimpleNamespace(owner=owner, repo=repo, input_id=input_id, job=SimpleNamespace(id=UUID(job_id)), kind='review')
+        self.output = self.valid_output('review', w.job.id)
+        self.assertEqual(self.run_job(w), 'succeeded')
+        snap = self.snap(repo)
+        again = self.post_job(self.consent, snap, 'r2')                                                      # 같은 입력·설정: 새 작업 없이 재사용
+        self.assertEqual((again.status_code, again.json()['job_id']), (200, job_id), again.text)
+        rows = self.rows('SELECT snapshot_id, status FROM ai_evidence')
+        self.assertEqual([(x['snapshot_id'], x['status']) for x in rows], [(snap, 'ok')])                    # 지정한 snapshot이 무시되지 않았다
+        self.assertEqual(self.rows("SELECT count(*) AS n FROM ai_jobs WHERE kind = 'review'")[0]['n'], 1)
+        other = self.snap(repo, formula='old')
+        self.assertEqual(self.post_job(self.consent, other, 'r3').status_code, 200)
+        self.assertEqual(sorted(x['status'] for x in self.rows('SELECT status FROM ai_evidence')), ['excluded', 'ok'])
+        self.assertEqual(self.post_job(self.consent, snap, 'r4').status_code, 200)                           # 이미 있으면 중복 없음
+        self.assertEqual(self.rows('SELECT count(*) AS n FROM ai_evidence')[0]['n'], 2)
+        self.assertEqual(self.rows("SELECT count(*) AS n FROM audit_events WHERE action = 'history.attached'")[0]['n'], 2)
+
+    def test_reusing_an_in_progress_review_never_drops_a_different_snapshot_silently(self):
+        owner, repo, input_id, r = self.start_review()
+        self.assertEqual(r.status_code, 202)
+        job_id = r.json()['job_id']
+        snap = self.snap(repo)
+        conflict = self.post_job(self.consent, snap, 'p2')
+        self.err(conflict, 409, 'VERSION_CONFLICT')
+        self.assertEqual(conflict.json()['error']['details']['reason'], 'HISTORY_SNAPSHOT_DIFFERS')
+        self.assertEqual(self.post_job(self.consent, None, 'p3').json()['job_id'], job_id)                   # 근거를 요청하지 않으면 그대로 재사용
+        self.assertEqual(self.rows("SELECT count(*) AS n FROM ai_jobs WHERE kind = 'review'")[0]['n'], 1)
+
+    def test_attach_endpoint_reports_a_conflicting_as_of(self):
+        w, result_id = self.succeeded_review()
+        sid = self.snap(w.repo, window_end=now() - timedelta(days=1))
+        self.assertEqual(self.client.post(f'/api/ai/v1/results/{result_id}/history', json={'snapshot_id': sid}, headers=self.headers()).status_code, 201)
+        early = (now() - timedelta(days=3)).isoformat()
+        self.err(self.client.post(f'/api/ai/v1/results/{result_id}/history', json={'snapshot_id': sid, 'as_of': early}, headers=self.headers()), 409, 'VERSION_CONFLICT')
 
     def test_existing_idempotency_keys_stay_valid_when_the_option_is_absent(self):
         body = SimpleNamespace(model_dump=lambda mode: {'kind': 'review', 'consent': {'input_id': 'x', 'profile_fingerprint': None}, 'force_regenerate': False,
