@@ -68,7 +68,8 @@ def resolve_consent(db: Session, owner_id: UUID, consent: TransferConsent, *, no
     manifest = InputManifest(**row.manifest)
     read = [f for f in manifest.files if f.content_state.value == 'read']
     if not read:
-        raise AIError(ErrorCode.INVALID_STATE, 'AI에 보낼 수 있는 파일이 없습니다(NO_REVIEWABLE_CONTENT).')
+        raise AIError(ErrorCode.INVALID_STATE, 'AI에 보낼 수 있는 파일이 없습니다(NO_REVIEWABLE_CONTENT).',
+                      details={'reason': 'NO_REVIEWABLE_CONTENT'})
     payload_bytes = db.execute(text("SELECT coalesce(sum(byte_count), 0) FROM ai_input_files WHERE input_id = :i "
                                     "AND content_state = 'read'"), {'i': row.id}).scalar()
     estimate = input_builder.estimate_tokens(int(payload_bytes), manifest.pr_metadata or PRTransferMetadata(),

@@ -33,6 +33,10 @@ from fastapi.exceptions import RequestValidationError
 from app.api.ai.dependencies import ai_error_response, ai_validation_error_response
 from app.api.ai.inputs import router as ai_inputs_router
 from app.api.ai.credentials import router as ai_credentials_router
+from app.api.ai.jobs import router as ai_jobs_router
+from app.api.ai.results import router as ai_results_router
+from app.api.ai.feedback import router as ai_feedback_router
+from app.api.ai.usage import router as ai_usage_router
 from app.services.ai.access import AIError
 
 if get_ai_settings().enabled:
@@ -63,6 +67,10 @@ app.include_router(snapshots_router)
 app.include_router(auth_router.router)
 app.include_router(ai_inputs_router)   # AI 기능이 꺼져 있으면 모든 경로가 404를 돌려준다
 app.include_router(ai_credentials_router)
+app.include_router(ai_jobs_router)
+app.include_router(ai_results_router)
+app.include_router(ai_feedback_router)
+app.include_router(ai_usage_router)
 
 # ── 프론트엔드 정적 파일 서빙 (API 라우터 이후 마지막에 위치) ─────────────────
 app.mount("/", NoCacheStaticFiles(directory="frontend", html=True), name="frontend")
