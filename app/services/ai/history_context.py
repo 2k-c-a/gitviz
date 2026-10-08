@@ -63,7 +63,7 @@ def load_texts() -> dict[str, str]:
 
 
 def text_digest() -> str:
-    return hashlib.sha256(TEXT_FILE.read_bytes()).hexdigest()
+    return hashlib.sha256(TEXT_FILE.read_bytes().replace(b'\r\n', b'\n')).hexdigest()        # 체크아웃 줄바꿈 설정과 무관하게 같은 값
 
 
 TEXTS = load_texts()
@@ -167,13 +167,7 @@ def _path_evidence(path: str, entry: dict | None, payload: dict, by_path: dict, 
             'limitations': limits + ([TEXTS['NO_OBSERVATIONS']] if not (observed or metrics.get('evidence_status') in ('observed', 'low_support')) else [])}
 
 
-def _build_payload(db: Session, ctx, snapshot: AnalysisSnapshot, paths: list[str]) -> dict:
-    payload = snapshot.payload
-    manifest_files = ((ctx.manifest or {}).get('files') or [])
-    entries = {f['path']: f for f in manifest_files}
-    pr_paths = {f['path'] for f in manifest_files} | {f['old_path'] for f in manifest_files if f.get('old_path')}
-    by_path = {f['path']: f['id'] for f in payload['file_index']}
-    evidence_paths = [_path_evidence(p, entries.get(p), payload, by_path, pr_paths) for p in paths]
+def _data_quality(payload: dict) -> dict:
     q = payload['data_quality']
     quality = {k: q.get(k) for k in ('commit_count', 'unidentified_commits', 'contributor_count', 'github_account_unlinked', 'merged_pr_count', 'prs_with_files',
                                     'prs_detail_complete', 'prs_detail_partial', 'prs_detail_failed', 'prs_detail_unknown', 'low_support_threshold',
@@ -181,6 +175,28 @@ def _build_payload(db: Session, ctx, snapshot: AnalysisSnapshot, paths: list[str
     meta = payload['coupling'].get('meta') or {}
     quality.update({'co_change_unit': meta.get('co_change_unit'), 'co_change_fallback_reason': meta.get('fallback_reason'),
                     'pr_file_coverage': meta.get('pr_file_coverage'), 'co_change_total_units': meta.get('total_units')})
+    return quality
+
+
+def snapshot_paths_evidence(snapshot: AnalysisSnapshot, paths: list[str]) -> dict:
+    """검증을 통과한 snapshot에서 파일 묶음의 이력 통계를 옮긴다(PR 없이 쓰는 인수인계용). 검증은 호출하는 쪽이 snapshot_eligibility로 먼저 한다."""
+    payload = snapshot.payload
+    by_path = {f['path']: f['id'] for f in payload['file_index']}
+    return {'status': 'ok',
+            'basis': {'snapshot_id': snapshot.id, 'target_sha': snapshot.target_sha, 'formula_version': snapshot.formula_version,
+                      'window_start': snapshot.window_start.isoformat() if snapshot.window_start else None, 'window_end': snapshot.window_end.isoformat(),
+                      'analyzed_at': snapshot.analyzed_at.isoformat(), 'payload_sha256': snapshot.payload_sha256},
+            'paths': [_path_evidence(p, None, payload, by_path, set(paths)) for p in paths], 'quality': _data_quality(payload)}
+
+
+def _build_payload(db: Session, ctx, snapshot: AnalysisSnapshot, paths: list[str]) -> dict:
+    payload = snapshot.payload
+    manifest_files = ((ctx.manifest or {}).get('files') or [])
+    entries = {f['path']: f for f in manifest_files}
+    pr_paths = {f['path'] for f in manifest_files} | {f['old_path'] for f in manifest_files if f.get('old_path')}
+    by_path = {f['path']: f['id'] for f in payload['file_index']}
+    evidence_paths = [_path_evidence(p, entries.get(p), payload, by_path, pr_paths) for p in paths]
+    quality = _data_quality(payload)
     relation = 'same_as_pr_base' if snapshot.target_sha == ctx.base_sha else 'differs_from_pr_base'
     notes = [TEXTS['SEPARATE'], TEXTS['NOT_AN_ERROR'], TEXTS['BASIS_SAME'] if relation == 'same_as_pr_base' else TEXTS['BASIS_DIFFERS']]
     if not paths:

@@ -1,6 +1,6 @@
 # AI 인터페이스 계약 (S0)
 
-- 계약 버전: `1.6` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
+- 계약 버전: `1.7` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
 - 설계 근거: [요구사항 및 시스템 설계 v0.4](GitViz_AI_요구사항_및_시스템설계_v0.4.md), [구현 계획 v0.5](GitViz_AI_의존성기반_구현계획_v0.5.md) S0
 - 수집·백엔드·시각화는 모두 `app/schemas/ai.py`의 DTO를 기준으로 합니다. 이 문서와 코드가 다르면 코드가 우선이며 즉시 문서를 고칩니다.
 - 모든 DTO는 알 수 없는 필드를 거부합니다(`extra="forbid"`). 클라이언트가 `owner_user_id` 같은 값을 보내도 받지 않습니다.
@@ -126,6 +126,7 @@
 - 1.3(S8): 생성·작업·결과·지적·피드백·사용량 API DTO(`CreateJobRequest`, `RetryJobRequest`, `JobView`, `JobList`, `ResultView`, `FindingView`, `FindingList`, `FeedbackRequest`, `FeedbackView`, `UsageView`) 추가. 기존 필드·enum은 그대로다.
 - 1.4(S9): PR·파일 선택 조회 DTO(`PullSummary`, `PullList`, `PullFile`, `PullFilesView`)와 `UpdateCredentialRequest` 추가. 기존 필드·enum은 그대로다.
 - 1.5: OpenAI·Gemini BYOK, 같은 PC의 Ollama keyless 실행. 모델·transfer의 `requires_api_key`/`execution_location`, transfer의 `model_digest`/`profile_fingerprint`, 동의의 선택 `profile_fingerprint`(로컬 필수), 로컬의 null `credential_version`, 미리보기 `profile_id` 선택을 추가한다. 클라우드 key 버전 검사는 유지한다. 자세한 설정·비용·주소·복구 규칙은 [제공자 지원](AI_PROVIDER_SUPPORT.md)에 정의한다.
+- 1.7: 인수인계(S12). 인계 대상·준비 체크폼·초안 생성·편집 문서·Markdown 내보내기 API를 추가한다(17절). 기존 요청은 영향이 없다.
 - 1.6: GitViz 이력 근거(S11). 작업 생성의 선택 `history_snapshot_id`와 `/history/snapshots`, `/results/{id}/history` 조회·생성을 추가한다. 기존 요청과 멱등 key는 그대로 유효하다. 상세는 16절.
 - 이후 단계에서 임의로 enum/필드 의미를 바꾸지 않습니다. 변경은 `CONTRACT_VERSION`, 이 문서, `scripts/test_ai_contracts.py`를 같은 PR에서 고칩니다.
 - 기능별 출력 schema 버전(S6)과 API 응답 DTO(S5·S8)는 이 계약 위에 추가하며 위 정의를 재정의하지 않습니다.
@@ -309,3 +310,41 @@ GitHub 오류는 `ErrorEnvelope`로 매핑한다(404 `RESOURCE_NOT_FOUND`, 429 `
 - `evidence`: `basis`(snapshot·SHA·PR base/head 비교 `relation`), `paths`(파일별 관측 횟수·소유 분포·co-change 상위·한계), `data_quality`(미식별 분모·수집 품질), `notes`. co-change 파일은 `changed_in_pr`만 알려 주는 **검토 후보**이며 누락·오류로 단정하지 않는다. 신규·이름 변경·snapshot에 없는 파일은 각각 한계 문구와 함께 표시한다.
 - 문구는 `prompts/history_v1.txt`(버전 `history-v1`, 다이제스트 고정)의 고정 템플릿이며 모델 프롬프트가 아니다.
 - 운영 snapshot 검증은 출시 전 필수 확인으로 남는다. 인증 사용자로 접근하는 실제 GitViz 경로의 확인은 별도다.
+
+## 17. 인수인계 (S12)
+
+계획(§15)과 다른 점: **초안은 모델을 호출하지 않는다.** `POST /jobs kind=handover`와 `prompts/handover_v1.txt`를 모델 프롬프트로 만들지 않고, 서버가 저장된 자료(대상·준비 정보·AI 결과·피드백·분석 snapshot)를 고정 문구(`handover_v1.txt`, 버전 `handover-v1`, 다이제스트 고정)로 옮겨 적는다. 그래서 코드 전송·동의·비용이 없고, 미검증 AI 지적과 미확인 항목이 문장 생성 과정에서 확정 사실로 바뀔 수 없다. 모델이 쓰는 서술은 이후 단계에서 같은 저장 구조(원본/편집본 분리) 위에 추가할 수 있다.
+
+모든 경로는 `/api/ai/v1` 아래이고 작성자 본인의 자료만 다룬다(남의 것은 404). 저장소 접근 권한을 매번 다시 확인하며 응답은 `Cache-Control: private, no-store`다. 감사 기록(`handover.*`)에는 본문·메모를 넣지 않는다.
+
+| 경로 | 설명 |
+|---|---|
+| `POST/GET /handover-targets`, `GET/PATCH/DELETE /handover-targets/{id}` | 인계 대상(이름, 파일 1~50개, 선택 snapshot, 목적·인계자·인수자 메모). `PATCH`는 `expected_version`이 필요하다. 이름은 메모일 뿐 역할·권한을 주지 않는다. |
+| `GET/PUT /handover-targets/{id}/preparation`, `GET .../preparation/versions` | 준비 체크폼. 항목 6개(`assignee`, `description`, `run_method`, `verify_method`, `joint_review`, `receiver_run`) 상태 `unknown`/`needed`/`ready`. |
+| `POST/GET /handover-targets/{id}/generations`, `GET /handover-generations/{id}` | 초안(생성 원본) 만들기·조회. |
+| `GET /handover-targets/{id}/document`, `PUT /handover-documents/{id}`, `POST /handover-documents/{id}/adopt`, `GET /handover-documents/{id}/export?format=markdown` | 편집 문서 조회·저장·새 원본 채택·내보내기. |
+
+**준비 체크폼**
+- 미입력·누락·`null` 항목은 항상 `unknown`(미확인)이다. `needed`로 바꾸지 않는다. 요청은 전체 교체이며 보내지 않은 항목은 `unknown`이다. 매 저장은 새 버전을 추가하고(수정 불가), 항목마다 바뀐 버전·시각(`updated_version`, `updated_at`)을 남긴다.
+- `unknown` 항목에는 내용·링크를 둘 수 없다(422). `ready`는 완료 조건이 있어야 한다: `assignee`·`joint_review`·`receiver_run`은 내용, `description`·`run_method`·`verify_method`는 내용 또는 링크. `ready`의 표시 문구는 항상 "준비 완료 (작성자 기록)"이며 시스템이 내용이나 실행 성공을 검증했다는 뜻이 아니다.
+- 링크는 `http(s)`만 저장·표시하고 서버가 열거나 읽지 않는다.
+- `expected_version`(처음이면 0)이 다르면 409 `VERSION_CONFLICT`(`details.reason=PREPARATION_VERSION`, `current_version`). `confirmed_target_version`이 현재 대상 버전과 다르면 409(`TARGET_CHANGED`).
+- 대상의 파일 또는 snapshot이 바뀌면 `scope_version`이 올라가고, 그 전에 저장한 준비 정보는 보존되지만 `needs_reconfirm=true`가 된다(새 대상에 대한 확인으로 취급하지 않는다). 현재 대상 버전을 확인해 다시 저장하면 해제된다. 이름·메모만 바꾸면 재확인이 필요 없다.
+
+**초안과 편집본**
+- 생성 요청은 `expected_target_version`, `expected_preparation_version`과 선택 `summary_result_id`/`review_result_id`를 받는다. 결과는 같은 작성자·같은 저장소·만료 전·종류가 맞아야 한다. 다르면 409(`TARGET_CHANGED`/`PREPARATION_CHANGED`).
+- 생성 원본(`sources`)이 고정하는 기준: 대상·준비 정보 버전, 사용한 결과의 `payload_hash`와 입력·PR 기준(번호·base/head SHA·manifest hash), 리뷰 결과는 이 사용자의 피드백 기준(`feedback_digest`), snapshot은 id·상태·제외 사유. 같은 기준이면 기존 원본을 그대로 돌려주고(200, `reused`), `force=true`일 때만 새 원본(번호 증가)을 만든다. 원본은 수정할 수 없다.
+- 이 기준이 나중에 달라지면 원본·문서는 그대로 두고 `stale_reasons`(`target_changed`, `preparation_changed`, `feedback_changed`, `source_missing`)로 알린다.
+- 편집 문서(`handover_documents`)는 원본과 분리돼 `expected_version`으로만 바뀐다(409 `DOCUMENT_VERSION`). 새 원본이 생겨도 **편집한 문서는 덮어쓰지 않는다**(`newer_generation_*`로 알리고 `POST /adopt`로 사용자가 명시할 때만 바꾸며 이전 내용은 편집 이력에 남는다). 편집하지 않은 문서는 새 원본을 따라간다. 편집 이력은 문서마다 최근 100개를 둔다.
+- 대상 파일 밖의 AI 지적·변경 설명은 초안에 넣지 않고 제외한 건수를 적는다. 코드 원문·인용은 넣지 않는다.
+
+**확정 사실로 바꾸지 않는 규칙(초안 문구)**
+- 미검증 AI 지적은 "사람이 아직 검증하지 않은 지적"에, `valid`는 "사용자가 유효로 표시한 지적(사용자의 판단)"에, `false_positive`는 참고용으로만 표시한다. 미검증 지적은 질문과 체크리스트로만 나가고 결론이 되지 않는다.
+- 선택하지 않은 자료는 "확인되지 않음"으로 적는다("문제 없음"류 문구를 쓰지 않는다). 이력 수치는 검증을 통과한 snapshot의 저장값만 옮기며, 통과하지 못한 snapshot은 사유만 적고 수치를 싣지 않는다. 공동 변경은 검토 후보일 뿐 의존 관계가 아니다.
+
+**Markdown 안전**
+- 사용자·AI가 쓴 모든 문장은 이스케이프해 문서 구조(제목·링크·HTML·이미지)로 해석되지 않게 넣고, 링크·경로는 코드 span으로만 쓴다. 제어·방향 제어 문자는 입력 단계에서 거절한다.
+- 문서 저장과 내보내기 직전에 `validate_markdown`을 적용한다(코드 블록·코드 span·이스케이프를 렌더러와 같은 순서로 제외하고 검사): 원시 HTML, 이미지, `http`/`https`/`mailto`·같은 문서·상대 경로가 아닌 링크(문자 참조·`//` 포함), 제어·보이지 않는 문자, 4,000자 넘는 줄, 100,000자 넘는 문서를 거절한다(422 `INVALID_SELECTION`, `details.issues`). 내보내기에서 걸리면 422 `INVALID_STATE`다.
+- 내보내기는 `text/markdown; charset=utf-8`, `Content-Disposition: attachment`(파일 이름은 문서 id·버전으로만 만든다), `X-Content-Type-Options: nosniff`, `no-store`이며, 본문 뒤에 기준 정보와 "AI가 만든 내용과 미확인 항목은 확정 사실이 아니다" 주의 문구를 서버가 덧붙인다.
+
+한도: 대상 100개/사용자, 대상당 초안 50개·준비 정보 500버전, 대상 파일 50개.

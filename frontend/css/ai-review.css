@@ -131,3 +131,13 @@ textarea.ai-input { width: 100%; resize: vertical; }
 .ai-history ul { margin: 4px 0 0; padding-left: 18px; }
 .ai-history li { overflow-wrap: anywhere; }
 .ai-history .ai-hist-path { border-top: 1px solid var(--border, #d0d7de); padding-top: 8px; margin-top: 10px; }
+
+/* 인수인계(S12) */
+.ho-form { display: grid; gap: 8px; }
+.ho-form label { font-weight: 600; margin-top: 6px; }
+.ho-targets { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ho-items { display: grid; gap: 14px; margin: 12px 0; }
+.ho-item { display: grid; gap: 6px; border-top: 1px solid var(--border, #d0d7de); padding-top: 10px; }
+.ho-problem { color: var(--danger, #cf222e); min-height: 1em; }
+.ho-editor { width: 100%; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5; }
+@media (max-width: 480px) { .ho-form .ai-row { flex-direction: column; } }

@@ -79,7 +79,7 @@ class Backend(unittest.TestCase):
         for table in list(Base.metadata.tables.values())+[User.__table__]:
             actual={c['name'] for c in inspector.get_columns(table.name)}
             self.assertFalse(set(table.columns.keys())-actual,table.name)
-        self.assertEqual(self.db.execute(text('SELECT version_num FROM alembic_version')).scalar(),'d4f8b2c6e1a9')
+        self.assertEqual(self.db.execute(text('SELECT version_num FROM alembic_version')).scalar(),'e5a7c9d1f3b2')
 
     def test_priority_policy_with_actual_postgres_snapshot_scope(self):
         from app.services.analysis_snapshots import analysis_parameters, SnapshotInput
@@ -152,7 +152,7 @@ class Backend(unittest.TestCase):
                 self.assertEqual(connection.execute(text('SELECT github_login FROM users')).scalar(),'preserved-user')
                 self.assertIn('on_default_branch',{c['name'] for c in inspect(connection).get_columns('commits',schema=schema)})
                 self.assertIn('triggered_by_user_id',{c['name'] for c in inspect(connection).get_columns('analysis_jobs',schema=schema)})
-                self.assertEqual(connection.execute(text('SELECT version_num FROM alembic_version')).scalar(),'d4f8b2c6e1a9')
+                self.assertEqual(connection.execute(text('SELECT version_num FROM alembic_version')).scalar(),'e5a7c9d1f3b2')
             finally:
                 connection.rollback()
                 connection.execute(text('RESET search_path'))

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../css/index.css">
+    <link rel="stylesheet" href="../css/ai-review.css">
+    <title>GitViz · 인수인계</title>
+</head>
+<body>
+    <div id="navbar-container"></div>
+    <div id="modal-container"></div>
+    <!-- ═══════════ 인수인계 (인계 대상 → 준비 체크폼 → 초안 → 편집 → Markdown 내보내기) ═══════════
+         주소 ?repo=<id>&target=<uuid> 가 유일한 기준이다. 초안은 모델을 호출하지 않고 저장된 자료를 정리한다. -->
+    <div class="page active" id="page-handover">
+      <div class="dash-head">
+        <div>
+          <div class="dash-title" id="ho-title">인수인계</div>
+          <div class="dash-sub">인계할 파일 묶음의 준비 상태를 기록하고 문서 초안을 만들어 고쳐 씁니다. 입력하지 않은 항목은 미확인이며, AI의 설명·지적은 사람이 검증하기 전에는 확정 사실이 아닙니다.</div>
+        </div>
+      </div>
+      <div class="body ai-body">
+        <div id="ho-notice" aria-live="polite"></div>
+        <section id="ho-main"></section>
+      </div>
+    </div>
+</body>
+
+<script type="module" src="../js/main.js"></script>
+<script type="module" src="../js/ai-handover.js"></script>
+</html>
