@@ -135,6 +135,9 @@ def main(argv=None) -> int:
     c.add_argument('job_id')
     sub.add_parser('maintenance')
     args = ap.parse_args(argv)
+    # AI 설정 검사보다 먼저 프로젝트 .env를 읽는다. 셸에 지정한 값은 유지한다.
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / '.env')
     if args.cmd == 'check':
         results = check()
         for name, ok, detail in results:
