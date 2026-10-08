@@ -40,7 +40,9 @@ def escape_inline(text: str, *, limit: int = 500) -> str:
 def code_span(text: str, *, limit: int = 500) -> str:
     """링크·경로처럼 그대로 보여야 하는 값을 코드 span으로 감싼다(클릭되지 않고 해석되지 않는다)."""
     value = ' '.join(_clean(text).split())[:limit]
-    ticks = '`' * (max((len(m) for m in re.findall(r'`+', value)), default=0) + 1)
+    if '|' in value:                                                  # 표 셀 경계로 읽힐 수 있어 코드 span 대신 이스케이프한 글자(`|`는 문자 참조)로 쓴다
+        return '&#124;'.join(escape_inline(part, limit=limit) for part in value.split('|'))
+    ticks ='`' * (max((len(m) for m in re.findall(r'`+', value)), default=0) + 1)
     pad = ' ' if value.startswith('`') or value.endswith('`') else ''
     return f'{ticks}{pad}{value}{pad}{ticks}'
 
@@ -68,7 +70,9 @@ def _strip_code(markdown: str) -> str:
             m = _FENCE_CLOSE.match(line)
             if m and m.group('f')[0] == fence[0] and len(m.group('f')) >= len(fence):
                 fence = None
-    return '\n\n'.join(_inline_visible(par) for par in re.split(r'\n[ \t]*\n', '\n'.join(out)))
+    # 코드 span은 한 줄 안에서만 인정한다. 줄이 바뀌는 곳에서는 제목·HTML 블록·인용·목록 같은 새 블록이 시작될 수 있고 블록 구분이
+    # 인라인 해석보다 먼저라서, 여러 줄에 걸친 백틱을 코드로 보면 그 사이의 HTML을 놓친다(애매하면 검사한다).
+    return '\n'.join(_inline_visible(line) for line in out)
 
 
 def _inline_visible(text: str) -> str:
@@ -94,7 +98,7 @@ def _inline_visible(text: str) -> str:
                     close = end
                     break
                 pos = k + 1
-            if close == -1:
+            if close == -1 or '|' in text[j:close - len(run)]:       # 표 셀은 코드 span보다 먼저 `|`로 나뉘므로 `|`가 든 span은 코드로 보지 않는다
                 out.append(run)
                 i = j
             else:

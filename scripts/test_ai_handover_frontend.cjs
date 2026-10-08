@@ -115,6 +115,28 @@ test('미저장 편집: 다시 그릴 때 같은 버전이면 되살리고 문�
   assert.equal(HS.draftAction({ text: 'x', version: 1 }, null), 'none');
 });
 
+test('보관한 편집 내용: 저장하거나 버릴 때만 줄어들고 다시 그려도 유지된다', async () => {
+  const HS = await js('ai-handover-state.js');
+  let list = [];
+  list = HS.addLostDraft(list, '첫 번째 내용');                           // 미저장 입력 → 재생성 → 보관
+  assert.deepEqual(list, ['첫 번째 내용']);
+  // 화면을 다시 그리는 동안 목록은 그대로다(다시 재생성해도 사라지지 않는다): 같은 내용을 다시 보관해도 중복되지 않는다
+  assert.deepEqual(HS.addLostDraft(list, '첫 번째 내용'), ['첫 번째 내용']);
+  list = HS.addLostDraft(list, '두 번째 내용');                           // 이어서 또 생기면 둘 다 남는다
+  assert.deepEqual(list, ['첫 번째 내용', '두 번째 내용']);
+  assert.deepEqual(HS.addLostDraft(list, ''), list);                     // 빈 입력은 보관하지 않는다
+  assert.deepEqual(HS.removeLostDraft(list, '첫 번째 내용'), ['두 번째 내용']);   // 명시적으로 버릴 때만 줄어든다
+  assert.deepEqual(HS.removeLostDraft(list, '없는 내용'), list);
+  let many = [];
+  for (let i = 0; i < 8; i += 1) many = HS.addLostDraft(many, `내용 ${i}`);
+  assert.deepEqual(many, ['내용 3', '내용 4', '내용 5', '내용 6', '내용 7']);       // 최근 5개
+  assert.deepEqual(HS.addLostDraft(undefined, 'x'), ['x']);
+  const src = fs.readFileSync(path.join(root, 'ai-handover.js'), 'utf8');
+  assert.match(src, /renderLost\(\);\s*\/\/ 보관한 내용은 다시 그려도 사라지지 않는다/);   // 그릴 때마다 보관 목록을 다시 보여 준다
+  assert.ok(!/lostDrafts\.clear\(/.test(src));
+  assert.equal((src.match(/lostDrafts\.delete\(/g) || []).length, 2, '보관 목록을 지우는 곳은 명시적으로 버릴 때(removeLost)와 저장에 성공했을 때뿐이다');
+});
+
 test('초안에 쓸 결과: 성공한 같은 종류만 고른다', async () => {
   const HS = await js('ai-handover-state.js');
   const jobs = [{ kind: 'review', status: 'succeeded', result_id: U1, created_at: 'a' }, { kind: 'summary', status: 'succeeded', result_id: U2 },

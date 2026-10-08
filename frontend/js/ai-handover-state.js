@@ -165,3 +165,12 @@ export function draftAction(draft, doc) {
   if (!draft || !doc || draft.text === doc.markdown) return 'none';
   return doc.version === draft.version ? 'restore' : 'lost';
 }
+
+/* 저장하지 못한 편집 내용 목록: 사용자가 저장하거나 버릴 때만 줄어든다. 같은 내용은 한 번만 두고 최근 5개까지 보관한다. */
+export const MAX_LOST_DRAFTS = 5;
+export function addLostDraft(list, text) {
+  const base = Array.isArray(list) ? list : [];
+  if (!text || base.includes(text)) return base.slice();
+  return [...base, text].slice(-MAX_LOST_DRAFTS);
+}
+export const removeLostDraft = (list, text) => (Array.isArray(list) ? list : []).filter((t) => t !== text);
