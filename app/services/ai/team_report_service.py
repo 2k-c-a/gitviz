@@ -80,7 +80,13 @@ def _collect(db: Session, team_id: UUID, repository_ids: list[int]) -> tuple[lis
         if status != 'active':
             excluded.append({'share_id': str(r.id), 'type': r.resource_type, 'repository_id': r.repository_id, 'reason': status})
             continue
-        content = team_service.review_content(db, r.review_result_id, r.shared_by) if r.resource_type == 'review_result' else team_service.handover_content(db, r.handover_target_id)
+        if r.resource_type == 'review_result':
+            content = team_service.review_content(db, r.review_result_id, r.shared_by)
+        else:
+            content = team_service.handover_content(db, r.handover_target_id, r.pinned_target_version, r.pinned_preparation_version)   # 공유 당시 고정한 버전 그대로
+            if content is None:                                                               # 검사와 읽기 사이에 작성자가 바꿨다: 공유하지 않은 새 내용은 쓰지 않는다
+                excluded.append({'share_id': str(r.id), 'type': r.resource_type, 'repository_id': r.repository_id, 'reason': 'outdated'})
+                continue
         meta = {'share_id': str(r.id), 'type': r.resource_type, 'repository_id': r.repository_id, 'shared_by': str(r.shared_by), 'shared_by_login': r.github_login,
                 'created_at': r.created_at.isoformat()}
         if r.resource_type == 'review_result':
@@ -231,8 +237,18 @@ def list_reports(db: Session, user_id: UUID, team_id: UUID) -> list[dict]:
     return [report_item(r, visibility_current=r.visibility_epoch == team.visibility_epoch) for r in rows]
 
 
-def _block_reasons(db: Session, user_id: UUID, team, row) -> list[str]:
-    """이 보고서를 이 사람에게 보여 줄 수 없는 이유(없으면 빈 목록). 저장된 허가를 믿지 않고 지금 상태로 판단한다."""
+def _access_reasons(db: Session, user_id: UUID, row) -> list[str]:
+    """저장소 접근(외부 확인) 때문에 볼 수 없는 이유. 잠금 밖에서 한다."""
+    reasons = []
+    for repo_id in sorted({int(r) for r in row.repository_ids}):
+        reason = repo_access_reason(db, user_id, repo_id)
+        if reason:
+            reasons.append(reason)
+    return reasons
+
+
+def _block_reasons(db: Session, team, row) -> list[str]:
+    """DB 상태 때문에 볼 수 없는 이유(세대·저장소 연결·공유 존재와 유효성). 팀 행을 잡은 채 한 트랜잭션에서 판단한다."""
     reasons = []
     if row.visibility_epoch != team.visibility_epoch:
         reasons.append('visibility_changed')
@@ -248,11 +264,6 @@ def _block_reasons(db: Session, user_id: UUID, team, row) -> list[str]:
             reasons.append('share_outdated')
         elif src['type'] == 'handover_target' and (share.pinned_target_version, share.pinned_preparation_version) != (src['pinned_target_version'], src['pinned_preparation_version']):
             reasons.append('share_outdated')                                                  # 다시 공유되어 고정 버전이 바뀐 경우
-    db.rollback()                                                                             # 외부 확인 동안 트랜잭션을 열어 두지 않는다
-    for repo_id in sorted({int(r) for r in row.repository_ids}):
-        reason = repo_access_reason(db, user_id, repo_id)
-        if reason:
-            reasons.append(reason)
     return sorted(set(reasons))
 
 
@@ -266,17 +277,33 @@ def _stale(db: Session, row) -> list[str]:
     return []
 
 
+def _report_row(db: Session, team_id: UUID, report_id: UUID):
+    return db.execute(text('SELECT * FROM team_reports WHERE id = :r AND team_id = :t'), {'r': report_id, 't': team_id}).one_or_none()
+
+
 def get_report(db: Session, user_id: UUID, team_id: UUID, report_id: UUID) -> dict:
-    team, _ = require_role(db, user_id, team_id, 'view')
-    row = db.execute(text('SELECT * FROM team_reports WHERE id = :r AND team_id = :t'), {'r': report_id, 't': team_id}).one_or_none()
+    """보고서 조회. 저장소 접근 확인(외부 호출)을 잠금 밖에서 먼저 하고, 그 뒤 팀 행을 FOR SHARE로 잡은 채 구성원·세대·공유 상태를 다시 판단하고
+    같은 잠금 안에서 내용을 만든다. 외부 확인을 기다리는 동안 공유가 해제되거나 구성원이 빠져도 처음 읽은 정보로 내용을 주지 않는다."""
+    require_role(db, user_id, team_id, 'view')
+    row = _report_row(db, team_id, report_id)
     if row is None:
         db.rollback()
         raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '보고서를 찾을 수 없습니다.')
-    reasons = _block_reasons(db, user_id, team, row)
+    db.rollback()                                                                             # 외부 확인 동안 트랜잭션을 열어 두지 않는다
+    access_reasons = _access_reasons(db, user_id, row)
+    team, _ = require_role(db, user_id, team_id, 'view', lock='share')                        # 이후의 구성원·공유·세대 변경은 이 조회가 끝난 뒤에 처리된다
+    row = _report_row(db, team_id, report_id)
+    if row is None:
+        db.rollback()
+        raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '보고서를 찾을 수 없습니다.')
+    reasons = sorted(set(access_reasons) | set(_block_reasons(db, team, row)))
     if reasons:
+        db.rollback()
         raise AIError(ErrorCode.REPORT_BLOCKED, '이 보고서는 지금 볼 수 없습니다. ' + ' '.join(BLOCK_TEXT[r] for r in reasons),
                       details={'reasons': reasons})
-    return report_view(row, _stale(db, row))
+    view = report_view(row, _stale(db, row))
+    db.rollback()                                                                             # 읽기를 마치면 잠금을 푼다
+    return view
 
 
 def delete_report(db: Session, user_id: UUID, team_id: UUID, report_id: UUID, *, request_id: str = '-') -> None:

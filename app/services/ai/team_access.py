@@ -23,15 +23,18 @@ def _hide(db: Session) -> AIError:
     return AIError(ErrorCode.RESOURCE_NOT_FOUND, '팀을 찾을 수 없습니다.')
 
 
-def load_team(db: Session, team_id: UUID, *, lock: bool = False):
-    return db.execute(text('SELECT * FROM teams WHERE id = :t' + (' FOR UPDATE' if lock else '')), {'t': team_id}).one_or_none()
+def load_team(db: Session, team_id: UUID, *, lock: bool | str = False):
+    """lock=True는 FOR UPDATE(구성원·공유·세대를 바꾸는 쪽), lock='share'는 FOR SHARE(읽는 쪽)다. 읽는 쪽끼리는 서로 막지 않고,
+    바꾸는 쪽은 읽는 쪽이 끝나기를 기다리며 그 반대도 같다."""
+    clause = {True: ' FOR UPDATE', 'share': ' FOR SHARE'}.get(lock, '')
+    return db.execute(text('SELECT * FROM teams WHERE id = :t' + clause), {'t': team_id}).one_or_none()
 
 
 def active_member(db: Session, user_id: UUID, team_id: UUID):
     return db.execute(text("SELECT * FROM team_members WHERE team_id = :t AND user_id = :u AND status = 'active'"), {'t': team_id, 'u': user_id}).one_or_none()
 
 
-def require_role(db: Session, user_id: UUID, team_id: UUID, action: str, *, lock: bool = False):
+def require_role(db: Session, user_id: UUID, team_id: UUID, action: str, *, lock: bool | str = False):
     """(팀 행, 구성원 행). 팀을 잠그면(lock) 구성원·공유·세대 변경과 직렬화된다. 구성원이 아니면 404, 역할이 부족하면 403."""
     team = load_team(db, team_id, lock=lock)
     member = active_member(db, user_id, team_id) if team is not None else None
