@@ -26,6 +26,7 @@
 | 생성 실행(S7) | `scripts/test_ai_generation.py` | 40개 통과 |
 | 생성·결과·피드백 API(S8) | `scripts/test_ai_api.py` | 34개 통과 |
 | GitViz 이력 근거(S11) | `scripts/test_ai_history_context.py` | 36개 통과 |
+| 팀 권한·공유·보고서(S13) | `scripts/test_ai_teams.py`, `scripts/test_ai_team_frontend.cjs` | 34 + 7개 통과 |
 | 인수인계(S12) | `scripts/test_ai_handover.py`, `scripts/test_ai_handover_frontend.cjs` | 32 + 9개 통과 |
 | 키 관리·동의·작업 고정(BYOK) | `scripts/test_ai_credentials.py`, `test_ai_credential_api.py`, `test_ai_pulls_api.py` | 30 + 8 + 5개 통과 |
 | 작업 수명주기·입력 준비·큐(S4·S5) | `test_ai_job_lifecycle.py`, `test_ai_inputs.py`, `test_ai_input_api.py`, `test_ai_queue_integration.py` | 55 + 28 + 17 + 7개 통과 |

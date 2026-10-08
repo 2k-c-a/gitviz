@@ -773,6 +773,325 @@ def ho_export(did: str, request: Request):
                     headers={'Content-Disposition': f'attachment; filename="handover-{did[:8]}-v{d["version"]}.md"', 'Cache-Control': 'private, no-store'})
 
 
+# ── 팀(S13) 모의: 역할·구성원·공유·보고서 차단 규칙의 모양만 흉내 낸다 ──
+def tm():
+    return STATE.setdefault('tm', {'teams': {}, 'members': {}, 'repos': {}, 'shares': {}, 'reports': {}})
+
+
+def tm_role(tid):
+    m = next((x for x in tm()['members'].get(tid, []) if x['user_id'] == 'u1'), None)
+    return m
+
+
+def tm_team_view(tid):
+    t = tm()['teams'][tid]
+    me = tm_role(tid)
+    members = tm()['members'][tid]
+    return {'team_id': tid, 'name': t['name'], 'role': me['role'], 'status': me['status'], 'visibility_epoch': t['epoch'],
+            'member_count': len([m for m in members if m['status'] == 'active']) if me['status'] == 'active' else 0, 'created_at': t['created_at']}
+
+
+def tm_need(tid, minimum='viewer'):
+    me = tm_role(tid) if tid in tm()['teams'] else None
+    if me is None or me['status'] != 'active':
+        return None, err(404, 'RESOURCE_NOT_FOUND')
+    rank = {'viewer': 1, 'member': 2, 'admin': 3}
+    if rank[me['role']] < rank[minimum]:
+        return None, err(403, 'PERMISSION_DENIED', details={'required_role': minimum, 'role': me['role']})
+    return me, None
+
+
+@app.get('/mock/team_seed')
+def tm_seed(request: Request):
+    """팀 하나(내 역할은 role 쿼리, 기본 admin)와 받은 초대 하나를 만든다."""
+    role = request.query_params.get('role', 'admin')
+    tm().update(teams={}, members={}, repos={}, shares={}, reports={})
+    tid = str(uuid4())
+    tm()['teams'][tid] = {'name': '점검 팀', 'epoch': 1, 'created_at': now()}
+    tm()['members'][tid] = [{'user_id': 'u1', 'github_login': 'tester', 'display_name': None, 'role': role, 'status': 'active', 'created_at': now()},
+                            {'user_id': 'u2', 'github_login': 'bo', 'display_name': 'Bo', 'role': 'member', 'status': 'active', 'created_at': now()}]
+    tm()['repos'][tid] = [{'repository_id': 1, 'name': 'widgets', 'url': 'https://github.com/acme/widgets', 'created_at': now()}]
+    inv = str(uuid4())
+    tm()['teams'][inv] = {'name': '초대받은 팀', 'epoch': 1, 'created_at': now()}
+    tm()['members'][inv] = [{'user_id': 'u1', 'github_login': 'tester', 'display_name': None, 'role': 'viewer', 'status': 'invited', 'created_at': now()}]
+    tm()['repos'][inv] = []
+    return {'team': tid, 'invited': inv}
+
+
+@app.get('/api/ai/v1/teams')
+def tm_list(request: Request):
+    if (e := guard(request)):
+        return e
+    return ok({'teams': [tm_team_view(t) for t in tm()['teams'] if tm_role(t)]})
+
+
+@app.post('/api/ai/v1/teams')
+async def tm_create(request: Request):
+    if (e := guard(request, True)):
+        return e
+    b = await request.json()
+    tid = str(uuid4())
+    tm()['teams'][tid] = {'name': b['name'], 'epoch': 1, 'created_at': now()}
+    tm()['members'][tid] = [{'user_id': 'u1', 'github_login': 'tester', 'display_name': None, 'role': 'admin', 'status': 'active', 'created_at': now()}]
+    tm()['repos'][tid] = []
+    return ok(tm_team_view(tid), 201)
+
+
+@app.get('/api/ai/v1/teams/{tid}')
+def tm_get(tid: str, request: Request):
+    if (e := guard(request)):
+        return e
+    _, bad = tm_need(tid)
+    return bad or ok(tm_team_view(tid))
+
+
+@app.patch('/api/ai/v1/teams/{tid}')
+async def tm_rename(tid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    _, bad = tm_need(tid, 'admin')
+    if bad:
+        return bad
+    tm()['teams'][tid]['name'] = (await request.json())['name']
+    return ok(tm_team_view(tid))
+
+
+@app.delete('/api/ai/v1/teams/{tid}')
+def tm_delete(tid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    _, bad = tm_need(tid, 'admin')
+    if bad:
+        return bad
+    tm()['teams'].pop(tid)
+    return ok({'team_id': tid, 'status': 'deleted'})
+
+
+@app.get('/api/ai/v1/teams/{tid}/members')
+def tm_members(tid: str, request: Request):
+    if (e := guard(request)):
+        return e
+    me, bad = tm_need(tid)
+    if bad:
+        return bad
+    return ok({'members': [m for m in tm()['members'][tid] if m['status'] == 'active' or me['role'] == 'admin']})
+
+
+@app.post('/api/ai/v1/teams/{tid}/members')
+async def tm_invite(tid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    _, bad = tm_need(tid, 'admin')
+    if bad:
+        return bad
+    b = await request.json()
+    if b['github_login'] == 'nobody':
+        return err(404, 'RESOURCE_NOT_FOUND')
+    m = {'user_id': 'u-' + b['github_login'], 'github_login': b['github_login'], 'display_name': None, 'role': b['role'], 'status': 'invited', 'created_at': now()}
+    tm()['members'][tid].append(m)
+    return ok(m, 201)
+
+
+@app.patch('/api/ai/v1/teams/{tid}/members/{uid}')
+async def tm_role_patch(tid: str, uid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    _, bad = tm_need(tid, 'admin')
+    if bad:
+        return bad
+    role = (await request.json())['role']
+    m = next(x for x in tm()['members'][tid] if x['user_id'] == uid)
+    if m['role'] == 'admin' and role != 'admin' and len([x for x in tm()['members'][tid] if x['role'] == 'admin' and x['status'] == 'active']) <= 1:
+        return err(409, 'VERSION_CONFLICT', details={'reason': 'LAST_ADMIN'})
+    m['role'] = role
+    if role == 'viewer':
+        tm()['shares'][tid] = [s for s in tm()['shares'].get(tid, []) if s['shared_by'] != uid]
+    tm()['teams'][tid]['epoch'] += 1
+    return ok(m)
+
+
+@app.delete('/api/ai/v1/teams/{tid}/members/{uid}')
+def tm_remove(tid: str, uid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    if uid != 'u1':
+        _, bad = tm_need(tid, 'admin')
+        if bad:
+            return bad
+    members = tm()['members'].get(tid, [])
+    m = next((x for x in members if x['user_id'] == uid), None)
+    if not m:
+        return err(404, 'RESOURCE_NOT_FOUND')
+    if m['role'] == 'admin' and m['status'] == 'active' and len([x for x in members if x['role'] == 'admin' and x['status'] == 'active']) <= 1:
+        return err(409, 'VERSION_CONFLICT', details={'reason': 'LAST_ADMIN'})
+    members.remove(m)
+    tm()['shares'][tid] = [s for s in tm()['shares'].get(tid, []) if s['shared_by'] != uid]
+    tm()['teams'][tid]['epoch'] += 1
+    return ok({'team_id': tid, 'user_id': uid, 'status': 'removed'})
+
+
+@app.post('/api/ai/v1/teams/{tid}/invitation/accept')
+def tm_accept(tid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    m = tm_role(tid) if tid in tm()['teams'] else None
+    if not m or m['status'] != 'invited':
+        return err(404, 'RESOURCE_NOT_FOUND')
+    m['status'] = 'active'
+    return ok(tm_team_view(tid))
+
+
+@app.get('/api/ai/v1/teams/{tid}/repositories')
+def tm_repos(tid: str, request: Request):
+    if (e := guard(request)):
+        return e
+    _, bad = tm_need(tid)
+    return bad or ok({'repositories': tm()['repos'][tid]})
+
+
+@app.post('/api/ai/v1/teams/{tid}/repositories')
+async def tm_repo_add(tid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    _, bad = tm_need(tid, 'admin')
+    if bad:
+        return bad
+    rid = (await request.json())['repository_id']
+    r = {'repository_id': rid, 'name': 'repo-%d' % rid, 'url': None, 'created_at': now()}
+    tm()['repos'][tid].append(r)
+    return ok(r, 201)
+
+
+@app.delete('/api/ai/v1/teams/{tid}/repositories/{rid}')
+def tm_repo_del(tid: str, rid: int, request: Request):
+    if (e := guard(request, True)):
+        return e
+    _, bad = tm_need(tid, 'admin')
+    if bad:
+        return bad
+    tm()['repos'][tid] = [r for r in tm()['repos'][tid] if r['repository_id'] != rid]
+    tm()['shares'][tid] = [s for s in tm()['shares'].get(tid, []) if s['repository_id'] != rid]
+    tm()['teams'][tid]['epoch'] += 1
+    return ok({'team_id': tid, 'repository_id': rid, 'status': 'removed'})
+
+
+@app.get('/api/ai/v1/teams/{tid}/shares')
+def tm_shares(tid: str, request: Request):
+    if (e := guard(request)):
+        return e
+    _, bad = tm_need(tid)
+    return bad or ok({'shares': tm()['shares'].setdefault(tid, [])})
+
+
+@app.post('/api/ai/v1/teams/{tid}/shares')
+async def tm_share_add(tid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    _, bad = tm_need(tid, 'member')
+    if bad:
+        return bad
+    b = await request.json()
+    s = {'share_id': str(uuid4()), 'team_id': tid, 'repository_id': 1, 'resource_type': b['resource_type'], 'resource_id': b['resource_id'], 'shared_by': 'u1',
+         'shared_by_login': 'tester', 'status': 'active', 'created_at': now()}
+    tm()['shares'].setdefault(tid, []).append(s)
+    return ok(s, 201)
+
+
+@app.delete('/api/ai/v1/teams/{tid}/shares/{sid}')
+def tm_share_del(tid: str, sid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    me, bad = tm_need(tid)
+    if bad:
+        return bad
+    s = next((x for x in tm()['shares'].get(tid, []) if x['share_id'] == sid), None)
+    if not s:
+        return err(404, 'RESOURCE_NOT_FOUND')
+    if s['shared_by'] != 'u1' and me['role'] != 'admin':
+        return err(403, 'PERMISSION_DENIED', details={'role': me['role']})
+    tm()['shares'][tid].remove(s)
+    tm()['teams'][tid]['epoch'] += 1
+    return ok({'share_id': sid, 'status': 'unshared'})
+
+
+@app.get('/api/ai/v1/teams/{tid}/shares/{sid}/content')
+def tm_share_content(tid: str, sid: str, request: Request):
+    if (e := guard(request)):
+        return e
+    _, bad = tm_need(tid)
+    if bad:
+        return bad
+    s = next((x for x in tm()['shares'].get(tid, []) if x['share_id'] == sid), None)
+    if not s:
+        return err(404, 'RESOURCE_NOT_FOUND')
+    if FLAGS.get('share_outdated'):
+        return err(422, 'INVALID_STATE', details={'reason': 'share_outdated'})
+    content = ({'findings': [{'ordinal': 1, 'title': XSS if FLAGS.get('xss') else 'SQL 문자열 결합', 'category': 'security', 'verdict': 'valid', 'condition': '사용자 입력이 쿼리에 결합됨',
+                              'impact': '주입 가능', 'location': {'path': 'main.py', 'start_line': 2}}], 'history': [], 'note': '판정은 작성자의 판단입니다.'}
+               if s['resource_type'] == 'review_result' else
+               {'name': '로그인 인계', 'selected_paths': ['a.py'], 'items': [{'key': 'assignee', 'label': '인수 담당자', 'status': 'ready', 'status_label': '준비 완료 (작성자 기록)'}], 'note': '작성자가 기록한 상태입니다.'})
+    return ok({'share_id': sid, 'resource_type': s['resource_type'], 'repository_id': s['repository_id'], 'content': content})
+
+
+@app.get('/api/ai/v1/teams/{tid}/reports')
+def tm_reports(tid: str, request: Request):
+    if (e := guard(request)):
+        return e
+    _, bad = tm_need(tid)
+    if bad:
+        return bad
+    epoch = tm()['teams'][tid]['epoch']
+    return ok({'reports': [{**{k: r[k] for k in ('report_id', 'team_id', 'repository_ids', 'created_by', 'visibility_epoch', 'created_at')}, 'visibility_current': r['visibility_epoch'] == epoch}
+                           for r in tm()['reports'].get(tid, [])]})
+
+
+@app.post('/api/ai/v1/teams/{tid}/reports')
+async def tm_report_add(tid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    _, bad = tm_need(tid, 'member')
+    if bad:
+        return bad
+    b = await request.json()
+    r = {'report_id': str(uuid4()), 'team_id': tid, 'repository_ids': b['repository_ids'], 'created_by': 'u1', 'visibility_epoch': tm()['teams'][tid]['epoch'],
+         'template_version': 'team-report-v1', 'source_manifest': {}, 'created_at': now(), 'stale_reasons': [],
+         'payload': {'totals': {'valid': 1, 'unverified': 2, 'uncertain': 0, 'false_positive': 1}},
+         'markdown': '# 팀 점검 보고서\n\n- 문제 집계는 사람이 유효로 판정한 지적만 셉니다.\n'}
+    tm()['reports'].setdefault(tid, []).append(r)
+    return ok(r, 201)
+
+
+@app.get('/api/ai/v1/teams/{tid}/reports/{rid}')
+def tm_report_get(tid: str, rid: str, request: Request):
+    if (e := guard(request)):
+        return e
+    _, bad = tm_need(tid)
+    if bad:
+        return bad
+    r = next((x for x in tm()['reports'].get(tid, []) if x['report_id'] == rid), None)
+    if not r:
+        return err(404, 'RESOURCE_NOT_FOUND')
+    reasons = []
+    if r['visibility_epoch'] != tm()['teams'][tid]['epoch']:
+        reasons.append('visibility_changed')
+    if FLAGS.get('repo_lost'):
+        reasons.append('repository_access_lost')
+    if reasons:
+        return err(403, 'REPORT_BLOCKED', details={'reasons': reasons})
+    return ok({**r, 'stale_reasons': ['feedback_changed'] if FLAGS.get('report_stale') else []})
+
+
+@app.delete('/api/ai/v1/teams/{tid}/reports/{rid}')
+def tm_report_del(tid: str, rid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    _, bad = tm_need(tid, 'member')
+    if bad:
+        return bad
+    tm()['reports'][tid] = [r for r in tm()['reports'].get(tid, []) if r['report_id'] != rid]
+    return ok({'report_id': rid, 'status': 'deleted'})
+
+
 app.mount('/', StaticFiles(directory=str(ROOT / 'frontend'), html=True), name='frontend')
 
 if __name__ == '__main__':

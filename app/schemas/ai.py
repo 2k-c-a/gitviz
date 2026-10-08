@@ -22,7 +22,7 @@ from pydantic import (
     model_validator,
 )
 
-CONTRACT_VERSION = "1.7"
+CONTRACT_VERSION = "1.8"
 
 _SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -182,6 +182,8 @@ class ErrorCode(str, Enum):
     UPSTREAM_RATE_LIMIT = "UPSTREAM_RATE_LIMIT"
     ACCESS_CHECK_UNAVAILABLE = "ACCESS_CHECK_UNAVAILABLE"
     UPSTREAM_UNAVAILABLE = "UPSTREAM_UNAVAILABLE"
+    PERMISSION_DENIED = "PERMISSION_DENIED"
+    REPORT_BLOCKED = "REPORT_BLOCKED"
 
 
 ERROR_HTTP_STATUS: dict[ErrorCode, int] = {
@@ -201,6 +203,8 @@ ERROR_HTTP_STATUS: dict[ErrorCode, int] = {
     ErrorCode.CREDENTIAL_INVALID: 422,
     ErrorCode.INVALID_SELECTION: 422,
     ErrorCode.INVALID_STATE: 422,
+    ErrorCode.PERMISSION_DENIED: 403,
+    ErrorCode.REPORT_BLOCKED: 403,
     ErrorCode.USER_LIMIT: 429,
     ErrorCode.BUDGET_LIMIT: 429,
     ErrorCode.UPSTREAM_RATE_LIMIT: 429,
