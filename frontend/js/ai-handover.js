@@ -23,7 +23,7 @@ function removeLost(text) {
 window.addEventListener('beforeunload', (ev) => {
   const box = document.querySelector('.ho-editor');
   const doc = ctx?.data?.doc;
-  if ((box && doc && box.value !== doc.markdown) || lostFor().length) { ev.preventDefault(); ev.returnValue = ''; }
+  if ((box && doc && box.value !== doc.markdown) || HS.hasAnyLost(lostDrafts)) { ev.preventDefault(); ev.returnValue = ''; }
 });
 
 /* ───────────────────────── DOM 도우미 ───────────────────────── */
@@ -94,6 +94,8 @@ function navigate(next, { replace = false } = {}) {
 window.addEventListener('popstate', () => { load(); });
 
 async function load() {
+  const leaving = pendingDraft();                         // 화면을 바꾸기 전에(주소를 읽기 전) 쓰던 문서 입력을 그 대상의 보관 목록에 둔다
+  if (leaving) addLost(leaving.text);
   const token = guard.begin();
   route = HS.parseRoute(location.search);
   ctx = { token, repo: route.repo };
@@ -218,11 +220,33 @@ function restoreDraft(draft) {
 
 async function refresh() {
   const token = ctx.token;
-  const draft = pendingDraft();
-  try { ctx.data = await fetchTarget(token); } catch (e) { if (e?.name !== 'AbortError' && token.current()) showError(e); return; }
+  let data;
+  try { data = await fetchTarget(token); } catch (e) { if (e?.name !== 'AbortError' && token.current()) showError(e); return; }
   if (!token.current()) return;
+  // 요청을 기다리는 동안에도 입력할 수 있으므로, 입력은 응답을 받은 뒤 화면을 바꾸기 직전(await 없이)에 확보한다.
+  const draft = pendingDraft();
+  const prepDraft = ctx.prepState ? { version: ctx.data.prep.version, items: JSON.parse(JSON.stringify(ctx.prepState)) } : null;
+  ctx.data = data;
   drawTarget();
   restoreDraft(draft);
+  restorePrepDraft(prepDraft);
+}
+
+function restorePrepDraft(draft) {
+  const action = HS.prepDraftAction(draft, ctx.data.prep);
+  if (action === 'none') return;
+  if (action === 'replaced') {
+    notice('warn', '저장하지 않은 준비 정보 입력을 최신 내용으로 바꿨습니다', '준비 정보가 다른 곳에서 바뀌어 최신 내용을 불러왔습니다. 입력하던 내용이 필요하면 다시 입력해 주세요.');
+    return;
+  }
+  for (const key of HS.ITEM_KEYS) {                       // 같은 버전: 입력하던 내용을 되살린다
+    const row = document.querySelector(`.ho-item[data-item="${key}"]`);
+    const it = draft.items[key];
+    if (!row || !it) continue;
+    const [status, text, url] = [row.querySelector('select'), row.querySelector('textarea'), row.querySelector('input')];
+    status.value = it.status || 'unknown'; text.value = it.text || ''; url.value = it.link || '';
+    status.dispatchEvent(new Event('input', { bubbles: true }));
+  }
 }
 
 function renderLost() {
@@ -269,6 +293,7 @@ function targetCard() {
 function preparationCard() {
   const { prep, target } = ctx.data;
   const state = HS.itemsFromView(prep);
+  ctx.prepState = state;
   const rows = HS.ITEM_KEYS.map((key) => {
     const status = h('select', { class: 'ai-input', 'aria-label': `${HS.ITEM_LABEL[key]} 상태` }, HS.STATUS_OPTIONS.map(([v, t]) => h('option', { value: v, text: t })));
     const text = h('textarea', { class: 'ai-input', rows: 2, maxlength: 2000, 'aria-label': `${HS.ITEM_LABEL[key]} 내용`, placeholder: '내용(2000자까지)' });
