@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -118,6 +118,7 @@ async def github_callback(
 
     # ⑤ 세션 기록 → 프론트로 이동
     request.session["user_id"] = str(user.id)
+    request.session.pop("csrf_token", None)  # 로그인 시 CSRF 토큰 재발급
     return RedirectResponse(
         url=f"{FRONTEND_URL}/",
         status_code=status.HTTP_302_FOUND,
@@ -150,6 +151,14 @@ async def get_me(request: Request, db: AsyncSession = Depends(get_db)):
         )
 
     return user
+
+
+@router.get("/csrf", summary="CSRF 토큰 발급")
+async def get_csrf_token(request: Request):
+    """AI 등 변경 요청이 X-CSRF-Token 헤더로 보낼 세션 바인딩 토큰."""
+    from app.api.ai.dependencies import issue_csrf_token
+
+    return JSONResponse({"token": issue_csrf_token(request)}, headers={"Cache-Control": "private, no-store"})
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT, summary="로그아웃")

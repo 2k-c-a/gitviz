@@ -1,0 +1,5 @@
+{
+  "src/new_mod.py": {"change_type": "added", "old_path": null, "left": [], "right": [1, 2, 3], "right_to_left": {}},
+  "src/old_mod.py": {"change_type": "deleted", "old_path": null, "left": [1, 2], "right": [], "right_to_left": {}},
+  "src/b.py": {"change_type": "renamed", "old_path": "src/a.py", "left": [1, 2, 3, 4], "right": [1, 2, 3, 4, 5], "right_to_left": {"1": 1, "4": 3, "5": 4}}
+}

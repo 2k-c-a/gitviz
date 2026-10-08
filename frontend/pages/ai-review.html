@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../css/index.css">
+    <link rel="stylesheet" href="../css/ai-review.css">
+    <title>GitViz · AI 리뷰</title>
+</head>
+<body>
+    <div id="navbar-container"></div>
+    <div id="modal-container"></div>
+    <!-- ═══════════ AI 리뷰 (키·모델 → PR → 파일 → 미리보기·동의 → 실행 → 결과·피드백) ═══════════
+         주소 ?repo=<id>&pr=<번호>&input=<uuid>&job=<uuid> 가 유일한 기준이다(저장된 값·기본 저장소 없음). -->
+    <div class="page active" id="page-ai">
+      <div class="dash-head">
+        <div>
+          <div class="dash-title" id="ai-title">AI 리뷰</div>
+          <div class="dash-sub">선택한 PR 코드를 외부 AI 또는 같은 PC의 로컬 모델로 분석합니다. 외부 AI에는 본인의 API key를 사용합니다. 결과는 사람이 검증하기 전까지 참고 자료입니다.</div>
+        </div>
+      </div>
+      <div class="body ai-body">
+        <ol class="ai-steps" id="ai-steps" aria-label="진행 단계"></ol>
+        <div id="ai-notice" aria-live="polite"></div>
+        <section id="ai-scope"></section>
+        <section id="ai-keys"></section>
+        <section id="ai-main"></section>
+      </div>
+    </div>
+</body>
+
+<script type="module" src="../js/main.js"></script>
+<script type="module" src="../js/ai-review.js"></script>
+</html>

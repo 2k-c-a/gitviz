@@ -37,3 +37,65 @@ jobs:
       - run: python scripts/test_repository_snapshots.py
       - run: python scripts/test_lightweight_score.py
       - run: node scripts/test_metric_display.cjs
+      - run: python scripts/test_ai_contracts.py
+      - run: python scripts/test_ai_security.py
+      - run: python scripts/test_ai_schema.py
+      - run: python scripts/test_ai_pr_collection.py
+      - run: python scripts/test_ai_job_lifecycle.py
+      - run: python scripts/test_ai_inputs.py
+      - run: python scripts/test_ai_input_api.py
+      - run: python scripts/test_ai_provider.py
+      - run: python scripts/test_ai_multi_provider.py
+      - run: python scripts/test_ai_multi_provider_api.py
+      - run: python scripts/test_ai_credentials.py
+      - run: python scripts/test_ai_credential_api.py
+      - run: python scripts/test_ai_generation.py
+      - run: python scripts/test_ai_api.py
+      - run: python scripts/test_ai_pulls_api.py
+      - run: python scripts/test_ai_history_context.py
+      - run: python scripts/test_ai_handover.py
+      - run: python scripts/test_ai_teams.py
+      - run: python scripts/test_ai_ops.py
+      - run: python scripts/test_ai_evaluation.py
+      - run: python scripts/test_ai_smoke.py
+      - run: node scripts/test_ai_frontend.cjs
+      - run: node scripts/test_ai_handover_frontend.cjs
+      - run: node scripts/test_ai_team_frontend.cjs
+      - run: python scripts/test_ai_output_validation.py
+      - run: python scripts/test_ai_output_limits.py
+  ai-queue:
+    # 실제 PostgreSQL·Redis와 별도 Celery worker 프로세스로 outbox → 큐 → worker 경로를 검증한다.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: gitviz_test
+          POSTGRES_PASSWORD: validation
+          POSTGRES_DB: gitviz_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gitviz_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      GITVIZ_TEST_DATABASE_URL: postgresql://gitviz_test:validation@localhost:5432/gitviz_test
+      GITVIZ_TEST_REDIS_URL: redis://localhost:6379/0
+      DATABASE_URL: postgresql://gitviz_test:validation@localhost:5432/gitviz_test
+      SESSION_SECRET_KEY: ci-test-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python scripts/test_ai_queue_integration.py
+      # 실제 PostgreSQL·Redis + app 서버·dispatcher·worker·가짜 제공자 프로세스 + HTTP(실제 제공자·GitHub 없음)
+      - run: python scripts/verify_ai_mvp_integration.py

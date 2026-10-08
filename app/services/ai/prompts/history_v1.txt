@@ -1,0 +1,15 @@
+# 이력 근거(history-v1) 문구. 모델에 보내는 프롬프트가 아니다: 이력 근거는 저장된 분석 snapshot에서 결정적으로 만들며 외부로 전송하지 않는다.
+# 형식: KEY: 문구 (한 줄). 내용을 바꾸면 새 버전 파일(history_v2.txt)을 만들고 HISTORY_TEXT_VERSION·digest를 함께 바꾼다.
+CANDIDATE: 이력상 이 파일과 함께 바뀐 적이 있는 파일(확인 후보)입니다.
+NOT_AN_ERROR: 이 PR에서 함께 수정되지 않았다는 사실만으로 누락이나 오류라고 판단하지 않습니다. 사람이 확인할 후보입니다.
+BASIS_DIFFERS: 분석 snapshot의 기준 SHA가 이 PR의 base SHA와 다릅니다. 이력은 snapshot 기준 시점의 것이며 PR 시점과 다를 수 있습니다.
+BASIS_SAME: 분석 snapshot의 기준 SHA가 이 PR의 base SHA와 같습니다.
+LOW_SUPPORT: 관측 수가 기준(변경 5건) 미만이라 표본이 부족합니다. 통계적 신뢰수준이 아니라 표시 정책입니다.
+UNIDENTIFIED: 작성자를 식별하지 못한 커밋이 있어 기여자 분포의 분모에 미식별 비율이 포함됩니다.
+NEW_FILE: 이 PR에서 새로 만든 파일이라 분석 snapshot에 이력이 없습니다. 이력이 없다는 것이 문제가 있다는 뜻은 아닙니다.
+NOT_IN_SNAPSHOT: 분석 snapshot의 파일 목록에 없는 경로입니다(삭제됐거나 snapshot 이후에 생긴 파일일 수 있습니다).
+NO_OBSERVATIONS: snapshot에는 있지만 관측 기간에 변경이 관측되지 않았습니다.
+RENAMED: 이름이 바뀐 파일이라 이전 경로의 이력을 보여 줍니다.
+NO_FINDINGS: 이 결과에는 코드 지적이 없어 이력 근거를 붙일 파일이 없습니다. 지적이 없다는 것은 문제가 없다는 뜻이 아닙니다.
+EXCLUDED: 검증하지 못한 분석 snapshot이라 이력 근거로 쓰지 않았습니다.
+SEPARATE: 이력 근거는 AI 코드 지적과 별개이며 분석 snapshot에 저장된 값을 그대로 옮긴 것입니다. AI가 만든 값이 아니고 실시간으로 다시 계산하지 않습니다.
