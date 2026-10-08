@@ -137,6 +137,30 @@ test('보관한 편집 내용: 저장하거나 버릴 때만 줄어들고 다시
   assert.equal((src.match(/lostDrafts\.delete\(/g) || []).length, 2, '보관 목록을 지우는 곳은 명시적으로 버릴 때(removeLost)와 저장에 성공했을 때뿐이다');
 });
 
+test('보관 내용 경고는 모든 대상 기준이고, 준비 체크폼 입력도 다시 그릴 때 지켜진다', async () => {
+  const HS = await js('ai-handover-state.js');
+  assert.equal(HS.hasAnyLost(new Map()), false);
+  assert.equal(HS.hasAnyLost(new Map([['t1', []]])), false);
+  assert.equal(HS.hasAnyLost(new Map([['t1', ['내용']], ['t2', []]])), true);              // 현재 대상이 아니어도(목록 화면에서도) 경고한다
+  assert.equal(HS.hasAnyLost(undefined), false);
+  const prep = { version: 2, items: [{ key: 'assignee', status: 'ready', text: '이인수', link: null }] };
+  const same = { version: 2, items: { assignee: { status: 'ready', text: '이인수', link: '' } } };
+  assert.equal(HS.prepDraftAction(same, prep), 'none');                                        // 서버 내용과 같으면 되살릴 것이 없다
+  const edited = { version: 2, items: { assignee: { status: 'ready', text: '박인수', link: '' } } };
+  assert.equal(HS.prepDraftAction(edited, prep), 'restore');                                   // 같은 버전: 입력하던 내용을 되살린다
+  assert.equal(HS.prepDraftAction({ ...edited, version: 1 }, prep), 'replaced');               // 다른 곳에서 바뀜: 최신으로 바뀌었다고 알린다
+  assert.equal(HS.prepDraftAction({ version: 1, items: { assignee: { status: 'ready', text: '이인수' } } }, prep), 'none');   // 방금 저장한 내용
+  assert.equal(HS.prepDraftAction(null, prep), 'none');
+  const src = fs.readFileSync(path.join(root, 'ai-handover.js'), 'utf8');
+  const body = src.slice(src.indexOf('async function refresh()'), src.indexOf('function restorePrepDraft'));
+  assert.ok(body.indexOf('pendingDraft()') > body.indexOf('await fetchTarget('), '입력은 응답을 받은 뒤 화면을 바꾸기 직전에 확보한다(대기 중 입력 보존)');
+  const between = body.slice(body.indexOf('pendingDraft()'), body.indexOf('drawTarget()'));
+  assert.ok(!between.includes('await'), '확보와 화면 교체 사이에는 비동기 대기가 없어야 한다');
+  const loadStart = src.indexOf('async function load()');
+  const load = src.slice(loadStart, src.indexOf('route = HS.parseRoute', loadStart));
+  assert.ok(load.includes('pendingDraft()') && load.includes('addLost('), '화면을 떠나기 전에 쓰던 내용을 보관한다');
+});
+
 test('초안에 쓸 결과: 성공한 같은 종류만 고른다', async () => {
   const HS = await js('ai-handover-state.js');
   const jobs = [{ kind: 'review', status: 'succeeded', result_id: U1, created_at: 'a' }, { kind: 'summary', status: 'succeeded', result_id: U2 },

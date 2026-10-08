@@ -174,3 +174,17 @@ export function addLostDraft(list, text) {
   return [...base, text].slice(-MAX_LOST_DRAFTS);
 }
 export const removeLostDraft = (list, text) => (Array.isArray(list) ? list : []).filter((t) => t !== text);
+
+/* 준비 체크폼 입력도 같은 원칙: 다시 그릴 때 저장하지 않은 입력은 'restore'(같은 버전이라 되살림), 서버 내용과 같으면 'none',
+   준비 정보가 바뀌었다면 'replaced'(최신 내용으로 바뀌었음을 알린다). */
+export function prepDraftAction(draft, prep) {
+  if (!draft || !prep) return 'none';
+  const server = itemsFromView(prep);
+  const same = ITEM_KEYS.every((k) => (draft.items[k]?.status || 'unknown') === server[k].status
+    && (draft.items[k]?.text || '').trim() === (server[k].text || '').trim() && (draft.items[k]?.link || '').trim() === (server[k].link || '').trim());
+  if (same) return 'none';
+  return draft.version === prep.version ? 'restore' : 'replaced';
+}
+
+/* 보관 내용이 하나라도 있는지(모든 대상 기준): 목록 화면으로 옮겨 가도 종료 경고가 꺼지지 않게 한다. */
+export const hasAnyLost = (lostMap) => [...(lostMap?.values?.() || [])].some((list) => Array.isArray(list) && list.length > 0);
