@@ -85,7 +85,7 @@ class ShareView(_Strict):
     resource_id: UUID
     shared_by: UUID
     shared_by_login: str | None = None
-    status: Literal["active", "outdated", "expired"]
+    status: Literal["active", "outdated", "expired", "source_deleted"]
     created_at: datetime
 
 
