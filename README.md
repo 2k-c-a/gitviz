@@ -60,6 +60,8 @@ GitHub API/OAuth 실제 로그인 및 수집의 완전성을 검증하는 테스
 
 사용자가 자신의 AI API key(BYOK)를 등록하고, 선택한 PR 파일의 변경 코드를 동의 하에 제공자로 보내 변경 설명과 코드 리뷰를 받는다. 서버 공용 제공자 key는 없다. 결과는 모델이 만든 참고 자료이며 사람이 검증하기 전이다.
 
+AI 기능은 S13(팀 권한·공유·보고서)까지 구현됐다. **S14(GitHub App·자동 리뷰)와 S15(GitHub PR 댓글 게시)는 추후 계획으로 보류**한다. 상세 범위와 착수 조건은 [AI 구현 계획](docs/GitViz_AI_의존성기반_구현계획_v0.5.md)의 진행 범위 갱신 및 S14·S15 절에 있다.
+
 ```powershell
 # .env: AI_ENABLED=1, AI_INPUT_ENCRYPTION_KEYS, AI_CREDENTIAL_ENCRYPTION_KEYS(서로 다른 값), AI_ALLOW_EXTERNAL_TRANSFER=1 …
 python scripts/ai_ops.py check                       # 설정·migration·Redis 점검
