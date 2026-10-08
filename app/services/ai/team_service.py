@@ -367,11 +367,19 @@ def review_content(db: Session, result_id: UUID, owner_id: UUID) -> dict:
             'note': '지적은 AI가 만든 것이며 판정(verdict)은 작성자의 판단입니다. GitViz가 확인한 것이 아닙니다.'}
 
 
-def handover_content(db: Session, target_id: UUID) -> dict:
-    """공유된 인계 대상: 대상 이름·파일과 항목별 준비 상태만(메모·링크·문서 본문·인계자/인수자 메모는 제외)."""
+def handover_content(db: Session, target_id: UUID, pinned_target_version: int, pinned_preparation_version: int) -> dict | None:
+    """공유된 인계 대상: 대상 이름·파일과 항목별 준비 상태만(메모·링크·문서 본문·인계자/인수자 메모는 제외).
+
+    공유 당시 고정한 버전의 내용을 그대로 읽는다(최신 값을 읽지 않는다): 대상은 버전이 맞을 때만 한 번의 조회로 읽고, 준비 정보 버전 행은
+    추가만 되므로 고정 버전을 직접 읽는다. 검사와 읽기 사이에 작성자가 바꿔도 공유하지 않은 새 내용은 섞이지 않는다.
+    고정 버전의 대상이 더는 없으면(그 사이 바뀜) None이다."""
     from app.services.ai import handover_draft
-    t = db.execute(text('SELECT name, selected_paths, snapshot_id, version FROM handover_targets WHERE id = :t'), {'t': target_id}).one()
-    prep = db.execute(text('SELECT version, items FROM handover_preparation_versions WHERE target_id = :t ORDER BY version DESC LIMIT 1'), {'t': target_id}).one_or_none()
+    t = db.execute(text('SELECT name, selected_paths, snapshot_id, version FROM handover_targets WHERE id = :t AND version = :v'),
+                   {'t': target_id, 'v': pinned_target_version}).one_or_none()
+    if t is None:
+        return None
+    prep = db.execute(text('SELECT version, items FROM handover_preparation_versions WHERE target_id = :t AND version = :v'),
+                      {'t': target_id, 'v': pinned_preparation_version}).one_or_none() if pinned_preparation_version else None
     items = []
     for key in handover_draft.ITEM_KEYS:
         status = ((prep.items or {}).get(key) or {}).get('status', 'unknown') if prep else 'unknown'
@@ -380,17 +388,34 @@ def handover_content(db: Session, target_id: UUID) -> dict:
             'note': '"준비 완료"는 작성자가 기록한 상태이며 GitViz가 확인한 것이 아닙니다. 입력하지 않은 항목은 미확인입니다.'}
 
 
+def _share_row(db: Session, team_id: UUID, share_id: UUID):
+    return db.execute(text('SELECT * FROM team_resource_shares WHERE id = :s AND team_id = :t'), {'s': share_id, 't': team_id}).one_or_none()
+
+
 def share_content(db: Session, user_id: UUID, team_id: UUID, share_id: UUID) -> dict:
-    """공유 자료의 내용. 팀 구성원이면서 이 저장소에 지금 접근할 수 있고 공유가 유효할 때만 준다."""
+    """공유 자료의 내용. 팀 구성원이면서 이 저장소에 지금 접근할 수 있고 공유가 유효할 때만 준다.
+
+    저장소 접근 확인(외부 호출)은 잠금 밖에서 하고, 그 뒤에 팀 행을 FOR SHARE로 잡은 채 구성원·공유 존재·유효성을 다시 확인하고 같은 잠금 안에서
+    내용을 읽는다. 외부 확인을 기다리는 동안 공유가 해제되거나 구성원이 빠졌다면 처음 읽은 정보를 쓰지 않고 거절한다."""
     require_role(db, user_id, team_id, 'view')
-    row = db.execute(text('SELECT * FROM team_resource_shares WHERE id = :s AND team_id = :t'), {'s': share_id, 't': team_id}).one_or_none()
+    row = _share_row(db, team_id, share_id)
     if row is None:
         db.rollback()
         raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '공유를 찾을 수 없습니다.')
     db.rollback()                                                                             # 외부 확인 동안 트랜잭션을 열어 두지 않는다
     check_repo_access(db, user_id, row.repository_id)
+    require_role(db, user_id, team_id, 'view', lock='share')                                  # 구성원 여부를 잠금 안에서 다시 확인한다
+    row = _share_row(db, team_id, share_id)
+    if row is None:                                                                           # 확인하는 사이 공유가 해제됐다
+        db.rollback()
+        raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '공유를 찾을 수 없습니다.')
     status = share_status(db, row)
     if status != 'active':
+        db.rollback()
         raise AIError(ErrorCode.INVALID_STATE, '공유한 뒤 원본이 바뀌었거나 보관 기간이 지나 내용을 볼 수 없습니다. 작성자가 다시 공유해야 합니다.', details={'reason': f'share_{status}'})
-    content = review_content(db, row.review_result_id, row.shared_by) if row.resource_type == 'review_result' else handover_content(db, row.handover_target_id)
+    content = (review_content(db, row.review_result_id, row.shared_by) if row.resource_type == 'review_result'
+               else handover_content(db, row.handover_target_id, row.pinned_target_version, row.pinned_preparation_version))
+    db.rollback()                                                                             # 읽기를 마치면 잠금을 푼다
+    if content is None:
+        raise AIError(ErrorCode.INVALID_STATE, '공유한 뒤 원본이 바뀌어 내용을 볼 수 없습니다. 작성자가 다시 공유해야 합니다.', details={'reason': 'share_outdated'})
     return {'share_id': row.id, 'resource_type': row.resource_type, 'repository_id': row.repository_id, 'content': content}

@@ -627,6 +627,162 @@ class Reports(TeamCase):
                 self.assertNotIn(forbidden, value, key)
 
 
+class RaceWindows(TeamCase):
+    """외부(저장소 접근) 확인과 내용 읽기 사이에 다른 요청이 권한·공유·준비 정보를 바꾸는 경우. 처음 읽은 정보로 내용을 주지 않는다."""
+
+    def during_access_check(self, action):
+        """저장소 접근 확인(외부 호출 대역)이 끝난 직후, 별도 세션에서 action을 실행한다."""
+        real = team_access.authorize_ai
+        state = {'done': False}
+
+        def check_then_change(db, user_id, repo_id, act, policy):
+            result = real(db, user_id, repo_id, act, policy)
+            if not state['done']:
+                state['done'] = True
+                with S.Session() as other:
+                    action(other)
+            return result
+        return patch.object(team_access, 'authorize_ai', side_effect=check_then_change)
+
+    def test_a_share_removed_while_the_access_check_is_pending_returns_no_content(self):
+        tid = self.standard()
+        share = self.share(self.bo, tid, self.review(self.bo, self.repo))
+        with self.during_access_check(lambda db: svc.delete_share(db, self.bo, tid, share['share_id'])):
+            exc = self.code(svc.share_content, self.db, self.cy, tid, share['share_id'])
+        self.assertEqual(exc.code, ErrorCode.RESOURCE_NOT_FOUND)                                              # 처음 읽은 공유 정보를 쓰지 않는다
+
+    def test_a_member_removed_while_the_access_check_is_pending_gets_nothing(self):
+        tid = self.standard()
+        share = self.share(self.bo, tid, self.review(self.bo, self.repo))
+        report = reports.generate(self.db, self.ann, tid, ReportCreate(repository_ids=[self.repo]))
+        with self.during_access_check(lambda db: svc.remove_member(db, self.ann, tid, self.cy)):
+            self.assertEqual(self.code(svc.share_content, self.db, self.cy, tid, share['share_id']).code, ErrorCode.RESOURCE_NOT_FOUND)
+        self.assertEqual(self.code(reports.get_report, self.db, self.cy, tid, report['report_id']).code, ErrorCode.RESOURCE_NOT_FOUND)   # 이미 구성원이 아니다
+
+    def test_a_member_removed_during_the_report_check_gets_nothing(self):
+        tid = self.standard()
+        self.share(self.bo, tid, self.review(self.bo, self.repo))
+        report = reports.generate(self.db, self.ann, tid, ReportCreate(repository_ids=[self.repo]))
+        eve = self.person('eve')
+        self.join(tid, self.ann, eve, 'eve', 'viewer')
+        report = reports.generate(self.db, self.ann, tid, ReportCreate(repository_ids=[self.repo]))             # eve가 합류한 뒤의 보고서
+        with self.during_access_check(lambda db: svc.remove_member(db, self.ann, tid, eve)):
+            exc = self.code(reports.get_report, self.db, eve, tid, report['report_id'])
+        self.assertEqual(exc.code, ErrorCode.RESOURCE_NOT_FOUND)
+
+    def test_a_share_removed_while_the_report_access_check_is_pending_blocks_the_report(self):
+        tid = self.standard()
+        share = self.share(self.bo, tid, self.review(self.bo, self.repo))
+        report = reports.generate(self.db, self.ann, tid, ReportCreate(repository_ids=[self.repo]))
+        with self.during_access_check(lambda db: svc.delete_share(db, self.bo, tid, share['share_id'])):
+            exc = self.code(reports.get_report, self.db, self.cy, tid, report['report_id'])
+        self.assertEqual(exc.code, ErrorCode.REPORT_BLOCKED)
+        self.assertTrue({'share_removed', 'visibility_changed'} <= set(exc.details['reasons']))
+        self.assertNotIn('markdown', json.dumps(exc.details))
+
+    def test_the_pinned_preparation_version_is_what_is_returned_even_if_the_owner_edits_in_between(self):
+        tid = self.standard()
+        target = handover_service.create_target(self.db, self.bo, HandoverTargetCreate(repository_id=self.repo, name='고정 이름', selected_paths=['a.py']))
+        hid = target['target_id']
+        share = self.share(self.bo, tid, hid, 'handover_target')                                              # 고정: 대상 버전 1, 준비 정보 버전 0
+        real_status = svc.share_status
+
+        def status_then_edit(db, row):
+            result = real_status(db, row)
+            if not getattr(status_then_edit, 'done', False):
+                status_then_edit.done = True
+                with S.Session() as other:                                                                    # 유효성 검사 직후 작성자가 준비 정보를 바꿨다
+                    handover_service.put_preparation(other, self.bo, hid, HandoverPreparationPut(expected_version=0, confirmed_target_version=1,
+                                                                                                  items={'assignee': HandoverItemIn(status='ready', text='공유하지 않은 새 내용')}))
+            return result
+        with patch.object(svc, 'share_status', side_effect=status_then_edit):
+            content = svc.share_content(self.db, self.ann, tid, share['share_id'])['content']
+        by = {i['key']: i['status'] for i in content['items']}
+        self.assertEqual((by['assignee'], content['preparation_version'], content['target_version']), ('unknown', 0, 1))   # 고정한 버전 그대로(새 ready는 섞이지 않는다)
+        self.assertNotIn('공유하지 않은', json.dumps(content, ensure_ascii=False))
+        self.assertEqual(svc.list_shares(self.db, self.ann, tid)[0]['status'], 'outdated')                    # 이제 다시 공유해야 한다
+
+    def test_a_report_never_mixes_a_newer_preparation_state_with_the_pinned_manifest(self):
+        tid = self.standard()
+        target = handover_service.create_target(self.db, self.bo, HandoverTargetCreate(repository_id=self.repo, name='보고 대상', selected_paths=['a.py']))
+        hid = target['target_id']
+        self.share(self.bo, tid, hid, 'handover_target')
+        real_status = svc.share_status
+
+        def status_then_edit(db, row):
+            result = real_status(db, row)
+            if not getattr(status_then_edit, 'done', False):
+                status_then_edit.done = True
+                with S.Session() as other:
+                    handover_service.put_preparation(other, self.bo, hid, HandoverPreparationPut(expected_version=0, confirmed_target_version=1,
+                                                                                                  items={'assignee': HandoverItemIn(status='ready', text='새 내용')}))
+            return result
+        with patch.object(svc, 'share_status', side_effect=status_then_edit):
+            report = reports.generate(self.db, self.ann, tid, ReportCreate(repository_ids=[self.repo]))
+        pinned = next(s for s in report['source_manifest']['shares'] if s['type'] == 'handover_target')
+        self.assertEqual((pinned['pinned_target_version'], pinned['pinned_preparation_version']), (1, 0))
+        handover = report['payload']['repositories'][0]['handovers'][0]
+        self.assertEqual((handover['ready'], handover['unknown']), (0, 6))                                      # manifest의 고정 버전 0과 같은 내용(새 ready=1이 아니다)
+        self.assertEqual(report['payload']['excluded_shares'], [])
+        self.assertIn('share_outdated', self.blocked(self.cy, tid, report['report_id']))                       # 작성자가 바꿨으므로 열 때는 차단된다
+
+    def test_a_target_changed_between_the_validity_check_and_the_read_is_excluded_not_mixed(self):
+        tid = self.standard()
+        target = handover_service.create_target(self.db, self.bo, HandoverTargetCreate(repository_id=self.repo, name='원래 이름', selected_paths=['a.py']))
+        hid = target['target_id']
+        self.share(self.bo, tid, hid, 'handover_target')
+        real_status = svc.share_status
+
+        def status_then_rename(db, row):
+            result = real_status(db, row)
+            if not getattr(status_then_rename, 'done', False):
+                status_then_rename.done = True
+                with S.Session() as other:
+                    handover_service.patch_target(other, self.bo, hid, HandoverTargetPatch(expected_version=1, name='공유하지 않은 새 이름'))
+            return result
+        with patch.object(svc, 'share_status', side_effect=status_then_rename):
+            report = reports.generate(self.db, self.ann, tid, ReportCreate(repository_ids=[self.repo]))
+        self.assertEqual(report['payload']['totals'].get('handovers', 0), 0)
+        self.assertEqual([e['reason'] for e in report['payload']['excluded_shares']], ['outdated'])
+        self.assertNotIn('공유하지 않은 새 이름', json.dumps(report, ensure_ascii=False, default=str))
+
+    def test_report_reads_are_serialized_with_unsharing(self):
+        tid = self.standard()
+        share = self.share(self.bo, tid, self.review(self.bo, self.repo))
+        report = reports.generate(self.db, self.ann, tid, ReportCreate(repository_ids=[self.repo]))
+        entered, release = threading.Event(), threading.Event()
+        real_stale = reports._stale
+        order, out = [], {}
+
+        def slow_stale(db, row):
+            entered.set()
+            self.assertTrue(release.wait(15))
+            return real_stale(db, row)
+
+        def read():
+            with S.Session() as db, patch.object(reports, '_stale', side_effect=slow_stale):
+                out['view'] = reports.get_report(db, self.cy, tid, report['report_id'])
+            order.append('read')
+
+        def unshare():
+            with S.Session() as db:
+                svc.delete_share(db, self.bo, tid, share['share_id'])
+            order.append('unshared')
+        t1 = threading.Thread(target=read)
+        t1.start()
+        self.assertTrue(entered.wait(15))                                                                        # 조회가 팀 행을 잡은 상태
+        t2 = threading.Thread(target=unshare)
+        t2.start()
+        t2.join(1.5)
+        self.assertTrue(t2.is_alive())                                                                           # 공유 해제는 조회가 끝날 때까지 기다린다
+        release.set()
+        t1.join(20)
+        t2.join(20)
+        self.assertEqual(order, ['read', 'unshared'])
+        self.assertEqual(out['view']['report_id'], report['report_id'])                                          # 조회는 해제 전 상태로 일관되게 끝났다
+        self.assertIn('share_removed', self.blocked(self.cy, tid, report['report_id']))                          # 해제 뒤에는 차단된다
+
+
 class PersonalCachesStaySeparate(TeamCase):
     def test_team_sharing_does_not_change_personal_jobs_results_or_reuse(self):
         tid = self.standard()
