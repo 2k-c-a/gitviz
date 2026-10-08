@@ -25,7 +25,8 @@
 | 운영 도구·기한 삭제 | `scripts/test_ai_ops.py` | 7개 통과 |
 | 생성 실행(S7) | `scripts/test_ai_generation.py` | 40개 통과 |
 | 생성·결과·피드백 API(S8) | `scripts/test_ai_api.py` | 34개 통과 |
-| GitViz 이력 근거(S11) | `scripts/test_ai_history_context.py` | 29개 통과 |
+| GitViz 이력 근거(S11) | `scripts/test_ai_history_context.py` | 36개 통과 |
+| 인수인계(S12) | `scripts/test_ai_handover.py`, `scripts/test_ai_handover_frontend.cjs` | 32 + 9개 통과 |
 | 키 관리·동의·작업 고정(BYOK) | `scripts/test_ai_credentials.py`, `test_ai_credential_api.py`, `test_ai_pulls_api.py` | 30 + 8 + 5개 통과 |
 | 작업 수명주기·입력 준비·큐(S4·S5) | `test_ai_job_lifecycle.py`, `test_ai_inputs.py`, `test_ai_input_api.py`, `test_ai_queue_integration.py` | 55 + 28 + 17 + 7개 통과 |
 | 계약·보안·스키마·수집·제공자·출력 검증 | `test_ai_contracts/security/schema/pr_collection/provider/output_validation.py` | 28 + 32 + 27 + 43 + 38 + 24개 통과 |

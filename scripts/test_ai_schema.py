@@ -27,11 +27,12 @@ from app.core.database import Base  # noqa: E402
 import app.models  # noqa: E402,F401
 from app.models import AIInput, AIJob, PRRevision  # noqa: E402
 
-HEAD = 'd4f8b2c6e1a9'
+HEAD = 'e5a7c9d1f3b2'
 PREVIOUS = 'a1b2c3d4e5f6'
 AI_TABLES = ['pr_revisions', 'ai_inputs', 'ai_input_files', 'ai_jobs', 'ai_attempts', 'ai_results', 'ai_findings',
              'finding_feedback', 'request_idempotency', 'task_outbox', 'usage_budgets', 'usage_reservations',
-             'audit_events', 'ai_credentials', 'ai_credential_versions', 'ai_evidence']
+             'audit_events', 'ai_credentials', 'ai_credential_versions', 'ai_evidence',
+             'handover_targets', 'handover_preparation_versions', 'handover_generations', 'handover_documents', 'handover_document_versions']
 H = lambda c: c * 64  # noqa: E731
 SHA = 'a' * 40
 CONFIG = Config(str(support.ROOT / 'alembic.ini'))

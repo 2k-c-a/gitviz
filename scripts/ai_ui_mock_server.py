@@ -533,6 +533,246 @@ async def feedback(fid: str, request: Request):
     return err(404, 'RESOURCE_NOT_FOUND')
 
 
+# ── 인수인계(S12) 모의: 실제 서버의 버전 충돌·미확인 기본값·편집본 보존 규칙만 흉내 낸다 ──
+HO_KEYS = ['assignee', 'description', 'run_method', 'verify_method', 'joint_review', 'receiver_run']
+HO_LABEL = {'assignee': '인수 담당자', 'description': '기능 설명', 'run_method': '실행 방법', 'verify_method': '수정 후 확인 절차', 'joint_review': '공동 검토', 'receiver_run': '인수자 실행 확인'}
+HO_STATUS = {'unknown': '미확인', 'needed': '준비 필요', 'ready': '준비 완료 (작성자 기록)'}
+
+
+def ho():
+    return STATE.setdefault('ho', {'targets': {}, 'preps': {}, 'gens': {}, 'docs': {}})
+
+
+def ho_target_view(t):
+    prep = ho()['preps'].get(t['target_id'], [])
+    last = prep[-1] if prep else None
+    return {**t, 'preparation_version': len(prep), 'needs_reconfirm': bool(last and last['target_version'] < t['scope_version']),
+            'has_document': t['target_id'] in ho()['docs']}
+
+
+def ho_prep_view(t):
+    prep = ho()['preps'].get(t['target_id'], [])
+    last = prep[-1] if prep else None
+    items = []
+    for k in HO_KEYS:
+        it = (last['items'].get(k) if last else None) or {'status': 'unknown', 'text': None, 'link': None, 'updated_version': None, 'updated_at': None}
+        items.append({'key': k, 'label': HO_LABEL[k], 'status': it['status'], 'status_label': HO_STATUS[it['status']], 'text': it['text'], 'link': it['link'],
+                      'updated_version': it['updated_version'], 'updated_at': it['updated_at']})
+    return {'target_id': t['target_id'], 'version': len(prep), 'target_version': last['target_version'] if last else None,
+            'needs_reconfirm': bool(last and last['target_version'] < t['scope_version']), 'items': items, 'created_at': last['created_at'] if last else None}
+
+
+def ho_doc_view(t):
+    d = ho()['docs'].get(t['target_id'])
+    if not d:
+        return None
+    gens = ho()['gens'].get(t['target_id'], [])
+    base = next(g for g in gens if g['generation_id'] == d['base_generation_id'])
+    newest = gens[-1]
+    stale = [r for r in FLAGS.get('ho_stale', '').split(',') if r]
+    return {'document_id': d['document_id'], 'target_id': t['target_id'], 'version': d['version'], 'edited': d['edited'], 'markdown': d['markdown'],
+            'base_generation_id': base['generation_id'], 'base_generation_number': base['number'], 'stale_reasons': stale,
+            'newer_generation_id': newest['generation_id'] if newest['number'] > base['number'] else None,
+            'newer_generation_number': newest['number'] if newest['number'] > base['number'] else None, 'updated_at': d['updated_at']}
+
+
+def ho_markdown(t, number):
+    prep = ho_prep_view(t)
+    lines = [f"# 인수인계 초안: {t['name']}", '', '- AI가 만든 설명과 코드 리뷰 지적은 사람이 검증하기 전에는 확정 사실이 아닙니다.', '', '## 6. 준비 상태 (사용자 입력)', '']
+    lines += [f"- **{i['label']}** — {i['status_label']}" for i in prep['items']]
+    lines += ['', f'원본 #{number}']
+    return '\n'.join(lines) + '\n'
+
+
+def ho_find(tid):
+    return ho()['targets'].get(tid)
+
+
+@app.get('/api/ai/v1/handover-targets')
+def ho_list(request: Request, repository_id: int = 0):
+    if (e := guard(request)):
+        return e
+    return ok({'targets': [ho_target_view(t) for t in ho()['targets'].values() if t['repository_id'] == repository_id]})
+
+
+@app.post('/api/ai/v1/handover-targets')
+async def ho_create(request: Request):
+    if (e := guard(request, True)):
+        return e
+    b = await request.json()
+    tid = str(uuid4())
+    t = {'target_id': tid, 'repository_id': b['repository_id'], 'name': b['name'], 'purpose': b.get('purpose'), 'giver_name': b.get('giver_name'),
+         'receiver_name': b.get('receiver_name'), 'selected_paths': b['selected_paths'], 'snapshot_id': b.get('snapshot_id'), 'version': 1, 'scope_version': 1,
+         'created_at': now(), 'updated_at': now()}
+    ho()['targets'][tid] = t
+    return ok(ho_target_view(t), 201)
+
+
+@app.get('/api/ai/v1/handover-targets/{tid}')
+def ho_get(tid: str, request: Request):
+    if (e := guard(request)):
+        return e
+    t = ho_find(tid)
+    return ok(ho_target_view(t)) if t else err(404, 'RESOURCE_NOT_FOUND')
+
+
+@app.patch('/api/ai/v1/handover-targets/{tid}')
+async def ho_patch(tid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    t = ho_find(tid)
+    if not t:
+        return err(404, 'RESOURCE_NOT_FOUND')
+    b = await request.json()
+    if b['expected_version'] != t['version']:
+        return err(409, 'VERSION_CONFLICT', details={'reason': 'TARGET_VERSION', 'current_version': t['version']})
+    scope = False
+    for k in ('name', 'purpose', 'giver_name', 'receiver_name'):
+        if b.get(k) is not None:
+            t[k] = b[k] or None
+    if b.get('selected_paths') is not None and b['selected_paths'] != t['selected_paths']:
+        t['selected_paths'], scope = b['selected_paths'], True
+    if b.get('clear_snapshot') and t['snapshot_id'] is not None:
+        t['snapshot_id'], scope = None, True
+    elif b.get('snapshot_id') and b['snapshot_id'] != t['snapshot_id']:
+        t['snapshot_id'], scope = b['snapshot_id'], True
+    t['version'] += 1
+    if scope:
+        t['scope_version'] = t['version']
+    t['updated_at'] = now()
+    return ok(ho_target_view(t))
+
+
+@app.delete('/api/ai/v1/handover-targets/{tid}')
+def ho_delete(tid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    ho()['targets'].pop(tid, None)
+    return ok({'target_id': tid, 'status': 'deleted'})
+
+
+@app.get('/api/ai/v1/handover-targets/{tid}/preparation')
+def ho_prep_get(tid: str, request: Request):
+    if (e := guard(request)):
+        return e
+    t = ho_find(tid)
+    return ok(ho_prep_view(t)) if t else err(404, 'RESOURCE_NOT_FOUND')
+
+
+@app.put('/api/ai/v1/handover-targets/{tid}/preparation')
+async def ho_prep_put(tid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    t = ho_find(tid)
+    if not t:
+        return err(404, 'RESOURCE_NOT_FOUND')
+    b = await request.json()
+    preps = ho()['preps'].setdefault(tid, [])
+    if b['confirmed_target_version'] != t['version']:
+        return err(409, 'VERSION_CONFLICT', details={'reason': 'TARGET_CHANGED', 'current_target_version': t['version']})
+    if b['expected_version'] != len(preps) or FLAGS.get('ho_conflict'):
+        FLAGS.pop('ho_conflict', None)
+        return err(409, 'VERSION_CONFLICT', details={'reason': 'PREPARATION_VERSION', 'current_version': len(preps)})
+    items = {}
+    for k in HO_KEYS:
+        it = b['items'].get(k) or {'status': 'unknown'}
+        if it['status'] == 'unknown' and (it.get('text') or it.get('link')):
+            return err(422, 'INVALID_SELECTION', message='미확인 항목에는 내용을 둘 수 없습니다.', details={'item': k})
+        items[k] = {'status': it['status'], 'text': it.get('text'), 'link': it.get('link'), 'updated_version': len(preps) + 1 if it['status'] != 'unknown' else None, 'updated_at': now() if it['status'] != 'unknown' else None}
+    preps.append({'version': len(preps) + 1, 'target_version': t['version'], 'items': items, 'created_at': now()})
+    return ok(ho_prep_view(t))
+
+
+@app.post('/api/ai/v1/handover-targets/{tid}/generations')
+async def ho_generate(tid: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    t = ho_find(tid)
+    if not t:
+        return err(404, 'RESOURCE_NOT_FOUND')
+    b = await request.json()
+    gens = ho()['gens'].setdefault(tid, [])
+    npreps = len(ho()['preps'].get(tid, []))
+    if b['expected_target_version'] != t['version']:
+        return err(409, 'VERSION_CONFLICT', details={'reason': 'TARGET_CHANGED', 'current_target_version': t['version']})
+    if b['expected_preparation_version'] != npreps:
+        return err(409, 'VERSION_CONFLICT', details={'reason': 'PREPARATION_CHANGED', 'current_version': npreps})
+    if gens and gens[-1]['preparation_version'] == npreps and gens[-1]['target_version'] == t['version'] and not b.get('force'):
+        g = gens[-1]
+        return ok({'generation': {**g, 'reused': True}, 'document_id': ho()['docs'][tid]['document_id'], 'document_updated': False})
+    g = {'generation_id': str(uuid4()), 'target_id': tid, 'number': len(gens) + 1, 'target_version': t['version'], 'preparation_version': npreps,
+         'template_version': 'handover-v1', 'sources': {}, 'stale_reasons': [], 'markdown': ho_markdown(t, len(gens) + 1), 'created_at': now(), 'reused': False}
+    gens.append(g)
+    d = ho()['docs'].get(tid)
+    updated = False
+    if d is None:
+        d = ho()['docs'][tid] = {'document_id': str(uuid4()), 'markdown': g['markdown'], 'version': 1, 'edited': False, 'base_generation_id': g['generation_id'], 'updated_at': now()}
+        updated = True
+    elif not d['edited']:
+        d.update(markdown=g['markdown'], version=d['version'] + 1, base_generation_id=g['generation_id'], updated_at=now())
+        updated = True
+    return ok({'generation': g, 'document_id': d['document_id'], 'document_updated': updated}, 201)
+
+
+@app.get('/api/ai/v1/handover-targets/{tid}/document')
+def ho_doc_get(tid: str, request: Request):
+    if (e := guard(request)):
+        return e
+    t = ho_find(tid)
+    view = ho_doc_view(t) if t else None
+    return ok(view) if view else err(404, 'RESOURCE_NOT_FOUND')
+
+
+def ho_doc_by_id(did):
+    for tid, d in ho()['docs'].items():
+        if d['document_id'] == did:
+            return ho_find(tid), d
+    return None, None
+
+
+@app.put('/api/ai/v1/handover-documents/{did}')
+async def ho_doc_put(did: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    t, d = ho_doc_by_id(did)
+    if not d:
+        return err(404, 'RESOURCE_NOT_FOUND')
+    b = await request.json()
+    if b['expected_version'] != d['version']:
+        return err(409, 'VERSION_CONFLICT', details={'reason': 'DOCUMENT_VERSION', 'current_version': d['version']})
+    if '<script' in b['markdown'] or 'javascript:' in b['markdown']:
+        return err(422, 'INVALID_SELECTION', message='문서에 저장할 수 없는 내용이 있습니다.', details={'issues': ['raw_html']})
+    d.update(markdown=b['markdown'], version=d['version'] + 1, edited=True, updated_at=now())
+    return ok(ho_doc_view(t))
+
+
+@app.post('/api/ai/v1/handover-documents/{did}/adopt')
+async def ho_adopt(did: str, request: Request):
+    if (e := guard(request, True)):
+        return e
+    t, d = ho_doc_by_id(did)
+    if not d:
+        return err(404, 'RESOURCE_NOT_FOUND')
+    b = await request.json()
+    if b['expected_version'] != d['version']:
+        return err(409, 'VERSION_CONFLICT', details={'reason': 'DOCUMENT_VERSION', 'current_version': d['version']})
+    g = next(x for x in ho()['gens'][t['target_id']] if x['generation_id'] == b['generation_id'])
+    d.update(markdown=g['markdown'], base_generation_id=g['generation_id'], version=d['version'] + 1, edited=False, updated_at=now())
+    return ok(ho_doc_view(t))
+
+
+@app.get('/api/ai/v1/handover-documents/{did}/export')
+def ho_export(did: str, request: Request):
+    if (e := guard(request)):
+        return e
+    t, d = ho_doc_by_id(did)
+    if not d:
+        return err(404, 'RESOURCE_NOT_FOUND')
+    from fastapi.responses import Response
+    return Response(content=(d['markdown'] + '\n---\n\n(모의 내보내기)\n').encode('utf-8'), media_type='text/markdown; charset=utf-8',
+                    headers={'Content-Disposition': f'attachment; filename="handover-{did[:8]}-v{d["version"]}.md"', 'Cache-Control': 'private, no-store'})
+
+
 app.mount('/', StaticFiles(directory=str(ROOT / 'frontend'), html=True), name='frontend')
 
 if __name__ == '__main__':

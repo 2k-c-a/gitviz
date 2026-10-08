@@ -1,0 +1,61 @@
+# 인수인계 초안 고정 문구(handover-v1). 모델 프롬프트가 아니라, 서버가 저장된 자료를 옮겨 적을 때 쓰는 문구 템플릿이다.
+# 확정 사실로 읽힐 수 있는 표현을 피하고 출처를 항상 함께 적는다. 문구를 바꾸면 새 버전 파일을 만든다(다이제스트를 테스트가 고정한다).
+TITLE: 인수인계 초안
+INTRO: 이 문서는 GitViz가 저장된 자료를 정리한 초안입니다. 사람이 읽고 고쳐 쓰기 전에는 확정된 인수인계 문서가 아닙니다.
+CAVEAT_AI: AI가 만든 변경 설명과 코드 리뷰 지적은 사람이 검증하기 전에는 확정 사실이 아닙니다.
+CAVEAT_UNKNOWN: '미확인'은 입력되지 않았다는 뜻입니다. 준비가 안 됐다는 뜻도, 됐다는 뜻도 아닙니다.
+CAVEAT_READY: '준비 완료'는 작성자가 기록한 상태이며 GitViz가 문서 내용이나 실행 성공을 검증한 것이 아닙니다.
+CAVEAT_LINK: 링크는 저장만 했고 GitViz가 접속하거나 내용을 읽지 않았습니다.
+CAVEAT_HISTORY: 이력 수치는 분석 snapshot에 저장된 관측 기록입니다. 수정이 많았다는 것이 문제가 있다는 뜻은 아니며 담당자의 능력이나 업무량을 뜻하지 않습니다.
+S_TARGET: 1. 인계 대상 (사용자 입력)
+S_HISTORY: 2. 먼저 확인할 파일과 분석 근거 (분석 snapshot의 관측 기록)
+S_CO_CHANGE: 3. 함께 확인할 파일 (과거 공동 변경 후보)
+S_AI_SUMMARY: 4. AI 변경 설명 (사람 검증 전, 참고용)
+S_AI_FINDINGS: 5. AI 코드 리뷰 지적 (대상 파일 기준, 코드 원문 미포함)
+S_PREPARATION: 6. 준비 상태 (사용자 입력)
+S_QUESTIONS: 7. 담당자에게 확인할 질문
+S_CHECKLIST: 8. 인수인계 체크리스트
+S_BASIS: 9. 기준 정보
+NO_HISTORY_SNAPSHOT: 분석 snapshot이 지정되지 않아 이력 근거가 없습니다. 이력에 대해서는 아무것도 확인되지 않았습니다.
+HISTORY_EXCLUDED: 지정한 분석 snapshot을 검증하지 못해 이력 근거를 쓰지 않았습니다. 사유: {reasons}
+HISTORY_BASIS: 분석 snapshot #{snapshot_id} (SHA {sha}, 관측 기간 종료 {window_end})
+HISTORY_OBSERVED: 변경 {change_freq}회, 변경량 {churn}, 버그 수정 {bugfix_count}회
+HISTORY_OWNERSHIP: 관측 {observation_count}건, 기여자 {contributor_count}명, 식별된 기록 중 최다 기여 비중 {top_share}%
+HISTORY_QUALITY: 수집 품질: 커밋 {commit_count}건 중 작성자 미식별 {unidentified}건, 공동 변경 단위 {unit}
+HISTORY_NONE: 이 파일은 분석 snapshot에서 이력을 찾지 못했습니다. 이력이 없다는 것이지 문제가 있다는 뜻은 아닙니다.
+HISTORY_NO_OBSERVATIONS: 관측 기간 안에 변경 기록이 없습니다. 수정이 없었다고 확정하지 않습니다.
+CO_CHANGE_NOTE: 과거에 함께 바뀐 기록일 뿐 실제 의존 관계나 영향 전파를 뜻하지 않습니다. 함께 검토할 후보입니다.
+CO_CHANGE_NONE: 대상 파일에서 확인된 공동 변경 후보가 없습니다. 연관 파일이 없다는 뜻은 아닙니다.
+CO_CHANGE_IN_TARGET: 이미 인계 대상에 포함
+SUMMARY_NONE: 선택한 AI 변경 설명이 없습니다.
+SUMMARY_UNVERIFIED: AI가 코드에서 읽은 내용입니다. 사람이 확인하기 전에는 사실로 취급하지 않습니다.
+FINDINGS_NONE: 선택한 AI 코드 리뷰 결과가 없습니다. 코드 리뷰 지적에 대해서는 아무것도 확인되지 않았습니다.
+FINDINGS_EMPTY: 대상 파일에 해당하는 AI 지적이 없습니다. 문제가 없다는 뜻이 아닙니다.
+FINDINGS_UNVERIFIED_HEAD: 사람이 아직 검증하지 않은 지적
+FINDINGS_VALID_HEAD: 사용자가 유효로 표시한 지적 (사용자의 판단이며 GitViz가 확인한 것은 아닙니다)
+FINDINGS_UNCERTAIN_HEAD: 사용자가 불확실로 표시한 지적
+FINDINGS_FALSE_HEAD: 사용자가 오탐으로 표시한 지적 (참고용, 확인 대상이 아님)
+FINDINGS_OMITTED: 대상 파일 밖의 지적 {count}건은 포함하지 않았습니다.
+PREP_NONE: 준비 정보가 아직 저장되지 않았습니다. 모든 항목은 미확인입니다.
+PREP_STALE: 이 준비 정보는 이전 대상 범위 기준입니다. 대상 파일이 바뀐 뒤 아직 다시 확인하지 않았습니다.
+PREP_VERSION: 준비 정보 버전 {version} (대상 버전 {target_version} 기준)
+STATUS_unknown: 미확인
+STATUS_needed: 준비 필요
+STATUS_ready: 준비 완료 (작성자 기록)
+ITEM_assignee: 인수 담당자
+ITEM_description: 기능 설명
+ITEM_run_method: 실행 방법
+ITEM_verify_method: 수정 후 확인 절차
+ITEM_joint_review: 공동 검토
+ITEM_receiver_run: 인수자 실행 확인
+ASK_unknown: {label}: 현재 상태가 입력되지 않았습니다. 기존 담당자에게 현재 상태를 확인해 주세요.
+ASK_needed: {label}: 준비 필요로 기록돼 있습니다. 누가 언제까지 준비할지 정해 기록해 주세요.
+ASK_finding: AI 지적 "{title}" ({location})은 사람이 확인했나요? 유효한지 판단해 기록해 주세요.
+ASK_none: 추가로 확인할 질문이 없습니다. 이는 모든 내용이 확인됐다는 뜻이 아닙니다.
+CHECK_AI: AI 지적 {count}건을 사람이 검증했는지 확인
+CHECK_HISTORY: 이력 근거의 한계(관측 수, 미식별 기여자)를 확인
+BASIS_LINE: 대상 버전 {target_version}, 준비 정보 버전 {preparation_version}, 생성 시각 {generated_at}
+BASIS_SOURCE_SUMMARY: AI 변경 설명 결과 {id} (PR #{pr}, head {head})
+BASIS_SOURCE_REVIEW: AI 리뷰 결과 {id} (PR #{pr}, head {head}), 피드백 기준 {digest}
+BASIS_SOURCE_NONE: 선택하지 않음
+EXPORT_FOOTER: 이 파일은 GitViz 인수인계 문서 {document} 버전 {version}을 내보낸 것입니다. 생성 원본 #{generation} 기준이며 사람이 편집한 내용을 포함할 수 있습니다. AI가 만든 내용과 '미확인' 항목은 확정 사실이 아닙니다.

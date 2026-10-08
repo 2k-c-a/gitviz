@@ -17,3 +17,4 @@ from app.models.ai_result import AIResult, AIFinding, FindingFeedback
 from app.models.ai_usage import UsageBudget, UsageReservation, AuditEvent
 from app.models.ai_credential import AICredential, AICredentialVersion
 from app.models.ai_evidence import AIEvidence
+from app.models.ai_handover import HandoverTarget, HandoverPreparationVersion, HandoverGeneration, HandoverDocument, HandoverDocumentVersion

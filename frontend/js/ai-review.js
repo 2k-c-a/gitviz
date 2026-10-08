@@ -839,6 +839,7 @@ async function renderResult(token, holder, job) {
     result.kind === 'review' ? h('section', { class: 'ai-card' }, h('h2', { text: 'GitViz 이력 근거' }), historyBox) : null,
     h('section', { class: 'ai-card' }, h('div', { class: 'ai-row' },
       link('같은 입력으로 새로 실행', { repo: route.repo, input: result.input_id, force: true }, 'btn-secondary ai-btn'), link('PR 선택으로', { repo: route.repo }, 'btn-secondary ai-btn'),
+      h('a', { class: 'btn-secondary ai-btn ai-link', href: `ai-handover.html?repo=${encodeURIComponent(route.repo)}` }, '인수인계 문서로'),
       button('이 작업 삭제', () => ctx.removeJob(), { cls: 'btn-secondary danger' }))));
   drawStale();
   drawFindings();
