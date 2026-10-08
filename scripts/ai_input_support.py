@@ -23,7 +23,7 @@ from ai_git_fixture import Fixture
 
 URL = os.environ['GITVIZ_TEST_DATABASE_URL']
 KEY = 'a1' * 32
-T0 = datetime(2026, 10, 7, 12, 0, 0, tzinfo=timezone.utc)
+T0 = datetime(2036, 10, 7, 12, 0, 0, tzinfo=timezone.utc)   # 실제 시각보다 항상 미래: DB now() 기본값과 섞여도 시험이 시간에 따라 깨지지 않게 한다
 engine = create_engine(URL, pool_size=20, max_overflow=0)
 Session = sessionmaker(engine, expire_on_commit=False)
 TRUNCATE = ('usage_reservations, usage_budgets, audit_events, request_idempotency, task_outbox, ai_attempts, '

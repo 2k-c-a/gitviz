@@ -2,7 +2,7 @@
 import os
 import sys
 import unittest
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import UUID, uuid4
@@ -125,7 +125,9 @@ class ApiCase(S.InputCase):
                  'ai_attempts', 'usage_reservations')}
 
     def prepare_via_worker(self, job_id):
-        return self.run_prepare(UUID(job_id))
+        outcome = self.run_prepare(UUID(job_id))
+        self.clock = datetime.now(timezone.utc)          # API는 실제 시각으로 동작하므로, 작업자용 고정 시각을 이후 요청에 남기지 않는다
+        return outcome
 
 
 class Access(ApiCase):

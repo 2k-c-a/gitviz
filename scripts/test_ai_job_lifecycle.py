@@ -28,7 +28,7 @@ from app.services.ai import idempotency, job_runner, job_service, outbox, usage_
 from app.services.ai.access import AIError  # noqa: E402
 from app.services.ai.lease import CancelRequested, LeaseLost  # noqa: E402
 
-T0 = datetime(2026, 10, 7, 12, 0, 0, tzinfo=timezone.utc)
+T0 = datetime(2036, 10, 7, 12, 0, 0, tzinfo=timezone.utc)   # 실제 시각보다 항상 미래: DB now() 기본값과 섞여도 시험이 시간에 따라 깨지지 않게 한다
 H = lambda c: c * 64  # noqa: E731
 ROUTE = 'POST /api/ai/v1/jobs'
 engine = create_engine(URL, pool_size=30, max_overflow=0)
