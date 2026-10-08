@@ -100,7 +100,8 @@ def _remove_tree(root):
     def writable(func, path, _exc):
         os.chmod(path, stat.S_IWRITE)
         func(path)
-    shutil.rmtree(root, onexc=writable)
+    # onerror는 Python 3.11에서도 지원한다(onexc는 3.12부터 추가됨).
+    shutil.rmtree(root, onerror=writable)
 
 
 @contextlib.contextmanager

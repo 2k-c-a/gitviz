@@ -19,6 +19,9 @@ venv/
 .env.local
 .env.*.local
 
+# Local database certificates
+/certs/
+
 # Node / React (frontend)
 frontend/node_modules/
 frontend/dist/
