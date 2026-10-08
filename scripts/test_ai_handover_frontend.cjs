@@ -104,6 +104,17 @@ test('오류·기준 변경 안내: 이유별 문구와 문서 저장 거절 이
   assert.match(HS.staleLines(['unknown_reason'])[0], /기준이 바뀌었습니다/);
 });
 
+test('미저장 편집: 다시 그릴 때 같은 버전이면 되살리고 문서가 바뀌면 따로 보관한다', async () => {
+  const HS = await js('ai-handover-state.js');
+  const doc = { version: 3, markdown: '저장된 본문' };
+  assert.equal(HS.draftAction(null, doc), 'none');                                               // 입력한 것이 없다
+  assert.equal(HS.draftAction({ text: '저장된 본문', version: 3 }, doc), 'none');                   // 바뀐 것이 없다
+  assert.equal(HS.draftAction({ text: '쓰던 내용', version: 3 }, doc), 'restore');                  // 새 원본 생성 등: 문서는 그대로이니 입력을 되살린다
+  assert.equal(HS.draftAction({ text: '쓰던 내용', version: 2 }, doc), 'lost');                     // 충돌·새 원본 채택: 문서가 바뀌었으니 내 내용을 따로 보여 준다
+  assert.equal(HS.draftAction({ text: '방금 저장한 내용', version: 2 }, { version: 3, markdown: '방금 저장한 내용' }), 'none');   // 저장 성공 뒤에는 되살릴 것이 없다
+  assert.equal(HS.draftAction({ text: 'x', version: 1 }, null), 'none');
+});
+
 test('초안에 쓸 결과: 성공한 같은 종류만 고른다', async () => {
   const HS = await js('ai-handover-state.js');
   const jobs = [{ kind: 'review', status: 'succeeded', result_id: U1, created_at: 'a' }, { kind: 'summary', status: 'succeeded', result_id: U2 },

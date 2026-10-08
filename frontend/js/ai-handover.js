@@ -182,10 +182,33 @@ async function renderTarget(token) {
   drawTarget();
 }
 
+/* 화면을 다시 그리기 전에 저장하지 않은 문서 입력을 보관한다. 같은 버전이면 그대로 되살리고, 문서가 바뀌었다면(충돌·새 원본 채택) 내 내용을 따로 보여 준다. */
+function pendingDraft() {
+  const box = document.querySelector('.ho-editor');
+  const doc = ctx?.data?.doc;
+  return box && doc && box.value !== doc.markdown ? { text: box.value, version: doc.version } : null;
+}
+
+function restoreDraft(draft) {
+  const doc = ctx.data.doc;
+  const action = HS.draftAction(draft, doc);
+  if (action === 'none') return;                                              // 방금 저장한 내용이면 되살릴 것이 없다
+  if (action === 'restore') {
+    const box = document.querySelector('.ho-editor');
+    if (box) { box.value = draft.text; box.dispatchEvent(new Event('input')); }
+    return;
+  }
+  mount($('ho-lost'), lostEdit(draft.text));
+  notice('warn', '저장하지 않은 편집 내용이 있습니다', '문서가 바뀌어 최신 문서를 불러왔습니다. 작성 중이던 내용은 문서 위쪽에 따로 남겨 두었습니다.');
+}
+
 async function refresh() {
   const token = ctx.token;
+  const draft = pendingDraft();
   try { ctx.data = await fetchTarget(token); } catch (e) { if (e?.name !== 'AbortError' && token.current()) showError(e); return; }
-  if (token.current()) drawTarget();
+  if (!token.current()) return;
+  drawTarget();
+  restoreDraft(draft);
 }
 
 function drawTarget() {
@@ -329,9 +352,8 @@ function documentCard() {
         if (ctx.token.current()) notice('ok', '문서를 저장했습니다', '내보내기에는 저장된 내용이 쓰입니다.');
       } catch (e) {
         if (e?.name === 'AbortError' || !ctx.token.current()) return;
-        const mine = editor.value;
         showError(e, { reload: refresh });
-        if (e?.code === 'VERSION_CONFLICT') { await refresh(); const box = document.querySelector('.ho-editor'); if (box) mount($('ho-lost'), lostEdit(mine)); }
+        if (e?.code === 'VERSION_CONFLICT') await refresh();                    // 내 입력은 refresh가 보관했다가 따로 보여 준다
       }
     });
   }, { cls: 'btn-primary' });
