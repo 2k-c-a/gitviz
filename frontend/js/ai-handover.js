@@ -12,6 +12,19 @@ const guard = S.createGuard();
 const $ = (id) => document.getElementById(id);
 let route = HS.parseRoute(location.search);
 let ctx = null;
+/* 저장하지 못한 내 편집 내용: 사용자가 저장하거나 명시적으로 버릴 때까지, 화면을 다시 그려도 이 화면이 열려 있는 동안 대상별로 유지한다. */
+const lostDrafts = new Map();
+const lostFor = () => lostDrafts.get(route.target) || [];
+function addLost(text) { lostDrafts.set(route.target, HS.addLostDraft(lostFor(), text)); }
+function removeLost(text) {
+  const list = HS.removeLostDraft(lostFor(), text);
+  if (list.length) lostDrafts.set(route.target, list); else lostDrafts.delete(route.target);
+}
+window.addEventListener('beforeunload', (ev) => {
+  const box = document.querySelector('.ho-editor');
+  const doc = ctx?.data?.doc;
+  if ((box && doc && box.value !== doc.markdown) || lostFor().length) { ev.preventDefault(); ev.returnValue = ''; }
+});
 
 /* ───────────────────────── DOM 도우미 ───────────────────────── */
 function h(tag, attrs, ...kids) {
@@ -198,7 +211,8 @@ function restoreDraft(draft) {
     if (box) { box.value = draft.text; box.dispatchEvent(new Event('input')); }
     return;
   }
-  mount($('ho-lost'), lostEdit(draft.text));
+  addLost(draft.text);
+  renderLost();
   notice('warn', '저장하지 않은 편집 내용이 있습니다', '문서가 바뀌어 최신 문서를 불러왔습니다. 작성 중이던 내용은 문서 위쪽에 따로 남겨 두었습니다.');
 }
 
@@ -211,10 +225,16 @@ async function refresh() {
   restoreDraft(draft);
 }
 
+function renderLost() {
+  const box = $('ho-lost');
+  if (box) mount(box, lostFor().map((text) => lostEdit(text)));
+}
+
 function drawTarget() {
   const { target } = ctx.data;
   $('ho-title').textContent = `인수인계 · ${target.name}`;
   mount($('ho-main'), h('p', {}, link('← 인계 대상 목록', { repo: route.repo })), targetCard(), preparationCard(), generationCard(), documentCard());
+  renderLost();                                   // 보관한 내용은 다시 그려도 사라지지 않는다
 }
 
 function targetCard() {
@@ -348,6 +368,7 @@ function documentCard() {
       clearNotices();
       try {
         await api.saveHandoverDocument(doc.document_id, { expected_version: doc.version, markdown: editor.value }, ctx.token.signal);
+        lostDrafts.delete(route.target);                                        // 저장했으면 보관한 내용은 정리한다
         await refresh();
         if (ctx.token.current()) notice('ok', '문서를 저장했습니다', '내보내기에는 저장된 내용이 쓰입니다.');
       } catch (e) {
@@ -380,8 +401,24 @@ function documentCard() {
 /* 문서 버전 충돌로 최신 문서를 불러온 뒤에도 내가 쓴 내용을 잃지 않도록 따로 보여 준다. */
 function lostEdit(text) {
   return h('div', { class: 'ai-banner warn' }, h('div', { class: 'ai-banner-title', text: '저장하지 못한 내 편집 내용' }),
+    h('p', { class: 'ai-muted', text: '저장하거나 버리기 전에는 이 내용을 계속 남겨 둡니다.' }),
     h('textarea', { class: 'ai-input', rows: 8, readonly: true, 'aria-label': '저장하지 못한 내 편집 내용' }, text),
-    h('div', { class: 'ai-banner-actions' }, button('이 내용으로 편집창 채우기', () => { const box = document.querySelector('.ho-editor'); if (box) { box.value = text; box.dispatchEvent(new Event('input')); } })));
+    h('div', { class: 'ai-banner-actions' },
+      button('이 내용으로 편집창 채우기', () => {
+        const box = document.querySelector('.ho-editor');
+        const doc = ctx?.data?.doc;
+        if (!box || !doc) return;
+        if (box.value !== doc.markdown) addLost(box.value);                      // 편집창에 쓰던 내용이 있으면 그것도 잃지 않게 보관한다
+        removeLost(text);
+        box.value = text;
+        box.dispatchEvent(new Event('input'));
+        renderLost();
+      }),
+      button('버리기', () => {
+        if (!window.confirm('이 내용을 버릴까요? 되돌릴 수 없습니다.')) return;
+        removeLost(text);
+        renderLost();
+      })));
 }
 
 /* ───────────────────────── 시작 ───────────────────────── */

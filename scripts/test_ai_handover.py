@@ -545,14 +545,19 @@ class Editing(Case):
                  '```bad`info\n<img src=x onerror=alert(1)>': 'raw_html',
                  '1. 항목\n   ```\n<img src=x onerror=alert(1)>': 'raw_html',           # 목록 안의 들여쓴 블록은 컨테이너가 끝나면 닫힌다
                  ' ```\n<img src=x onerror=alert(1)>\n```': 'raw_html',                  # 들여쓴 여는 줄은 코드로 보지 않는다(애매하면 검사한다)
-                 '```\nx\n```\n<b>y</b>': 'raw_html'}                                   # 닫힌 뒤의 HTML
+                 '```\nx\n```\n<b>y</b>': 'raw_html',                                   # 닫힌 뒤의 HTML
+                 # 블록 구분이 인라인 해석보다 먼저다: 줄을 넘는 백틱 사이에도 HTML 블록·제목이 시작될 수 있다
+                 '`\n<img src=x onerror=alert(1)>\n`': 'raw_html',
+                 '`\n# 제목\n<div onclick=alert(1)>x</div>\n`': 'raw_html',
+                 '`a\n\n<b>x</b>\n\n`': 'raw_html',
+                 '| `a | <b>x</b>` |': 'raw_html'}                                      # 표 셀은 코드 span보다 먼저 `|`로 나뉜다
         for markdown, issue in cases.items():
             exc = self.code(svc.put_document, self.db, w['owner'], doc['document_id'], HandoverDocumentPut(expected_version=1, markdown=markdown))
             self.assertEqual(exc.code, ErrorCode.INVALID_SELECTION, markdown[:20])
             self.assertIn(issue, exc.details['issues'], markdown[:20])
         for fine in ('```\n<script>alert(1)</script> [a](javascript:x)\n```', '`<b>` 인라인 코드', '[문서](https://wiki.example/doc) [메일](mailto:a@b.c) [앵커](#top) [상대](docs/a.md)',
                      '\\<script\\> 이스케이프된 꺾쇠', '```js\n<b>x</b>\n```\n본문', '~~~ a`b\n<b>x</b>\n~~~', '````\n<b>\n```\n<i>\n````',
-                     '```\n<b>\n``` x\n<i>'):                                        # 닫는 줄 뒤에 글자가 있으면 닫히지 않는다(끝까지 코드)
+                     '```\n<b>\n``` x\n<i>', '한 줄 `<b>x</b>` 코드', '`a\nb` 여러 줄이어도 HTML이 없으면 안전'):                                        # 닫는 줄 뒤에 글자가 있으면 닫히지 않는다(끝까지 코드)
             self.assertEqual(markdown_safety.validate_markdown(fine), [], fine)
         self.assertEqual(self.doc(w)['version'], 1)                                                              # 거절된 내용은 저장되지 않는다
 
@@ -616,6 +621,8 @@ class Safety(Case):
         self.assertEqual(markdown_safety.escape_inline('a' * 600, limit=10), 'a' * 9 + '…')
         self.assertNotIn('\n', markdown_safety.escape_inline('a\nb\r\nc'))
         self.assertEqual(markdown_safety.code_span('x`y'), '``x`y``')
+        piped = markdown_safety.code_span('a|b<c>.py')                                                     # `|`가 든 값은 표 셀로 읽히지 않게 코드 span을 쓰지 않는다
+        self.assertEqual((piped, markdown_safety.validate_markdown(piped)), ('a&#124;b\\<c\\>.py', []))
 
     def test_fixed_wording_is_pinned_and_free_of_confirmation_phrases(self):
         self.assertEqual(handover_draft.text_digest(), handover_draft.TEXT_DIGEST)                                 # 문구를 바꾸면 새 버전 파일을 만든다
