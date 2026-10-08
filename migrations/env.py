@@ -31,6 +31,14 @@ from app.models import *
 
 target_metadata = Base.metadata
 
+
+def include_object(obj, name, type_, reflected, compare_to):
+    # users는 별도 async Base가 관리한다. AI 모델의 FK 참조용 Table만 metadata에 있으므로
+    # autogenerate가 users를 비교·삭제 대상으로 보지 않게 한다.
+    if type_ == "table" and name == "users":
+        return False
+    return True
+
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
@@ -53,6 +61,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=url,
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -70,7 +79,8 @@ def run_migrations_online() -> None:
     """
     supplied_connection = config.attributes.get('connection')
     if supplied_connection is not None:
-        context.configure(connection=supplied_connection, target_metadata=target_metadata)
+        context.configure(connection=supplied_connection, target_metadata=target_metadata,
+                          include_object=include_object)
         with context.begin_transaction():
             context.run_migrations()
         return
@@ -82,7 +92,8 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, target_metadata=target_metadata,
+            include_object=include_object,
         )
 
         with context.begin_transaction():

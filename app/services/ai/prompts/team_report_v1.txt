@@ -1,0 +1,32 @@
+# 팀 보고서 고정 문구(team-report-v1). 모델 프롬프트가 아니라, 서버가 공유된 자료를 옮겨 적을 때 쓰는 문구 템플릿이다.
+# 확정 사실로 읽힐 수 있는 표현을 피하고 출처와 판정 주체를 함께 적는다. 문구를 바꾸면 새 버전 파일을 만든다(다이제스트를 테스트가 고정한다).
+TITLE: 팀 점검 보고서
+INTRO: 이 보고서는 팀에 명시적으로 공유된 자료만 정리한 것입니다. 공유하지 않은 개인 자료는 들어 있지 않습니다.
+CAVEAT_AI: AI가 만든 지적은 사람이 검증하기 전에는 확정 사실이 아닙니다. 판정은 공유한 사람의 판단이며 GitViz가 확인한 것이 아닙니다.
+CAVEAT_PROBLEMS: 문제 집계는 사람이 유효로 판정한 지적만 셉니다. 검증하지 않은 지적은 검토 대기, 불확실은 따로 세고, 오탐은 문제 집계에서 제외합니다.
+CAVEAT_REPEAT: 같은 지적 후보는 지문이 같다는 뜻일 뿐 같은 문제라는 확정이 아닙니다. 문제 수에 합치지 않으며 사람의 검토가 필요합니다.
+CAVEAT_ACCESS: 이 보고서는 포함된 모든 저장소에 접근할 수 있는 팀 구성원만 볼 수 있습니다. 공유 해제·구성원 또는 저장소 범위 변경이 있으면 차단됩니다.
+S_SUMMARY: 1. 요약
+S_REPOSITORIES: 2. 저장소별 현황
+S_EXCLUDED: 3. 제외된 공유
+S_BASIS: 4. 기준 정보
+SUMMARY_LINE: 저장소 {repos}곳, 공유된 리뷰 결과 {results}건, 공유된 인계 대상 {handovers}건
+SUMMARY_PROBLEMS: 문제 집계(사람이 유효로 판정): {valid}건 · 검토 대기: {unverified}건 · 불확실: {uncertain}건 · 오탐(집계 제외): {false_positive}건
+NOTHING_SHARED: 보고 대상 저장소에 공유된 자료가 없습니다. 자료가 없다는 뜻이며 문제가 없다는 뜻이 아닙니다.
+REPO_HEAD: 저장소 {name}
+RESULTS_HEAD: 공유된 리뷰 결과
+RESULT_LINE: {when} · 공유한 사람 {login} · 지적 {total}건 (유효 {valid}, 검토 대기 {unverified}, 불확실 {uncertain}, 오탐 {false_positive})
+RESULTS_NONE: 공유된 리뷰 결과가 없습니다. 확인되지 않았습니다.
+VALID_HEAD: 유효로 판정된 지적 (판정은 공유한 사람의 판단)
+VALID_NONE: 유효로 판정된 지적이 없습니다. 검토가 끝나지 않았을 수 있으므로 문제가 없다는 뜻이 아닙니다.
+REPEAT_HEAD: 같은 지적 후보 (지문 일치, 사람의 검토 필요)
+REPEAT_LINE: {title} — {count}개 결과에서 지문이 같음 (판정: {verdicts})
+HANDOVER_HEAD: 공유된 인계 준비 상태
+HANDOVER_LINE: {name} — 미확인 {unknown}, 준비 필요 {needed}, 준비 완료(작성자 기록) {ready}
+HANDOVER_NONE: 공유된 인계 대상이 없습니다. 준비 상태는 확인되지 않았습니다.
+EXCLUDED_NONE: 제외된 공유가 없습니다.
+EXCLUDED_LINE: 공유 {id} — {reason}
+REASON_outdated: 공유한 뒤 원본이 바뀌어 제외했습니다(작성자가 다시 공유해야 합니다).
+REASON_expired: 결과의 보관 기간이 지나 제외했습니다.
+REASON_source_deleted: 작성자가 원본을 삭제해 제외했습니다.
+BASIS_LINE: 팀 공개 범위 세대 {epoch}, 생성 시각 {generated_at}, 원본 공유 {shares}건

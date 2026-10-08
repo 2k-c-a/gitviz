@@ -56,6 +56,34 @@ node scripts/test_metric_display.cjs
 GitHub Actions의 `Backend validation`도 PostgreSQL 16에서 이 검사를 수행한다.
 GitHub API/OAuth 실제 로그인 및 수집의 완전성을 검증하는 테스트와는 별개다.
 
+## AI 리뷰 (선택, 기본 꺼짐)
+
+사용자가 자신의 AI API key(BYOK)를 등록하고, 선택한 PR 파일의 변경 코드를 동의 하에 제공자로 보내 변경 설명과 코드 리뷰를 받는다. 서버 공용 제공자 key는 없다. 결과는 모델이 만든 참고 자료이며 사람이 검증하기 전이다.
+
+AI 기능은 S13(팀 권한·공유·보고서)까지 구현됐다. **S14(GitHub App·자동 리뷰)와 S15(GitHub PR 댓글 게시)는 추후 계획으로 보류**한다. 상세 범위와 착수 조건은 [AI 구현 계획](docs/GitViz_AI_의존성기반_구현계획_v0.5.md)의 진행 범위 갱신 및 S14·S15 절에 있다.
+
+```powershell
+# .env: AI_ENABLED=1, AI_INPUT_ENCRYPTION_KEYS, AI_CREDENTIAL_ENCRYPTION_KEYS(서로 다른 값), AI_ALLOW_EXTERNAL_TRANSFER=1 …
+python scripts/ai_ops.py check                       # 설정·migration·Redis 점검
+docker compose up -d db redis
+docker compose --profile ai up -d ai-worker ai-dispatcher   # 작업 처리·발행·유지관리(둘 다 필요)
+```
+
+화면은 `/pages/ai-review.html?repo=<id>`(상단 메뉴 "AI 리뷰"). 운영(설정·확인·취소·불명 호출 정리·기한 삭제)은 [AI 운영 안내](docs/AI_OPERATIONS.md), 수용 상태와 출시 전 남은 확인은 [AI MVP 수용 보고](docs/AI_MVP_ACCEPTANCE.md), 화면 설계는 [AI_S9_UI_DESIGN.md](docs/AI_S9_UI_DESIGN.md)를 본다.
+
+AI는 Anthropic·OpenAI·Gemini 사용자 BYOK와 같은 PC의 Ollama를 지원한다. [지원 모델·설정·smoke 안내](docs/AI_PROVIDER_SUPPORT.md)를 참고한다. Ollama는 API key 없이 설치 모델의 digest를 고정하며, GitViz API·worker와 같은 PC의 호스트 프로세스로 실행한다. 웹 GitViz에서 각 사용자 PC의 모델을 연결하는 기능은 [후속 과제](docs/AI_LOCAL_MODEL_PLAN.md)로 남긴다. 실제 제공자·설치 모델 연동과 품질 평가는 별도로 필요하다.
+
+AI 검증(일회용 PostgreSQL·Redis 필요, `GITVIZ_TEST_REDIS_URL`은 시작 시 비워진다):
+
+```powershell
+python scripts/verify_ai_mvp_integration.py   # 실제 DB·Redis + app·worker·dispatcher·가짜 제공자 프로세스
+python scripts/test_ai_ops.py
+python scripts/test_ai_evaluation.py
+node scripts/test_ai_frontend.cjs
+python scripts/evaluate_ai_review.py --check-release   # 실제 모델 평가(별도 예산)에서 남은 항목
+python scripts/test_ai_smoke.py               # smoke 도구(실제 호출은 smoke_ai_live.py --live, docs/AI_EVALUATION_PROTOCOL.md)
+```
+
 ## 분석 이력·비교 API
 
 ```text
@@ -75,4 +103,5 @@ Risk Score 차이는 저장소 내 상대 점수 변화로 해석해야 한다.
 - [백엔드 개선 결과와 검증](docs/BACKEND_IMPROVEMENTS.md)
 - [분석 타당성 검증 계획](docs/ANALYSIS_VALIDATION_PLAN.md)
 - [공개 저장소 실연동 검증 결과](docs/LIVE_VALIDATION.md)
+- [AI 인터페이스 계약](docs/AI_INTERFACE_CONTRACT.md) · [AI 운영 안내](docs/AI_OPERATIONS.md) · [AI MVP 수용 보고](docs/AI_MVP_ACCEPTANCE.md)
 

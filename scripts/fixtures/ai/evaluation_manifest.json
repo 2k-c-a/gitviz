@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "description": "AI 리뷰 평가 세트. tuning(프롬프트·검증기 조정용)과 final(조정 후 한 번만 실행)을 분리한다. 공개 또는 사용 허락이 기록된 자료만 쓴다.",
+  "status": "needs_human_curation",
+  "notes": [
+    "아래 tuning 사례는 하네스(채점·예산·세트 분리)를 점검하는 합성 자료다. 실제 모델 정확도 평가에는 쓰지 않는다.",
+    "final 세트는 비어 있다. 실제 공개 저장소의 고정 SHA와 사람이 붙인 정답을 사람이 마련해야 한다(결함 있는 사례와 결함 없는 negative_control 포함).",
+    "criteria는 평가 전에 합의해야 한다. null이면 합격/불합격을 계산하지 않는다."
+  ],
+  "criteria": {"min_recall": null, "min_precision": null, "max_cost_per_case_usd": null},
+  "final_run_done": false,
+  "sets": {
+    "tuning": [
+      {
+        "id": "synthetic-fixture-magic-number",
+        "synthetic": true,
+        "repo_full_name": "local/ai-git-fixture",
+        "visibility": "public",
+        "license": "MIT (이 저장소의 테스트 fixture)",
+        "pr_number": 7,
+        "base_sha": "0000000000000000000000000000000000000001",
+        "head_sha": "0000000000000000000000000000000000000002",
+        "selected_paths": ["main.py"],
+        "labeled_by": "harness-author",
+        "truths": [
+          {"path": "main.py", "side": "RIGHT", "start_line": 2, "end_line": 2, "category": "maintainability", "note": "합성: b = 20 의 의미 없는 상수"}
+        ]
+      },
+      {
+        "id": "synthetic-fixture-no-defect",
+        "synthetic": true,
+        "negative_control": true,
+        "repo_full_name": "local/ai-git-fixture",
+        "visibility": "public",
+        "license": "MIT (이 저장소의 테스트 fixture)",
+        "pr_number": 8,
+        "base_sha": "0000000000000000000000000000000000000003",
+        "head_sha": "0000000000000000000000000000000000000004",
+        "selected_paths": ["README.md"],
+        "labeled_by": "harness-author",
+        "truths": []
+      }
+    ],
+    "final": []
+  }
+}
