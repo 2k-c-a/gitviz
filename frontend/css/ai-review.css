@@ -141,3 +141,7 @@ textarea.ai-input { width: 100%; resize: vertical; }
 .ho-problem { color: var(--danger, #cf222e); min-height: 1em; }
 .ho-editor { width: 100%; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5; }
 @media (max-width: 480px) { .ho-form .ai-row { flex-direction: column; } }
+
+/* 팀(S13) */
+.tm-share-detail { margin-top: 8px; }
+.tm-report-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 560px; overflow: auto; }

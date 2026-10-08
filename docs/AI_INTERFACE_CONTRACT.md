@@ -1,6 +1,6 @@
 # AI 인터페이스 계약 (S0)
 
-- 계약 버전: `1.7` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
+- 계약 버전: `1.8` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
 - 설계 근거: [요구사항 및 시스템 설계 v0.4](GitViz_AI_요구사항_및_시스템설계_v0.4.md), [구현 계획 v0.5](GitViz_AI_의존성기반_구현계획_v0.5.md) S0
 - 수집·백엔드·시각화는 모두 `app/schemas/ai.py`의 DTO를 기준으로 합니다. 이 문서와 코드가 다르면 코드가 우선이며 즉시 문서를 고칩니다.
 - 모든 DTO는 알 수 없는 필드를 거부합니다(`extra="forbid"`). 클라이언트가 `owner_user_id` 같은 값을 보내도 받지 않습니다.
@@ -107,7 +107,7 @@
 | HTTP | code |
 |---|---|
 | 401 | AUTH_REQUIRED, REAUTH_REQUIRED |
-| 403 | TRANSFER_NOT_ALLOWED, CSRF_FAILED |
+| 403 | TRANSFER_NOT_ALLOWED, CSRF_FAILED, PERMISSION_DENIED(팀 역할 부족), REPORT_BLOCKED(보고서 범위·권한 변경) |
 | 404 | RESOURCE_NOT_FOUND (권한 밖 자료도 동일) |
 | 409 | PR_CHANGED, PREVIEW_CHANGED, VERSION_CONFLICT, IDEMPOTENCY_CONFLICT |
 | 410 | INPUT_EXPIRED, RESULT_EXPIRED |
@@ -126,6 +126,7 @@
 - 1.3(S8): 생성·작업·결과·지적·피드백·사용량 API DTO(`CreateJobRequest`, `RetryJobRequest`, `JobView`, `JobList`, `ResultView`, `FindingView`, `FindingList`, `FeedbackRequest`, `FeedbackView`, `UsageView`) 추가. 기존 필드·enum은 그대로다.
 - 1.4(S9): PR·파일 선택 조회 DTO(`PullSummary`, `PullList`, `PullFile`, `PullFilesView`)와 `UpdateCredentialRequest` 추가. 기존 필드·enum은 그대로다.
 - 1.5: OpenAI·Gemini BYOK, 같은 PC의 Ollama keyless 실행. 모델·transfer의 `requires_api_key`/`execution_location`, transfer의 `model_digest`/`profile_fingerprint`, 동의의 선택 `profile_fingerprint`(로컬 필수), 로컬의 null `credential_version`, 미리보기 `profile_id` 선택을 추가한다. 클라우드 key 버전 검사는 유지한다. 자세한 설정·비용·주소·복구 규칙은 [제공자 지원](AI_PROVIDER_SUPPORT.md)에 정의한다.
+- 1.8: 팀(S13). 팀·구성원·연결 저장소·명시적 공유·보고서 API와 오류 코드 `PERMISSION_DENIED`(403)·`REPORT_BLOCKED`(403)를 추가한다(18절, 권한 계약은 [AI_TEAM_ACCESS.md](AI_TEAM_ACCESS.md)). 기존 요청은 영향이 없다.
 - 1.7: 인수인계(S12). 인계 대상·준비 체크폼·초안 생성·편집 문서·Markdown 내보내기 API를 추가한다(17절). 기존 요청은 영향이 없다.
 - 1.6: GitViz 이력 근거(S11). 작업 생성의 선택 `history_snapshot_id`와 `/history/snapshots`, `/results/{id}/history` 조회·생성을 추가한다. 기존 요청과 멱등 key는 그대로 유효하다. 상세는 16절.
 - 이후 단계에서 임의로 enum/필드 의미를 바꾸지 않습니다. 변경은 `CONTRACT_VERSION`, 이 문서, `scripts/test_ai_contracts.py`를 같은 PR에서 고칩니다.
@@ -350,3 +351,24 @@ GitHub 오류는 `ErrorEnvelope`로 매핑한다(404 `RESOURCE_NOT_FOUND`, 429 `
 - 내보내기는 `text/markdown; charset=utf-8`, `Content-Disposition: attachment`(파일 이름은 문서 id·버전으로만 만든다), `X-Content-Type-Options: nosniff`, `no-store`이며, 본문 뒤에 기준 정보와 "AI가 만든 내용과 미확인 항목은 확정 사실이 아니다" 주의 문구를 서버가 덧붙인다.
 
 한도: 대상 100개/사용자, 대상당 초안 50개·준비 정보 500버전, 대상 파일 50개.
+
+## 18. 팀 (S13)
+
+권한·공유·보고서의 규칙은 [AI_TEAM_ACCESS.md](AI_TEAM_ACCESS.md)가 기준이다. 계획(§16)과 다른 점: **팀 보고서는 모델을 호출하지 않고**(결정적 정리) `kind=team_report` 작업·팀 키·팀 예산을 만들지 않는다. 그래서 `ai_jobs`/`ai_results`에 팀 주체를 넣지 않고(개인 owner·재사용 지문·멱등 키·예산은 그대로), 팀 자료는 별도 테이블(`teams`, `team_members`, `team_repositories`, `team_resource_shares`, `team_reports`)에만 둔다. 모델 서술 보고서는 키·비용·전송 동의를 먼저 정한 뒤 추가한다(AI_TEAM_ACCESS.md 6절).
+
+| 경로 | 설명 |
+|---|---|
+| `POST/GET /teams`, `GET/PATCH/DELETE /teams/{id}` | 팀 만들기(만든 사람이 관리자)·내 팀과 받은 초대·이름 변경·삭제 |
+| `GET/POST /teams/{id}/members`, `PATCH/DELETE /teams/{id}/members/{user_id}`, `POST /teams/{id}/invitation/accept` | 구성원 목록·초대(GitHub 로그인 이름, 수락해야 구성원)·역할 변경·제거. `DELETE`에 본인 id를 주면 탈퇴 또는 초대 거절 |
+| `GET/POST /teams/{id}/repositories`, `DELETE .../{repository_id}` | 연결 저장소(관리자, 연결하는 사람의 저장소 접근 필요) |
+| `GET/POST /teams/{id}/shares`, `DELETE .../{share_id}`, `GET .../{share_id}/content` | 명시적 공유(코드 리뷰 결과·인계 대상의 준비 상태)와 공유된 내용 |
+| `GET/POST /teams/{id}/reports`, `GET/DELETE .../{report_id}` | 보고서 목록·생성·조회·삭제 |
+
+- 역할: `admin`/`member`/`viewer`. 동작별 최소 역할은 AI_TEAM_ACCESS.md의 표다. 구성원이 아니면 팀의 존재를 숨기고(404), 구성원이지만 역할이 부족하면 403 `PERMISSION_DENIED`(`details.required_role`, `details.role`)다. 관리자는 항상 1명 이상이다(마지막 관리자의 탈퇴·강등·제거는 409 `VERSION_CONFLICT`, `details.reason=LAST_ADMIN`).
+- 공유: 작성자가 팀을 지정해 공유한 것만 보인다. 자기 자료이고, 저장소가 팀에 연결돼 있고, 지금 그 저장소에 접근할 수 있고, 역할이 `admin`/`member`여야 한다. 리뷰 결과 공유에는 지적(제목·분류·위치·조건·영향·확인 방법·제안·한계)과 **작성자의 검증 판정**, 결과에 붙은 이력 근거의 수치가 담기며 코드 원문·인용·작성자 메모·기여자 이름은 담기지 않는다. 인계 대상 공유는 항목별 상태만 담고(메모·링크·본문·인계자/인수자 메모 제외) 공유한 시점의 대상·준비 정보 버전에 고정된다(바뀌면 `outdated`, 내용 숨김, 다시 공유). 구성원이 떠나거나 조회자가 되면 그 사람의 공유는 모두 삭제된다.
+- 내용 조회·보고서 조회는 요청마다 **팀 구성원 ∩ 현재 저장소 접근 ∩ 유효한 공유**를 다시 확인한다. 저장소 접근 확인이 불가능하면(`ACCESS_CHECK_UNAVAILABLE`) 열지 않는다.
+- 보고서: 요청 본문은 `repository_ids`(팀에 연결된 저장소, 생성자는 모두에 접근 가능해야 함)다. 응답은 `payload`(저장소별 공유된 결과·**문제 집계**·같은 지적 후보·인계 준비 개요·제외된 공유)와 렌더링한 `markdown`, 원본 목록 `source_manifest`, `visibility_epoch`를 담고 수정할 수 없다. 문제 집계는 `valid`로 판정된 지적만 세고 `unverified`는 검토 대기, `uncertain`은 불확실로 따로 세며 `false_positive`는 집계에서 제외한다. 지문이 같은 지적은 `repeat_candidates`로만 묶고 문제 수에 합치지 않는다.
+- 보고서 차단: 조회자가 구성원이 아니면 404, 구성원이면 ① `visibility_epoch`가 팀의 현재 값과 같고 ② 원본 공유가 모두 유효하며 ③ 조회자가 원본의 모든 저장소에 접근할 수 있을 때만 내용을 준다. 아니면 403 `REPORT_BLOCKED`(`details.reasons`: `visibility_changed`, `share_removed`, `share_outdated`, `repository_unlinked`, `repository_access_lost`, `access_check_unavailable`)이며 내용은 싣지 않는다. 팀의 공개 범위 세대는 구성원 제거·탈퇴·역할 변경·저장소 연결 해제·공유 해제 때 올라간다. 목록은 `visibility_current`만 알려 준다. 공유한 사람이 판정을 바꾸면 차단하지 않고 `stale_reasons=["feedback_changed"]`로 알린다.
+- 생성은 팀 행을 잠그고 한 트랜잭션으로 끝낸다: 구성원·공유 변경은 생성이 끝난 뒤에 처리되고(그 뒤 이 보고서는 차단된다), 저장소 접근 확인 뒤 잠그기 전에 세대가 바뀌었으면 저장하지 않고 409 `VERSION_CONFLICT`(`details.reason=VISIBILITY_CHANGED`)로 끝난다.
+- 한도: 사용자당 관리하는 팀 20개, 팀당 구성원·초대 50명·저장소 20개·공유 500개·보고서 100개.
+- 출시 전 확인: 실제 인증 경로(인증된 GitHub 사용자의 팀·초대·저장소 접근)와 운영 snapshot 검증은 이 단계에서도 남아 있다. 저장소 접근 확인은 시험에서 대역으로 바꿔 검증했다.
