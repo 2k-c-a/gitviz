@@ -159,3 +159,9 @@ export function resultOptions(jobs, kind) {
 }
 
 export const exportUrl = (documentId) => (isUuid(documentId) ? `/api/ai/v1/handover-documents/${encodeURIComponent(documentId)}/export?format=markdown` : null);
+
+/* 화면을 다시 그릴 때 저장하지 않은 문서 입력을 어떻게 할지: 'none'(되살릴 것 없음), 'restore'(같은 버전이라 입력창에 되살림), 'lost'(문서가 바뀌어 따로 보여 줌) */
+export function draftAction(draft, doc) {
+  if (!draft || !doc || draft.text === doc.markdown) return 'none';
+  return doc.version === draft.version ? 'restore' : 'lost';
+}

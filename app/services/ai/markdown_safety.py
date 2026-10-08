@@ -11,7 +11,8 @@ MAX_LINE_CHARS = 4_000
 
 _CONTROL = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\x80-\x9f]')
 _BIDI = re.compile('[؜‎‏‪-‮⁦-⁩​-‍⁠﻿]')
-_FENCE = re.compile(r'^(?P<f>`{3,}|~{3,})')
+_FENCE_OPEN = re.compile(r'(?P<f>`{3,}|~{3,})(?P<info>.*)$')       # 여는 줄: 들여쓰기 없이 시작
+_FENCE_CLOSE = re.compile(r' {0,3}(?P<f>`{3,}|~{3,})[ \t]*$')       # 닫는 줄: 들여쓰기 0~3칸, 뒤에는 공백만
 _CODE_SPAN = re.compile(r'(?P<t>`+)(?P<body>.+?)(?P=t)', re.S)
 _RAW_HTML = re.compile(r'<[A-Za-z/!?]')
 _IMAGE = re.compile(r'!\[')
@@ -51,17 +52,22 @@ def quote_block(text: str, *, limit: int = 2000) -> list[str]:
 
 
 def _strip_code(markdown: str) -> str:
+    # CommonMark 코드 블록 규칙에 맞춘다. 렌더러가 코드로 보지 않는 줄을 코드로 보면 그 뒤의 HTML을 놓치므로 애매하면 코드로 보지 않는다:
+    # - 여는 줄은 들여쓰기 없이 시작한 것만 인정한다(목록·인용 안의 들여쓴 블록은 컨테이너가 끝나면 닫히므로 판단하지 않는다).
+    # - 백틱 블록의 정보 문자열(여는 줄의 나머지)에 백틱이 있으면 코드 블록이 아니다.
+    # - 닫는 줄은 같은 문자로 같거나 더 길게, 들여쓰기 0~3칸, 뒤에 공백만 있어야 한다. 닫히지 않으면 문서 끝까지 코드다.
     out, fence = [], None
     for line in markdown.split('\n'):
-        m = _FENCE.match(line.lstrip(' ')) if len(line) - len(line.lstrip(' ')) < 4 else None
-        if fence is None and m:
-            fence = m.group('f')
-            continue
-        if fence is not None:
-            if m and m.group('f')[0] == fence[0] and len(m.group('f')) >= len(fence) and not line.strip(' ' + fence[0]):
+        if fence is None:
+            m = _FENCE_OPEN.match(line)
+            if m and not (m.group('f')[0] == '`' and '`' in m.group('info')):
+                fence = m.group('f')
+                continue
+            out.append(line)
+        else:
+            m = _FENCE_CLOSE.match(line)
+            if m and m.group('f')[0] == fence[0] and len(m.group('f')) >= len(fence):
                 fence = None
-            continue
-        out.append(line)
     return '\n\n'.join(_inline_visible(par) for par in re.split(r'\n[ \t]*\n', '\n'.join(out)))
 
 

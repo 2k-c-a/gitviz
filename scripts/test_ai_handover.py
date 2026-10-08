@@ -540,13 +540,19 @@ class Editing(Case):
                  '[a](//evil.example/x)': 'unsafe_link', '![t](https://tracker.example/p.png)': 'image', 'a\x00b': 'control_chars', '‮gnp.exe': 'hidden_or_bidi_chars',
                  'x' * 4001: 'line_too_long', '<!-- 숨은 주석 -->': 'raw_html',
                  '\\`<script>x</script>\\`': 'raw_html',                                  # 이스케이프된 백틱은 코드 span을 열지 못한다
-                 '\\\\<b>x</b>': 'raw_html', '`a\\` <b>x</b> `': 'raw_html'}             # 코드 span 안의 백슬래시는 이스케이프가 아니다
+                 '\\\\<b>x</b>': 'raw_html', '`a\\` <b>x</b> `': 'raw_html',             # 코드 span 안의 백슬래시는 이스케이프가 아니다
+                 # CommonMark: 백틱 블록의 정보 문자열에 백틱이 있으면 코드 블록이 아니다
+                 '```bad`info\n<img src=x onerror=alert(1)>': 'raw_html',
+                 '1. 항목\n   ```\n<img src=x onerror=alert(1)>': 'raw_html',           # 목록 안의 들여쓴 블록은 컨테이너가 끝나면 닫힌다
+                 ' ```\n<img src=x onerror=alert(1)>\n```': 'raw_html',                  # 들여쓴 여는 줄은 코드로 보지 않는다(애매하면 검사한다)
+                 '```\nx\n```\n<b>y</b>': 'raw_html'}                                   # 닫힌 뒤의 HTML
         for markdown, issue in cases.items():
             exc = self.code(svc.put_document, self.db, w['owner'], doc['document_id'], HandoverDocumentPut(expected_version=1, markdown=markdown))
             self.assertEqual(exc.code, ErrorCode.INVALID_SELECTION, markdown[:20])
             self.assertIn(issue, exc.details['issues'], markdown[:20])
         for fine in ('```\n<script>alert(1)</script> [a](javascript:x)\n```', '`<b>` 인라인 코드', '[문서](https://wiki.example/doc) [메일](mailto:a@b.c) [앵커](#top) [상대](docs/a.md)',
-                     '\\<script\\> 이스케이프된 꺾쇠'):
+                     '\\<script\\> 이스케이프된 꺾쇠', '```js\n<b>x</b>\n```\n본문', '~~~ a`b\n<b>x</b>\n~~~', '````\n<b>\n```\n<i>\n````',
+                     '```\n<b>\n``` x\n<i>'):                                        # 닫는 줄 뒤에 글자가 있으면 닫히지 않는다(끝까지 코드)
             self.assertEqual(markdown_safety.validate_markdown(fine), [], fine)
         self.assertEqual(self.doc(w)['version'], 1)                                                              # 거절된 내용은 저장되지 않는다
 
