@@ -493,14 +493,15 @@ class Providers(Base):
         options = registry.supported_options()
         self.assertEqual([p['id'] for p in options], ['anthropic', 'openai', 'gemini', 'ollama'])
         models = {m['profile_id']: m for m in options[0]['models']}
-        self.assertEqual(set(models), {OPUS, SONNET})
-        self.assertEqual((models[OPUS]['model'], models[OPUS]['input_price_per_mtok'], models[OPUS]['output_price_per_mtok']),
+        opus, sonnet = 'claude-opus-5-5-v3', 'claude-sonnet-5-5-v3'                      # 목록에는 확장 profile(v3)만 보인다(v1·v2는 기존 작업용으로 유지)
+        self.assertEqual(set(models), {opus, sonnet})
+        self.assertEqual((models[opus]['model'], models[opus]['input_price_per_mtok'], models[opus]['output_price_per_mtok']),
                          ('claude-opus-5-5', '4.00', '20.00'))
-        self.assertEqual((models[SONNET]['model'], models[SONNET]['input_price_per_mtok']), ('claude-sonnet-5-5', '2.00'))
+        self.assertEqual((models[sonnet]['model'], models[sonnet]['input_price_per_mtok']), ('claude-sonnet-5-5', '2.00'))
         self.assertTrue(all(m['allowed'] for m in models.values()))
-        with S.ai_env(AI_ALLOWED_PROFILES=SONNET):
+        with S.ai_env(AI_ALLOWED_PROFILES=sonnet):
             allowed = {m['profile_id']: m['allowed'] for m in registry.supported_options()[0]['models']}
-            self.assertEqual(allowed, {OPUS: False, SONNET: True})
+            self.assertEqual(allowed, {opus: False, sonnet: True})
 
     def test_verify_credential_calls_only_the_model_lookup_endpoint(self):
         calls = []

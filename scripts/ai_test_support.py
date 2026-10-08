@@ -31,6 +31,8 @@ def require_test_database(env=None):
     env['DATABASE_URL'] = url
     env['DATABASE_URL_ASYNC'] = url.replace('postgresql://', 'postgresql+asyncpg://', 1)
     env.setdefault('SESSION_SECRET_KEY', 'isolated-validation-secret')
+    # 앱은 import 때 .env를 읽는다(기존 환경변수는 덮어쓰지 않음). 개발자 .env의 기본 모델 같은 값이 시험 결과를 바꾸지 않도록 고정한다.
+    env['AI_PROVIDER_PROFILE'] = 'claude-opus-5-5-v1'
     return url
 
 

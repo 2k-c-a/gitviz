@@ -131,11 +131,12 @@ class Endpoints(Api):
         body = r.json()
         self.assertTrue(body['external_transfer_allowed'])
         models = {m['profile_id']: m for m in body['providers'][0]['models']}
-        self.assertEqual(set(models), {OPUS, SONNET})
-        self.assertTrue(models[OPUS]['allowed'])
-        with S.ai_env(AI_ALLOWED_PROFILES=SONNET):
+        opus, sonnet = 'claude-opus-5-5-v3', 'claude-sonnet-5-5-v3'                      # 목록에는 확장 profile(v3)만 보인다
+        self.assertEqual(set(models), {opus, sonnet})
+        self.assertTrue(models[opus]['allowed'])
+        with S.ai_env(AI_ALLOWED_PROFILES=sonnet):
             listed = self.client.get('/api/ai/v1/providers').json()['providers'][0]['models']
-        self.assertEqual({m['profile_id']: m['allowed'] for m in listed}, {OPUS: False, SONNET: True})
+        self.assertEqual({m['profile_id']: m['allowed'] for m in listed}, {opus: False, sonnet: True})
 
 
 class Rejections(Api):
