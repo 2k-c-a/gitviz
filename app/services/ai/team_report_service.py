@@ -25,7 +25,7 @@ from app.services.ai.team_access import check_repo_access, repo_access_reason, r
 TEMPLATE_VERSION = 'team-report-v1'
 SCHEMA_VERSION = 'team-report-payload-v1'
 TEXT_FILE = Path(__file__).parent / 'prompts' / 'team_report_v1.txt'
-TEXT_DIGEST = '8f7cc2a639a78ab43398e6562a8fac15378415f35525dcdbe2d99f72c6ec746d'                                   # 테스트가 현재 파일과 대조한다(내용을 바꾸면 새 버전 파일을 만든다)
+TEXT_DIGEST = '376088c0e77a05a8e8822f9caba590c2c38e543441e8e66e7fbfe8d49620465d'                                   # 테스트가 현재 파일과 대조한다(내용을 바꾸면 새 버전 파일을 만든다)
 MAX_REPORTS_PER_TEAM = 100
 MAX_LISTED_VALID = 30
 MAX_REPEAT_CANDIDATES = 20
@@ -80,8 +80,13 @@ def _collect(db: Session, team_id: UUID, repository_ids: list[int]) -> tuple[lis
         if status != 'active':
             excluded.append({'share_id': str(r.id), 'type': r.resource_type, 'repository_id': r.repository_id, 'reason': status})
             continue
+        source = None
         if r.resource_type == 'review_result':
-            content = team_service.review_content(db, r.review_result_id, r.shared_by)
+            source = team_service.review_source(db, r.review_result_id, r.shared_by)
+            if source is None:                                                                # 검사 뒤 작성자가 원본을 삭제했다: 오류로 끝내지 않고 제외하고 밝힌다
+                excluded.append({'share_id': str(r.id), 'type': r.resource_type, 'repository_id': r.repository_id, 'reason': 'source_deleted'})
+                continue
+            content = source[1]
         else:
             content = team_service.handover_content(db, r.handover_target_id, r.pinned_target_version, r.pinned_preparation_version)   # 공유 당시 고정한 버전 그대로
             if content is None:                                                               # 검사와 읽기 사이에 작성자가 바꿨다: 공유하지 않은 새 내용은 쓰지 않는다
@@ -90,8 +95,7 @@ def _collect(db: Session, team_id: UUID, repository_ids: list[int]) -> tuple[lis
         meta = {'share_id': str(r.id), 'type': r.resource_type, 'repository_id': r.repository_id, 'shared_by': str(r.shared_by), 'shared_by_login': r.github_login,
                 'created_at': r.created_at.isoformat()}
         if r.resource_type == 'review_result':
-            payload_hash = db.execute(text('SELECT payload_hash FROM ai_results WHERE id = :r'), {'r': r.review_result_id}).scalar().strip()
-            meta.update(resource_id=str(r.review_result_id), payload_hash=payload_hash, feedback_digest=_feedback_digest(content['findings']))
+            meta.update(resource_id=str(r.review_result_id), payload_hash=source[0], feedback_digest=_feedback_digest(content['findings']))
         else:
             meta.update(resource_id=str(r.handover_target_id), pinned_target_version=r.pinned_target_version, pinned_preparation_version=r.pinned_preparation_version)
         used.append({'meta': meta, 'content': content})

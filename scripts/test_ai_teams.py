@@ -746,6 +746,49 @@ class RaceWindows(TeamCase):
         self.assertEqual([e['reason'] for e in report['payload']['excluded_shares']], ['outdated'])
         self.assertNotIn('공유하지 않은 새 이름', json.dumps(report, ensure_ascii=False, default=str))
 
+    def delete_result_after(self, owner_fn, name, rid):
+        """owner_fn(이름 name)이 끝난 직후 별도 세션에서 작성자가 원본 결과를 삭제한다(공유는 cascade로 사라진다). 팀 잠금과 무관한 삭제 경로다."""
+        real = getattr(svc, name)
+        state = {'done': False}
+
+        def wrapped(*args, **kwargs):
+            result = real(*args, **kwargs)
+            if not state['done']:
+                state['done'] = True
+                with S.Session() as other:
+                    other.execute(text('DELETE FROM ai_results WHERE id = :r'), {'r': rid})
+                    other.commit()
+            return result
+        return patch.object(svc, name, side_effect=wrapped)
+
+    def check_source_deleted_during_generation(self, hook):
+        tid = self.standard()
+        keep = self.review(self.bo, self.repo, pr=31)
+        gone = self.review(self.bo, self.repo, pr=32)
+        self.share(self.bo, tid, keep)
+        self.share(self.bo, tid, gone)
+        with self.delete_result_after(None, hook, gone):
+            report = reports.generate(self.db, self.ann, tid, ReportCreate(repository_ids=[self.repo]))          # 서버 오류 없이 끝난다
+        self.assertEqual(report['payload']['totals']['results'], 1, hook)                                        # 남은 결과만 들어간다
+        self.assertEqual([e['reason'] for e in report['payload']['excluded_shares']], ['source_deleted'], hook)
+        self.assertIn(reports.T['REASON_source_deleted'], report['markdown'])                                    # 제외 사실을 밝힌다
+        self.assertEqual({x['resource_id'] for x in report['source_manifest']['shares']}, {str(keep)}, hook)
+        self.assertTrue(reports.get_report(self.db, self.cy, tid, report['report_id']))                          # 지워진 공유는 manifest에 없으니 보고서는 계속 열린다
+
+    def test_a_source_deleted_right_after_the_validity_check_is_excluded_and_announced(self):
+        self.check_source_deleted_during_generation('share_status')
+
+    def test_a_source_deleted_while_its_content_is_read_is_excluded_and_announced(self):
+        self.check_source_deleted_during_generation('review_content')
+
+    def test_a_source_deleted_while_opening_a_share_is_not_found(self):
+        tid = self.standard()
+        rid = self.review(self.bo, self.repo)
+        share = self.share(self.bo, tid, rid)
+        with self.delete_result_after(None, 'share_status', rid):
+            exc = self.code(svc.share_content, self.db, self.cy, tid, share['share_id'])
+        self.assertEqual(exc.code, ErrorCode.RESOURCE_NOT_FOUND)                                                  # 일부만 읽은 내용을 주지 않는다
+
     def test_report_reads_are_serialized_with_unsharing(self):
         tid = self.standard()
         share = self.share(self.bo, tid, self.review(self.bo, self.repo))

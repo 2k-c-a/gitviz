@@ -28,4 +28,5 @@ EXCLUDED_NONE: 제외된 공유가 없습니다.
 EXCLUDED_LINE: 공유 {id} — {reason}
 REASON_outdated: 공유한 뒤 원본이 바뀌어 제외했습니다(작성자가 다시 공유해야 합니다).
 REASON_expired: 결과의 보관 기간이 지나 제외했습니다.
+REASON_source_deleted: 작성자가 원본을 삭제해 제외했습니다.
 BASIS_LINE: 팀 공개 범위 세대 {epoch}, 생성 시각 {generated_at}, 원본 공유 {shares}건

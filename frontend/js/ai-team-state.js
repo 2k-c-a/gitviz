@@ -5,7 +5,7 @@
 export const ROLE_LABEL = { admin: '관리자', member: '멤버', viewer: '조회자' };
 export const ROLE_ORDER = ['admin', 'member', 'viewer'];
 export const SHARE_TYPE_LABEL = { review_result: '코드 리뷰 결과', handover_target: '인계 준비 상태' };
-export const SHARE_STATUS_LABEL = { active: '공유 중', outdated: '공유한 뒤 바뀜(다시 공유 필요)', expired: '보관 기간 만료' };
+export const SHARE_STATUS_LABEL = { active: '공유 중', outdated: '공유한 뒤 바뀜(다시 공유 필요)', expired: '보관 기간 만료', source_deleted: '원본 삭제됨' };
 export const VERDICT_LABEL = { valid: '유효(공유한 사람의 판정)', unverified: '검토 대기', uncertain: '불확실', false_positive: '오탐(문제 집계 제외)' };
 export const SHARE_NOTE = '공유하면 팀 구성원이 그 자료를 볼 수 있습니다. 코드 원문·인용과 내 메모는 공유하지 않으며, 공유하지 않은 자료는 보이지 않습니다. 언제든 공유를 해제할 수 있습니다.';
 export const REPORT_NOTE = '보고서는 팀에 공유된 자료만 정리합니다. 문제 집계는 사람이 유효로 판정한 지적만 세고, 오탐은 집계에서 제외하며, 같은 지적 후보는 합치지 않습니다. 모델을 호출하지 않습니다.';

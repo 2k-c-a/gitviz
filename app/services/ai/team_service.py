@@ -271,7 +271,9 @@ def share_status(db: Session, row) -> str:
     from datetime import datetime, timezone
     if row.resource_type == 'review_result':
         expires = db.execute(text('SELECT expires_at FROM ai_results WHERE id = :r'), {'r': row.review_result_id}).scalar()
-        return 'active' if expires and expires > datetime.now(timezone.utc) else 'expired'
+        if expires is None:
+            return 'source_deleted'                                                           # 작성자가 원본을 삭제했다(공유 행은 곧 cascade로 사라진다)
+        return 'active' if expires > datetime.now(timezone.utc) else 'expired'
     t = db.execute(text('SELECT version FROM handover_targets WHERE id = :t'), {'t': row.handover_target_id}).one_or_none()
     if t is None:
         return 'outdated'
@@ -367,6 +369,20 @@ def review_content(db: Session, result_id: UUID, owner_id: UUID) -> dict:
             'note': '지적은 AI가 만든 것이며 판정(verdict)은 작성자의 판단입니다. GitViz가 확인한 것이 아닙니다.'}
 
 
+def review_source(db: Session, result_id: UUID, owner_id: UUID) -> tuple[str, dict] | None:
+    """(결과 해시, 공유 내용). 읽는 도중 원본이 삭제됐으면 None이다.
+
+    작성자의 결과·작업 삭제는 팀 잠금과 무관하게 일어나(공유는 cascade로 사라진다) 읽기와 직렬화되지 않는다. 그래서 읽기 앞뒤로 원본이 있는지
+    확인하고, 없으면 일부만 읽은 내용을 쓰지 않고 호출한 쪽이 '원본 삭제'로 안내하게 한다."""
+    payload_hash = db.execute(text('SELECT payload_hash FROM ai_results WHERE id = :r'), {'r': result_id}).scalar()
+    if payload_hash is None:
+        return None
+    content = review_content(db, result_id, owner_id)
+    if db.execute(text('SELECT 1 FROM ai_results WHERE id = :r'), {'r': result_id}).scalar() is None:
+        return None
+    return payload_hash.strip(), content
+
+
 def handover_content(db: Session, target_id: UUID, pinned_target_version: int, pinned_preparation_version: int) -> dict | None:
     """공유된 인계 대상: 대상 이름·파일과 항목별 준비 상태만(메모·링크·문서 본문·인계자/인수자 메모는 제외).
 
@@ -410,11 +426,20 @@ def share_content(db: Session, user_id: UUID, team_id: UUID, share_id: UUID) -> 
         db.rollback()
         raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '공유를 찾을 수 없습니다.')
     status = share_status(db, row)
+    if status == 'source_deleted':
+        db.rollback()
+        raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '공유를 찾을 수 없습니다.')
     if status != 'active':
         db.rollback()
         raise AIError(ErrorCode.INVALID_STATE, '공유한 뒤 원본이 바뀌었거나 보관 기간이 지나 내용을 볼 수 없습니다. 작성자가 다시 공유해야 합니다.', details={'reason': f'share_{status}'})
-    content = (review_content(db, row.review_result_id, row.shared_by) if row.resource_type == 'review_result'
-               else handover_content(db, row.handover_target_id, row.pinned_target_version, row.pinned_preparation_version))
+    if row.resource_type == 'review_result':
+        source = review_source(db, row.review_result_id, row.shared_by)
+        content = source[1] if source else None
+        if content is None:                                                                   # 읽는 사이 작성자가 원본을 삭제했다(공유도 함께 사라진다)
+            db.rollback()
+            raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '공유를 찾을 수 없습니다.')
+    else:
+        content = handover_content(db, row.handover_target_id, row.pinned_target_version, row.pinned_preparation_version)
     db.rollback()                                                                             # 읽기를 마치면 잠금을 푼다
     if content is None:
         raise AIError(ErrorCode.INVALID_STATE, '공유한 뒤 원본이 바뀌어 내용을 볼 수 없습니다. 작성자가 다시 공유해야 합니다.', details={'reason': 'share_outdated'})
