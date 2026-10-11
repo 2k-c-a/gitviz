@@ -157,7 +157,8 @@ def _check_verify_limit(db: Session, owner_id: UUID, now: datetime) -> None:
     used = db.execute(text("""SELECT count(*) FROM audit_events WHERE actor_user_id = :o
                               AND action = 'credential.verify_attempt' AND created_at > :since"""),
                       {'o': owner_id, 'since': now - VERIFY_WINDOW}).scalar()
-    if used >= get_ai_settings().credential_verify_limit_per_hour:
+    limit = get_ai_settings().credential_verify_limit_per_hour
+    if limit > 0 and used >= limit:
         db.rollback()
         raise AIError(ErrorCode.USER_LIMIT, 'API key 확인 횟수 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.',
                       headers={'Retry-After': '3600'})

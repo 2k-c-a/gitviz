@@ -39,8 +39,7 @@ from app.api.ai.feedback import router as ai_feedback_router
 from app.api.ai.usage import router as ai_usage_router
 from app.api.ai.pulls import router as ai_pulls_router
 from app.api.ai.history import router as ai_history_router
-from app.api.ai.handover import router as ai_handover_router
-from app.api.ai.teams import router as ai_teams_router
+from app.api.ai.commits import router as ai_commits_router
 from app.services.ai.access import AIError
 
 if get_ai_settings().enabled:
@@ -77,8 +76,7 @@ app.include_router(ai_feedback_router)
 app.include_router(ai_usage_router)
 app.include_router(ai_pulls_router)
 app.include_router(ai_history_router)
-app.include_router(ai_handover_router)
-app.include_router(ai_teams_router)
+app.include_router(ai_commits_router)
 
 # ── 프론트엔드 정적 파일 서빙 (API 라우터 이후 마지막에 위치) ─────────────────
 app.mount("/", NoCacheStaticFiles(directory="frontend", html=True), name="frontend")

@@ -36,6 +36,57 @@ def payload(provider):
 
 
 class Adapters(unittest.TestCase):
+    def test_local_chat_runtimes(self):
+        for runtime in ('lmstudio', 'koboldcpp'):
+            for reason in ('stop', 'length', 'tool_calls'):
+                with self.subTest(runtime=runtime, reason=reason):
+                    profile = dataclasses.replace(registry.get_profile(runtime + '-local-v1'), model='installed-model')
+                    requests = []
+                    def handle(req):
+                        requests.append(req)
+                        if req.method == 'GET':
+                            return httpx2.Response(200, json={'data': [{'id': profile.model}]})
+                        body = json.loads(req.content)
+                        self.assertEqual(body['model'], profile.model)
+                        self.assertFalse(body['stream'])
+                        self.assertNotIn('tools', body)
+                        self.assertEqual(body['response_format']['json_schema']['schema'], strict_schema('review', 'review-output-v2'))
+                        return httpx2.Response(200, json={'choices': [{'message': {'content': TEXT}, 'finish_reason': reason}]})
+                    with httpx2.Client(transport=httpx2.MockTransport(handle)) as client:
+                        adapter = registry.create_provider(profile, client=client)
+                        adapter.count_tokens(REQUEST)
+                        self.assertEqual(requests, [])  # no code transmitted for estimation
+                        result = adapter.generate(REQUEST)
+                    self.assertEqual([r.url.path for r in requests], ['/v1/models', '/v1/chat/completions'])
+                    self.assertEqual(result.finish, {'stop': 'complete', 'length': 'truncated', 'tool_calls': 'incomplete'}[reason])
+                    self.assertEqual(result.cost, Decimal('0'))
+                    self.assertIsNone(result.usage)
+
+    def test_local_chat_rejects_missing_model_and_never_falls_back(self):
+        profile = dataclasses.replace(registry.get_profile('lmstudio-local-v1'), model='installed-model')
+        paths = []
+        def handle(req):
+            paths.append(req.url.path)
+            return httpx2.Response(200, json={'data': [{'id': 'different-model'}]})
+        with httpx2.Client(transport=httpx2.MockTransport(handle)) as client:
+            with self.assertRaises(ProviderError):
+                registry.create_provider(profile, client=client).generate(REQUEST)
+        self.assertEqual(paths, ['/v1/models'])
+        with self.assertRaises(ProviderConfigError):
+            registry.create_provider(dataclasses.replace(profile, endpoint='http://192.168.1.2:1234'))
+
+    def test_local_chat_runtime_settings(self):
+        for runtime, prefix in (('lmstudio', 'LMSTUDIO'), ('koboldcpp', 'KOBOLDCPP')):
+            with patch.dict(os.environ, {f'AI_{prefix}_ENABLED': '0'}):
+                self.assertNotIn(runtime + '-local-v1', registry.allowed_profile_ids())
+            with patch.dict(os.environ, {f'AI_{prefix}_ENABLED': '1', f'AI_{prefix}_MODEL': 'installed-model'}):
+                profile = registry.get_profile(runtime + '-local-v1')
+                self.assertEqual(profile.model, 'installed-model')
+                self.assertFalse(profile.requires_api_key)
+                self.assertEqual(profile.execution_location, 'local')
+                with patch.dict(os.environ, {f'AI_{prefix}_MODEL': 'other-model'}):
+                    self.assertNotEqual(profile.fingerprint(), registry.get_profile(profile.id).fingerprint())
+
     def adapter(self, name, handler=None):
         self.requests = []
         profile = registry.get_profile({'openai': 'gpt-5.4-v1', 'gemini': 'gemini-3.5-flash-lite-v1',

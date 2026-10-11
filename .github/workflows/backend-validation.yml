@@ -41,6 +41,7 @@ jobs:
       - run: python scripts/test_ai_security.py
       - run: python scripts/test_ai_schema.py
       - run: python scripts/test_ai_pr_collection.py
+      - run: python scripts/test_ai_commit_collection.py
       - run: python scripts/test_ai_job_lifecycle.py
       - run: python scripts/test_ai_inputs.py
       - run: python scripts/test_ai_input_api.py
@@ -53,14 +54,10 @@ jobs:
       - run: python scripts/test_ai_api.py
       - run: python scripts/test_ai_pulls_api.py
       - run: python scripts/test_ai_history_context.py
-      - run: python scripts/test_ai_handover.py
-      - run: python scripts/test_ai_teams.py
       - run: python scripts/test_ai_ops.py
       - run: python scripts/test_ai_evaluation.py
       - run: python scripts/test_ai_smoke.py
       - run: node scripts/test_ai_frontend.cjs
-      - run: node scripts/test_ai_handover_frontend.cjs
-      - run: node scripts/test_ai_team_frontend.cjs
       - run: python scripts/test_ai_output_validation.py
       - run: python scripts/test_ai_output_limits.py
   ai-queue:

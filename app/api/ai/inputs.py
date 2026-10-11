@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.api.ai.dependencies import require_ai_user, require_csrf
 from app.collectors.ai_errors import CollectionError
 from app.collectors.github.ai_pr_collector import RepoRef, capture_revision
+from app.collectors.github.ai_commit_collector import capture_commit
 from app.collectors.github.github_client import GitHubClient
 from app.core.ai_settings import get_ai_settings
 from app.core.database import get_db
@@ -65,6 +66,8 @@ def _require_key(value: str | None) -> str:
 
 def _body_hash(body: PrepareInputRequest) -> str:
     data = body.model_dump(mode='json')
+    if data.get('commit_sha') is None:
+        data.pop('commit_sha', None)  # preserve existing PR idempotency hashes
     data['selected_paths'] = sorted(data['selected_paths'])      # 선택 순서가 달라도 같은 요청이다
     return idempotency.request_hash(data)
 
@@ -90,7 +93,8 @@ def create_input(body: PrepareInputRequest, request: Request, user_id: UUID = De
     ref = _repo_ref(repo)
     client = GitHubClient(token=_token(db, user_id), timeout=15, max_retries=2, max_wait_seconds=10)
     try:
-        captured = capture_revision(client, ref, body.pr_number, body.expected_base_sha, body.expected_head_sha)
+        captured = (capture_commit(client, ref, body.commit_sha, body.expected_base_sha, body.expected_head_sha)
+                    if body.commit_sha else capture_revision(client, ref, body.pr_number, body.expected_base_sha, body.expected_head_sha))
     except CollectionError as exc:
         raise input_builder.to_ai_error(exc) from None
     result = input_store.create_input_and_job(

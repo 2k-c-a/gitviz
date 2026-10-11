@@ -29,7 +29,7 @@ def local_endpoint(url):
     except ValueError:
         valid = False
     if not valid:
-        raise ProviderConfigError('Ollama endpoint must be an explicit loopback HTTP port')
+        raise ProviderConfigError('Local AI endpoint must be an explicit loopback HTTP port')
     return url.rstrip('/')
 
 
@@ -218,6 +218,63 @@ class GeminiProvider(JsonProvider):
         except (KeyError, TypeError, IndexError, AttributeError):
             raise ProviderError(ProviderFailure('response_lost', False, True)) from None
         return self.result(data, text, finish, usage, started)
+
+
+class LocalChatProvider(JsonProvider):
+    """Same-PC LM Studio/KoboldCpp chat API. Model IDs are administrator pinned;
+    these APIs do not attest to model file hashes, unlike Ollama's digest API.
+    """
+    def __init__(self, profile, **kwargs):
+        self.base_url = local_endpoint(profile.endpoint) + '/v1'
+        if not profile.model.strip() or profile.execution_location != 'local' or profile.requires_api_key:
+            raise ProviderConfigError('A configured keyless local model is required')
+        super().__init__(profile, **kwargs)
+
+    def verify_credential(self):
+        data = self.call('/models', method='GET')
+        if not any(isinstance(m, dict) and m.get('id') == self.profile.model for m in data.get('data', [])):
+            raise ProviderError(ProviderFailure('model_unavailable', False, False))
+
+    def count_tokens(self, request):
+        self.output_limit(request)
+        return self.estimate_tokens(request)
+
+    def prepare_generation(self, request):
+        self.output_limit(request)
+        self.verify_credential()
+        return lambda: self._generate_verified(request)
+
+    def generate(self, request):
+        return self.prepare_generation(request)()
+
+    def _generate_verified(self, request):
+        limit = self.output_limit(request)
+        started = time.monotonic()
+        data = self.call('/chat/completions', {
+            'model': self.profile.model, 'stream': False,
+            'messages': [{'role': 'system', 'content': request.system},
+                         {'role': 'user', 'content': request.user}],
+            'max_tokens': limit,
+            'response_format': {'type': 'json_schema', 'json_schema': {
+                'name': 'gitviz_' + request.kind, 'strict': True, 'schema': self.output_schema(request.kind)}},
+        }, billable=True)
+        try:
+            choice = data['choices'][0]
+            message = choice['message']
+            text = message.get('content') or ''
+            reason = choice.get('finish_reason')
+            finish = ('refused' if message.get('refusal') or reason == 'content_filter'
+                      else 'complete' if reason == 'stop' else 'truncated' if reason == 'length'
+                      else 'incomplete')
+            u = data.get('usage') or {}
+            usage = Usage(u['prompt_tokens'], u['completion_tokens']) if all(
+                integer(u.get(k)) for k in ('prompt_tokens', 'completion_tokens')) else None
+        except (KeyError, TypeError, IndexError, AttributeError):
+            raise ProviderError(ProviderFailure('response_lost', False, True)) from None
+        result = self.result(data, text, finish, usage, started)
+        from decimal import Decimal
+        result.cost = Decimal('0')
+        return result
 
 
 class OllamaProvider(JsonProvider):

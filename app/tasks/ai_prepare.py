@@ -59,6 +59,7 @@ def prepare_handler(ctx):
         paths = list(job.request_options.get('selected_paths') or [])
         options = dict(job.request_options or {})
         captured = dict(revision_id=revision.id, pr_number=revision.pr_number, base_sha=revision.base_sha,
+                        source_type=revision.source_type,
                         head_sha=revision.head_sha, merge_base_sha=revision.merge_base_sha,
                         metadata=dict(options.get('pr_metadata') or revision.pr_metadata or {}),
                         pr_total_files=options.get('pr_total_files'))
@@ -80,7 +81,11 @@ def prepare_handler(ctx):
     try:
         client = GitHubClient(token=token, timeout=15, max_retries=2, max_wait_seconds=10)
         _check_time(ctx, input_id, started, settings.prepare_time_limit_seconds)
-        verify_unchanged(client, ref, captured['pr_number'], captured['base_sha'], captured['head_sha'])
+        if captured['source_type'] == 'pr':
+            verify_unchanged(client, ref, captured['pr_number'], captured['base_sha'], captured['head_sha'])
+        else:
+            from app.collectors.github.ai_commit_collector import capture_commit
+            capture_commit(client, ref, captured['head_sha'], captured['base_sha'], captured['head_sha'])
         with ai_diff_collector.revision_workspace(input_builder.remote_url_for(repo_url), captured['merge_base_sha'],
                                                   captured['head_sha'], token=token, protocols=PROTOCOLS) as work:
             _check_time(ctx, input_id, started, settings.prepare_time_limit_seconds)
@@ -88,7 +93,8 @@ def prepare_handler(ctx):
                 work, captured['merge_base_sha'], captured['head_sha'], sorted(paths), max_files=settings.max_files,
                 max_bytes=settings.max_input_bytes, protocols=PROTOCOLS,
                 pr_total_files=_total_files({'changed_files': captured['pr_total_files']}))
-        verify_unchanged(client, ref, captured['pr_number'], captured['base_sha'], captured['head_sha'])
+        if captured['source_type'] == 'pr':
+            verify_unchanged(client, ref, captured['pr_number'], captured['base_sha'], captured['head_sha'])
         _check_time(ctx, input_id, started, settings.prepare_time_limit_seconds)
     except CollectionError as exc:
         # PR이 바뀌었다면 같은 리비전을 다시 시도해도 소용없다. 사용자가 새 SHA로 다시 준비해야 한다.
@@ -97,6 +103,7 @@ def prepare_handler(ctx):
         _fail_permanently(ctx, input_id, input_builder.error_code_for(exc))
     built = input_builder.assemble(
         collected, revision=PRRevision(repo_id=repository_id, pr_number=captured['pr_number'],
+                                       source_type=captured['source_type'],
                                        base_sha=captured['base_sha'], head_sha=captured['head_sha'],
                                        merge_base_sha=captured['merge_base_sha']),
         revision_id=captured['revision_id'], metadata=input_builder.transfer_metadata(captured['metadata']),

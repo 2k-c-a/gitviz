@@ -6,18 +6,18 @@
 - 목적: 실제 저장소에서 작업할 파일·계약·검증·완료 기준을 구현 순서로 정의
 - 상태: 최초 구현 계획을 보존한 문서. 현재 진행 범위는 아래 갱신 기록을 따릅니다.
 
-### 진행 범위 갱신 (2026-10-08)
+### 진행 범위 갱신 (2026-10-11)
 
-S0~S13은 구현됐으며, **S14·S15는 추후 계획으로 보류**합니다. 아래 파일·인터페이스 목록은 최초 계획의 기록이며 현재 구현 여부는 실제 코드와 인터페이스 계약을 기준으로 확인합니다. 이번 범위 결정이 출시 전 실제 인증·운영 스냅샷·모델 평가 확인을 대신하지는 않습니다.
+2026-10-11 범위 변경: S0~S10 유지, S11은 **PR 전체의 추가 검토 후보**로 개선합니다. **S12 인수인계·S13 보고서는 폐기**, **S14 — GitHub App·Webhook·자동 리뷰, S15 — GitHub 댓글 게시는 보류**합니다. PR과 커밋 모두 AI 리뷰를 지원합니다. 아래 파일·인터페이스 목록은 최초 계획의 기록이며 현재 구현 여부는 실제 코드와 인터페이스 계약을 기준으로 확인합니다. 이번 범위 결정이 출시 전 실제 인증·운영 스냅샷·모델 평가 확인을 대신하지는 않습니다.
 
 - **S14 — GitHub App·Webhook·자동 리뷰:** 추후 착수합니다. 자동 실행의 키·비용 주체, 공유 자료의 외부 전송 동의, 예산·실행 한도를 먼저 확정해야 합니다.
 - **S15 — GitHub PR 댓글 게시:** S14 이후 추후 착수합니다. 게시 허용은 자동 리뷰 활성화와 별도로 정하며, 게시 권한·최신 SHA·중복 게시 방지 정책을 적용합니다.
 
-현재 사용 흐름은 사용자가 실행하는 리뷰와 GitViz 내부 결과·이력·인수인계·팀 보고서입니다. S14·S15의 아래 명세는 후속 설계 자료로 유지하며 구현 완료로 간주하지 않습니다.
+현재 사용 흐름은 사용자가 실행하는 PR·커밋 리뷰와 GitViz 내부 결과·추가 검토 후보입니다. S14·S15의 아래 명세는 후속 설계 자료로 유지하며 구현 완료로 간주하지 않습니다.
 
 ## 1. 범위와 적용 원칙
 
-MVP는 **수동 PR 변경 설명·코드리뷰와 결과 피드백**입니다. 이력 연결, 인수인계, 팀 보고서, 자동 리뷰·게시를 후속 단계로 둡니다. 수집 담당과 시각화 담당의 작업은 해당 단계에 명시하고, 백엔드는 그 인터페이스에 맞춰 구현합니다.
+현재 범위는 **수동 PR·커밋 변경 설명·코드리뷰, 결과 피드백, 전체 변경의 추가 검토 후보**입니다. 인수인계·보고서는 폐기하며 자동 리뷰·게시 단계는 보류합니다. 수집 담당과 시각화 담당의 작업은 해당 단계에 명시하고, 백엔드는 그 인터페이스에 맞춰 구현합니다.
 
 수정 파일은 저장소에 있는 파일 또는 앞 단계에서 만든 파일입니다. 신규 목록의 폴더에는 필요한 `__init__.py`도 함께 추가합니다. 파일명은 작업안이며 migration의 `<revision>`은 실제 생성할 Alembic ID 자리입니다. 기존 migration을 고치지 않고 새로운 revision을 이어 붙입니다.
 
@@ -40,13 +40,9 @@ flowchart TD
   S7 --> S8[S8 생성 · 결과 · 피드백 API]
   S8 --> S9[S9 MVP 화면]
   S9 --> S10[S10 MVP 통합 수용]
-  S10 --> S11[S11 GitViz 이력 연결]
-  S10 --> S12[S12 인수인계]
-  S11 -. 선택 근거 .-> S12
-  S11 --> S13[S13 팀 권한 · 보고서]
-  S12 -. 준비 보고서 포함 시 .-> S13
-  S13 --> S14[S14 GitHub App · 자동 리뷰]
-  S14 --> S15[S15 GitHub 게시]
+  S10 --> S11[S11 전체 변경의 추가 검토 후보]
+  S11 -. 보류 .-> S14[S14 GitHub App · Webhook · 자동 리뷰]
+  S14 -. 보류 .-> S15[S15 GitHub 댓글 게시]
 ```
 
 | 단계 | 반드시 완료할 선행 | 주요 담당 | 결과 |
@@ -63,12 +59,12 @@ flowchart TD
 | S9 | S8 | 시각화 | MVP 사용자 흐름 |
 | S10 | S9 | 공동 검증 | MVP 출시/시연 가능 |
 | S11 | S10 | 분석·시각화 | 과거 이력 근거 |
-| S12 | S10; 이력 포함 시 S11 | 백엔드·시각화 | 준비 관리·문서 |
-| S13 | S11; 준비 보고서 포함 시 S12 | 백엔드·시각화 | 팀 격리·공유·보고서 |
-| S14 | S13 | 수집·백엔드 | 설치 주체·자동 실행 |
+| S12 | — | — | 인수인계 폐기 |
+| S13 | — | — | 보고서·관련 팀 화면/API 폐기 |
+| S14 | 권한 설계 재검토 후 보류 | 수집·백엔드 | 설치 주체·자동 실행 |
 | S15 | S14 | 백엔드·시각화 | opt-in 댓글 게시 |
 
-S2·S3·S6은 S1 이후 독립 진행 가능합니다. S9의 화면 시안과 mock은 S0 이후 시작할 수 있지만 완료 판정은 S8의 실제 API 연결 후입니다. S12는 S11을 기다리지 않고 시작할 수 있습니다. S14는 이 계획에서 팀 설치 주체를 쓰므로 S13이 선행합니다. 개인형 자동화로 바꾸려면 별도 권한 설계를 먼저 변경합니다.
+S2·S3·S6은 S1 이후 독립 진행 가능합니다. S9의 화면 시안과 mock은 S0 이후 시작할 수 있지만 완료 판정은 S8의 실제 API 연결 후입니다. S12·S13은 의존성에서 제외합니다. S14·S15 재개 시 설치 주체와 권한 설계를 다시 확정합니다.
 
 MVP 경로는 `S0 → S1 → S2 → S4 → S5 → S7 → S8 → S9 → S10`이며 S3·S6 결과도 필요합니다. 인력·기간이 없으므로 날짜나 공수는 이 문서에서 확정하지 않습니다.
 
@@ -374,83 +370,23 @@ ai-poll은 기존 poll의 retry/backoff 원칙을 참고하되 AI endpoint·stag
 
 보안·구조·작업 일관성 문제는 수용 불가입니다. 알려진 결함 발견·오탐·범위·언어·비용을 보고하고 예비 평가에서 합의한 기준을 만족해야 합니다. 운영자가 설정·확인·취소·복구·기한 삭제를 수행할 수 있어야 MVP 완료입니다.
 
-## 14. S11 — GitViz 이력 근거 연결
+## 14. S11 — PR 전체의 추가 검토 후보
 
-**수정 파일**
+입력 준비 시 고정 base/head의 Git 비교에서 전체 변경 경로와 이름 변경 이전 경로를 `InputManifest.changed_files`에 보관합니다. AI에 보내는 코드는 사용자가 선택한 파일만입니다.
 
-- `app/models/__init__.py`, `app/schemas/ai.py`, `app/services/ai/generation_service.py`, `app/api/ai/jobs.py`: history_context등록.
-- `frontend/js/ai-review.js`, `frontend/js/ai-api.js`, `frontend/pages/ai-review.html`: 근거구역.
+AI 지적이 없거나 선택하지 않은 변경 파일도 이력 검토 대상입니다. 검증된 같은 저장소의 불변 snapshot에서 공동 변경 파일·관측 수·기여자 분포·수집 품질을 표시합니다. 후보가 이번 변경에 포함되는지 구분하며 오류·수정 누락으로 단정하지 않습니다. 새 파일, 이름 변경, 적은 관측, 기준 SHA 차이를 함께 표시합니다. 커밋 리뷰에도 적용합니다.
 
-**새 파일**
+이전 입력에 전체 목록이 없으면 선택 파일 범위라는 한계를 표시합니다. 기존 불변 근거는 유지하며 전체 범위가 필요하면 새 입력을 준비합니다.
 
-- `app/models/ai_evidence.py`, `app/services/ai/history_context.py`.
-- `app/services/ai/prompts/history_v1.txt`, `migrations/versions/<revision>_add_ai_evidence.py`.
-- `scripts/test_ai_history_context.py`.
+검증: AI 지적 없는 결과, 선택하지 않은 파일, 공동 변경 포함 여부, snapshot 무결성·미래 자료 제외, 이름 변경·신규 파일.
 
-**인터페이스**
+## 15. S12 — 인수인계 (폐기)
 
-`build_history_evidence(review_result_id,analysis_snapshot_id)`는 같은 repo/owner를 검사하고 path별 공동 변경·분포·관측 수·수집 품질만 반환합니다. 분석 수치는 기존 불변 payload에서 가져옵니다. 기존 analytics 조회 시 실시간으로 다시 계산하지 않습니다.
+인계 대상·준비 체크폼·초안·문서 편집·내보내기를 폐기합니다. 화면·버튼·API·실행 서비스를 제거합니다. 이전 마이그레이션과 저장 자료는 보존합니다.
 
-**테스트**
+## 16. S13 — 보고서 (폐기)
 
-다른repo거부·payload무결성·미식별분모·표본부족·이력없는새파일·이름변경·PR기준과snapshot차이·미래자료평가제외·공동파일을미수정오류로단정하지않는사례.
-
-**완료 조건**
-
-코드 지적과 이력 확인 후보가 분리되고 모든 숫자·근거가 snapshot과 일치합니다. 이력이 없어도 MVP 리뷰는 동작합니다.
-
-## 15. S12 — 준비 체크폼·인수인계 문서
-
-**수정 파일**
-
-- `app/models/__init__.py`, `app/schemas/ai.py`, `app/api/ai/__init__.py`, `app/services/ai/generation_service.py`: handover기능등록.
-- `frontend/pages/ai-review.html`, `frontend/js/ai-review.js`: 대상문서이동.
-
-**새 파일**
-
-- `app/models/ai_handover.py`, `app/services/ai/handover_service.py`, `app/services/ai/prompts/handover_v1.txt`.
-- `app/api/ai/handover.py`, `migrations/versions/<revision>_add_ai_handover.py`.
-- `frontend/pages/ai-handover.html`, `frontend/js/ai-handover.js`.
-- `scripts/test_ai_handover.py`, `scripts/test_ai_handover_frontend.cjs`.
-
-**인터페이스**
-
-targets CRUD, `PUT /handover-targets/{id}/preparation`, `POST /jobs kind=handover`, 문서 수정·export를 제공합니다. 준비·편집 expected_version, 생성 원본·편집본 분리, 피드백 기준 버전이 필수입니다. S11 미완료면 이력 근거가 없다고 명시하고 구현되지 않은 ID를 받지 않습니다.
-
-**테스트**
-
-미입력unknown·완료조건·문서링크자동읽기금지·다른owner·버전충돌·대상/PR변경재확인·생성후피드백변경·재생성이편집본보존·Markdown안전내보내기.
-
-**완료 조건**
-
-체크폼 저장 → 초안 → 편집 → export가 연결되고 미확인과 미검증 AI 지적이 확정 사실로 바뀌지 않습니다.
-
-## 16. S13 — 팀 권한·공유·보고서
-
-**수정 파일**
-
-- `app/models/__init__.py`, `app/schemas/ai.py`, `app/services/ai/access.py`, `app/api/ai/__init__.py`: team scope명시추가.
-- `app/models/ai_job.py`, `app/models/ai_result.py`, `app/services/ai/job_service.py`: 개인과팀의실행주체·유일성·조회정책을확장.
-- `frontend/pages/components/navbar.html`: 팀점검이동.
-
-**새 파일**
-
-- `app/models/ai_team.py`, `app/services/ai/team_access.py`, `app/services/ai/team_report_service.py`.
-- `app/api/ai/teams.py`, `app/services/ai/prompts/team_report_v1.txt`.
-- `migrations/versions/<revision>_add_ai_team_scopes.py`.
-- `frontend/pages/ai-team.html`, `frontend/js/ai-team.js`, `scripts/test_ai_teams.py`.
-
-**인터페이스**
-
-team/member/role/repository/share 관리와 kind=team_report를 정의합니다. 개인 owner는 유지하고 team job에는 명시적인 team 주체를 저장합니다. source_manifest와 visibility_epoch를 검사하며 공유 허용과 현재 repo 접근의 교집합만 사용합니다.
-
-**테스트**
-
-관리자/멤버/조회자·팀간격리·탈퇴·repo권한상실·개인자료자동공유금지·권한축소후기존보고서차단·보고서생성중권한변경·비검토/오탐의문제수집계제외.
-
-**완료 조건**
-
-보고서를 볼 수 있는 사용자는 모든 원본의 접근 권한을 가져야 하며 개인 결과 캐시는 팀과 섞이지 않습니다. S12 없이는 준비 상태 보고를 제공하지 않고 리뷰·이력 보고만 제공합니다.
+보고서 및 관련 팀 관리·공유 화면/API·실행 서비스를 폐기합니다. 개인 리뷰·피드백·사용량 기록과 이전 DB 자료·마이그레이션은 유지합니다.
 
 ## 17. S14 — GitHub App·Webhook·자동 리뷰 (추후 계획 · 보류)
 
@@ -516,3 +452,7 @@ team/member/role/repository/share 관리와 kind=team_report를 정의합니다.
 ## 20. 이번 문서화 범위
 
 현재 저장소의 파일 구조·인증·DB·큐·스냅샷·프론트·CI를 확인해 작성했습니다. AI 코드, migration, API, 테스트는 구현하지 않았습니다. 구현 시 제공자·revision을 확정하고 단계별 진행과 계약 변경을 기록합니다.
+
+## 19. PR·커밋 AI 리뷰
+
+AI 리뷰에서 PR 또는 커밋 선택 → 파일 선택 → 미리보기·동의 → 리뷰를 실행합니다. 커밋은 기본 브랜치 최근 목록 또는 전체 SHA 직접 입력으로 선택합니다. 일반·병합 커밋은 첫 번째 부모와 비교하고 최초 커밋은 빈 Git 트리와 비교합니다. SHA를 고정하며 동일한 권한·암호화·출력 검증·사용량 기록을 적용합니다.

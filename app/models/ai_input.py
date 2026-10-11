@@ -15,8 +15,9 @@ class PRRevision(Base):
     id = uuid_pk()
     owner_user_id = Column(UUID(as_uuid=True), _OWNER, nullable=False)
     repository_id = Column(Integer, _REPO, nullable=False)
-    pr_number = Column(Integer, nullable=False)
-    github_pr_id = Column(BigInteger, nullable=False)
+    source_type = Column(Text, nullable=False, server_default='pr')
+    pr_number = Column(Integer)
+    github_pr_id = Column(BigInteger)
     base_sha = Column(Text, nullable=False)
     head_sha = Column(Text, nullable=False)
     merge_base_sha = Column(Text)
@@ -29,11 +30,11 @@ class PRRevision(Base):
         UniqueConstraint("owner_user_id", "repository_id", "revision_fingerprint",
                          name="uq_pr_revisions_owner_repo_fingerprint"),
         UniqueConstraint("id", "owner_user_id", "repository_id", name="uq_pr_revisions_id_owner_repo"),
-        CheckConstraint("pr_number > 0 AND github_pr_id > 0", name="ck_pr_revisions_pr_number"),
+        CheckConstraint("(source_type = 'pr' AND pr_number IS NOT NULL AND pr_number > 0 AND github_pr_id IS NOT NULL AND github_pr_id > 0) OR (source_type = 'commit' AND pr_number IS NULL AND github_pr_id IS NULL)", name="ck_pr_revisions_pr_number"),
         CheckConstraint(f"base_sha ~ '{SHA}' AND head_sha ~ '{SHA}' "
                         f"AND (merge_base_sha IS NULL OR merge_base_sha ~ '{SHA}')", name="ck_pr_revisions_shas"),
         CheckConstraint(f"revision_fingerprint ~ '{HEX64}'", name="ck_pr_revisions_fingerprint"),
-        CheckConstraint("state_at_capture IN ('open','closed','merged')", name="ck_pr_revisions_state"),
+        CheckConstraint("(source_type = 'pr' AND state_at_capture IN ('open','closed','merged')) OR (source_type = 'commit' AND state_at_capture = 'commit')", name="ck_pr_revisions_state"),
         CheckConstraint("jsonb_typeof(metadata) = 'object'", name="ck_pr_revisions_metadata"),
         Index("ix_pr_revisions_owner_repo_created", "owner_user_id", "repository_id", "created_at", "id"),
     )

@@ -17,5 +17,6 @@ from app.models.ai_result import AIResult, AIFinding, FindingFeedback
 from app.models.ai_usage import UsageBudget, UsageReservation, AuditEvent
 from app.models.ai_credential import AICredential, AICredentialVersion
 from app.models.ai_evidence import AIEvidence
+# Retired S12/S13 models remain registered for historical migrations/data only.
 from app.models.ai_team import Team, TeamMember, TeamRepository, TeamResourceShare, TeamReport
 from app.models.ai_handover import HandoverTarget, HandoverPreparationVersion, HandoverGeneration, HandoverDocument, HandoverDocumentVersion
