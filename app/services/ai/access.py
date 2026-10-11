@@ -70,7 +70,8 @@ def authorize_ai(db, user_id: UUID, repo_id: int, action: AIAction, policy_versi
                       retryable=True) from None
     if action is AIAction.local_generate:
         from app.services.ai.providers import registry
-        if not registry.is_allowed('ollama-local-v1') or policy_version not in settings.policy_versions:
+        if not any(registry.get_profile(pid).execution_location == 'local'
+                   for pid in registry.allowed_profile_ids()) or policy_version not in settings.policy_versions:
             raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '로컬 실행 또는 정책이 허용되지 않았습니다.')
     if action.sends_externally:
         if not settings.allow_external_transfer:

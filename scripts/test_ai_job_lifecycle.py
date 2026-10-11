@@ -123,6 +123,19 @@ class Case(unittest.TestCase):
 
 
 class Creation(Case):
+    def test_zero_daily_limit_allows_requests_after_previous_cap(self):
+        world = self.make_world()
+        with env(AI_DAILY_JOB_LIMIT=1):
+            self.create(world, fingerprint=H('1'))
+        with env(AI_DAILY_JOB_LIMIT=0):
+            for i in range(2, 5):
+                self.assertTrue(self.create(world, fingerprint=H(str(i))).created)
+            other_pin = self.pinned(self.make_world())
+            self.assertEqual(self.code_of(self.create, world, fingerprint=H('6'), pinned=other_pin),
+                             ErrorCode.PREVIEW_CHANGED)
+        with env(AI_DAILY_JOB_LIMIT=1):
+            self.assertEqual(self.code_of(self.create, world, fingerprint=H('5')), ErrorCode.USER_LIMIT)
+
     def test_job_key_and_outbox_are_saved_together(self):
         world = self.make_world()
         result = self.create(world, key='k1')
@@ -668,6 +681,26 @@ class Runner(Case):
 
 
 class Budget(Case):
+    def test_zero_budget_disables_existing_cap_but_preserves_accounting(self):
+        from app.services.ai import job_views
+        with env(AI_USER_MONTHLY_BUDGET=1, AI_SERVER_MONTHLY_BUDGET=0):
+            world, job, lease = self.claimed()
+            usage_service.reserve_attempt(self.db, lease, Decimal('0'), now=T0)
+            usage_service.settle_attempt(self.db, job.id, 1, Decimal('0'))
+            job_service.finish_job(self.db, lease, 'succeeded', now=T0)
+        with env(AI_USER_MONTHLY_BUDGET=0, AI_SERVER_MONTHLY_BUDGET=0, AI_DAILY_JOB_LIMIT=0):
+            other = self.create(world, fingerprint=H('2')).job
+            lease = job_service.claim_job(self.db, other.id, now=T0)
+            ids = usage_service.reserve_attempt(self.db, lease, Decimal('1000'), now=T0)
+            self.assertEqual(len(ids), 1)
+            usage_service.settle_attempt(self.db, other.id, 1, Decimal('999'))
+            self.db.commit()
+            view = job_views.usage_summary(self.db, world[0], now=T0)
+            self.assertEqual(Decimal(view.user_limit), 0)
+            self.assertEqual(Decimal(view.user_spent), 999)
+            self.assertEqual(view.daily_job_limit, 0)
+            self.assertEqual(self.budgets()['user'], (0, Decimal('999')))
+
     def budgets(self):
         rows = self.db.execute(text("SELECT scope, reserved_amount, spent_amount FROM usage_budgets ORDER BY scope")).all()
         return {r.scope: (r.reserved_amount, r.spent_amount) for r in rows}

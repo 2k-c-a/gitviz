@@ -166,7 +166,7 @@ def _create_job(db: Session, *, owner_id, repository_id, input_id, kind, fingerp
             db.commit()
             return CreateResult(latest, False, 'fingerprint')
 
-    if kind != 'prepare':
+    if kind != 'prepare' and settings.daily_job_limit > 0:
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         used = db.execute(text("""SELECT count(*) FROM ai_jobs WHERE owner_user_id = :o AND kind <> 'prepare'
                                   AND created_at >= :d"""), {'o': owner_id, 'd': day_start}).scalar()

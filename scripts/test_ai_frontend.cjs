@@ -63,15 +63,40 @@ test('미리보기 API: 선택 profile을 query로 보낸다', async () => {
 
 test('로컬 중단 안내: 외부 API 과금 위험과 구분한다', async () => {
   const S = await js('ai-state.js');
-  const local = S.describeJob({ provider: 'ollama', status: 'failed', error_code: 'PROVIDER_TIMEOUT', outcome_uncertain: true });
-  assert.equal(local.costRisk, false);
-  assert.match(local.body, /API 요금은 없/);
-  assert.match(local.body, /자동으로 다시 실행하지 않습니다/);
+  for (const provider of ['ollama', 'lmstudio', 'koboldcpp']) {
+    const local = S.describeJob({ provider, status: 'failed', error_code: 'PROVIDER_TIMEOUT', outcome_uncertain: true });
+    assert.equal(local.costRisk, false);
+    assert.match(local.body, /API 요금은 없/);
+    assert.match(local.body, /자동으로 다시 실행하지 않습니다/);
+  }
   const cloud = S.describeJob({ provider: 'openai', status: 'failed', error_code: 'PROVIDER_TIMEOUT', outcome_uncertain: true });
   assert.equal(cloud.costRisk, true);
 });
 
 /* ───────────────────────── 주소 ───────────────────────── */
+test('사용량: 금액·횟수 무제한을 0달러 예산으로 표시하지 않는다', async () => {
+  const S = await js('ai-state.js');
+  const usage = { currency: 'USD', user_spent: '99', user_reserved: '1', user_remaining: '0', user_limit: '0.000000', daily_jobs_used: 50, daily_job_limit: 0 };
+  const text = S.usageStatement(usage);
+  assert.match(text, /오늘 요청 50회/);
+  assert.doesNotMatch(text, /상한 없음|남음|한도 \$0|50\/0/);
+  const capped = S.usageStatement({ ...usage, user_limit: '200', daily_job_limit: 100 });
+  assert.match(capped, /한도/);
+  assert.match(capped, /50\/100/);
+});
+
+test('제공자 선택: 로컬 AI로 묶되 런타임·profile과 활성 여부는 유지한다', async () => {
+  const S = await js('ai-state.js');
+  const providers = [{ id: 'openai', display_name: 'OpenAI', models: [{ provider: 'openai', execution_location: 'external' }] },
+    ...['ollama', 'lmstudio', 'koboldcpp'].map((id) => ({ id, display_name: id + ' (같은 PC)',
+      models: [{ provider: id, profile_id: id + '-local-v1', execution_location: 'local', model: id + '-model', allowed: id === 'ollama' }] }))];
+  const options = S.selectableProviders(providers);
+  assert.deepEqual(options.map((p) => p.display_name), ['OpenAI', '로컬 AI']);
+  assert.deepEqual(options[1].models.map((m) => m.provider), ['ollama', 'lmstudio', 'koboldcpp']);
+  assert.deepEqual(options[1].models.map((m) => m.allowed), [true, false, false]);
+  assert.equal(options[1].models[2].profile_id, 'koboldcpp-local-v1');
+  assert.equal(providers[1].models[0].display_name, undefined);
+});
 test('주소: repo가 없으면 어떤 값도 쓰지 않는다(기본 저장소 없음)', async () => {
   const s = await js('ai-state.js');
   for (const search of ['', '?', '?pr=3', `?job=${U1}`, `?input=${U1}&pr=2`, '?repo=abc', '?repo=0', '?repo=-1', '?repo=1.5']) {
@@ -167,12 +192,12 @@ test('포맷: SHA·금액·시간·크기', async () => {
   assert.equal(s.fmtBytes(2048), '2.0 KB');
 });
 
-test('coverage: PR 전체·선택·분석 분모를 따로 말하고 실행 전 none은 분석 실패가 아니다', async () => {
+test('coverage: 전체 변경·선택·분석 분모를 따로 말하고 실행 전 none은 분석 실패가 아니다', async () => {
   const s = await js('ai-state.js');
   const cov = { inventory_coverage: 'complete', selected_content_coverage: 'partial', analysis_coverage: 'none', selected_files: 3, pr_total_files: 8, limitations: ['not_selected', 'secret_suspected'] };
-  assert.equal(s.scopeSummary(cov), 'PR 전체 8개 · 선택 3개');
-  assert.equal(s.scopeSummary(cov, { analyzed: 2 }), 'PR 전체 8개 · 선택 3개 · 분석 2개');
-  assert.equal(s.scopeSummary({ ...cov, pr_total_files: null, inventory_coverage: 'unknown' }), 'PR 전체 알 수 없음 · 선택 3개');
+  assert.equal(s.scopeSummary(cov), '전체 변경 8개 · 선택 3개');
+  assert.equal(s.scopeSummary(cov, { analyzed: 2 }), '전체 변경 8개 · 선택 3개 · 분석 2개');
+  assert.equal(s.scopeSummary({ ...cov, pr_total_files: null, inventory_coverage: 'unknown' }), '전체 변경 알 수 없음 · 선택 3개');
   const before = s.coverageLines(cov, { beforeRun: true });
   assert.match(before[2].value, /아직 분석 전/);
   const after = s.coverageLines(cov, { beforeRun: false });
@@ -194,7 +219,7 @@ test('지적 0건·미검증 문구는 "오류 없음"으로 읽히지 않는다
   assert.match(empty, /문제가 없다는 뜻이 아닙니다/);
   assert.match(empty, /사람이 검증하기 전/);
   assert.match(empty, /선택한 파일 전체를 분석/);
-  assert.match(empty, /PR 전체 4개 · 선택 4개/);
+  assert.match(empty, /전체 변경 4개 · 선택 4개/);
   const sum = s.findingsSummary([{ finding: { human_validation: 'valid' } }, { finding: { human_validation: 'unverified' } }, { finding: {} }, { finding: { human_validation: 'false_positive' } }]);
   assert.deepEqual(sum, { total: 4, unverified: 2, valid: 1, false_positive: 1, uncertain: 0 });
   assert.equal(s.humanValidationText(sum), '사람 검증 2/4 · 유효 1 · 오탐 1 · 미검증 2');
@@ -300,7 +325,7 @@ test('작업 안내: 불명·저장 실패는 비용 위험과 명시적 재실�
   const r = s.describeJob(job('running', { stage: 'provider_call' }));
   assert.equal(r.title, '모델 호출 중');
   assert.ok(r.canCancel);
-  assert.match(r.body, /진행률은 알 수 없습니다/);
+  assert.equal(r.body, '');
   const w = s.describeJob(job('retry_wait', { retry_after_seconds: 30 }));
   assert.match(w.body, /30초 뒤/);
   assert.match(w.body, /처리되지 않았음이 확실한 경우만/);
@@ -724,6 +749,25 @@ test('이력 근거: snapshot 값만 옮기고 후보·제외 이유를 오류�
   await c.history('00000000-0000-4000-8000-000000000001');
   await c.historyOptions(5);
   assert.ok(calls[0].endsWith('/results/00000000-0000-4000-8000-000000000001/history') && calls[1].includes('/history/snapshots?repository_id=5'));
+});
+
+test('커밋 주소·라벨 및 조회 API', async () => {
+  const s = await js('ai-state.js');
+  const sha = 'a'.repeat(40);
+  const route = s.parseRoute(s.buildRoute({ repo: 5, commit: sha }));
+  assert.equal(route.view, s.VIEWS.FILES);
+  assert.equal(route.commit, sha);
+  assert.equal(route.pr, null);
+  assert.equal(s.sourceLabel({ source_type: 'commit', head_sha: sha }), `커밋 ${s.shortSha(sha)}`);
+  assert.ok(s.parseRoute('?repo=5&commit=bad').invalid.includes('commit'));
+  assert.equal(s.parseRoute(`?repo=5&pr=7&commit=${sha}`).commit, null);
+  const { createAiClient } = await js('ai-api.js');
+  const urls = [];
+  const client = createAiClient({ fetchImpl: async (u) => { urls.push(String(u)); return { ok: true, status: 200, json: async () => ({}) }; } });
+  await client.commits(5, { cursor: 'next' });
+  await client.commitFiles(5, sha);
+  assert.ok(urls[0].includes('/commits?repository_id=5') && urls[0].includes('cursor=next'));
+  assert.ok(urls[1].includes(`/commits/${sha}/files?repository_id=5`));
 });
 
 (async () => {

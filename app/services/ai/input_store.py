@@ -49,13 +49,13 @@ def upsert_revision(db: Session, owner_id: UUID, repository_id: int, captured) -
     """같은 (owner, repo, fingerprint)의 리비전은 재사용한다. 리비전 행은 불변이다."""
     db.execute(text("""
         INSERT INTO pr_revisions (owner_user_id, repository_id, pr_number, github_pr_id, base_sha, head_sha,
-                                  merge_base_sha, revision_fingerprint, state_at_capture, metadata)
-        VALUES (:o, :r, :n, :g, :b, :h, :m, :f, :s, CAST(:meta AS jsonb))
+                                  merge_base_sha, revision_fingerprint, state_at_capture, metadata, source_type)
+        VALUES (:o, :r, :n, :g, :b, :h, :m, :f, :s, CAST(:meta AS jsonb), :source)
         ON CONFLICT (owner_user_id, repository_id, revision_fingerprint) DO NOTHING"""),
                {'o': owner_id, 'r': repository_id, 'n': captured.pr_number, 'g': captured.github_pr_id,
                 'b': captured.base_sha, 'h': captured.head_sha, 'm': captured.merge_base_sha,
                 'f': captured.revision_fingerprint, 's': captured.state_at_capture,
-                'meta': json.dumps(captured.metadata)})
+                'meta': json.dumps(captured.metadata), 'source': getattr(captured, 'source_type', 'pr')})
     return db.execute(select(PRRevisionRow.id).where(
         PRRevisionRow.owner_user_id == owner_id, PRRevisionRow.repository_id == repository_id,
         PRRevisionRow.revision_fingerprint == captured.revision_fingerprint)).scalar_one()
@@ -204,6 +204,7 @@ def load_preview(db: Session, input_id: UUID, owner_id: UUID, *, now: datetime |
     settings = get_ai_settings()
     return InputPreview(
         input_id=row.id, status=InputStatus(status), repository_id=row.repository_id, pr_number=revision.pr_number,
+        source_type=revision.source_type,
         base_sha=revision.base_sha, head_sha=revision.head_sha, merge_base_sha=revision.merge_base_sha,
         pr_state=revision.state_at_capture, pr_title=metadata.title, pr_body=metadata.body,
         pr_body_truncated=metadata.body_truncated, coverage=Coverage(**row.coverage), files=files,

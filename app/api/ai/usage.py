@@ -1,4 +1,4 @@
-"""내 AI 사용량(월 예산·요청 한도). 사용자 key를 써도 개인 지출 상한과 요청 한도는 유지된다."""
+"""내 AI 사용량(월 예산·요청 한도). 한도가 0이면 상한 없이 사용량을 기록한다."""
 from uuid import UUID
 
 from fastapi import APIRouter, Depends

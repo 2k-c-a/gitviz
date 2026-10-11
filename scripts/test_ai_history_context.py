@@ -152,6 +152,19 @@ class HistoryCase(S.InputCase):
 
 
 class Build(HistoryCase):
+    def test_unselected_changed_files_have_candidates_without_ai_findings(self):
+        owner, repo, result_id, input_id = self.review([], paths=['main.py'])
+        spec = default_spec()
+        spec['files'][6] = 'src/new_mod.py'
+        spec['pairs'].append(pair((6, 'src/new_mod.py'), (4, 'tests/test_main.py'), 7, 0.9))
+        sid, _ = self.snapshot(repo, spec=spec)
+        evidence = history_context.build_history_evidence(self.db, result_id, sid).payload
+        candidate = next(p for p in evidence['paths'] if p['path'] == 'src/new_mod.py')
+        self.assertEqual(evidence['scope'], 'all_changed_files')
+        self.assertEqual(candidate['co_change'][0]['path'], 'tests/test_main.py')
+        self.assertFalse(candidate['co_change'][0]['changed_in_pr'])
+        self.assertEqual([f['path'] for f in self.input_row(input_id)['manifest']['files']], ['main.py'])
+
     def test_numbers_come_from_the_stored_snapshot_and_findings_are_untouched(self):
         owner, repo, result_id, _ = self.review(['main.py'])
         sid, payload = self.snapshot(repo)
@@ -164,7 +177,7 @@ class Build(HistoryCase):
         self.assertEqual((basis['snapshot_id'], basis['target_sha'], basis['formula_version'], basis['payload_sha256']),
                          (sid, self.fx.m1, FORMULA_VERSION, payload_digest(payload)))
         self.assertEqual((basis['pr_base_sha'], basis['pr_head_sha'], basis['relation']), (self.fx.m1, self.fx.f1, 'same_as_pr_base'))
-        main = ev['paths'][0]
+        main = next(p for p in ev['paths'] if p['path'] == 'main.py')
         risk = payload['risk-scores']['files'][0]
         own = payload['ownership']['1']
         self.assertEqual((main['path'], main['match'], main['status'], main['file_id']), ('main.py', 'path', 'observed', 1))
@@ -188,7 +201,7 @@ class Build(HistoryCase):
         owner, repo, result_id, _ = self.review(['main.py'])
         sid, _ = self.snapshot(repo)
         ev = history_context.build_history_evidence(self.db, result_id, sid).payload
-        flags = {c['path']: c['changed_in_pr'] for c in ev['paths'][0]['co_change']}
+        flags = {c['path']: c['changed_in_pr'] for c in next(p for p in ev['paths'] if p['path'] == 'main.py')['co_change']}
         self.assertEqual(flags, {'tests/test_main.py': False, 'other.py': False})                            # 이 PR에서 함께 바뀌지 않았다는 사실만
         joined = ' '.join(ev['notes'])
         self.assertIn(history_context.TEXTS['NOT_AN_ERROR'], ev['notes'])
@@ -196,7 +209,7 @@ class Build(HistoryCase):
         for claim in ('누락됐습니다', '오류입니다', '버그입니다', '수정해야 합니다', '빠졌습니다'):
             self.assertNotIn(claim, joined)
             self.assertNotIn(claim, json.dumps(ev, ensure_ascii=False))
-        self.assertTrue(all(k in c for c in ev['paths'][0]['co_change'] for k in ('co_change_count', 'low_support', 'changed_in_pr')))
+        self.assertTrue(all(k in c for c in next(p for p in ev['paths'] if p['path'] == 'main.py')['co_change'] for k in ('co_change_count', 'low_support', 'changed_in_pr')))
         # PR에서 함께 바뀐 파일은 changed_in_pr=True
         owner2, repo2, result2, _ = self.review(['main.py'], paths=['main.py', 'src/b.py'])
         spec = default_spec()
@@ -205,7 +218,7 @@ class Build(HistoryCase):
         spec['risk'][6] = dict(change_freq=2, churn=5, bugfix_count=0, unidentified_share=0.0, evidence_status='low_support')
         sid2, _ = self.snapshot(repo2, spec=spec)
         ev2 = history_context.build_history_evidence(self.db, result2, sid2).payload
-        self.assertEqual({c['path']: c['changed_in_pr'] for c in ev2['paths'][0]['co_change']}, {'tests/test_main.py': False, 'src/b.py': True})
+        self.assertEqual({c['path']: c['changed_in_pr'] for c in next(p for p in ev2['paths'] if p['path'] == 'main.py')['co_change']}, {'tests/test_main.py': False, 'src/b.py': True})
 
     def test_renamed_files_use_the_old_path_history_and_new_files_have_none(self):
         owner, repo, result_id, _ = self.review(['src/b.py', 'src/new_mod.py', 'main.py'])
@@ -223,7 +236,7 @@ class Build(HistoryCase):
     def test_low_support_and_unidentified_shares_are_reported_with_the_numbers(self):
         owner, repo, result_id, _ = self.review(['src/b.py'])
         sid, _ = self.snapshot(repo)
-        p = history_context.build_history_evidence(self.db, result_id, sid).payload['paths'][0]
+        p = next(p for p in history_context.build_history_evidence(self.db, result_id, sid).payload['paths'] if p['path'] == 'src/b.py')
         self.assertEqual((p['observations']['unidentified_share'], p['observations']['evidence_status'], p['ownership']['low_support'], p['ownership']['observation_count']),
                          (0.25, 'low_support', True, 3))
         self.assertIn(history_context.TEXTS['LOW_SUPPORT'], p['limitations'])
@@ -231,9 +244,11 @@ class Build(HistoryCase):
 
     def test_file_in_the_snapshot_without_observations_and_unknown_files(self):
         owner, repo, result_id, _ = self.review(['docs/readme.md', 'main.py'])
-        sid, _ = self.snapshot(repo)
+        spec = default_spec()
+        spec['files'][5] = 'src/new_mod.py'
+        sid, _ = self.snapshot(repo, spec=spec)
         paths = {p['path']: p for p in history_context.build_history_evidence(self.db, result_id, sid).payload['paths']}
-        quiet = paths['docs/readme.md']                                                                     # 트리에는 있지만 관측 기간에 변경이 없다
+        quiet = paths['src/new_mod.py']                                                                     # 트리에는 있지만 관측 기간에 변경이 없다
         self.assertEqual((quiet['status'], quiet['ownership']['observation_count']), ('no_observations', 0))
         self.assertIn(history_context.TEXTS['NO_OBSERVATIONS'], quiet['limitations'])
         owner2, repo2, result2, _ = self.review(['main.py'])
@@ -243,7 +258,7 @@ class Build(HistoryCase):
         spec['files'].pop(1)
         spec['pairs'] = []
         sid2, _ = self.snapshot(repo2, spec=spec)
-        gone = history_context.build_history_evidence(self.db, result2, sid2).payload['paths'][0]
+        gone = next(p for p in history_context.build_history_evidence(self.db, result2, sid2).payload['paths'] if p['path'] == 'main.py')
         self.assertEqual((gone['status'], gone['match']), ('not_in_snapshot', 'none'))                      # 수정된 파일이 snapshot에 없다: 이력 없음으로 단정하지 않는다
         self.assertIn(history_context.TEXTS['NOT_IN_SNAPSHOT'], gone['limitations'])
 
@@ -259,8 +274,10 @@ class Build(HistoryCase):
         owner, repo, result_id, _ = self.review([])
         sid, _ = self.snapshot(repo)
         row = history_context.build_history_evidence(self.db, result_id, sid)
-        self.assertEqual((row.status, row.payload['paths']), ('ok', []))
-        self.assertIn(history_context.TEXTS['NO_FINDINGS'], row.payload['notes'])
+        self.assertEqual(row.status, 'ok')
+        self.assertTrue(row.payload['paths'])
+        self.assertEqual(row.payload['scope'], 'all_changed_files')
+        self.assertIn('AI 지적 유무와 무관', ' '.join(row.payload['notes']))
 
     def test_only_review_results_of_the_same_repository_can_get_evidence(self):
         owner, repo, result_id, _ = self.review(['main.py'])
@@ -319,7 +336,7 @@ class Build(HistoryCase):
 
     def test_history_text_is_pinned(self):
         self.assertEqual(history_context.text_digest(), history_context.TEXT_DIGEST)                         # 문구를 바꾸면 새 버전 파일을 만든다
-        self.assertEqual(len(history_context.TEXTS), 13)
+        self.assertEqual(len(history_context.TEXTS), 12)
 
 
 class Eligibility(HistoryCase):
@@ -616,7 +633,7 @@ class Api(Gen):
         created = self.client.post(f'/api/ai/v1/results/{result_id}/history', json={'snapshot_id': good}, headers=self.headers())
         self.assertEqual(created.status_code, 201, created.text)
         body = created.json()
-        self.assertEqual((body['status'], body['snapshot_id'], body['evidence']['basis']['snapshot_id'], body['evidence']['paths'][0]['path']), ('ok', good, good, 'main.py'))
+        self.assertEqual((body['status'], body['snapshot_id'], body['evidence']['basis']['snapshot_id'], next(p for p in body['evidence']['paths'] if p['path'] == 'main.py')['path']), ('ok', good, good, 'main.py'))
         again = self.client.post(f'/api/ai/v1/results/{result_id}/history', json={'snapshot_id': good}, headers=self.headers())
         self.assertEqual((again.status_code, again.json()['evidence_id']), (200, body['evidence_id']))
         excluded = self.client.post(f'/api/ai/v1/results/{result_id}/history', json={'snapshot_id': bad}, headers=self.headers())

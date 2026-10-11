@@ -18,7 +18,7 @@ from app.services.ai.providers.registry import current_profile
 from app.services.ai.difftext import diff_lines  # noqa: F401  (S5 호환: 여기서도 가져다 쓴다)
 from app.services.ai.content_policy import POLICY_VERSION
 
-COLLECTOR_VERSION = 'merge-base-diff-context25-v1'
+COLLECTOR_VERSION = 'change-diff-context25-v2'
 TOKEN_METHOD = 'local-conservative-v1'
 
 
@@ -62,7 +62,8 @@ def assemble(collected, *, revision: PRRevision, revision_id: UUID, metadata: PR
              policy_version: str = POLICY_VERSION) -> BuiltInput:
     manifest = InputManifest(revision_id=revision_id, revision=revision, policy_version=policy_version,
                              pr_metadata_hash=canonical_hash(metadata), pr_metadata=metadata,
-                             files=[f.manifest for f in collected.files])
+                             files=[f.manifest for f in collected.files],
+                             changed_files=getattr(collected, 'changed_files', None))
     manifest_hash = canonical_hash(manifest)
     input_hash = canonical_hash({'manifest': manifest_hash, 'order': [f.manifest.path for f in collected.files],
                                  'collector': COLLECTOR_VERSION})

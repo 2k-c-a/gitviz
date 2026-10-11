@@ -1,4 +1,4 @@
-"""GitViz 이력 근거: 리뷰 결과의 코드 지적 경로에 대해 분석 snapshot의 이력(공동 변경·기여자 분포·관측 수·수집 품질)을 붙인다.
+"""GitViz 이력 근거: PR·커밋 전체 변경 경로에 대해 분석 snapshot의 이력(공동 변경·기여자 분포·관측 수·수집 품질)을 붙인다.
 
 원칙
 - **저장된 값만 쓴다.** 숫자는 불변 snapshot payload에서 그대로 옮긴다. 지표를 다시 계산하지 않고, 원본 DB·모델·외부 호출을 쓰지 않는다
@@ -30,10 +30,10 @@ from app.services.metric_policy import FORMULA_VERSION, LOW_SUPPORT_THRESHOLD
 
 logger = logging.getLogger('gitviz.ai.history')
 
-HISTORY_TEXT_VERSION = 'history-v1'
-SCHEMA_VERSION = 'history-evidence-v1'
-TEXT_FILE = Path(__file__).parent / 'prompts' / 'history_v1.txt'
-TEXT_DIGEST = 'd0a42855832c0df57f80b834477fd11a222795250ec26b911a5dda7245531d29'   # 테스트가 현재 파일과 대조한다(내용을 바꾸면 새 버전 파일을 만든다)
+HISTORY_TEXT_VERSION = 'history-v2'
+SCHEMA_VERSION = 'history-evidence-v2'
+TEXT_FILE = Path(__file__).parent / 'prompts' / 'history_v2.txt'
+TEXT_DIGEST = 'ae7d426b5dd65283806c22c0d27fc3807d1db2de6969152da68a6d0a33a9a0c6'   # 테스트가 현재 파일과 대조한다(내용을 바꾸면 새 버전 파일을 만든다)
 MAX_CO_CHANGE = 5
 MAX_TOP_SHARES = 3
 HASH_FORMAT = 'canonical-json-numbers-v1'
@@ -115,17 +115,6 @@ def _result_context(db: Session, result_id: UUID):
     return row
 
 
-def _finding_paths(db: Session, result_id: UUID) -> list[str]:
-    rows = db.execute(text("""SELECT detail->'location'->>'path' AS path FROM ai_findings WHERE result_id = :r ORDER BY ordinal"""),
-                      {'r': result_id}).all()
-    seen, out = set(), []
-    for r in rows:
-        if r.path and r.path not in seen:
-            seen.add(r.path)
-            out.append(r.path)
-    return out
-
-
 def _r(value, digits=4):
     return round(value, digits) if isinstance(value, (int, float)) and not isinstance(value, bool) else value
 
@@ -178,7 +167,7 @@ def _data_quality(payload: dict) -> dict:
     return quality
 
 
-def snapshot_paths_evidence(snapshot: AnalysisSnapshot, paths: list[str]) -> dict:
+def snapshot_paths_evidence(snapshot: AnalysisSnapshot) -> dict:
     """검증을 통과한 snapshot에서 파일 묶음의 이력 통계를 옮긴다(PR 없이 쓰는 인수인계용). 검증은 호출하는 쪽이 snapshot_eligibility로 먼저 한다."""
     payload = snapshot.payload
     by_path = {f['path']: f['id'] for f in payload['file_index']}
@@ -189,9 +178,14 @@ def snapshot_paths_evidence(snapshot: AnalysisSnapshot, paths: list[str]) -> dic
             'paths': [_path_evidence(p, None, payload, by_path, set(paths)) for p in paths], 'quality': _data_quality(payload)}
 
 
-def _build_payload(db: Session, ctx, snapshot: AnalysisSnapshot, paths: list[str]) -> dict:
+def _build_payload(db: Session, ctx, snapshot: AnalysisSnapshot) -> dict:
     payload = snapshot.payload
     manifest_files = ((ctx.manifest or {}).get('files') or [])
+    inventory = (ctx.manifest or {}).get('changed_files')
+    full_inventory = inventory is not None
+    if full_inventory:
+        manifest_files = inventory
+    paths = list(dict.fromkeys(f['path'] for f in manifest_files))
     entries = {f['path']: f for f in manifest_files}
     pr_paths = {f['path'] for f in manifest_files} | {f['old_path'] for f in manifest_files if f.get('old_path')}
     by_path = {f['path']: f['id'] for f in payload['file_index']}
@@ -199,8 +193,8 @@ def _build_payload(db: Session, ctx, snapshot: AnalysisSnapshot, paths: list[str
     quality = _data_quality(payload)
     relation = 'same_as_pr_base' if snapshot.target_sha == ctx.base_sha else 'differs_from_pr_base'
     notes = [TEXTS['SEPARATE'], TEXTS['NOT_AN_ERROR'], TEXTS['BASIS_SAME'] if relation == 'same_as_pr_base' else TEXTS['BASIS_DIFFERS']]
-    if not paths:
-        notes.append(TEXTS['NO_FINDINGS'])
+    notes.append('PR·커밋 전체 변경 파일의 추가 검토 후보입니다. AI 지적 유무와 무관하게 표시하며 오류나 수정 누락을 뜻하지 않습니다.'
+                 if full_inventory else '이전 입력은 전체 변경 목록을 보관하지 않아 선택한 파일에 한해서만 검토 후보를 표시합니다. 전체 범위가 필요하면 입력을 새로 준비하세요.')
     return {
         'schema': SCHEMA_VERSION, 'text_version': HISTORY_TEXT_VERSION,
         'basis': {'snapshot_id': snapshot.id, 'target_sha': snapshot.target_sha, 'formula_version': snapshot.formula_version,
@@ -208,6 +202,7 @@ def _build_payload(db: Session, ctx, snapshot: AnalysisSnapshot, paths: list[str
                   'analyzed_at': snapshot.analyzed_at.isoformat(), 'payload_sha256': snapshot.payload_sha256,
                   'pr_base_sha': ctx.base_sha, 'pr_head_sha': ctx.head_sha, 'pr_merge_base_sha': ctx.merge_base_sha, 'relation': relation,
                   'low_support_threshold': LOW_SUPPORT_THRESHOLD},
+        'scope': 'all_changed_files' if full_inventory else 'selected_files',
         'paths': evidence_paths, 'data_quality': quality, 'notes': notes,
     }
 
@@ -237,7 +232,7 @@ def build_history_evidence(db: Session, result_id: UUID, snapshot_id: int, *, as
     reasons = snapshot_eligibility(db, snapshot, as_of=effective)
     if existing is not None:
         return _same_judgement(existing, reasons, effective)
-    payload = _excluded_payload(snapshot, ctx, reasons) if reasons else _build_payload(db, ctx, snapshot, _finding_paths(db, result_id))
+    payload = _excluded_payload(snapshot, ctx, reasons) if reasons else _build_payload(db, ctx, snapshot)
     row = AIEvidence(result_id=result_id, owner_user_id=ctx.owner_user_id, repository_id=ctx.repository_id, kind='history', snapshot_id=snapshot.id,
                      snapshot_sha256=snapshot.payload_sha256, status='excluded' if reasons else 'ok', exclusion_reasons=reasons, as_of=effective,
                      payload=payload, payload_hash=canonical_hash(payload))

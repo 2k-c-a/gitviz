@@ -1,10 +1,10 @@
 # AI 인터페이스 계약 (S0)
 
-- 계약 버전: `1.8` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
+- 계약 버전: `1.9` (`app/schemas/ai.py`의 `CONTRACT_VERSION`)
 - 설계 근거: [요구사항 및 시스템 설계 v0.4](GitViz_AI_요구사항_및_시스템설계_v0.4.md), [구현 계획 v0.5](GitViz_AI_의존성기반_구현계획_v0.5.md) S0
 - 수집·백엔드·시각화는 모두 `app/schemas/ai.py`의 DTO를 기준으로 합니다. 이 문서와 코드가 다르면 코드가 우선이며 즉시 문서를 고칩니다.
 - 모든 DTO는 알 수 없는 필드를 거부합니다(`extra="forbid"`). 클라이언트가 `owner_user_id` 같은 값을 보내도 받지 않습니다.
-- 기본 scope는 본인만 접근하는 개인 scope입니다. 팀 scope는 S13에서 명시 필드로 추가하며, 그 전에는 DTO에 scope 필드를 두지 않습니다.
+- 기본 scope는 본인만 접근하는 개인 scope입니다. S12·S13은 폐기하여 팀·보고서 API를 제공하지 않습니다.
 
 ## 1. 식별자와 코드 위치
 
@@ -126,8 +126,9 @@
 - 1.3(S8): 생성·작업·결과·지적·피드백·사용량 API DTO(`CreateJobRequest`, `RetryJobRequest`, `JobView`, `JobList`, `ResultView`, `FindingView`, `FindingList`, `FeedbackRequest`, `FeedbackView`, `UsageView`) 추가. 기존 필드·enum은 그대로다.
 - 1.4(S9): PR·파일 선택 조회 DTO(`PullSummary`, `PullList`, `PullFile`, `PullFilesView`)와 `UpdateCredentialRequest` 추가. 기존 필드·enum은 그대로다.
 - 1.5: OpenAI·Gemini BYOK, 같은 PC의 Ollama keyless 실행. 모델·transfer의 `requires_api_key`/`execution_location`, transfer의 `model_digest`/`profile_fingerprint`, 동의의 선택 `profile_fingerprint`(로컬 필수), 로컬의 null `credential_version`, 미리보기 `profile_id` 선택을 추가한다. 클라우드 key 버전 검사는 유지한다. 자세한 설정·비용·주소·복구 규칙은 [제공자 지원](AI_PROVIDER_SUPPORT.md)에 정의한다.
-- 1.8: 팀(S13). 팀·구성원·연결 저장소·명시적 공유·보고서 API와 오류 코드 `PERMISSION_DENIED`(403)·`REPORT_BLOCKED`(403)를 추가한다(18절, 권한 계약은 [AI_TEAM_ACCESS.md](AI_TEAM_ACCESS.md)). 기존 요청은 영향이 없다.
-- 1.7: 인수인계(S12). 인계 대상·준비 체크폼·초안 생성·편집 문서·Markdown 내보내기 API를 추가한다(17절). 기존 요청은 영향이 없다.
+- 1.9: PR·커밋 리뷰, 전체 변경 S11 추가 검토 후보, S12·S13 API 폐기(17~19절).
+- 1.8 (과거 기록·폐기): 팀(S13). 팀·구성원·연결 저장소·명시적 공유·보고서 API와 오류 코드 `PERMISSION_DENIED`(403)·`REPORT_BLOCKED`(403)를 추가한다(18절, 권한 계약은 [AI_TEAM_ACCESS.md](AI_TEAM_ACCESS.md)). 기존 요청은 영향이 없다.
+- 1.7 (과거 기록·폐기): 인수인계(S12). 인계 대상·준비 체크폼·초안 생성·편집 문서·Markdown 내보내기 API를 추가한다(17절). 기존 요청은 영향이 없다.
 - 1.6: GitViz 이력 근거(S11). 작업 생성의 선택 `history_snapshot_id`와 `/history/snapshots`, `/results/{id}/history` 조회·생성을 추가한다. 기존 요청과 멱등 key는 그대로 유효하다. 상세는 16절.
 - 이후 단계에서 임의로 enum/필드 의미를 바꾸지 않습니다. 변경은 `CONTRACT_VERSION`, 이 문서, `scripts/test_ai_contracts.py`를 같은 PR에서 고칩니다.
 - 기능별 출력 schema 버전(S6)과 API 응답 DTO(S5·S8)는 이 계약 위에 추가하며 위 정의를 재정의하지 않습니다.
@@ -308,67 +309,23 @@ GitHub 오류는 `ErrorEnvelope`로 매핑한다(404 `RESOURCE_NOT_FOUND`, 429 `
 - 근거는 (결과, snapshot)당 하나다. 이미 있는 근거에 다른 `as_of`를 주면, 그 시점의 판정(상태·이유)이 기존과 같을 때만 기존 근거를 돌려주고 다르면 409 `VERSION_CONFLICT`(`details.reason=HISTORY_AS_OF_CONFLICT`)다.
 - 다른 저장소의 snapshot은 존재를 숨긴다(404). DB도 (snapshot, 저장소) 복합 FK로 막는다. 근거 행은 수정·삭제 불가이며 결과 삭제와 함께 사라진다.
 - **검증하지 못한 snapshot은 근거에서 제외한다**: `status=excluded`와 이유 코드만 기록하고 값은 싣지 않는다. 이유 — `integrity_failed`, `legacy_format`, `formula_unsupported`, `target_sha_missing`, `repository_identity_missing`, `repository_identity_mismatch`, `payload_incomplete`, `future_data`(리뷰 결과 시각 또는 `as_of` 이후의 자료).
-- `evidence`: `basis`(snapshot·SHA·PR base/head 비교 `relation`), `paths`(파일별 관측 횟수·소유 분포·co-change 상위·한계), `data_quality`(미식별 분모·수집 품질), `notes`. co-change 파일은 `changed_in_pr`만 알려 주는 **검토 후보**이며 누락·오류로 단정하지 않는다. 신규·이름 변경·snapshot에 없는 파일은 각각 한계 문구와 함께 표시한다.
-- 문구는 `prompts/history_v1.txt`(버전 `history-v1`, 다이제스트 고정)의 고정 템플릿이며 모델 프롬프트가 아니다.
+- `evidence`: `basis`(snapshot·SHA·PR·커밋 base/head 비교 `relation`), `paths`(파일별 관측 횟수·소유 분포·co-change 상위·한계), `data_quality`(미식별 분모·수집 품질), `notes`. co-change 파일은 `changed_in_pr`만 알려 주는 **검토 후보**이며 누락·오류로 단정하지 않는다. 신규·이름 변경·snapshot에 없는 파일은 각각 한계 문구와 함께 표시한다.
+- 문구는 `prompts/history_v2.txt`(버전 `history-v2`, 다이제스트 고정)의 고정 템플릿이며 모델 프롬프트가 아니다.
 - 운영 snapshot 검증은 출시 전 필수 확인으로 남는다. 인증 사용자로 접근하는 실제 GitViz 경로의 확인은 별도다.
 
-## 17. 인수인계 (S12)
+## 17. 인수인계 (S12) — 폐기
 
-계획(§15)과 다른 점: **초안은 모델을 호출하지 않는다.** `POST /jobs kind=handover`와 `prompts/handover_v1.txt`를 모델 프롬프트로 만들지 않고, 서버가 저장된 자료(대상·준비 정보·AI 결과·피드백·분석 snapshot)를 고정 문구(`handover_v1.txt`, 버전 `handover-v1`, 다이제스트 고정)로 옮겨 적는다. 그래서 코드 전송·동의·비용이 없고, 미검증 AI 지적과 미확인 항목이 문장 생성 과정에서 확정 사실로 바뀔 수 없다. 모델이 쓰는 서술은 이후 단계에서 같은 저장 구조(원본/편집본 분리) 위에 추가할 수 있다.
+2026-10-11 화면·API·실행 서비스를 제거합니다. 기존 DB 자료와 마이그레이션은 보존합니다.
 
-모든 경로는 `/api/ai/v1` 아래이고 작성자 본인의 자료만 다룬다(남의 것은 404). 저장소 접근 권한을 매번 다시 확인하며 응답은 `Cache-Control: private, no-store`다. 감사 기록(`handover.*`)에는 본문·메모를 넣지 않는다.
+## 18. 보고서 (S13) — 폐기
 
-| 경로 | 설명 |
-|---|---|
-| `POST/GET /handover-targets`, `GET/PATCH/DELETE /handover-targets/{id}` | 인계 대상(이름, 파일 1~50개, 선택 snapshot, 목적·인계자·인수자 메모). `PATCH`는 `expected_version`이 필요하다. 이름은 메모일 뿐 역할·권한을 주지 않는다. |
-| `GET/PUT /handover-targets/{id}/preparation`, `GET .../preparation/versions` | 준비 체크폼. 항목 6개(`assignee`, `description`, `run_method`, `verify_method`, `joint_review`, `receiver_run`) 상태 `unknown`/`needed`/`ready`. |
-| `POST/GET /handover-targets/{id}/generations`, `GET /handover-generations/{id}` | 초안(생성 원본) 만들기·조회. |
-| `GET /handover-targets/{id}/document`, `PUT /handover-documents/{id}`, `POST /handover-documents/{id}/adopt`, `GET /handover-documents/{id}/export?format=markdown` | 편집 문서 조회·저장·새 원본 채택·내보내기. |
+보고서 및 관련 팀 관리·공유 API와 화면을 제거합니다. 개인 리뷰·피드백·사용량은 유지합니다. S14 GitHub App·Webhook·자동 리뷰와 S15 GitHub 댓글 게시는 보류합니다.
 
-**준비 체크폼**
-- 미입력·누락·`null` 항목은 항상 `unknown`(미확인)이다. `needed`로 바꾸지 않는다. 요청은 전체 교체이며 보내지 않은 항목은 `unknown`이다. 매 저장은 새 버전을 추가하고(수정 불가), 항목마다 바뀐 버전·시각(`updated_version`, `updated_at`)을 남긴다.
-- `unknown` 항목에는 내용·링크를 둘 수 없다(422). `ready`는 완료 조건이 있어야 한다: `assignee`·`joint_review`·`receiver_run`은 내용, `description`·`run_method`·`verify_method`는 내용 또는 링크. `ready`의 표시 문구는 항상 "준비 완료 (작성자 기록)"이며 시스템이 내용이나 실행 성공을 검증했다는 뜻이 아니다.
-- 링크는 `http(s)`만 저장·표시하고 서버가 열거나 읽지 않는다.
-- `expected_version`(처음이면 0)이 다르면 409 `VERSION_CONFLICT`(`details.reason=PREPARATION_VERSION`, `current_version`). `confirmed_target_version`이 현재 대상 버전과 다르면 409(`TARGET_CHANGED`).
-- 대상의 파일 또는 snapshot이 바뀌면 `scope_version`이 올라가고, 그 전에 저장한 준비 정보는 보존되지만 `needs_reconfirm=true`가 된다(새 대상에 대한 확인으로 취급하지 않는다). 현재 대상 버전을 확인해 다시 저장하면 해제된다. 이름·메모만 바꾸면 재확인이 필요 없다.
+## 19. 커밋 리뷰 (1.9)
 
-**초안과 편집본**
-- 생성 요청은 `expected_target_version`, `expected_preparation_version`과 선택 `summary_result_id`/`review_result_id`를 받는다. 결과는 같은 작성자·같은 저장소·만료 전·종류가 맞아야 한다. 다르면 409(`TARGET_CHANGED`/`PREPARATION_CHANGED`).
-- 생성 원본(`sources`)이 고정하는 기준: 대상·준비 정보 버전, 사용한 결과의 `payload_hash`와 입력·PR 기준(번호·base/head SHA·manifest hash), 리뷰 결과는 이 사용자의 피드백 기준(`feedback_digest`), snapshot은 id·상태·제외 사유. 같은 기준이면 기존 원본을 그대로 돌려주고(200, `reused`), `force=true`일 때만 새 원본(번호 증가)을 만든다. 원본은 수정할 수 없다.
-- 이 기준이 나중에 달라지면 원본·문서는 그대로 두고 `stale_reasons`(`target_changed`, `preparation_changed`, `feedback_changed`, `source_missing`)로 알린다.
-- 편집 문서(`handover_documents`)는 원본과 분리돼 `expected_version`으로만 바뀐다(409 `DOCUMENT_VERSION`). 새 원본이 생겨도 **편집한 문서는 덮어쓰지 않는다**(`newer_generation_*`로 알리고 `POST /adopt`로 사용자가 명시할 때만 바꾸며 이전 내용은 편집 이력에 남는다). 편집하지 않은 문서는 새 원본을 따라간다. 편집 이력은 문서마다 최근 100개를 둔다.
-- 대상 파일 밖의 AI 지적·변경 설명은 초안에 넣지 않고 제외한 건수를 적는다. 코드 원문·인용은 넣지 않는다.
-
-**확정 사실로 바꾸지 않는 규칙(초안 문구)**
-- 미검증 AI 지적은 "사람이 아직 검증하지 않은 지적"에, `valid`는 "사용자가 유효로 표시한 지적(사용자의 판단)"에, `false_positive`는 참고용으로만 표시한다. 미검증 지적은 질문과 체크리스트로만 나가고 결론이 되지 않는다.
-- 선택하지 않은 자료는 "확인되지 않음"으로 적는다("문제 없음"류 문구를 쓰지 않는다). 이력 수치는 검증을 통과한 snapshot의 저장값만 옮기며, 통과하지 못한 snapshot은 사유만 적고 수치를 싣지 않는다. 공동 변경은 검토 후보일 뿐 의존 관계가 아니다.
-
-**Markdown 안전**
-- 사용자·AI가 쓴 모든 문장은 이스케이프해 문서 구조(제목·링크·HTML·이미지)로 해석되지 않게 넣고, 링크·경로는 코드 span으로만 쓴다. 제어·방향 제어 문자는 입력 단계에서 거절한다.
-- 문서 저장과 내보내기 직전에 `validate_markdown`을 적용한다(코드 블록·코드 span·이스케이프를 렌더러와 같은 순서로 제외하고 검사): 원시 HTML, 이미지, `http`/`https`/`mailto`·같은 문서·상대 경로가 아닌 링크(문자 참조·`//` 포함), 제어·보이지 않는 문자, 4,000자 넘는 줄, 100,000자 넘는 문서를 거절한다(422 `INVALID_SELECTION`, `details.issues`). 내보내기에서 걸리면 422 `INVALID_STATE`다.
-- 코드 span은 한 줄 안에서만 코드로 본다(블록 구분이 인라인 해석보다 먼저라 여러 줄에 걸친 백틱 사이에도 제목·HTML 블록이 시작될 수 있다). `|`가 든 span은 표 셀 경계로 읽힐 수 있어 코드로 보지 않으며, 초안은 `|`가 든 값을 코드 span 대신 이스케이프한 글자로 쓴다.
-- 코드 블록 판정은 CommonMark 규칙을 따르되 애매하면 코드로 보지 않는다(검사한다): 여는 줄은 들여쓰기 없이 시작한 것만, 백틱 블록의 정보 문자열에 백틱이 있으면 코드 블록이 아니며, 닫는 줄은 같은 문자로 같거나 더 길게 들여쓰기 0~3칸에 뒤에 공백만 있어야 한다(닫히지 않으면 끝까지 코드).
-- 내보내기는 `text/markdown; charset=utf-8`, `Content-Disposition: attachment`(파일 이름은 문서 id·버전으로만 만든다), `X-Content-Type-Options: nosniff`, `no-store`이며, 본문 뒤에 기준 정보와 "AI가 만든 내용과 미확인 항목은 확정 사실이 아니다" 주의 문구를 서버가 덧붙인다.
-
-한도: 대상 100개/사용자, 대상당 초안 50개·준비 정보 500버전, 대상 파일 50개.
-
-## 18. 팀 (S13)
-
-권한·공유·보고서의 규칙은 [AI_TEAM_ACCESS.md](AI_TEAM_ACCESS.md)가 기준이다. 계획(§16)과 다른 점: **팀 보고서는 모델을 호출하지 않고**(결정적 정리) `kind=team_report` 작업·팀 키·팀 예산을 만들지 않는다. 그래서 `ai_jobs`/`ai_results`에 팀 주체를 넣지 않고(개인 owner·재사용 지문·멱등 키·예산은 그대로), 팀 자료는 별도 테이블(`teams`, `team_members`, `team_repositories`, `team_resource_shares`, `team_reports`)에만 둔다. 모델 서술 보고서는 키·비용·전송 동의를 먼저 정한 뒤 추가한다(AI_TEAM_ACCESS.md 6절).
-
-| 경로 | 설명 |
-|---|---|
-| `POST/GET /teams`, `GET/PATCH/DELETE /teams/{id}` | 팀 만들기(만든 사람이 관리자)·내 팀과 받은 초대·이름 변경·삭제 |
-| `GET/POST /teams/{id}/members`, `PATCH/DELETE /teams/{id}/members/{user_id}`, `POST /teams/{id}/invitation/accept` | 구성원 목록·초대(GitHub 로그인 이름, 수락해야 구성원)·역할 변경·제거. `DELETE`에 본인 id를 주면 탈퇴 또는 초대 거절 |
-| `GET/POST /teams/{id}/repositories`, `DELETE .../{repository_id}` | 연결 저장소(관리자, 연결하는 사람의 저장소 접근 필요) |
-| `GET/POST /teams/{id}/shares`, `DELETE .../{share_id}`, `GET .../{share_id}/content` | 명시적 공유(코드 리뷰 결과·인계 대상의 준비 상태)와 공유된 내용 |
-| `GET/POST /teams/{id}/reports`, `GET/DELETE .../{report_id}` | 보고서 목록·생성·조회·삭제 |
-
-- 역할: `admin`/`member`/`viewer`. 동작별 최소 역할은 AI_TEAM_ACCESS.md의 표다. 구성원이 아니면 팀의 존재를 숨기고(404), 구성원이지만 역할이 부족하면 403 `PERMISSION_DENIED`(`details.required_role`, `details.role`)다. 관리자는 항상 1명 이상이다(마지막 관리자의 탈퇴·강등·제거는 409 `VERSION_CONFLICT`, `details.reason=LAST_ADMIN`).
-- 공유: 작성자가 팀을 지정해 공유한 것만 보인다. 자기 자료이고, 저장소가 팀에 연결돼 있고, 지금 그 저장소에 접근할 수 있고, 역할이 `admin`/`member`여야 한다. 리뷰 결과 공유에는 지적(제목·분류·위치·조건·영향·확인 방법·제안·한계)과 **작성자의 검증 판정**, 결과에 붙은 이력 근거의 수치가 담기며 코드 원문·인용·작성자 메모·기여자 이름은 담기지 않는다. 인계 대상 공유는 항목별 상태만 담고(메모·링크·본문·인계자/인수자 메모 제외) 공유한 시점의 대상·준비 정보 버전에 고정된다(바뀌면 `outdated`, 내용 숨김, 다시 공유). 구성원이 떠나거나 조회자가 되면 그 사람의 공유는 모두 삭제된다.
-- 내용 조회·보고서 조회는 저장소 접근 확인(외부 호출)을 잠금 밖에서 먼저 하고, 그 뒤 팀 행을 FOR SHARE로 잡은 채 구성원·공유 존재·유효성·세대를 다시 확인한 다음 같은 잠금 안에서 내용을 만든다(확인하는 동안 공유가 해제되면 처음 읽은 정보로 내용을 주지 않는다). 인계 대상 공유는 고정한 대상·준비 정보 버전의 내용을 그대로 읽으며, 읽는 사이에 바뀌면 그 공유는 보고서에서 제외(`outdated`)된다. 작성자가 원본(결과·작업)을 삭제하는 경로는 팀 잠금과 무관하므로, 읽기 앞뒤로 원본의 존재를 확인해 읽는 도중 삭제되면 그 공유는 오류 없이 제외(`source_deleted`)하고 보고서에 밝힌다(공유 내용 조회는 404). 공유 `status`는 `active`/`outdated`/`expired`/`source_deleted`다. 내용 조회·보고서 조회는 요청마다 **팀 구성원 ∩ 현재 저장소 접근 ∩ 유효한 공유**를 다시 확인한다. 저장소 접근 확인이 불가능하면(`ACCESS_CHECK_UNAVAILABLE`) 열지 않는다.
-- 보고서: 요청 본문은 `repository_ids`(팀에 연결된 저장소, 생성자는 모두에 접근 가능해야 함)다. 응답은 `payload`(저장소별 공유된 결과·**문제 집계**·같은 지적 후보·인계 준비 개요·제외된 공유)와 렌더링한 `markdown`, 원본 목록 `source_manifest`, `visibility_epoch`를 담고 수정할 수 없다. 문제 집계는 `valid`로 판정된 지적만 세고 `unverified`는 검토 대기, `uncertain`은 불확실로 따로 세며 `false_positive`는 집계에서 제외한다. 지문이 같은 지적은 `repeat_candidates`로만 묶고 문제 수에 합치지 않는다.
-- 보고서 차단: 조회자가 구성원이 아니면 404, 구성원이면 ① `visibility_epoch`가 팀의 현재 값과 같고 ② 원본 공유가 모두 유효하며 ③ 조회자가 원본의 모든 저장소에 접근할 수 있을 때만 내용을 준다. 아니면 403 `REPORT_BLOCKED`(`details.reasons`: `visibility_changed`, `share_removed`, `share_outdated`, `repository_unlinked`, `repository_access_lost`, `access_check_unavailable`)이며 내용은 싣지 않는다. 팀의 공개 범위 세대는 구성원 제거·탈퇴·역할 변경·저장소 연결 해제·공유 해제 때 올라간다. 목록은 `visibility_current`만 알려 준다. 공유한 사람이 판정을 바꾸면 차단하지 않고 `stale_reasons=["feedback_changed"]`로 알린다.
-- 생성은 팀 행을 잠그고 한 트랜잭션으로 끝낸다: 구성원·공유 변경은 생성이 끝난 뒤에 처리되고(그 뒤 이 보고서는 차단된다), 저장소 접근 확인 뒤 잠그기 전에 세대가 바뀌었으면 저장하지 않고 409 `VERSION_CONFLICT`(`details.reason=VISIBILITY_CHANGED`)로 끝난다.
-- 한도: 사용자당 관리하는 팀 20개, 팀당 구성원·초대 50명·저장소 20개·공유 500개·보고서 100개.
-- 출시 전 확인: 실제 인증 경로(인증된 GitHub 사용자의 팀·초대·저장소 접근)와 운영 snapshot 검증은 이 단계에서도 남아 있다. 저장소 접근 확인은 시험에서 대역으로 바꿔 검증했다.
+- `GET /api/ai/v1/commits?repository_id=&cursor=&limit=`: 기본 브랜치 최근 커밋 목록.
+- `GET /api/ai/v1/commits/{sha}/files?repository_id=&cursor=&limit=`: 전체 40자리 SHA의 변경 파일, base/head, 목록 품질.
+- `POST /inputs`: `pr_number`와 `commit_sha` 중 정확히 하나. 커밋은 `commit_sha == expected_head_sha`. base는 첫 번째 부모 SHA, 최초 커밋은 빈 트리 `4b825dc642cb6eb9a060e54bf8d69288fbee4904`. 병합 커밋도 첫 번째 부모와 비교합니다.
+- revision/preview의 `source_type=pr|commit`; 커밋의 `pr_number=null`. 기존 PR 요청은 호환됩니다.
+- 입력 준비·암호화·전송 동의·생성·피드백·사용량 기록 API는 공통이며 커밋도 저장소 권한을 매번 검사합니다.
+- `InputManifest.changed_files`는 고정 비교에서 얻은 전체 변경 경로·이전 경로. S11은 AI 지적 및 코드 선택 범위와 무관하게 전체 목록에서 추가 검토 후보를 표시합니다. `evidence.scope=all_changed_files`; 이전 입력은 `selected_files`와 한계 문구를 제공합니다. 기존 불변 근거는 재작성하지 않습니다.

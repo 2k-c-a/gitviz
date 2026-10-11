@@ -93,6 +93,13 @@ class Base(S.InputCase):
 
 
 class Registration(Base):
+    def test_zero_verification_limit_preserves_audit_without_rejecting(self):
+        owner = self.make_user()
+        with S.ai_env(AI_CREDENTIAL_VERIFY_LIMIT_PER_HOUR=0):
+            for _ in range(12):
+                credentials._check_verify_limit(self.db, owner, T0)
+        self.assertEqual(self.scalar("SELECT count(*) FROM audit_events WHERE actor_user_id = :o AND action = 'credential.verify_attempt'", o=owner), 12)
+
     def test_key_is_stored_encrypted_and_only_a_masked_hint_is_returned(self):
         owner = self.make_user()
         result = self.register(owner)
@@ -491,9 +498,9 @@ class AccessControl(Base):
 class Providers(Base):
     def test_supported_options_list_prices_limits_and_server_allow_list(self):
         options = registry.supported_options()
-        self.assertEqual([p['id'] for p in options], ['anthropic', 'openai', 'gemini', 'ollama'])
+        self.assertEqual([p['id'] for p in options], ['anthropic', 'openai', 'gemini', 'ollama', 'lmstudio', 'koboldcpp'])
         models = {m['profile_id']: m for m in options[0]['models']}
-        opus, sonnet = 'claude-opus-5-5-v3', 'claude-sonnet-5-5-v3'                      # 목록에는 확장 profile(v3)만 보인다(v1·v2는 기존 작업용으로 유지)
+        opus, sonnet = 'claude-opus-5-5-v4', 'claude-sonnet-5-5-v4'  # 이전 버전은 기존 작업용으로 유지
         self.assertEqual(set(models), {opus, sonnet})
         self.assertEqual((models[opus]['model'], models[opus]['input_price_per_mtok'], models[opus]['output_price_per_mtok']),
                          ('claude-opus-5-5', '4.00', '20.00'))

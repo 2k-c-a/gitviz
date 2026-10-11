@@ -86,7 +86,7 @@ def _accept(db: Session, user_id: UUID, request: Request, *, kind: str, consent_
         return _json(job_views.get_job(db, replay, user_id, now=now), 200)
     pinned = consent.resolve_consent(db, user_id, consent_in, now=now)
     authorize_ai(db, user_id, row.repository_id,
-                 AIAction.generate if pinned.profile.requires_api_key else AIAction.local_generate,
+                 AIAction.local_generate if pinned.profile.execution_location == 'local' else AIAction.generate,
                  consent_in.policy_version)
     fingerprint = consent.generation_fingerprint(user_id, kind, (row.input_hash or '').strip(), pinned)
     options = _check_history_snapshot(db, row.repository_id, history_snapshot_id if kind == 'review' else None)

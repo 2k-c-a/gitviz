@@ -56,19 +56,20 @@ class RepoRef:
 @dataclass
 class CapturedRevision:
     repository_id: int
-    pr_number: int
-    github_pr_id: int
+    pr_number: int | None
+    github_pr_id: int | None
     base_sha: str
     head_sha: str
     merge_base_sha: str
     state_at_capture: str
     metadata: dict = field(default_factory=dict)
     revision_fingerprint: str = ''
+    source_type: str = 'pr'
 
     @property
     def revision(self) -> PRRevision:
         return PRRevision(repo_id=self.repository_id, pr_number=self.pr_number, base_sha=self.base_sha,
-                          head_sha=self.head_sha, merge_base_sha=self.merge_base_sha)
+                          head_sha=self.head_sha, merge_base_sha=self.merge_base_sha, source_type=self.source_type)
 
 
 @dataclass

@@ -18,12 +18,12 @@ def _flag(name: str) -> bool:
     return os.getenv(name, '0').strip() == '1'
 
 
-def _int(name: str, default: int) -> int:
+def _int(name: str, default: int, *, allow_zero: bool = False) -> int:
     try:
         value = int(os.getenv(name, ''))
     except ValueError:
         return default
-    return value if value > 0 else default
+    return value if value > 0 or (allow_zero and value == 0) else default
 
 
 def _decimal(name: str, default: str) -> Decimal:
@@ -82,7 +82,7 @@ class AISettings:
     result_retention_days: int = 30
     prepare_time_limit_seconds: int = 120
     budget_currency: str = 'USD'
-    user_monthly_budget: Decimal = Decimal('20')      # 사용자 key 사용에 대한 개인 지출 상한(실수·폭주 방지)
+    user_monthly_budget: Decimal = Decimal('20')      # 0이면 개인 지출 상한 없음
     server_monthly_budget: Decimal = Decimal('0')     # 0이면 서버 공유 예산을 쓰지 않는다(사용자 key는 서버 비용이 아니다)
 
 
@@ -119,14 +119,14 @@ def get_ai_settings() -> AISettings:
         database_ssl_ca=os.getenv('DATABASE_SSL_CA', '').strip(),
         max_files=_int('AI_MAX_FILES', 50),
         max_input_bytes=_int('AI_MAX_INPUT_BYTES', 2_000_000),
-        daily_job_limit=_int('AI_DAILY_JOB_LIMIT', 30),
+        daily_job_limit=_int('AI_DAILY_JOB_LIMIT', 30, allow_zero=True),
         lease_seconds=_int('AI_LEASE_SECONDS', 120),
         max_attempts=_int('AI_MAX_ATTEMPTS', 3),
         queue_deadline_seconds=_int('AI_QUEUE_DEADLINE_SECONDS', 1800),
         retry_delay_seconds=_int('AI_RETRY_DELAY_SECONDS', 30),
         provider_profile=os.getenv('AI_PROVIDER_PROFILE', '').strip() or 'claude-opus-5-5-v1',
         allowed_profiles=tuple(p.strip() for p in os.getenv('AI_ALLOWED_PROFILES', '').split(',') if p.strip()),
-        credential_verify_limit_per_hour=_int('AI_CREDENTIAL_VERIFY_LIMIT_PER_HOUR', 10),
+        credential_verify_limit_per_hour=_int('AI_CREDENTIAL_VERIFY_LIMIT_PER_HOUR', 10, allow_zero=True),
         test_provider_base_url=os.getenv('AI_TEST_PROVIDER_BASE_URL', '').strip(),
         input_valid_hours=_int('AI_INPUT_VALID_HOURS', 24),
         input_retention_days=_int('AI_INPUT_RETENTION_DAYS', 7),
@@ -202,6 +202,25 @@ def validate_ai_settings(settings: AISettings | None = None) -> list[str]:
         model = os.getenv('AI_OLLAMA_MODEL', 'qwen2.5-coder:7b')
         if not re.fullmatch(r'[a-zA-Z0-9._/-]+:[a-zA-Z0-9._-]+', model) or model.endswith(':cloud'):
             problems.append('AI_OLLAMA_MODEL은 설치된 로컬 모델의 이름:태그여야 합니다.')
+    for runtime, prefix, port in (('LM Studio', 'LMSTUDIO', 1234), ('KoboldCpp', 'KOBOLDCPP', 5001)):
+        if os.getenv(f'AI_{prefix}_ENABLED', '0') != '1':
+            continue
+        from app.services.ai.providers.json_provider import local_endpoint, ProviderConfigError
+        try:
+            local_endpoint(os.getenv(f'AI_{prefix}_URL', f'http://127.0.0.1:{port}'))
+        except ProviderConfigError:
+            problems.append(f'AI_{prefix}_URL은 같은 PC의 loopback HTTP 주소와 포트여야 합니다.')
+        if not os.getenv(f'AI_{prefix}_MODEL', '').strip():
+            problems.append(f'AI_{prefix}_MODEL에 /v1/models의 모델 id가 필요합니다.')
+        try:
+            context = int(os.getenv(f'AI_{prefix}_CONTEXT_WINDOW', '8192'))
+            inputs = int(os.getenv(f'AI_{prefix}_MAX_INPUT_TOKENS', '4000'))
+            outputs = int(os.getenv(f'AI_{prefix}_MAX_OUTPUT_TOKENS', '4000'))
+            timeout = int(os.getenv(f'AI_{prefix}_TIMEOUT_SECONDS', '180'))
+            if min(context, inputs, outputs, timeout) <= 0 or inputs + outputs > context:
+                raise ValueError()
+        except ValueError:
+            problems.append(f'{runtime}의 토큰·시간 한도는 양수이고 입력+출력 한도는 context 이하여야 합니다.')
     sync_url = os.getenv('DATABASE_URL', '')
     async_url = os.getenv('DATABASE_URL_ASYNC') or sync_url
     if not sync_url:

@@ -29,6 +29,8 @@ PROVIDERS: dict[str, ProviderInfo] = {
     'openai': ProviderInfo('openai', 'OpenAI', 'sk-로 시작하는 API key'),
     'gemini': ProviderInfo('gemini', 'Google Gemini', 'Google AI Studio API key'),
     'ollama': ProviderInfo('ollama', 'Ollama (같은 PC)', 'API key 불필요'),
+    'lmstudio': ProviderInfo('lmstudio', 'LM Studio (같은 PC)', 'API key 불필요'),
+    'koboldcpp': ProviderInfo('koboldcpp', 'KoboldCpp (같은 PC)', 'API key 불필요'),
 }
 
 
@@ -66,6 +68,17 @@ PROFILES['ollama-local-v1'] = replace(PROFILES[DEFAULT_PROFILE_ID], id='ollama-l
     execution_location='local', context_window=32768, max_input_tokens=24000, bytes_per_token=1,
     timeout_seconds=90, endpoint='http://127.0.0.1:11434')
 
+LOCAL_RUNTIMES = {'ollama': ('OLLAMA', 11434), 'lmstudio': ('LMSTUDIO', 1234),
+                  'koboldcpp': ('KOBOLDCPP', 5001)}
+for _runtime in ('lmstudio', 'koboldcpp'):
+    _id = _runtime + '-local-v1'
+    PROFILES[_id] = replace(PROFILES['ollama-local-v1'], id=_id, provider=_runtime,
+        model='', display_name=PROVIDERS[_runtime].display_name, context_window=8192,
+        max_input_tokens=4000, max_output_tokens=4000, timeout_seconds=180,
+        endpoint=f'http://127.0.0.1:{LOCAL_RUNTIMES[_runtime][1]}',
+        summary_prompt='summary-v2', review_prompt='review-v2',
+        summary_schema='summary-output-v2', review_schema='review-output-v2')
+
 # Keep v1 immutable so accepted jobs retain their consent and cost limits.
 # The larger input allowance is a new selectable profile for each cloud model.
 for _previous_id in ('claude-opus-5-5-v1', 'claude-sonnet-5-5-v1', 'gpt-5.4-v1', 'gemini-3.5-flash-lite-v1'):
@@ -83,6 +96,14 @@ for _previous_id in ('claude-opus-5-5-v2', 'claude-sonnet-5-5-v2', 'gpt-5.4-v2',
         summary_schema='summary-output-v2', review_schema='review-output-v2')
 
 
+for _previous_id in ('claude-opus-5-5-v3', 'claude-sonnet-5-5-v3', 'gpt-5.4-v3', 'gemini-3.5-flash-lite-v3'):
+    _previous = PROFILES[_previous_id]
+    _expanded_id = _previous_id.removesuffix('-v3') + '-v4'
+    PROFILES[_expanded_id] = replace(_previous, id=_expanded_id,
+        display_name=PROFILES[_previous_id.removesuffix('-v3') + '-v1'].display_name,
+        max_input_tokens=128_000, max_output_tokens=16_384, timeout_seconds=180)
+
+
 class UnknownProfile(Exception):
     pass
 
@@ -92,6 +113,15 @@ class UnknownProvider(Exception):
 
 
 def get_profile(profile_id: str) -> ProviderProfile:
+    if profile_id in ('lmstudio-local-v1', 'koboldcpp-local-v1'):
+        profile = PROFILES[profile_id]
+        prefix, port = LOCAL_RUNTIMES[profile.provider]
+        return replace(profile, model=os.getenv(f'AI_{prefix}_MODEL', '').strip(),
+            endpoint=os.getenv(f'AI_{prefix}_URL', f'http://127.0.0.1:{port}').strip(),
+            context_window=int(os.getenv(f'AI_{prefix}_CONTEXT_WINDOW', '8192')),
+            max_input_tokens=int(os.getenv(f'AI_{prefix}_MAX_INPUT_TOKENS', '4000')),
+            max_output_tokens=int(os.getenv(f'AI_{prefix}_MAX_OUTPUT_TOKENS', '4000')),
+            timeout_seconds=int(os.getenv(f'AI_{prefix}_TIMEOUT_SECONDS', '180')))
     if profile_id == 'ollama-local-v1':
         return replace(PROFILES[profile_id], model=os.getenv('AI_OLLAMA_MODEL', 'qwen2.5-coder:7b').strip(),
                        model_digest=os.getenv('AI_OLLAMA_MODEL_DIGEST', '').strip(),
@@ -106,7 +136,8 @@ def allowed_profile_ids() -> list[str]:
     """서버 관리자가 허용한 profile(AI_ALLOWED_PROFILES). 비어 있으면 등록된 모든 profile."""
     allowed = get_ai_settings().allowed_profiles
     return [pid for pid in PROFILES if (not allowed or pid in allowed)
-            and (pid != 'ollama-local-v1' or os.getenv('AI_OLLAMA_ENABLED', '0') == '1')]
+            and (PROFILES[pid].execution_location != 'local'
+                 or os.getenv('AI_' + LOCAL_RUNTIMES[PROFILES[pid].provider][0] + '_ENABLED', '0') == '1')]
 
 
 def is_allowed(profile_id: str) -> bool:
@@ -137,7 +168,7 @@ def supported_options() -> list[dict]:
             'context_window': p.context_window, 'max_input_tokens': p.max_input_tokens,
             'max_output_tokens': p.max_output_tokens, 'allowed': p.id in allowed,
             'requires_api_key': p.requires_api_key, 'execution_location': p.execution_location}
-            for p in profiles_of(info.id) if p.id.endswith('-v3') or p.execution_location == 'local']
+            for p in profiles_of(info.id) if p.id.endswith('-v4') or p.execution_location == 'local']
         out.append({'id': info.id, 'display_name': info.display_name, 'key_format': info.key_format, 'models': models})
     return out
 
@@ -147,8 +178,9 @@ def create_provider(profile: ProviderProfile, *, api_key: str | None = None, **k
     if profile.provider == 'anthropic':
         from app.services.ai.providers.anthropic_provider import AnthropicProvider
         return AnthropicProvider(profile, api_key=api_key, **kwargs)
-    from app.services.ai.providers.json_provider import OpenAIProvider, GeminiProvider, OllamaProvider
-    adapter = {'openai': OpenAIProvider, 'gemini': GeminiProvider, 'ollama': OllamaProvider}.get(profile.provider)
+    from app.services.ai.providers.json_provider import OpenAIProvider, GeminiProvider, OllamaProvider, LocalChatProvider
+    adapter = {'openai': OpenAIProvider, 'gemini': GeminiProvider, 'ollama': OllamaProvider,
+               'lmstudio': LocalChatProvider, 'koboldcpp': LocalChatProvider}.get(profile.provider)
     if adapter:
         return adapter(profile, api_key=api_key, **kwargs)
     raise UnknownProvider(f'지원하지 않는 provider: {profile.provider}')

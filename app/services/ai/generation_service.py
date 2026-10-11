@@ -99,7 +99,7 @@ def revalidate(ctx: JobContext, job: JobInfo) -> None:
     그래야 느린 확인 중에 일어난 key 삭제·취소가 호출 직전 확인에 반영된다.
     """
     profile = registry.get_profile(job.profile_id)
-    _authorize(ctx, job, AIAction.generate if profile.requires_api_key else AIAction.local_generate, retryable=True)
+    _authorize(ctx, job, AIAction.local_generate if profile.execution_location == 'local' else AIAction.generate, retryable=True)
     _check_alive(ctx)
     with ctx.session_factory() as db:
         inp = db.execute(text("""SELECT status, valid_until, manifest_hash FROM ai_inputs WHERE id = :i"""),

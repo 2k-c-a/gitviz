@@ -4,7 +4,7 @@
 
 - 지원할 구성은 **GitViz 백엔드·AI worker와 모델 런타임을 같은 PC에서 실행**하는 방식이다. 브라우저의 실행 위치가 아니라 모델을 호출하는 worker의 위치가 기준이다.
 - 웹 GitViz가 각 사용자의 다른 PC에 설치된 모델을 연결하는 기능은 **후속 과제**로 남긴다.
-- 현재 Anthropic·OpenAI·Gemini BYOK와 같은 PC의 Ollama adapter·설정·화면을 구현했다. 실행 설정과 검증 한계는 [제공자 지원 안내](AI_PROVIDER_SUPPORT.md)에 정리했다. 실제 설치 모델의 smoke·품질 검증은 아직 남아 있다.
+- 현재 Anthropic·OpenAI·Gemini BYOK와 같은 PC의 Ollama·LM Studio·KoboldCpp adapter·설정·화면을 구현했다. 화면에서는 로컬 AI로 묶어 선택한다. 실행 설정과 검증 한계는 [제공자 지원 안내](AI_PROVIDER_SUPPORT.md)에 정리했다. 실제 설치 모델의 smoke·품질 검증은 아직 남아 있다.
 - 첫 로컬 런타임은 Ollama다. 관리자가 설치 모델 이름과 전체 digest를 지정한다. 기본 후보 qwen2.5-coder:7b의 실제 품질·속도는 별도 smoke로 확인한다.
 
 ## 같은 PC에서의 실행 흐름

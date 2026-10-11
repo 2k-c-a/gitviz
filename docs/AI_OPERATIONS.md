@@ -25,7 +25,8 @@ python scripts/ai_ops.py check
 
 - **운영에서 비워야 하는 값**: `AI_TEST_PROVIDER_BASE_URL`(통합 시험 전용, 로컬 주소만 허용 — 앱 시작 검증과 provider 어댑터 생성 때 모두 확인한다). 사용자 key는 이 값이 없으면 항상 공식 주소로만 간다. `ANTHROPIC_BASE_URL`·`ANTHROPIC_API_KEY` 환경변수는 AI 기능이 **무시**한다(`check`가 남아 있으면 알려 준다).
 - **키 교체(암호화 키)**: 새 키를 `AI_*_ENCRYPTION_KEYS`에 `버전:hex`로 **추가**하고 `*_KEY_VERSION`을 새 버전으로 바꾼다. 옛 버전 키는 기존 암호문을 읽는 동안 남겨 둔다. 원문 코드는 보관 기간이 지나면 지워지므로 옛 키는 그 뒤에 제거할 수 있다. 사용자 key는 사용자가 key를 교체하면 새 암호화 키로 다시 저장된다.
-- **예산·한도**: `AI_USER_MONTHLY_BUDGET`(개인 지출 상한, 항상 적용), `AI_SERVER_MONTHLY_BUDGET`(0이면 끔, 서버 합계 상한), `AI_DAILY_JOB_LIMIT`, `AI_ALLOWED_PROFILES`(사용자가 고를 수 있는 모델). 비용은 사용자 key의 계정에 청구된다.
+- **예산·한도**: `AI_USER_MONTHLY_BUDGET`(개인 지출 상한, 0이면 상한 없음), `AI_SERVER_MONTHLY_BUDGET`(0이면 끔, 서버 합계 상한), `AI_DAILY_JOB_LIMIT`(0이면 횟수 상한 없음), `AI_CREDENTIAL_VERIFY_LIMIT_PER_HOUR`(0이면 key 확인 횟수 상한 없음), `AI_ALLOWED_PROFILES`(사용자가 고를 수 있는 모델). 상한을 해제해도 사용량·예약·정산 기록은 유지하고 비용은 사용자 key의 계정에 청구된다.
+- **확장 토큰 profile**: 클라우드 모델의 v4는 입력 128,000·출력 16,384토큰이다. 기존 profile은 기존 작업의 동의·fingerprint를 위해 유지한다. 로컬 모델은 `AI_<런타임>_MAX_INPUT_TOKENS`와 `MAX_OUTPUT_TOKENS`로 설정하며 합계는 실제 context 한도 이하여야 한다.
 
 ## 3. 평소 확인
 
@@ -75,7 +76,6 @@ python scripts/ai_ops.py resolve <예약id> --settle 0.12 # 제공자 콘솔에�
 | Idempotency 키 | 24시간 | 만료 후 정리. 삭제된 작업의 키도 이 기간 동안 유지돼 재전송이 새 작업·재과금을 만들지 않는다 |
 | 사용자 key 암호문 | 교체 후 그 key에 고정된 작업이 끝나면 / 삭제 시 즉시 | 삭제는 암호문을 즉시 지우고 고정된 진행 중 작업을 취소 |
 | 팀·구성원·연결 저장소·공유·보고서 | 기한 없음(관리자가 삭제할 때까지). 공유는 원본(결과·인계 대상)이 사라지거나 저장소 연결을 끊으면 함께 삭제 | `DELETE /teams/{id}`로 팀과 하위 자료를 함께 삭제(개인 자료는 그대로). 보고서는 지적의 제목·분류·위치만 담고 코드 원문·인용·메모는 담지 않으며, 권한이 줄면 차단된다 |
-| 인수인계 대상·준비 정보·초안·편집 문서 | 기한 없음(사용자가 삭제할 때까지) | `DELETE /handover-targets/{id}`로 대상과 하위 자료를 함께 삭제. 결과 보관 기간(30일)이 지나도 문서는 남으며 코드 원문·인용은 담지 않고 AI 지적은 제목·분류·위치만 담는다 |
 
 사용자는 화면·API로 입력(원문)·작업(결과)·key를 언제든 삭제할 수 있다. 감사 기록·비용 기록(예약·예산)에는 코드·메모·key가 없고 삭제하지 않는다.
 
@@ -96,3 +96,7 @@ python scripts/evaluate_ai_review.py --check-release   # 출시 전 사람이 �
 ```
 
 실제 모델 평가(`evaluate_ai_review.py --live`)는 일반 CI와 분리돼 있고 평가자의 key·별도 예산이 필요하다. 절차와 현재 상태는 [AI_MVP_ACCEPTANCE.md](AI_MVP_ACCEPTANCE.md).
+
+## PR·커밋 리뷰 및 폐기 기능 (2026-10-11)
+
+`alembic upgrade head`로 커밋 리뷰의 `source_type` 및 nullable PR 식별자 마이그레이션을 적용한 뒤 uvicorn·Celery·dispatcher를 재시작합니다. S12·S13 API·화면은 제거됐으며 기존 테이블은 과거 자료 보존을 위해 유지합니다. 커밋 행이 있는 DB의 해당 마이그레이션 downgrade는 자료 유실을 막기 위해 거부합니다. 기존 불변 이력 근거는 유지하며 전체 변경 후보가 필요하면 입력을 새로 준비합니다. S14·S15는 보류합니다.
