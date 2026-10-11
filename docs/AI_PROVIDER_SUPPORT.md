@@ -122,3 +122,27 @@ python scripts/smoke_ai_live.py provider --profile ollama-local-v1 --live --budg
 - Node 화면 모듈 테스트 32개 통과. 모의 서버의 headless 브라우저에서 네 제공자 선택, OpenAI·Gemini key 등록·입력 비우기, 로컬 동의→결과, 375px 가로 넘침·JS 오류를 확인했다.
 
 공식 계약·단가 근거: [OpenAI GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4), [Responses 토큰 계산](https://developers.openai.com/api/reference/resources/responses/subresources/input_tokens/methods/count), [Gemini 구조화 출력](https://ai.google.dev/gemini-api/docs/structured-output), [Gemini 가격·데이터 처리](https://ai.google.dev/gemini-api/docs/pricing), [Ollama chat](https://docs.ollama.com/api/chat), [Ollama FAQ](https://docs.ollama.com/faq).
+# 로컬 AI: LM Studio · KoboldCpp
+
+AI 리뷰의 **API key·제공자·모델 → 로컬 AI**에서 Ollama, LM Studio, KoboldCpp의 서버 등록 모델을 선택한다.
+LM Studio와 KoboldCpp는 인증을 켜지 않은 같은 PC의 서버를 지원한다. GitViz API·Celery worker는 호스트 프로세스로 실행한다.
+브라우저에서 임의 endpoint를 입력하거나 모델을 다운로드하는 기능은 없다.
+
+1. LM Studio의 Developer 서버 또는 KoboldCpp를 실행하고 모델을 로드한다.
+2. `GET http://127.0.0.1:1234/v1/models`(LM Studio) 또는 `GET http://127.0.0.1:5001/v1/models`(KoboldCpp)의 `data[].id`를 확인한다.
+3. `.env`에 해당 `AI_LMSTUDIO_ENABLED=1` / `AI_KOBOLDCPP_ENABLED=1`과 `AI_LMSTUDIO_MODEL` / `AI_KOBOLDCPP_MODEL`을 설정한다.
+   URL은 `.env.example`의 기본값을 사용하거나 loopback HTTP 주소와 명시적 포트로 지정한다. `/v1`은 붙이지 않는다.
+4. 실제 서버 context 크기에 맞게 `CONTEXT_WINDOW`, `MAX_INPUT_TOKENS`, `MAX_OUTPUT_TOKENS`를 설정한다.
+   기본 context는 8192, 입력·출력 한도는 각각 4000, timeout은 180초다. context에는 채팅 템플릿 여유도 확보한다.
+   `AI_ALLOWED_PROFILES`가 지정되어 있다면 `lmstudio-local-v1` / `koboldcpp-local-v1`도 추가한다.
+5. API·worker·dispatcher를 재시작하고 로컬 AI에서 모델을 선택한다.
+
+Chat Completions API의 `response_format.json_schema`로 출력 구조를 요청하고 기존 결과·인용·줄 번호 검증을 적용한다.
+모델 ID·endpoint·한도는 작업 fingerprint에 고정하고 호출 전 `/v1/models`에 해당 모델이 있는지 확인한다.
+이 API는 모델 파일 digest를 증명하지 않으므로 **LM Studio·KoboldCpp의 파일 해시는 검증하지 않는다**.
+모델 파일을 같은 ID로 교체했다면 진행 중 작업을 정리하고 새 실행으로 확인한다.
+실패 시 외부 모델로 자동 전환하지 않는다. 토큰 사전 계산은 보수적 추정이며 API 비용은 0으로 처리한다.
+런타임 버전과 모델별 실제 품질·성능은 별도 smoke가 필요하다.
+
+프로토콜 참고: [LM Studio](https://lmstudio.ai/docs/developer/openai-compat/structured-output),
+[KoboldCpp](https://github.com/LostRuins/koboldcpp/wiki).

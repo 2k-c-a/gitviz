@@ -1,3 +1,5 @@
+> 2026-10-11: S12 인수인계·S13 보고서는 폐기했습니다. 이 문서는 당시 설계·검증 기록입니다. 현재는 PR·커밋 리뷰와 S11 전체 변경 검토 후보를 제공합니다. S14·S15는 보류합니다.
+
 # AI MVP 수용 보고 (S10)
 
 작성 기준: 2026-10-07, 커밋 후 상태. 이 문서는 **무엇을 실행했고 무엇을 아직 하지 않았는지**를 구분해서 적는다. 구조 검증·fake provider 통과는 모델 정확도의 근거가 아니다.
@@ -26,8 +28,6 @@
 | 생성 실행(S7) | `scripts/test_ai_generation.py` | 40개 통과 |
 | 생성·결과·피드백 API(S8) | `scripts/test_ai_api.py` | 34개 통과 |
 | GitViz 이력 근거(S11) | `scripts/test_ai_history_context.py` | 36개 통과 |
-| 팀 권한·공유·보고서(S13) | `scripts/test_ai_teams.py`, `scripts/test_ai_team_frontend.cjs` | 34 + 7개 통과 |
-| 인수인계(S12) | `scripts/test_ai_handover.py`, `scripts/test_ai_handover_frontend.cjs` | 32 + 9개 통과 |
 | 키 관리·동의·작업 고정(BYOK) | `scripts/test_ai_credentials.py`, `test_ai_credential_api.py`, `test_ai_pulls_api.py` | 30 + 8 + 5개 통과 |
 | 작업 수명주기·입력 준비·큐(S4·S5) | `test_ai_job_lifecycle.py`, `test_ai_inputs.py`, `test_ai_input_api.py`, `test_ai_queue_integration.py` | 55 + 28 + 17 + 7개 통과 |
 | 계약·보안·스키마·수집·제공자·출력 검증 | `test_ai_contracts/security/schema/pr_collection/provider/output_validation.py` | 28 + 32 + 27 + 43 + 38 + 24개 통과 |

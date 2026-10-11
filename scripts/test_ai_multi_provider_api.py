@@ -24,6 +24,45 @@ def setUpModule():
 
 
 class MultiProvider(ApiCase):
+    def test_commit_input_prepare_local_review_and_result(self):
+        from datetime import datetime, timezone
+        from types import SimpleNamespace
+        from app.api.ai import inputs as inputs_api
+        from app.collectors.github.ai_commit_collector import EMPTY_TREE_SHA
+        from app.collectors.github.ai_pr_collector import CapturedRevision
+        from app.schemas.ai import canonical_hash
+        for base, head in ((self.fx.c0, self.fx.f1), (EMPTY_TREE_SHA, self.fx.c0)):
+            owner, repo = self.make_user(), self.make_repo()
+            self.clock = datetime.now(timezone.utc)
+            self.login(owner)
+            captured = CapturedRevision(repository_id=repo, pr_number=None, github_pr_id=None,
+                base_sha=base, head_sha=head, merge_base_sha=base, state_at_capture='commit', source_type='commit',
+                metadata={'title': 'Commit title', 'body': '', 'body_truncated': False, 'changed_files': None},
+                revision_fingerprint=canonical_hash([repo, base, head]))
+            repo_row = SimpleNamespace(id=repo, url='https://github.com/acme/widgets', github_id=555)
+            with patch.object(inputs_api, 'authorize_ai', return_value=(repo_row, {})), \
+                 patch.object(inputs_api, 'capture_commit', return_value=captured), \
+                 patch.object(inputs_api, 'user_github_token', return_value=None):
+                response = self.client.post('/api/ai/v1/inputs', json={'repository_id': repo,
+                    'commit_sha': head, 'expected_base_sha': base, 'expected_head_sha': head,
+                    'selected_paths': ['main.py']}, headers=self.headers(uuid4().hex))
+            self.assertEqual(response.status_code, 202, response.text)
+            self.assertEqual(response.json()['source_type'], 'commit')
+            input_id = UUID(response.json()['input_id'])
+            job_id = self.scalar('SELECT id FROM ai_jobs WHERE input_id=:i', i=input_id)
+            with patch('app.collectors.github.ai_commit_collector.capture_commit', return_value=captured):
+                self.assertEqual(self.run_prepare(job_id), 'succeeded')
+            w = SimpleNamespace(owner=owner, repo=repo, input_id=input_id)
+            with S.Session() as db:
+                preview = input_store.load_preview(db, input_id, owner, profile_id='ollama-local-v1')
+                self.assertEqual((preview.source_type, preview.pr_number), ('commit', None))
+            self.assertEqual(self.input_row(input_id)['manifest']['revision']['source_type'], 'commit')
+            response = self.post_job(w, consent=self.local_consent(w))
+            self.assertEqual(response.status_code, 202, response.text)
+            generated_id = UUID(response.json()['job_id'])
+            self.assertEqual(job_runner_run(self, generated_id), 'succeeded')
+            self.assertEqual(self.scalar('SELECT count(*) FROM ai_results WHERE job_id=:j', j=generated_id), 1)
+
     def setUp(self):
         super().setUp()
         self.local_env = S.ai_env(AI_ALLOW_EXTERNAL_TRANSFER=1, AI_OLLAMA_ENABLED=1, AI_OLLAMA_MODEL='qwen2.5-coder:7b',
@@ -38,6 +77,11 @@ class MultiProvider(ApiCase):
                 self.provider_http.append(req)
                 if req.url.path == '/api/tags':
                     return httpx2.Response(200, json={'models': [{'name': profile.model, 'digest': DIGEST}]})
+                if req.url.path == '/v1/models':
+                    return httpx2.Response(200, json={'data': [{'id': profile.model}]})
+                if req.url.path == '/v1/chat/completions':
+                    return httpx2.Response(200, json={'choices': [{'finish_reason': 'stop', 'message': {
+                        'content': json.dumps({'schema_version': 'review-output-v2', 'findings': []})}}]})
                 if req.url.path == '/api/show' or req.method == 'GET':
                     if req.url.path == '/api/show' and self.on_model_check:
                         self.on_model_check()
@@ -53,9 +97,9 @@ class MultiProvider(ApiCase):
         self.provider_patch.start()
         self.addCleanup(self.provider_patch.stop)
 
-    def local_consent(self, w):
+    def local_consent(self, w, profile_id='ollama-local-v1'):
         with S.Session() as db:
-            preview = input_store.load_preview(db, w.input_id, w.owner, profile_id='ollama-local-v1')
+            preview = input_store.load_preview(db, w.input_id, w.owner, profile_id=profile_id)
         t = preview.transfer
         return {'input_id': str(w.input_id), 'manifest_hash': preview.manifest_hash, 'provider': t.provider,
                 'profile_id': t.profile_id, 'credential_version': None, 'policy_version': preview.policy_version,
@@ -78,6 +122,24 @@ class MultiProvider(ApiCase):
             self.assertEqual(self.rows('SELECT spent_amount FROM usage_budgets')[0]['spent_amount'], Decimal(0))
             self.assertEqual(self.reservations(), ['settled'])
             self.assertIn(('authorize', 'local_generate'), self.events)
+
+    def test_local_chat_runtime_jobs_without_ollama_or_external_transfer(self):
+        for runtime, prefix in (('lmstudio', 'LMSTUDIO'), ('koboldcpp', 'KOBOLDCPP')):
+            with self.subTest(runtime=runtime), patch.dict(os.environ, {
+                'AI_OLLAMA_ENABLED': '0', 'AI_ALLOW_EXTERNAL_TRANSFER': '0',
+                f'AI_{prefix}_ENABLED': '1', f'AI_{prefix}_MODEL': 'installed-model',
+                f'AI_{prefix}_CONTEXT_WINDOW': '32768', f'AI_{prefix}_MAX_INPUT_TOKENS': '24000'}):
+                w = self.ready(pr_number=17 if runtime == 'lmstudio' else 18)
+                with patch('app.services.ai.access.verify_repository_access', return_value=(None, {'private': True})):
+                    authorize_ai(self.db, w.owner, w.repo, AIAction.local_generate, 'code-transfer-v1')
+                body = self.local_consent(w, runtime + '-local-v1')
+                response = self.post_job(w, consent=body)
+                self.assertEqual(response.status_code, 202, response.text)
+                job_id = UUID(response.json()['job_id'])
+                self.assertIsNone(self.job_row(job_id)['credential_version_id'])
+                self.assertEqual(job_runner_run(self, job_id), 'succeeded')
+                self.assertEqual(self.job_row(job_id)['provider'], runtime)
+                self.assertEqual(self.reservations()[-1], 'settled')
 
     def test_cloud_byok_generation_separates_providers(self):
         for provider, pid, key in [('openai', 'gpt-5.4-v1', 'sk-proj-' + 'a' * 40),

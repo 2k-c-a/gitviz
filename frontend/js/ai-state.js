@@ -33,15 +33,17 @@ export function parseRoute(search) {
     return { repo: null, pr: null, input: null, job: null, retry: null, force: false, view: VIEWS.NO_REPO, invalid };
   }
   const pr = read('pr', toInt);
+  const commit = read('commit', (v) => /^[0-9a-f]{40}$/.test(v) ? v : null);
+  if (pr && commit) invalid.push('commit');
   const input = read('input', toUuid);
   const job = read('job', toUuid);
   const retry = input ? read('retry', toUuid) : null;
   const force = !!input && !retry && p.get('force') === '1';          // 이미 결과가 있어도 새 generation으로 실행
-  const view = job ? VIEWS.JOB : input ? VIEWS.PREVIEW : pr ? VIEWS.FILES : VIEWS.HOME;
-  return { repo, pr, input, job, retry, force, view, invalid };
+  const view = job ? VIEWS.JOB : input ? VIEWS.PREVIEW : pr || commit ? VIEWS.FILES : VIEWS.HOME;
+  return { repo, pr, commit: pr ? null : commit, input, job, retry, force, view, invalid };
 }
 
-export function buildRoute({ repo = null, pr = null, input = null, job = null, retry = null, force = false } = {}) {
+export function buildRoute({ repo = null, pr = null, commit = null, input = null, job = null, retry = null, force = false } = {}) {
   if (repo == null) return '';
   const p = new URLSearchParams();
   p.set('repo', String(repo));
@@ -51,11 +53,14 @@ export function buildRoute({ repo = null, pr = null, input = null, job = null, r
     if (retry) p.set('retry', retry);
     else if (force) p.set('force', '1');
   } else if (pr) p.set('pr', String(pr));
+  else if (commit) p.set('commit', commit);
   return `?${p.toString()}`;
 }
 
 /* 저장소가 바뀌면 이전 PR·입력·작업은 가져가지 않는다 */
 export const routeForRepo = (repo) => buildRoute({ repo });
+
+export const sourceLabel = (input) => input?.source_type === 'commit' ? `커밋 ${shortSha(input.head_sha)}` : `PR #${input?.pr_number}`;
 
 /* ── 화면 세대(늦은 응답 폐기) ──
    begin()마다 이전 세대의 요청을 abort하고 새 token을 준다. token.current()가 false면 그 응답은 버린다. */
@@ -182,15 +187,15 @@ export function contentStateLabel(state, previewStatus) {
 }
 export const CHANGE_LABEL = { added: '추가', modified: '수정', deleted: '삭제', renamed: '이름 변경' };
 
-/* ── coverage: 목록(PR 전체) / 선택 코드 확보 / 분석을 따로 말한다 ── */
+/* ── coverage: 목록(전체 변경) / 선택 코드 확보 / 분석을 따로 말한다 ── */
 const SELECTED_TEXT = { complete: '선택한 파일의 코드를 모두 확보', partial: '선택한 파일 중 일부만 코드를 확보', none: '코드를 확보하지 못함' };
 const ANALYSIS_DONE = { complete: '선택한 파일 전체를 분석', partial: '선택한 파일 중 일부만 분석', none: '분석된 범위 없음' };
-const INVENTORY_TEXT = { complete: 'PR 전체 파일 목록을 확인', partial: 'PR 전체 파일 목록의 일부만 확인(GitHub 한도)', unknown: 'PR 전체 파일 수를 알 수 없음' };
+const INVENTORY_TEXT = { complete: '전체 변경 파일 목록을 확인', partial: '전체 변경 파일 목록의 일부만 확인(GitHub 한도)', unknown: '전체 변경 파일 수를 알 수 없음' };
 
 export function scopeSummary(cov, { analyzed = null } = {}) {
   if (!cov) return '범위 정보 없음';
   const total = cov.pr_total_files == null ? '알 수 없음' : `${cov.pr_total_files}개`;
-  const parts = [`PR 전체 ${total}`, `선택 ${cov.selected_files}개`];
+  const parts = [`전체 변경 ${total}`, `선택 ${cov.selected_files}개`];
   if (analyzed != null) parts.push(`분석 ${analyzed}개`);
   return parts.join(' · ');
 }
@@ -202,7 +207,7 @@ export function coverageLines(cov, { beforeRun = false } = {}) {
     ? '아직 분석 전(실행하면 이 범위가 분석됩니다)'
     : ANALYSIS_DONE[cov.analysis_coverage] || '알 수 없음';
   return [
-    { label: 'PR 전체 목록', value: INVENTORY_TEXT[cov.inventory_coverage] || '알 수 없음' },
+    { label: '전체 변경 목록', value: INVENTORY_TEXT[cov.inventory_coverage] || '알 수 없음' },
     { label: '선택한 코드', value: SELECTED_TEXT[cov.selected_content_coverage] || '알 수 없음' },
     { label: '분석 범위', value: analysis },
   ];
@@ -247,8 +252,8 @@ export function consentStatement(preview) {
   const t = preview?.transfer;
   if (!t) return '';
   const files = (preview.files || []).filter((f) => f.content_state === 'read').length;
-  if (t.execution_location === 'local') return `선택한 ${files}개 파일의 코드와 PR 제목·설명을 같은 PC의 ${t.model}에서 처리하는 데 동의합니다. 외부 AI 제공자에게 전송하지 않으며 API 요금은 없습니다(전력·하드웨어 비용 별도). 모델 digest: ${t.model_digest || '—'}.`;
-  return `선택한 ${files}개 파일의 코드(변경 diff와 주변 줄)와 PR 제목·설명이 ${t.provider} / ${t.model}(으)로 전송되는 것에 동의합니다. `
+  if (t.execution_location === 'local') return `선택한 ${files}개 파일의 코드와 변경 제목·설명을 같은 PC의 ${t.model}에서 처리하는 데 동의합니다. 외부 AI 제공자에게 전송하지 않으며 API 요금은 없습니다(전력·하드웨어 비용 별도). ${t.model_digest ? `모델 digest: ${t.model_digest}.` : '모델 ID를 고정합니다. 이 런타임의 모델 파일 해시는 검증하지 않습니다.'}`;
+  return `선택한 ${files}개 파일의 코드(변경 diff와 주변 줄)와 변경 제목·설명이 ${t.provider} / ${t.model}(으)로 전송되는 것에 동의합니다. `
     + `사용할 키: ${t.key_hint || '—'} (v${t.credential_version ?? '?'}), 전송 정책 ${preview.policy_version}.`;
 }
 
@@ -346,7 +351,7 @@ function describeJobState(job) {
   const base = { status, stage, canCancel: false, canRetry: false, retryExplicit: false, tone: 'info', action: null };
   switch (status) {
     case 'queued': return { ...base, canCancel: true, title: '대기 중', body: '곧 시작합니다. 아직 아무것도 전송하지 않았습니다.' };
-    case 'running': return { ...base, canCancel: true, title: stage || '실행 중', body: '진행률은 알 수 없습니다. 단계만 표시합니다.' };
+    case 'running': return { ...base, canCancel: true, title: stage || '실행 중', body: '' };
     case 'retry_wait': return { ...base, canCancel: true, tone: 'warn', title: '재시도 대기',
       body: `일시적인 오류로 ${job.retry_after_seconds != null ? `${fmtDuration(job.retry_after_seconds)} 뒤 ` : '잠시 뒤 '}자동으로 다시 시도합니다(호출이 처리되지 않았음이 확실한 경우만).` };
     case 'cancel_requested': return { ...base, tone: 'warn', title: '취소 접수됨',
@@ -365,9 +370,23 @@ function describeJobState(job) {
   }
 }
 
+export function usageStatement(usage) {
+  const unlimited = Number(usage.user_limit) === 0;
+  return `이번 달 사용 ${fmtMoney(usage.user_spent, usage.currency)}${unlimited ? '' : ` / 한도 ${fmtMoney(usage.user_limit, usage.currency)}`} (예약 ${fmtMoney(usage.user_reserved, usage.currency)}${unlimited ? '' : `, 남음 ${fmtMoney(usage.user_remaining, usage.currency)}`})`
+    + ` · 오늘 요청 ${usage.daily_jobs_used}${usage.daily_job_limit === 0 ? '회' : `/${usage.daily_job_limit}`}`;
+}
+
+export function selectableProviders(providers = []) {
+  const local = providers.filter((p) => p.models.some((m) => m.execution_location === 'local'));
+  const external = providers.filter((p) => !local.includes(p));
+  return local.length ? [...external, { id: 'local', display_name: '로컬 AI', key_format: 'API key 불필요',
+    models: local.flatMap((p) => p.models.map((m) => ({ ...m,
+      display_name: `${p.display_name.replace(' (같은 PC)', '')} · ${m.model || '모델 설정 필요'}` }))) }] : external;
+}
+
 export function describeJob(job) {
   const description = describeJobState(job);
-  if (!description || job.provider !== 'ollama') return description;
+  if (!description || !['ollama', 'lmstudio', 'koboldcpp'].includes(job.provider)) return description;
   if (['cancel_requested', 'cancelled'].includes(job.status)) {
     return { ...description, costRisk: false,
       body: '로컬 호출이 이미 시작됐다면 연산은 끝날 수 있습니다. 취소 후 결과는 저장하지 않습니다. 제공자 API 요금은 없습니다.' };

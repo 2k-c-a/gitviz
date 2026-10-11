@@ -232,7 +232,7 @@ class Responses(unittest.TestCase):
             'string': ('"hi"', 'not_json_object'),
             'nan': ('{"a": NaN}', 'invalid_json'),
             'truncated_json': (VALID_TEXT[:-3], 'invalid_json'),
-            'huge': (json.dumps({'x': 'a' * 70_000}), 'output_too_large'),
+            'huge': (json.dumps({'x': 'a' * 270_000}), 'output_too_large'),
         }
         for name, (text, error) in cases.items():
             with self.subTest(name):
@@ -582,7 +582,7 @@ class ExpandedInputProfileTests(unittest.TestCase):
                 self.assertNotEqual(old.fingerprint(), new.fingerprint())
                 self.assertEqual(dataclasses.replace(new, id=old.id, display_name=old.display_name,
                     max_input_tokens=old.max_input_tokens).fingerprint(), old.fingerprint())
-                self.assertEqual(registry.profiles_of(old.provider)[0].max_input_tokens, 64_000)
+                self.assertEqual(registry.profiles_of(old.provider)[0].max_input_tokens, 128_000)
 
     def test_expanded_limit_boundary_and_context_guard(self):
         for pid in ('claude-opus-5-5-v2', 'claude-sonnet-5-5-v2', 'gpt-5.4-v2', 'gemini-3.5-flash-lite-v2'):

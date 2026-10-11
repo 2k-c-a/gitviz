@@ -58,16 +58,17 @@ class CollectedInput:
     policy_version: str = content_policy.POLICY_VERSION
     total_bytes: int = 0
     exclusions: dict[str, str] = field(default_factory=dict)   # path -> Limitation 값
+    changed_files: list[dict] | None = None
 
 
 # ── Git 실행 ────────────────────────────────────────────────────────────
 
-def _git(repo_path, *args, env=None, check=True, timeout=GIT_TIMEOUT) -> bytes:
+def _git(repo_path, *args, env=None, check=True, timeout=GIT_TIMEOUT, input=None) -> bytes:
     # --literal-pathspecs: 'a[1].py'나 '*.py' 같은 경로를 glob·pathspec 문법이 아닌 글자 그대로 취급한다.
     cmd = ['git', '--literal-pathspecs', '-c', 'core.quotepath=off', '-c', 'diff.external=', '-c',
            'core.fsmonitor=false', '--git-dir', str(repo_path), *args]
     try:
-        proc = subprocess.run(cmd, env=env or git_environment(), capture_output=True, timeout=timeout)
+        proc = subprocess.run(cmd, env=env or git_environment(), capture_output=True, timeout=timeout, input=input)
     except subprocess.TimeoutExpired:
         raise UpstreamUnavailable('Git 작업 시간이 초과됐습니다.') from None
     if check and proc.returncode != 0:
@@ -87,10 +88,16 @@ def fetch_revision_objects(workdir, remote, merge_base_sha, head_sha, *, token=N
            ('submodule.recurse', 'false'), ('fetch.recurseSubmodules', 'false')]
     for key, value in cfg:
         _git(workdir, 'config', key, value, env=env)
+    from app.collectors.github.ai_commit_collector import EMPTY_TREE_SHA
+    refs = (head_sha,) if merge_base_sha == EMPTY_TREE_SHA else (merge_base_sha, head_sha)
     _git(workdir, 'fetch', '--no-tags', '--no-recurse-submodules', '--depth=1', '--filter=blob:none',
-         'origin', merge_base_sha, head_sha, env=env)
+         'origin', *refs, env=env)
+    if merge_base_sha == EMPTY_TREE_SHA:
+        if _git(workdir, 'mktree', env=env, input=b'').decode().strip() != EMPTY_TREE_SHA:
+            raise UpstreamUnavailable('빈 트리를 만들지 못했습니다.')
     for sha in (merge_base_sha, head_sha):
-        if _git(workdir, 'cat-file', '-t', sha, env=env, check=False).strip() != b'commit':
+        expected = b'tree' if sha == EMPTY_TREE_SHA and sha == merge_base_sha else b'commit'
+        if _git(workdir, 'cat-file', '-t', sha, env=env, check=False).strip() != expected:
             raise UpstreamUnavailable('PR의 commit을 가져오지 못했습니다.')
     return workdir
 
@@ -254,8 +261,10 @@ def collect_selected_code(repo_path, merge_base_sha, head_sha, paths, *, max_fil
         raise InvalidSelection('같은 경로가 중복 선택됐습니다.')
     if len(paths) > max_files:
         raise InputTooLarge('선택한 파일 수가 한도를 넘습니다.')
+    from app.collectors.github.ai_commit_collector import EMPTY_TREE_SHA
     for sha in (merge_base_sha, head_sha):
-        if _git(repo_path, 'cat-file', '-t', sha, env=env, check=False).strip() != b'commit':
+        expected = b'tree' if sha == EMPTY_TREE_SHA and sha == merge_base_sha else b'commit'
+        if _git(repo_path, 'cat-file', '-t', sha, env=env, check=False).strip() != expected:
             raise MergeBaseUnavailable('비교할 commit을 찾을 수 없습니다.')
 
     changed = list_changed_files(repo_path, merge_base_sha, head_sha, env=env)
@@ -277,8 +286,12 @@ def collect_selected_code(repo_path, merge_base_sha, head_sha, paths, *, max_fil
         files.append(item)
 
     coverage = _coverage(files, pr_total_files if pr_total_files is not None else len(changed))
+    renamed_old_paths = {c.old_path for c in by_path.values() if c.change_type is ChangeType.renamed}
     return CollectedInput(merge_base_sha=merge_base_sha, head_sha=head_sha, files=files, coverage=coverage,
-                          total_bytes=total, exclusions=exclusions)
+                          total_bytes=total, exclusions=exclusions,
+                          changed_files=[{'path': c.path, 'old_path': by_path.get(c.path, c).old_path,
+                                          'change_type': by_path.get(c.path, c).change_type.value} for c in changed
+                                         if not (c.change_type is ChangeType.deleted and c.path in renamed_old_paths)])
 
 
 def _entry(changed: ChangedFile, state: ContentState, *, reason=None, content_hash=None, hunks=None):

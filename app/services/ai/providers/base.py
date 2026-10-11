@@ -17,7 +17,7 @@ from typing import Protocol
 
 from app.schemas.ai import JobKind, canonical_hash
 
-MAX_RAW_OUTPUT_BYTES = 65_536
+MAX_RAW_OUTPUT_BYTES = 262_144
 
 # 작업 error_code(문자열). handler가 JobFailed/RetryableError에 싣는다.
 ERROR_CODES = {

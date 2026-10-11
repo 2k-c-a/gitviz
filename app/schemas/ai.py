@@ -22,7 +22,7 @@ from pydantic import (
     model_validator,
 )
 
-CONTRACT_VERSION = "1.8"
+CONTRACT_VERSION = "1.9"
 
 _SHA_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -217,10 +217,17 @@ ERROR_HTTP_STATUS: dict[ErrorCode, int] = {
 
 class PRRevision(_Strict):
     repo_id: int = Field(gt=0)
-    pr_number: int = Field(gt=0)
+    pr_number: int | None = Field(default=None, gt=0)
+    source_type: Literal['pr', 'commit'] = 'pr'
     base_sha: GitSha
     head_sha: GitSha
     merge_base_sha: GitSha
+
+    @model_validator(mode='after')
+    def _source(self):
+        if (self.source_type == 'pr') != (self.pr_number is not None):
+            raise ValueError('PR에는 번호가 필요하고 커밋에는 PR 번호를 지정할 수 없습니다.')
+        return self
 
 
 class CodeLocation(_Strict):
@@ -339,12 +346,17 @@ class InputManifest(_Strict):
     pr_metadata_hash: Sha256Hex | None = None
     pr_metadata: PRTransferMetadata | None = None
     files: list[ManifestFile]
+    changed_files: list['ChangedPath'] | None = None  # full pinned inventory, independent of selected code
 
     @model_validator(mode="after")
     def _unique_paths(self):
         paths = [f.path for f in self.files]
         if len(set(paths)) != len(paths):
             raise ValueError("manifest에 같은 path가 중복됩니다.")
+        if self.changed_files is not None:
+            changed = [f.path for f in self.changed_files]
+            if len(set(changed)) != len(changed) or not set(paths).issubset(changed):
+                raise ValueError('전체 변경 목록은 중복 없이 선택한 모든 파일을 포함해야 합니다.')
         if self.pr_metadata is not None and self.pr_metadata_hash != canonical_hash(self.pr_metadata):
             raise ValueError("pr_metadata_hash가 pr_metadata와 일치하지 않습니다.")
         return self
@@ -365,13 +377,18 @@ def canonical_hash(obj: BaseModel | dict[str, Any]) -> str:
 class PrepareInputRequest(_Strict):
     """POST /inputs. owner는 서버가 세션에서 정한다."""
     repository_id: int = Field(gt=0)
-    pr_number: int = Field(gt=0)
+    pr_number: int | None = Field(default=None, gt=0)
+    commit_sha: GitSha | None = None
     expected_base_sha: GitSha
     expected_head_sha: GitSha
     selected_paths: list[RepoPath] = Field(min_length=1, max_length=1000)
 
     @model_validator(mode="after")
     def _unique(self):
+        if (self.pr_number is None) == (self.commit_sha is None):
+            raise ValueError('PR 번호 또는 커밋 SHA 중 하나만 지정해야 합니다.')
+        if self.commit_sha is not None and self.commit_sha != self.expected_head_sha:
+            raise ValueError('commit_sha와 expected_head_sha가 일치해야 합니다.')
         if len(set(self.selected_paths)) != len(self.selected_paths):
             raise ValueError("selected_paths에 중복이 있습니다.")
         return self
@@ -490,7 +507,8 @@ class InputPreview(_Strict):
     input_id: UUID
     status: InputStatus
     repository_id: int
-    pr_number: int
+    pr_number: int | None = None
+    source_type: Literal['pr', 'commit'] = 'pr'
     base_sha: GitSha
     head_sha: GitSha
     merge_base_sha: GitSha | None = None
@@ -835,6 +853,24 @@ class UsageView(_Strict):
 
 # ── PR·파일 선택 화면용 조회 (S9) ───────────────────────────────────────
 
+class ChangedPath(_Strict):
+    path: RepoPath
+    old_path: RepoPath | None = None
+    change_type: ChangeType | None = None
+
+
+class CommitSummary(_Strict):
+    sha: GitSha
+    message: str
+    author_login: str | None = None
+    committed_at: str | None = None
+
+
+class CommitList(_Strict):
+    items: list[CommitSummary]
+    next_cursor: str | None = None
+
+
 class PullSummary(_Strict):
     number: int = Field(gt=0)
     github_pr_id: int
@@ -928,135 +964,5 @@ class HistoryEvidenceList(_Strict):
 # ── 인수인계 (S12) ──────────────────────────────────────────────────────
 
 HANDOVER_ITEM_KEYS = ("assignee", "description", "run_method", "verify_method", "joint_review", "receiver_run")
-HandoverStatus = Literal["unknown", "needed", "ready"]
 
-
-class HandoverTargetCreate(_Strict):
-    repository_id: int = Field(ge=1)
-    name: str = Field(min_length=1, max_length=120)
-    selected_paths: list[str] = Field(min_length=1, max_length=50)
-    snapshot_id: int | None = Field(default=None, ge=1)
-    purpose: str | None = Field(default=None, max_length=500)
-    giver_name: str | None = Field(default=None, max_length=100)
-    receiver_name: str | None = Field(default=None, max_length=100)
-
-
-class HandoverTargetPatch(_Strict):
-    expected_version: int = Field(ge=1)
-    name: str | None = Field(default=None, min_length=1, max_length=120)
-    selected_paths: list[str] | None = Field(default=None, min_length=1, max_length=50)
-    snapshot_id: int | None = Field(default=None, ge=1)
-    clear_snapshot: bool = False
-    purpose: str | None = Field(default=None, max_length=500)
-    giver_name: str | None = Field(default=None, max_length=100)
-    receiver_name: str | None = Field(default=None, max_length=100)
-
-
-class HandoverItemIn(_Strict):
-    status: HandoverStatus = "unknown"
-    text: str | None = Field(default=None, max_length=2000)
-    link: str | None = Field(default=None, max_length=500)
-
-
-class HandoverPreparationPut(_Strict):
-    expected_version: int = Field(ge=0)               # 현재 준비 정보 버전(처음이면 0)
-    confirmed_target_version: int = Field(ge=1)       # 이 입력이 기준으로 삼은 대상 버전: 대상이 바뀌었다면 다시 확인한 뒤 저장한다
-    items: dict[str, HandoverItemIn | None]
-
-
-class HandoverItemView(_Strict):
-    key: str
-    label: str
-    status: HandoverStatus
-    status_label: str
-    text: str | None = None
-    link: str | None = None
-    updated_version: int | None = None
-    updated_at: datetime | None = None
-
-
-class HandoverPreparationView(_Strict):
-    target_id: UUID
-    version: int                                    # 0이면 아직 저장된 적 없음(모든 항목 unknown)
-    target_version: int | None = None               # 이 준비 정보를 확인한 대상 버전
-    needs_reconfirm: bool                           # 대상의 범위(파일·snapshot)가 바뀐 뒤 아직 다시 확인하지 않음
-    items: list[HandoverItemView]
-    created_at: datetime | None = None
-
-
-class HandoverTargetView(_Strict):
-    target_id: UUID
-    repository_id: int
-    name: str
-    purpose: str | None = None
-    giver_name: str | None = None
-    receiver_name: str | None = None
-    selected_paths: list[str]
-    snapshot_id: int | None = None
-    version: int
-    scope_version: int
-    preparation_version: int
-    needs_reconfirm: bool
-    has_document: bool
-    created_at: datetime
-    updated_at: datetime
-
-
-class HandoverTargetList(_Strict):
-    targets: list[HandoverTargetView]
-
-
-class HandoverGenerateRequest(_Strict):
-    expected_target_version: int = Field(ge=1)
-    expected_preparation_version: int = Field(ge=0)
-    summary_result_id: UUID | None = None
-    review_result_id: UUID | None = None
-    force: bool = False                              # 같은 기준이어도 새 원본을 만든다(기존 편집본은 그대로)
-
-
-class HandoverGenerationView(_Strict):
-    generation_id: UUID
-    target_id: UUID
-    number: int
-    target_version: int
-    preparation_version: int
-    template_version: str
-    sources: dict[str, Any]
-    stale_reasons: list[str] = Field(default_factory=list)
-    markdown: str
-    created_at: datetime
-    reused: bool = False
-
-
-class HandoverGenerationResponse(_Strict):
-    generation: HandoverGenerationView
-    document_id: UUID
-    document_updated: bool                           # 편집하지 않은 문서는 새 원본을 따라간다. 편집한 문서는 그대로 둔다.
-
-
-class HandoverGenerationList(_Strict):
-    generations: list[HandoverGenerationView]
-
-
-class HandoverDocumentPut(_Strict):
-    expected_version: int = Field(ge=1)
-    markdown: str = Field(max_length=100_000)
-
-
-class HandoverAdoptRequest(_Strict):
-    expected_version: int = Field(ge=1)
-    generation_id: UUID
-
-
-class HandoverDocumentView(_Strict):
-    document_id: UUID
-    target_id: UUID
-    version: int
-    edited: bool
-    markdown: str
-    base_generation_id: UUID
-    base_generation_number: int
-    stale_reasons: list[str] = Field(default_factory=list)
-    newer_generation_id: UUID | None = None          # 편집본 이후에 만든 더 새로운 원본(자동으로 덮어쓰지 않는다)
-    newer_generation_number: int | None = None
-    updated_at: datetime
+InputManifest.model_rebuild()

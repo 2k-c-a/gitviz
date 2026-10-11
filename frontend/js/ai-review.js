@@ -74,7 +74,7 @@ function showError(err, { onRetry = null } = {}) {
   if (d.action === 'keys') actions.push(button('API key 설정 열기', () => openKeys()));
   if (d.action === 'usage') actions.push(button('사용량 보기', () => { openKeys(); $('ai-usage')?.scrollIntoView?.({ block: 'center' }); }));
   if (d.action === 'reload') actions.push(button('새로고침', () => location.reload()));
-  if (d.action === 'home' || d.action === 'reselect') actions.push(link('PR 선택으로', { repo: route.repo }, 'btn-secondary ai-btn'));
+  if (d.action === 'home' || d.action === 'reselect') actions.push(link('PR·커밋 선택으로', { repo: route.repo }, 'btn-secondary ai-btn'));
   if (d.action === 'reload_preview' && ctx?.reloadPreview) actions.push(button('미리보기 다시 확인', () => ctx.reloadPreview(), { cls: 'btn-primary' }));
   if ((d.action === 'retry' || d.action === 'reload_findings') && onRetry) actions.push(button('다시 시도', onRetry));
   let body = d.body;
@@ -144,7 +144,7 @@ function repoLabel() {
 function renderHeader() {
   const title = $('ai-title');
   title.textContent = route.repo ? `AI 리뷰 · ${repoLabel()}` : 'AI 리뷰';
-  const steps = [['home', 'PR 선택'], ['files', '파일 선택'], ['preview', '미리보기·동의'], ['job', '실행·결과']];
+  const steps = [['home', 'PR·커밋 선택'], ['files', '파일 선택'], ['preview', '미리보기·동의'], ['job', '실행·결과']];
   const at = { [S.VIEWS.HOME]: 0, [S.VIEWS.FILES]: 1, [S.VIEWS.PREVIEW]: 2, [S.VIEWS.JOB]: 3 }[route.view];
   mount($('ai-steps'), steps.map(([, label], i) => h('li', { class: `ai-step${i === at ? ' current' : i < at ? ' done' : ''}`, 'aria-current': i === at ? 'step' : null }, `${i + 1}. ${label}`)));
   $('ai-steps').hidden = route.view === S.VIEWS.NO_REPO;
@@ -194,7 +194,13 @@ async function loadKeys(token) {
   renderKeys();
 }
 
-function currentProvider() { return shared.providers?.providers?.find((p) => p.id === shared.providerId) || shared.providers?.providers?.[0]; }
+function selectableProviders() {
+  return S.selectableProviders(shared.providers?.providers);
+}
+function currentProvider() {
+  const providers = selectableProviders();
+  return providers.find((p) => p.id === shared.providerId || p.models.some((m) => m.provider === shared.providerId)) || providers[0];
+}
 function currentCredential() { return (shared.creds || []).find((c) => c.provider === currentProvider()?.id) || null; }
 
 function renderKeys() {
@@ -202,9 +208,9 @@ function renderKeys() {
   const provider = currentProvider();
   if (!provider) return mount(root);
   const cred = currentCredential();
-  const local = provider.id === 'ollama';
+  const local = provider.models.every((m) => m.execution_location === 'local');
   const transferOk = local || shared.providers.external_transfer_allowed;
-  const providerSelect = h('select', { 'aria-label': 'AI 제공자', onchange: (ev) => { shared.providerId = ev.target.value; shared.profileId = currentProvider().models.find((m) => m.allowed)?.profile_id || null; renderKeys(); ctx?.onCredentialsChanged?.(); } }, shared.providers.providers.map((p) => h('option', { value: p.id, selected: p.id === provider.id }, p.display_name)));
+  const providerSelect = h('select', { 'aria-label': 'AI 제공자', onchange: (ev) => { shared.providerId = ev.target.value; shared.profileId = currentProvider().models.find((m) => m.allowed)?.profile_id || null; renderKeys(); ctx?.onCredentialsChanged?.(); } }, selectableProviders().map((p) => h('option', { value: p.id, selected: p.id === provider.id }, p.display_name)));
   const keyInput = h('input', { type: 'password', id: 'ai-key-input', autocomplete: 'off', spellcheck: 'false', placeholder: provider.key_format, 'aria-label': 'API key', maxlength: 400 });
   const preferred = shared.profileId || cred?.preferred_profile_id;
   const modelFamily = (id) => (id || '').replace(/-v\d+$/, '');
@@ -255,15 +261,14 @@ function renderKeys() {
         h('div', { class: 'ai-banner-body', text: 'key 등록과 AI 실행이 막혀 있습니다.' })) : null,
       local ? null : h('p', { class: 'ai-muted', text: `제공자: ${provider.display_name || provider.id}. key는 암호화되어 저장되며 화면에는 마스킹된 힌트만 표시됩니다. key 확인은 코드를 보내지 않고 비용이 들지 않습니다. 사용한 만큼의 비용은 본인 key 계정에 청구됩니다.` }),
       providerSelect,
-      local ? h('p', { class: 'ai-muted', text: '서버가 지정한 설치 모델만 사용합니다. API 요금은 없으며 전력·하드웨어 비용은 별도입니다. GitViz backend·worker와 Ollama를 같은 PC에서 실행하세요.' }) : null,
+      local ? h('p', { class: 'ai-muted', text: '서버가 지정한 설치 모델만 사용합니다. API 요금은 없으며 전력·하드웨어 비용은 별도입니다. GitViz backend·worker와 선택한 로컬 AI 서버(Ollama, LM Studio, KoboldCpp)를 같은 PC에서 실행하세요. 비활성 모델은 서버 설정이 필요합니다.' }) : null,
       provider.id === 'gemini' ? h('p', { class: 'ai-muted', text: 'Gemini 무료 등급은 입력·출력이 Google 제품 개선에 사용될 수 있습니다. 민감한 코드는 보내지 말고 계정의 데이터 처리 정책을 확인하세요.' }) : null,
       models,
       local ? null : h('label', { class: 'ai-field' }, h('span', { text: cred ? '새 API key(교체할 때만)' : 'API key' }), keyInput),
       local ? null : h('div', { class: 'ai-row' }, save, cred ? setModel : null, cred ? del : null),
       msg,
       usage ? h('div', { class: 'ai-usage', id: 'ai-usage' },
-        `이번 달 사용 ${S.fmtMoney(usage.user_spent, usage.currency)} / 한도 ${S.fmtMoney(usage.user_limit, usage.currency)} (예약 ${S.fmtMoney(usage.user_reserved, usage.currency)}, 남음 ${S.fmtMoney(usage.user_remaining, usage.currency)})`
-        + ` · 오늘 요청 ${usage.daily_jobs_used}/${usage.daily_job_limit}`
+        S.usageStatement(usage)
         + (usage.uncertain_reservations ? ` · 결과를 알 수 없는 호출 ${usage.uncertain_reservations}건(비용이 발생했을 수 있음)` : '')) : null)));
 }
 
@@ -295,6 +300,34 @@ async function run(btn, msgEl, fn) {
 
 /* ───────────────────────── B. PR 선택·최근 작업 ───────────────────────── */
 async function renderHome(token) {
+  const commits = h('div', { class: 'ai-prs', 'aria-live': 'polite' });
+  let commitCursor = null, commitsLoaded = false;
+  const commitMore = button('더 보기', () => loadCommits());
+  commitMore.hidden = true;
+  async function loadCommits() {
+    commitMore.disabled = true;
+    try {
+      const page = await api.commits(route.repo, { cursor: commitCursor }, token.signal);
+      if (!token.current()) return;
+      if (!commitsLoaded && !page.items.length) commits.append(h('p', { text: '커밋이 없습니다.' }));
+      commitsLoaded = true;
+      page.items.forEach((commit) => commits.append(h('div', { class: 'ai-pr' },
+        h('div', { class: 'ai-pr-main' }, h('code', { text: S.shortSha(commit.sha), title: commit.sha }), ' ', commit.message.split('\n')[0]),
+        h('div', { class: 'ai-pr-meta', text: `${commit.author_login || '알 수 없음'} · ${fmtTime(commit.committed_at)}` }),
+        link('파일 선택', { repo: route.repo, commit: commit.sha }, 'btn-primary ai-btn'))));
+      commitCursor = page.next_cursor; commitMore.hidden = !commitCursor;
+    } catch (e) { if (token.current() && e?.name !== 'AbortError') showError(e, { onRetry: loadCommits }); }
+    finally { commitMore.disabled = false; }
+  }
+  const commitSha = h('input', { class: 'ai-input', placeholder: '전체 커밋 SHA (40자)', 'aria-label': '커밋 SHA', maxlength: 40 });
+  const commitMessage = h('div', { class: 'ai-inline', role: 'status' });
+  const commitCard = h('section', { class: 'ai-card', hidden: true }, h('h2', { text: '커밋 선택' }),
+    h('p', { class: 'ai-muted', text: '최근 커밋을 선택하거나 전체 SHA를 입력하세요. 첫 번째 부모와 비교하며, 최초 커밋은 빈 트리와 비교합니다.' }),
+    h('div', { class: 'ai-row' }, commitSha, button('SHA로 파일 선택', () => {
+      const sha = commitSha.value.trim().toLowerCase();
+      if (!/^[0-9a-f]{40}$/.test(sha)) { commitMessage.textContent = '40자리 커밋 SHA를 입력하세요.'; return; }
+      navigate({ repo: route.repo, commit: sha });
+    })), commitMessage, commits, commitMore);
   const list = h('div', { class: 'ai-prs', 'aria-live': 'polite' });
   const more = button('더 보기', () => loadPage(false));
   more.hidden = true;
@@ -328,9 +361,15 @@ async function renderHome(token) {
       h('div', { class: 'ai-pr-meta' }, `${pr.author_login || '알 수 없음'} · ${pr.base_ref || '?'} ← ${pr.head_ref || '?'} · head ${S.shortSha(pr.head_sha)} · 갱신 ${fmtTime(pr.updated_at)}`),
       link('파일 선택', { repo: route.repo, pr: pr.number }, 'btn-primary ai-btn'));
   }
-  mount($('ai-main'),
-    h('section', { class: 'ai-card' }, h('h2', { text: 'PR 선택' }),
+  const prCard = h('section', { class: 'ai-card' }, h('h2', { text: 'PR 선택' }),
       h('p', { class: 'ai-muted', text: 'GitHub의 현재 PR 목록입니다. 선택하면 그 시점의 SHA를 기준으로 파일을 고릅니다.' }), tabs, list, h('div', { class: 'ai-center' }, more)),
+    sourceTabs = h('div', { class: 'ai-tabs' }, [['pr', 'PR'], ['commit', '커밋']].map(([value, label]) =>
+      button(label, (ev) => {
+        prCard.hidden = value !== 'pr'; commitCard.hidden = value !== 'commit';
+        sourceTabs.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === ev.currentTarget));
+        if (value === 'commit' && !commitsLoaded) loadCommits();
+      }, { cls: value === 'pr' ? 'ai-tab active' : 'ai-tab' })));
+  mount($('ai-main'), sourceTabs, prCard, commitCard,
     h('section', { class: 'ai-card', id: 'ai-jobs-card' }, h('h2', { text: '이 저장소의 최근 AI 작업' })));
   loadPage(true);
   renderJobsList(token, $('ai-jobs-card'));
@@ -364,6 +403,8 @@ async function renderJobsList(token, card) {
 /* ───────────────────────── C. 파일 선택 ───────────────────────── */
 async function renderFiles(token) {
   const pr = route.pr;
+  const commit = route.commit;
+  const subject = commit ? `커밋 ${S.shortSha(commit)}` : `PR #${pr}`;
   const state = { files: [], selected: new Set(), base: null, head: null, total: null, inventory: null, cursor: null, drift: false, filter: '', loading: false };
   const list = h('div', { class: 'ai-files' });
   const scope = h('div', { class: 'ai-scope-line' });
@@ -387,12 +428,12 @@ async function renderFiles(token) {
   }
   function drawSummary() {
     const total = state.total == null ? '알 수 없음' : `${state.total}개`;
-    mount(scope, `선택 ${state.selected.size}개 · 불러온 파일 ${state.files.length}개 · PR 전체 ${total}`,
+    mount(scope, `선택 ${state.selected.size}개 · 불러온 파일 ${state.files.length}개 · 전체 변경 ${total}`,
       state.inventory && state.inventory !== 'complete' ? chip(state.inventory === 'partial' ? '전체 목록 일부만 확인(GitHub 한도)' : '전체 파일 수를 알 수 없음', 'warn') : null,
       state.cursor ? chip('아직 더 있음', 'info') : null);
     makeBtn.disabled = !state.selected.size || state.drift || state.loading;
     moreBtn.hidden = !state.cursor;
-    mount(info, h('span', {}, `PR #${pr} · 이 목록의 기준 SHA — base `), h('code', { title: state.base || '', text: S.shortSha(state.base) }),
+    mount(info, h('span', {}, `${subject} · 비교 기준 — ${commit ? '첫 번째 부모(최초 커밋은 빈 트리)' : 'base'} `), h('code', { title: state.base || '', text: S.shortSha(state.base) }),
       ' · head ', h('code', { title: state.head || '', text: S.shortSha(state.head) }),
       h('span', { class: 'ai-muted', text: ' (미리보기를 만들 때 이 SHA가 그대로인지 서버가 다시 확인하고, 그 SHA의 코드로 고정합니다)' }));
   }
@@ -400,7 +441,8 @@ async function renderFiles(token) {
     if (state.loading) return;
     state.loading = true; drawSummary();
     try {
-      const page = await api.pullFiles(route.repo, pr, { cursor: state.cursor }, token.signal);
+      const page = await (commit ? api.commitFiles(route.repo, commit, { cursor: state.cursor }, token.signal)
+                                : api.pullFiles(route.repo, pr, { cursor: state.cursor }, token.signal));
       if (!token.current()) return;
       if (state.base && (page.base_sha !== state.base || page.head_sha !== state.head)) {
         state.drift = true;
@@ -419,7 +461,7 @@ async function renderFiles(token) {
   async function create() {
     if (makeBtn.disabled) return;
     makeBtn.disabled = true;
-    const body = { repository_id: route.repo, pr_number: pr, expected_base_sha: state.base, expected_head_sha: state.head, selected_paths: [...state.selected].sort() };
+    const body = { repository_id: route.repo, ...(commit ? { commit_sha: commit } : { pr_number: pr }), expected_base_sha: state.base, expected_head_sha: state.head, selected_paths: [...state.selected].sort() };
     try {
       const out = await S.submitWithIntent(intents.input, body, (key) => api.createInput(body, key, token.signal),
         (o) => S.isAcceptedFor(o, 'input_id', route.repo));
@@ -433,9 +475,9 @@ async function renderFiles(token) {
     }
   }
   mount($('ai-main'), h('section', { class: 'ai-card' },
-    h('div', { class: 'ai-row between' }, h('h2', { text: `PR #${pr} 파일 선택` }), link('← PR 목록', { repo: route.repo })),
+    h('div', { class: 'ai-row between' }, h('h2', { text: `${subject} 파일 선택` }), link('← PR·커밋 목록', { repo: route.repo })),
     info,
-    h('p', { class: 'ai-muted', text: 'AI에는 선택한 파일의 변경 diff(와 주변 줄)와 PR 제목·설명만 전송됩니다. 비밀로 의심되는 파일·바이너리·생성 파일 등은 다음 단계에서 제외 사유와 함께 표시됩니다.' }),
+    h('p', { class: 'ai-muted', text: 'AI에는 선택한 파일의 변경 diff(와 주변 줄)와 변경 제목·설명만 전송됩니다. 비밀로 의심되는 파일·바이너리·생성 파일 등은 다음 단계에서 제외 사유와 함께 표시됩니다.' }),
     h('div', { class: 'ai-row' }, filter,
       button('불러온 파일 모두 선택', () => { visible().forEach((f) => state.selected.add(f.path)); draw(); }),
       button('선택 해제', () => { state.selected.clear(); draw(); })),
@@ -587,11 +629,11 @@ async function renderPreview(token) {
     mount(body, prev,
       h('section', { class: 'ai-card' },
         h('div', { class: 'ai-row between' }, h('h2', { text: '전송 미리보기' }), chip({ building: '준비 중', ready: '준비 완료', failed: '준비 실패', expired: '만료·삭제됨' }[p.status] || p.status, p.status === 'ready' ? 'ok' : p.status === 'building' ? 'info' : 'warn')),
-        p.status === 'building' ? h('p', { class: 'ai-muted', text: `코드를 고정하는 중입니다(${S.STAGE_LABEL[p.prepare_job?.stage] || '대기'}). 진행률은 알 수 없습니다.` }) : null,
+        p.status === 'building' ? h('p', { class: 'ai-muted', text: `코드를 고정하는 중입니다(${S.STAGE_LABEL[p.prepare_job?.stage] || '대기'}).` }) : null,
         p.prepare_job?.status === 'failed' ? h('div', { class: 'ai-banner error' }, h('div', { class: 'ai-banner-title', text: '코드 준비에 실패했습니다' }), h('div', { class: 'ai-banner-body', text: `오류 코드: ${p.prepare_job.error_code || '알 수 없음'}. 파일을 다시 선택해 새로 준비하세요.` })) : null,
-        dl([['PR', `#${p.pr_number} (${p.pr_state})`], ['제목', p.pr_title || '(없음)'],
+        dl([['대상', S.sourceLabel(p)], ['제목', p.pr_title || '(없음)'],
           ['고정 SHA', h('span', { class: 'ai-shas' }, h('span', {}, 'base ', h('code', { text: p.base_sha })), h('span', {}, 'head ', h('code', { text: p.head_sha })), h('span', {}, 'merge-base ', h('code', { text: p.merge_base_sha || '—' })))],
-          ['AI로 가는 PR 설명', p.pr_body ? h('details', {}, h('summary', { text: `${p.pr_body.length}자${p.pr_body_truncated ? ' (너무 길어 잘림)' : ''}` }), h('pre', { class: 'ai-pre', text: p.pr_body })) : '없음'],
+          [p.source_type === 'commit' ? 'AI로 가는 커밋 메시지' : 'AI로 가는 PR 설명', p.pr_body ? h('details', {}, h('summary', { text: `${p.pr_body.length}자${p.pr_body_truncated ? ' (너무 길어 잘림)' : ''}` }), h('pre', { class: 'ai-pre', text: p.pr_body })) : '없음'],
           ['유효 기한', p.valid_until ? `${fmtTime(p.valid_until)}까지 새 실행 시작 가능 · 원문은 ${fmtTime(p.expires_at)}에 삭제` : `원문은 ${fmtTime(p.expires_at)}에 삭제`]])),
       p.status === 'building' ? null : h('section', { class: 'ai-card' }, h('h2', { text: '전송 범위' }),
         dl(S.coverageLines(cov, { beforeRun: true }).map((l) => [l.label, l.value]).concat([['범위 요약', S.scopeSummary(cov)]])),
@@ -607,8 +649,8 @@ async function renderPreview(token) {
       h('section', { class: 'ai-card' }, consentBox,
         h('div', { class: 'ai-row' }, button('이 입력 삭제(원문 삭제·연결 작업 취소)', async () => {
           if (!window.confirm('이 입력의 원문을 삭제하고 연결된 작업을 취소합니다. 계속할까요?')) return;
-          try { await api.deleteInput(p.input_id); if (token.current()) navigate({ repo: route.repo, pr: p.pr_number }); } catch (e) { if (e?.name !== 'AbortError' && token.current()) showError(e); }
-        }, { cls: 'btn-secondary danger' }), link('파일 다시 선택', { repo: route.repo, pr: p.pr_number }))));
+          try { await api.deleteInput(p.input_id); if (token.current()) navigate({ repo: route.repo, ...(p.source_type === 'commit' ? { commit: p.head_sha } : { pr: p.pr_number }) }); } catch (e) { if (e?.name !== 'AbortError' && token.current()) showError(e); }
+        }, { cls: 'btn-secondary danger' }), link('파일 다시 선택', { repo: route.repo, ...(p.source_type === 'commit' ? { commit: p.head_sha } : { pr: p.pr_number }) }))));
   }
   await fetchPreview();
 }
@@ -638,7 +680,7 @@ async function renderJob(token) {
     if (g.canRetry) actions.push(button('다시 실행(동의 다시 받음)', () => navigate({ repo: route.repo, input: job.input_id, retry: job.job_id }), { cls: 'btn-primary' }));
     if (g.action === 'keys') actions.push(button('API key 설정 열기', () => openKeys()));
     if (g.action === 'login') actions.push(button('GitHub로 로그인', () => (window.githubLogin ? window.githubLogin() : (location.href = '/api/auth/github')), { cls: 'btn-primary' }));
-    if (g.action === 'reselect' || g.action === 'usage') actions.push(link('PR 선택으로', { repo: route.repo }, 'btn-secondary ai-btn'));
+    if (g.action === 'reselect' || g.action === 'usage') actions.push(link('PR·커밋 선택으로', { repo: route.repo }, 'btn-secondary ai-btn'));
     if (S.isTerminalStatus(job.status)) actions.push(button('이 작업 삭제', () => removeJob(), { cls: 'btn-secondary danger' }));
     mount(holder, h('section', { class: `ai-card ai-progress ${g.tone}` },
       h('div', { class: 'ai-row between' }, h('h2', { text: `${S.KIND_LABEL[job.kind] || job.kind} · ${g.title}` }), chip(job.status, g.tone === 'ok' ? 'ok' : g.tone === 'info' ? 'info' : g.tone === 'warn' ? 'warn' : 'error')),
@@ -730,7 +772,7 @@ async function renderResult(token, holder, job) {
       for (const p of v.paths) {
         parts.push(h('div', { class: 'ai-hist-path' }, h('code', { text: p.path }), ' ', chip(p.status, 'info'), p.matched ? h('span', { class: 'ai-muted', text: ` (이전 경로 ${p.matched}의 이력)` }) : null,
           p.observations.length ? h('div', { text: p.observations.join(' · ') }) : null, p.ownership.length ? h('div', { text: p.ownership.join(' · ') }) : null,
-          p.coChange.length ? h('div', {}, h('b', { text: '함께 자주 바뀐 파일(검토 후보)' }), h('ul', {}, p.coChange.map((c) => h('li', { text: `${c.path} · ${c.count}회${c.changedInPr ? ' · 이 PR에서도 변경됨' : ''}${c.lowSupport ? ' · 관측 적음' : ''}` })))) : null,
+          p.coChange.length ? h('div', {}, h('b', { text: '함께 자주 바뀐 파일(검토 후보)' }), h('ul', {}, p.coChange.map((c) => h('li', { text: `${c.path} · ${c.count}회${c.changedInPr ? ' · 이번 변경에 포함' : ' · 이번 변경에 없음·확인 후보'}${c.lowSupport ? ' · 관측 적음' : ''}` })))) : null,
           p.limitations.length ? h('ul', { class: 'ai-muted' }, p.limitations.map((l) => h('li', { text: l }))) : null));
       }
     }
@@ -820,7 +862,7 @@ async function renderResult(token, holder, job) {
   function summaryBody() {
     const p = result.payload;
     return h('div', { class: 'ai-summary' },
-      dl([['개요(코드에서 관찰한 사실)', p.overview], p.author_intent ? ['작성자 의도(PR 설명 기반)', p.author_intent] : null,
+      dl([['개요(코드에서 관찰한 사실)', p.overview], p.author_intent ? [input?.source_type === 'commit' ? '작성자 의도(커밋 메시지 기반)' : '작성자 의도(PR 설명 기반)', p.author_intent] : null,
         p.unknowns?.length ? ['알 수 없는 것', h('ul', {}, p.unknowns.map((u) => h('li', { text: u })))] : null]),
       h('h3', { text: '파일별 변경' }),
       (p.file_changes || []).length ? h('div', {}, p.file_changes.map((c) => h('div', { class: 'ai-fchange' }, h('code', { text: c.path }), h('p', { text: c.summary }), codeButton(c.file_id, null))))
@@ -830,16 +872,15 @@ async function renderResult(token, holder, job) {
   mount(holder, staleBox,
     h('section', { class: 'ai-card' },
       h('div', { class: 'ai-row between' }, h('h2', { text: `${S.KIND_LABEL[result.kind]} 결과` }), h('span', { class: 'ai-muted', text: `${result.provider || ''} / ${result.model || ''} · ${fmtTime(result.created_at)}` })),
-      dl([['분석 기준', input ? h('span', {}, `PR #${input.pr_number} · base `, h('code', { title: input.base_sha, text: S.shortSha(input.base_sha) }), ' · head ', h('code', { title: input.head_sha, text: S.shortSha(input.head_sha) })) : '입력 정보를 읽을 수 없음'],
+      dl([['분석 기준', input ? h('span', {}, `${S.sourceLabel(input)} · base `, h('code', { title: input.base_sha, text: S.shortSha(input.base_sha) }), ' · head ', h('code', { title: input.head_sha, text: S.shortSha(input.head_sha) })) : '입력 정보를 읽을 수 없음'],
         ['범위 요약', S.scopeSummary(cov)], ...S.coverageLines(cov).map((l) => [l.label, l.value]),
         S.coverageLimitations(cov).length ? ['제외·누락 사유', S.coverageLimitations(cov).join(' · ')] : null,
         ['결과 보관', `${fmtTime(result.expires_at)}까지`]]),
       summaryBox),
     result.kind === 'review' ? h('section', { class: 'ai-card' }, h('h2', { text: `지적 ${result.finding_count}건` }), listBox) : h('section', { class: 'ai-card' }, summaryBody()),
-    result.kind === 'review' ? h('section', { class: 'ai-card' }, h('h2', { text: 'GitViz 이력 근거' }), historyBox) : null,
+    result.kind === 'review' ? h('section', { class: 'ai-card' }, h('h2', { text: '추가 검토 후보' }), historyBox) : null,
     h('section', { class: 'ai-card' }, h('div', { class: 'ai-row' },
-      link('같은 입력으로 새로 실행', { repo: route.repo, input: result.input_id, force: true }, 'btn-secondary ai-btn'), link('PR 선택으로', { repo: route.repo }, 'btn-secondary ai-btn'),
-      h('a', { class: 'btn-secondary ai-btn ai-link', href: `ai-handover.html?repo=${encodeURIComponent(route.repo)}` }, '인수인계 문서로'),
+      link('같은 입력으로 새로 실행', { repo: route.repo, input: result.input_id, force: true }, 'btn-secondary ai-btn'), link('PR·커밋 선택으로', { repo: route.repo }, 'btn-secondary ai-btn'),
       button('이 작업 삭제', () => ctx.removeJob(), { cls: 'btn-secondary danger' }))));
   drawStale();
   drawFindings();

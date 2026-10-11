@@ -48,12 +48,6 @@ window.goAiReview = function(){
   location.href = (isPage ? './' : './pages/') + 'ai-review.html';
 };
 
-/* 팀 점검 메뉴도 이전 화면의 상태를 가져가지 않고 팀 목록부터 시작한다. */
-window.goAiTeam = function(){
-  const isPage = window.location.pathname.includes('/pages/');
-  location.href = (isPage ? './' : './pages/') + 'ai-team.html';
-};
-
 window.goHome = function(){
 
   const isPage =

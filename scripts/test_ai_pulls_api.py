@@ -19,6 +19,7 @@ from starlette.middleware.sessions import SessionMiddleware  # noqa: E402
 
 from app.api.ai import credentials as credentials_api  # noqa: E402
 from app.api.ai import pulls as pulls_api  # noqa: E402
+from app.api.ai import commits as commits_api
 from app.api.ai.dependencies import ai_error_response, ai_validation_error_response  # noqa: E402
 from app.collectors.ai_errors import RateLimited, ResourceNotFound, UpstreamUnavailable  # noqa: E402
 from app.collectors.github.ai_pr_collector import PRFilesPage, PRPage  # noqa: E402
@@ -39,7 +40,7 @@ def build_app():
     app.add_middleware(SessionMiddleware, secret_key='api-test', same_site='lax')
     app.add_exception_handler(AIError, ai_error_response)
     app.add_exception_handler(RequestValidationError, ai_validation_error_response)
-    for module in (auth_router, pulls_api, credentials_api):
+    for module in (auth_router, pulls_api, commits_api, credentials_api):
         app.include_router(module.router)
 
     @app.post('/test/login/{user_id}')
@@ -92,6 +93,7 @@ class Case(S.InputCase):
                                next_cursor=None, base_sha=SHA_A, head_sha=SHA_B, pr_total_files=2,
                                inventory_coverage=InventoryCoverage.complete)
         self._patches = [patch.object(pulls_api, 'authorize_ai', side_effect=authorize),
+                         patch.object(commits_api, 'authorize_ai', side_effect=authorize),
                          patch.object(pulls_api, 'list_ai_prs', side_effect=prs),
                          patch.object(pulls_api, 'list_pr_files', side_effect=files),
                          patch.object(pulls_api, '_token', return_value=None),
@@ -124,6 +126,27 @@ class Case(S.InputCase):
 
 
 class Pulls(Case):
+    def test_commit_listing_files_validation_and_access(self):
+        from test_ai_pr_collection import FakeClient
+        from test_ai_commit_collection import detail
+        client = FakeClient({'/repos/acme/widgets/commits': ([{'sha': SHA_B,
+            'commit': {'message': 'Fix', 'committer': {'date': '2026-01-01T00:00:00Z'}}}], {}),
+            f'/repos/acme/widgets/commits/{SHA_B}': detail()})
+        with patch.object(commits_api, '_client', return_value=client):
+            response = self.client.get('/api/ai/v1/commits', params={'repository_id': self.repo})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.headers['cache-control'], 'private, no-store')
+            self.assertEqual(response.json()['items'][0]['sha'], SHA_B)
+            response = self.client.get(f'/api/ai/v1/commits/{SHA_B}/files', params={'repository_id': self.repo})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['base_sha'], SHA_A)
+            self.err(self.client.get('/api/ai/v1/commits/bad/files', params={'repository_id': self.repo}), 422, 'INVALID_SELECTION')
+            self.denied = AIError(ErrorCode.RESOURCE_NOT_FOUND, 'missing')
+            self.err(self.client.get('/api/ai/v1/commits', params={'repository_id': self.repo}), 404, 'RESOURCE_NOT_FOUND')
+        anon = TestClient(build_app())
+        self.addCleanup(anon.close)
+        self.err(anon.get('/api/ai/v1/commits', params={'repository_id': self.repo}), 401, 'AUTH_REQUIRED')
+
     def test_lists_pull_requests_and_files_without_storing_anything(self):
         before = self.scalar('SELECT count(*) FROM ai_jobs') + self.scalar('SELECT count(*) FROM ai_inputs')
         r = self.client.get('/api/ai/v1/pulls', params={'repository_id': self.repo, 'state': 'merged', 'limit': 10})

@@ -11,6 +11,15 @@ from app.services.ai.providers.base import GenerationRequest
 import httpx2
 
 class ExpandedOutput(unittest.TestCase):
+    def test_expanded_raw_output_capacity_remains_bounded(self):
+        from app.services.ai.providers.base import parse_json_object, MAX_RAW_OUTPUT_BYTES
+        data = {'text': 'x' * 100000}
+        parsed, error = parse_json_object(json.dumps(data))
+        self.assertEqual(parsed, data)
+        self.assertIsNone(error)
+        self.assertEqual(parse_json_object(json.dumps({'text': 'x' * MAX_RAW_OUTPUT_BYTES})),
+                         (None, 'output_too_large'))
+
     def validate(self, kind, data, sent=F.SENT):
         return validators.validate_output(kind,data,sent,revision_id=F.REVISION_ID,schema_version=f'{kind}-output-v2')
 
@@ -92,11 +101,16 @@ class ExpandedOutput(unittest.TestCase):
         self.assertEqual(requests[1]['max_output_tokens'],4000)
 
     def test_model_list_shows_only_latest_cloud_profiles_with_original_names(self):
-        expected={'claude-opus-5-5-v3':'Claude Opus 5.5','claude-sonnet-5-5-v3':'Claude Sonnet 5.5',
-                  'gpt-5.4-v3':'GPT-5.4','gemini-3.5-flash-lite-v3':'Gemini 3.5 Flash-Lite'}
+        expected={'claude-opus-5-5-v4':'Claude Opus 5.5','claude-sonnet-5-5-v4':'Claude Sonnet 5.5',
+                  'gpt-5.4-v4':'GPT-5.4','gemini-3.5-flash-lite-v4':'Gemini 3.5 Flash-Lite'}
         actual={m['profile_id']:m['display_name'] for p in registry.supported_options()
                 for m in p['models'] if m['execution_location']=='external'}
         self.assertEqual(actual,expected)
         self.assertEqual(registry.get_profile('gpt-5.4-v2').review_schema,'review-output-v1')
+        for pid in expected:
+            profile = registry.get_profile(pid)
+            self.assertEqual((profile.max_input_tokens, profile.max_output_tokens), (128000, 16384))
+            token_budget.check_input_limit(profile, 128000)
+            self.assertEqual(registry.get_profile(pid.replace('-v4', '-v3')).max_output_tokens, 4000)
 
 if __name__=='__main__': unittest.main(verbosity=2)

@@ -247,6 +247,8 @@ def usage_summary(db: Session, owner_id: UUID, *, now: datetime | None = None) -
                                 WHERE scope = 'user' AND owner_user_id = :o AND period_start = :p AND currency = :c"""),
                         {'o': owner_id, 'p': period, 'c': settings.budget_currency}).one_or_none()
     limit = Decimal(budget.amount_limit) if budget else settings.user_monthly_budget
+    if settings.user_monthly_budget == 0:
+        limit = Decimal(0)  # 0 signals unlimited, even with a pre-existing capped ledger.
     reserved = Decimal(budget.reserved_amount) if budget else Decimal(0)
     spent = Decimal(budget.spent_amount) if budget else Decimal(0)
     uncertain = db.execute(text("""SELECT count(*) FROM usage_reservations u JOIN usage_budgets b ON b.id = u.budget_id
