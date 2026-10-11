@@ -219,7 +219,13 @@ def _prepared_input_usable(db: Session, input_id: UUID, now: datetime) -> bool:
         return False
     if row.status == 'building':
         return True
-    return row.status == 'ready' and row.valid_until is not None and row.valid_until > now
+    if row.status != 'ready' or row.valid_until is None or row.valid_until <= now:
+        return False
+    # 현재 서버에 없는 키로 암호화된 입력은 재사용하지 않고 새로 수집한다.
+    versions = db.execute(text("SELECT key_version FROM ai_input_files WHERE input_id = :i "
+                               "AND content_state = 'read'"), {'i': input_id}).scalars().all()
+    keys = get_ai_settings().encryption_keys
+    return all(version in keys for version in versions)
 
 
 def _check_input(db: Session, owner_id: UUID, repository_id: int, input_id: UUID, kind: str, now: datetime) -> None:
