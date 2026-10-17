@@ -805,18 +805,23 @@ def _fetch_network_edges(db, repository_id: int) -> dict:
         {"rid": repository_id},
     ).scalar() or 0
 
+    # 스냅샷에서는 commits 범위가 '기본 브랜치에서 도달 가능한 커밋'뿐이라, 스쿼시·리베이스 병합 PR의
+    # 원본 커밋(기본 브랜치에 없음)이 빠진다. 함께 수정은 PR 소속 커밋을 직접 읽어야 하므로 이 쿼리만
+    # 원본 테이블(raw_table_prefix, 스냅샷은 "public.")을 읽는다. PR 자체는 스냅샷 범위의 병합 PR이다.
+    # 다른 지표(수정량·변경 횟수 등)는 범위를 바꾸지 않으므로 같은 변경이 두 번 집계되지 않는다.
+    raw = getattr(db, "raw_table_prefix", "")
     co_edit_rows = []
     if total_prs:
         co_edit_rows = db.execute(
             text(
-                """
+                f"""
                 WITH pr_file_contributors AS (
                     SELECT DISTINCT prf.pull_request_id, prf.file_id, c.contributor_id
                     FROM pull_request_files prf
                     JOIN pull_requests pr ON pr.id = prf.pull_request_id
-                    JOIN pr_commits pc ON pc.pull_request_id = prf.pull_request_id
-                    JOIN commits c ON c.id = pc.commit_id
-                    JOIN commit_file_changes cfc
+                    JOIN {raw}pr_commits pc ON pc.pull_request_id = prf.pull_request_id
+                    JOIN {raw}commits c ON c.id = pc.commit_id
+                    JOIN {raw}commit_file_changes cfc
                       ON cfc.commit_id = c.id AND cfc.file_id = prf.file_id
                     WHERE pr.repository_id = :rid AND COALESCE(pr.is_large_pr, false) = false
                       AND c.repository_id = :rid

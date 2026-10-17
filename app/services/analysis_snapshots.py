@@ -68,6 +68,10 @@ class SnapshotInput:
             "snapshot_large_threshold": large_change_threshold(len(live_paths)),
         }
 
+    # 스냅샷 범위(CTE)가 가리는 원본 테이블을 직접 읽어야 하는 쿼리용 접두사. 함께 수정(co-edit)이
+    # 쓰는 PR 원본 커밋은 기본 브랜치에서 도달할 수 없어(스쿼시 병합) commits 범위 밖에 있다.
+    raw_table_prefix = "public."
+
     def query(self, model):
         # 기존 분석기의 ORM 조회는 Repository 메타데이터만 사용한다.
         return self.db.query(model)
