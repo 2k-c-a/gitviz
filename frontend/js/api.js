@@ -37,7 +37,7 @@ export function getSnapshotId(repoId = getRepoId()) {
   return st.repo === repoId ? st.snapshot : null;
 }
 
-/* 변경 결합 정렬 정책 — 주소의 sort_by가 기준 (coupling | idf) */
+/* 함께 수정 정렬 정책 — 주소의 sort_by가 기준 (coupling | idf) */
 export const getSortPolicy = () => effectiveSort(parseState(location.search));
 
 export function setSortPolicy(policy) {
@@ -119,7 +119,7 @@ export const fetchFileDetail = (id, fileId, limit = 20, sortBy = null) =>
   getJSON(`${base(id)}/files/${fileId}/detail?limit=${limit}${sortBy ? `&sort_by=${encodeURIComponent(sortBy)}` : ''}`);
 export const fetchBusFactor = (id, limit = 50) =>
   getJSON(`${base(id)}/bus-factor?limit=${limit}`);
-/* sortBy: 'coupling'(원 결합도·공동 변경 횟수, 기본) | 'idf'(IDF 보정, 실험) — 서버에 그대로 전달한다 */
+/* sortBy: 'coupling'(원 함께 수정 정도·함께 수정 횟수, 기본) | 'idf'(IDF 보정, 실험) — 서버에 그대로 전달한다 */
 export const fetchCoupling = (id, limit = 100, minScore = 0, sortBy = DEFAULT_SORT) =>
   getJSON(`${base(id)}/coupling?limit=${limit}&min_score=${minScore}&sort_by=${encodeURIComponent(sortBy)}`);
 export const fetchFileCoupling = (id, fileId, limit = 20) =>

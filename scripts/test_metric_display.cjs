@@ -35,7 +35,7 @@ async function main() {
   assert.equal(empty.avgRisk, null);
   assert.equal(empty.fileCount, 0);
 
-  /* ── 결합도 평균: /tree는 후보 없는 파일을 coupling_score 0·coupling_support 0으로 내려준다.
+  /* ── 함께 수정 정도 평균: /tree는 후보 없는 파일을 coupling_score 0·coupling_support 0으로 내려준다.
         그 0은 '결합 없음'이 아니라 '후보 없음'이라 평균에 넣지 않는다(목록의 '값 없음' 처리와 같다) ── */
   const cand = (score, support) => ({ coupling_score: score, coupling_support: support });
   const ct = { children: [cand(0.8, 6), cand(0, 0), { children: [cand(0.4, 3), cand(0, 0), cand(0, 0)] }] };
@@ -63,11 +63,11 @@ async function main() {
   const explanation = dd.buildRiskExplanation({ maintenance_priority: 0.8, coupling_score: 1, coupled_file_count: 2, coupling_support: 3 }, { bus_factor: 1 }, v3p);
   assert.ok(explanation.includes('점검 우선순위 0.80'));
   assert.ok(explanation.includes('표시 임계값(0.7) 이상'));
-  assert.ok(explanation.includes('80%'), 'BF80=1 설명');
+  assert.ok(explanation.includes('80%'), '한 명 집중 파일 설명');
   assert.ok(explanation.includes('결함 발생 확률이 아닌'));
   assert.ok(!explanation.includes('아는 사람이 한 명뿐'));
   assert.ok(!explanation.includes('영향을 줄 수'), '미래 영향 단정 없음');
-  assert.ok(explanation.includes('실제 의존성'), '결합도는 실제 의존성이 아님을 밝힌다');
+  assert.ok(explanation.includes('실제 의존성'), '함께 수정 정도는 실제 의존성이 아님을 밝힌다');
   assert.ok(!explanation.includes('refactor'), '새 버전 설명에 refactor 초기화 없음');
 
   const zero = dd.buildRiskExplanation({ maintenance_priority: 0 }, { bus_factor: null }, v3p);
@@ -115,7 +115,7 @@ async function main() {
   let html = await render(5);
   assert.ok(!html.includes('관측 변경 없음'), '대형 저장소에서 실제 변경된 파일을 관측 변경 없음으로 표시하지 않는다');
   assert.ok(html.includes('표본 부족') && html.includes('0.12'), '그 파일의 실제 상태와 점수');
-  assert.ok(html.includes('3회') && html.includes('40줄'), '원시 값(변경 횟수·Churn)도 상세 응답에서 온다');
+  assert.ok(html.includes('3회') && html.includes('40줄'), '원시 값(변경 횟수·수정량)도 상세 응답에서 온다');
   assert.ok(!requested.some((u) => u.includes('risk-scores')), '점수 상위 목록 전체를 따로 받아 이 파일을 찾지 않는다');
 
   /* 실제로 변경이 없는 파일은 상세 응답이 no_history라고 알려 준다 */

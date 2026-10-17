@@ -5,7 +5,7 @@
    A 결과를 보다가 B를 열고 뒤로 가면, 마지막으로 "불러온" 결과(B)가 아니라 지금 주소의
    결과(A)를 계속 봐야 하기 때문이다. */
 
-/* 변경 결합 정렬 정책: coupling = 원 결합도·공동 변경 횟수(기본), idf = IDF 보정(실험) */
+/* 함께 수정 정렬 정책: coupling = 원 함께 수정 정도·함께 수정 횟수(기본), idf = IDF 보정(실험) */
 export const SORT_POLICIES = ['coupling', 'idf'];
 export const DEFAULT_SORT = 'coupling';
 

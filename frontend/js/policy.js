@@ -1,4 +1,4 @@
-/* ── 계산 버전(formula_version)별 지표 정책 · 근거 상태 · 변경 결합 메타 해석 (순수 함수) ──
+/* ── 계산 버전(formula_version)별 지표 정책 · 근거 상태 · 함께 수정 메타 해석 (순수 함수) ──
    화면 문구가 "지금 열려 있는 스냅샷의 실제 정책"을 가리키게 하는 단일 출처다.
    구버전 스냅샷을 열면 그 버전의 설명을, 신버전이면 새 정책의 설명을 보여준다. */
 
@@ -15,9 +15,9 @@ const PRIORITY = {
   scoreShort: '점검 우선순위',
   sortLabel: '점검 우선순위순',
   versionLabel: '점검 우선순위 (v3)',
-  leadText: '점검 우선순위는 변경 횟수·Churn·버그 수정 횟수의 백분위 평균으로 저장소 안에서 상대적으로 계산한 점수입니다. 결함 확률이 아니며 0도 안전을 뜻하지 않습니다.',
+  leadText: '점검 우선순위는 변경 횟수·수정량·버그 수정 횟수의 백분위 평균으로 저장소 안에서 상대적으로 계산한 점수입니다. 결함 확률이 아니며 0도 안전을 뜻하지 않습니다.',
   summaryText:
-    '점검 우선순위는 관측 구간 안에서 변경 횟수·Churn(추가+삭제 줄 수)·버그 수정 커밋 수를 파일 간 백분위(0~1)로 바꿔 평균한 상대 점수입니다. 결함 확률이 아니며, 0도 안전을 뜻하지 않습니다. 다른 저장소와 직접 비교할 수 없습니다.',
+    '점검 우선순위는 관측 구간 안에서 변경 횟수·수정량(추가+삭제 줄 수)·버그 수정 커밋 수를 파일 간 백분위(0~1)로 바꿔 평균한 상대 점수입니다. 결함 확률이 아니며, 0도 안전을 뜻하지 않습니다. 다른 저장소와 직접 비교할 수 없습니다.',
   thresholdText:
     '색·배지의 0.7은 표시 임계값입니다. 상위 30%를 뜻하지 않으며, 구성 요소 백분위의 평균값 자체가 상위 퍼센트도 아닙니다.',
   hasComponents: true,
@@ -32,7 +32,7 @@ const LEGACY = {
   versionLabel: '이전 버전 (v2)',
   leadText: '이전 계산 버전(v2)의 Risk Score입니다. 새 정책(점검 우선순위)과 직접 비교할 수 없으며 결함 확률이 아닙니다.',
   summaryText:
-    '이 결과는 이전 계산 버전(snapshot-v2)입니다. Risk Score = 0.5×CurrentRisk + 0.5×StructuralRisk이며, CurrentRisk는 파일의 마지막 refactor 분류 커밋 이후(없으면 첫 커밋 이후) 구간의 변경 빈도·Churn·Entropy·버그 비율·공동 변경으로, StructuralRisk는 전체 기간의 refactor·버그 수정·Churn 비율로 계산했습니다. BF·Entropy의 관측 구간도 마지막 refactor 커밋 이후입니다. 새 버전(점검 우선순위)과 직접 비교할 수 없으며 결함 확률이 아닙니다.',
+    '이 결과는 이전 계산 버전(snapshot-v2)입니다. Risk Score = 0.5×CurrentRisk + 0.5×StructuralRisk이며, CurrentRisk는 파일의 마지막 refactor 분류 커밋 이후(없으면 첫 커밋 이후) 구간의 변경 빈도·수정량·Entropy·버그 비율·함께 수정으로, StructuralRisk는 전체 기간의 refactor·버그 수정·수정량 비율로 계산했습니다. BF·Entropy의 관측 구간도 마지막 refactor 커밋 이후입니다. 새 버전(점검 우선순위)과 직접 비교할 수 없으며 결함 확률이 아닙니다.',
   thresholdText: '색·배지의 0.7은 표시 임계값이며 상위 30%를 뜻하지 않습니다.',
   hasComponents: false,
   windowFixed: false,
@@ -65,7 +65,7 @@ export const scoreOf = (f) => (f && 'maintenance_priority' in f ? f.maintenance_
 /* ── 파일 근거 상태 ──
    no_history      : 관측 구간에 변경이 없음 (점수 없음, 0이 아님)
    low_support     : 표본 부족 (점수는 있으나 변경이 적음)
-   metrics_missing : 점수 계산 입력(Churn 등) 누락 → 자료 부족. 점수 순위 뒤로 배치
+   metrics_missing : 점수 계산 입력(수정량 등) 누락 → 자료 부족. 점수 순위 뒤로 배치
    observed        : 정상 관측 */
 export const EVIDENCE = {
   no_history:      { label: '관측 변경 없음', tone: 'gray',  rank: 2 },
@@ -150,7 +150,7 @@ export const STATUS_TONE = {
 export const COLLECTION_NOTE = '기준 SHA 파일 수·PR 파일 상세·PR 커밋 연결 수치에서 누락이 확인되지 않았다는 뜻이며 수집 완료를 확인한 것이 아닙니다. 완료 여부는 수집 단계가 완료 정보를 제공해야 확정할 수 있습니다.';
 export const evidenceNote = (threshold) => `관측 커밋 ${threshold}건 이상이고 확인된 수집 누락이 없다는 뜻입니다. 분석 근거가 충분하다는 보증이나 통계적 신뢰수준이 아닙니다.`;
 
-/* ── 변경 결합 메타 해석 ── */
+/* ── 함께 수정 메타 해석 ── */
 export const FALLBACK_LABELS = {
   no_merged_prs: 'PR 없음',
   pr_details_missing: '상세 부족',
