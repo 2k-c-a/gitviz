@@ -184,5 +184,6 @@ setInterval(() => {
   if (hitZero) loadRecentRepos();
 }, 1000);
 
-/* 카운트다운이 없는 상태 변화(수집 중 → 완료, 멈춤 감지 등)도 놓치지 않도록 주기적으로 재동기화 */
-setInterval(() => loadRecentRepos(), 20000);
+/* 분석 시작·완료·실패 시에만 목록을 한 번 갱신한다(주기적 자동 갱신은 하지 않는다) */
+window.addEventListener('gitviz:repos-changed', () => loadRecentRepos());
+

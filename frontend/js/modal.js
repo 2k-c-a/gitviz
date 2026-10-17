@@ -35,7 +35,7 @@ let _failedFor = null;           // 실패 상태로 표시 중인 repoId (마�
 const PIPE_STEPS = [
   { key: 'collect',  num: '1', defaultSub: '대기 중...' },
   { key: 'identity', num: '2', defaultSub: '-' },
-  { key: 'derived',  num: '3', defaultSub: '점검 우선순위 · BF80 · 협업 중심성' },
+  { key: 'derived',  num: '3', defaultSub: '점검 우선순위 · 주요 수정자 수 · 협업 중심성' },
   { key: 'snapshot', num: '4', defaultSub: '분석 결과 스냅샷 저장' },
 ];
 const PIPE_STAGE_ORDER = [...PIPE_STEPS.map(p => p.key), 'done'];
@@ -69,7 +69,7 @@ function _markPipelineAllDone(s) {
 
   _setPipeState('collect', 'done', parts.length ? parts.join(' · ') : '완료');
   _setPipeState('identity', 'done', contTotal ? `기여자 ${contTotal.toLocaleString()}명` : '완료');
-  _setPipeState('derived', 'done', '점검 우선순위 · BF80 · 협업 중심성');
+  _setPipeState('derived', 'done', '점검 우선순위 · 주요 수정자 수 · 협업 중심성');
   _setPipeState('snapshot', 'done', '분석 결과 스냅샷 저장');
 }
 
@@ -205,6 +205,7 @@ async function _postAndStartPolling(path) {
 
   _currentRepoId = data.repository_id;
   document.getElementById('modal-prog-label').textContent = '분석 대기 중...';
+  _notifyReposChanged();
   _startPolling(data.repository_id);
 }
 
@@ -314,6 +315,10 @@ async function _offerLastSuccess(repoId) {
   } catch { /* 이력 조회 실패는 조용히 무시 — 실패 안내가 우선 */ }
 }
 
+/* 홈 화면의 "최근 분석 요청된 저장소" 목록은 주기적으로 다시 불러오지 않으므로,
+   분석이 시작·종료될 때 이 이벤트로 한 번만 갱신을 요청한다(main.js가 수신). */
+const _notifyReposChanged = () => window.dispatchEvent(new CustomEvent('gitviz:repos-changed'));
+
 /* status API 응답을 모달 UI에 반영. 'stop'을 돌려주면 폴링을 끝낸다. */
 function _renderStatus(s) {
   const detail = s.progress_detail || {};
@@ -325,12 +330,14 @@ function _renderStatus(s) {
     _currentSnapshotId = s.snapshot_id ?? null;
     _markPipelineAllDone(s);
     simulateJobState('done');
+    _notifyReposChanged();
     return 'stop';
   }
   if (status === 'failed') {
     _showError({ heading: '분석 실패', title: '분석 실패', label: '분석 실패',
       body: s.error_message || '분석 중 오류가 발생했습니다.', actions: [['다시 시도', 'retryJob()', true]] });
     if (_currentRepoId) _offerLastSuccess(_currentRepoId);
+    _notifyReposChanged();
     return 'stop';
   }
   if (status === 'cancelled') {
@@ -376,7 +383,7 @@ function _renderStatus(s) {
   const subByKey = {
     collect: collectParts.length ? collectParts.join(' · ') : '수집 중...',
     identity: contTotal ? `기여자 ${contTotal.toLocaleString()}명` : '-',
-    derived: '점검 우선순위 · BF80 · 협업 중심성',
+    derived: '점검 우선순위 · 주요 수정자 수 · 협업 중심성',
     snapshot: '분석 결과 스냅샷 저장',
   };
   PIPE_STEPS.forEach(({ key }, idx) => {
