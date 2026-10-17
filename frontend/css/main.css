@@ -155,6 +155,7 @@
 .search-card-stats { font-size: 12px; color: var(--text3); display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .search-card-stats span { display: inline-flex; align-items: center; gap: 4px; }
 .search-card-action { display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0; }
+.score-breakdown { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .score-caption { font-size: 10px; color: var(--text3); text-align: center; line-height: 1.4; }
 
 .score-ring { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 17px; font-weight: 700; border: 2px solid transparent; }
