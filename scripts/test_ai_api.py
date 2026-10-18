@@ -31,6 +31,7 @@ from app.api.ai import feedback as feedback_api  # noqa: E402
 from app.api.ai import inputs as inputs_api  # noqa: E402
 from app.api.ai import jobs as jobs_api  # noqa: E402
 from app.api.ai import results as results_api  # noqa: E402
+from app.api.ai import shared as shared_api  # noqa: E402
 from app.api.ai import usage as usage_api  # noqa: E402
 from app.api.ai.dependencies import ai_error_response, ai_validation_error_response  # noqa: E402
 from app.routers import auth as auth_router  # noqa: E402
@@ -51,7 +52,7 @@ def build_app():
     app.add_middleware(SessionMiddleware, secret_key='api-test', same_site='lax')
     app.add_exception_handler(AIError, ai_error_response)
     app.add_exception_handler(RequestValidationError, ai_validation_error_response)
-    for module in (auth_router, jobs_api, results_api, feedback_api, usage_api, inputs_api):
+    for module in (auth_router, jobs_api, results_api, feedback_api, usage_api, inputs_api, shared_api):
         app.include_router(module.router)
 
     @app.post('/test/login/{user_id}')
@@ -730,6 +731,119 @@ class Feedback(ApiCase):
                                  params={'limit': 2, 'cursor': first['next_cursor']}).json()
         self.assertEqual(([f['finding']['ordinal'] for f in second['findings']], second['next_cursor']), ([3], None))
         self.error(self.client.get(f'/api/ai/v1/results/{self.result_id}/findings', params={'cursor': 'zz'}), 422, 'INVALID_SELECTION')
+
+
+class SharedRead(ApiCase):
+    """같은 저장소 구성원에게 여는 읽기 전용 조회(/api/ai/v1/shared): 남의 결과와 판단·메모를 보되 바꿀 수는 없다."""
+
+    def setUp(self):
+        super().setUp()
+        self.w = self.ready()
+        job_id = UUID(self.post_job(self.w).json()['job_id'])
+        self.job_id = job_id
+        handle = self.handle_of(job_id)
+        self.output = {'schema_version': 'review-output-v1', 'findings': [
+            self.finding(handle, title=f'finding {i}', priority=i) for i in (1, 2, 3)]}
+        self.assertEqual(job_runner_run(self, job_id), 'succeeded')
+        self.result_id = self.client.get(f'/api/ai/v1/jobs/{job_id}').json()['result_id']
+        self.finding_ids = [r['id'] for r in self.rows('SELECT id FROM ai_findings ORDER BY ordinal')]
+        self.bypass("UPDATE users SET github_login = 'writer', display_name = 'Writer Kim' WHERE id = :u", u=self.w.owner)
+        self.viewer = self.make_user()
+        self.bypass("UPDATE users SET github_login = 'viewer' WHERE id = :u", u=self.viewer)
+
+    def put(self, index=0, **body):
+        body.setdefault('expected_version', 0)
+        body.setdefault('verdict', 'valid')
+        return self.client.put(f'/api/ai/v1/findings/{self.finding_ids[index]}/feedback', headers=self.headers(), json=body)
+
+    def test_a_member_sees_the_list_the_result_and_the_authors_judgements_and_notes(self):
+        self.assertEqual(self.put(note='실제 버그').status_code, 200)
+        self.put(index=1, verdict='false_positive')
+        self.login(self.viewer)
+        listing = self.client.get('/api/ai/v1/shared/results', params={'repository_id': self.w.repo})
+        self.assertEqual(listing.status_code, 200, listing.text)
+        self.assertEqual(listing.headers['cache-control'], 'private, no-store')
+        item = listing.json()['results'][0]
+        self.assertEqual((item['result_id'], item['author'], item['finding_count'], item['feedback_count']),
+                         (self.result_id, {'login': 'writer', 'display_name': 'Writer Kim'}, 3, 2))
+        result = self.client.get(f'/api/ai/v1/shared/results/{self.result_id}').json()
+        self.assertEqual((result['mine'], result['author']['login'], result['result']['finding_count']), (False, 'writer', 3))
+        findings = self.client.get(f'/api/ai/v1/shared/results/{self.result_id}/findings').json()['findings']
+        first = findings[0]['feedbacks'][0]
+        self.assertEqual((first['author']['login'], first['verdict'], first['note'], first['mine'], first['version']),
+                         ('writer', 'valid', '실제 버그', False, 1))
+        self.assertEqual(findings[2]['feedbacks'], [])
+        self.assertEqual(findings[0]['finding']['human_validation'], 'unverified')          # 원본 결과에 남의 판단을 덧입히지 않는다
+        self.assertEqual(findings[0]['quote'], 'b = 20')
+
+    def test_the_viewer_cannot_change_anything_and_nothing_is_written(self):
+        self.login(self.viewer)
+        before = self.scalar('SELECT count(*) FROM finding_feedback')
+        self.error(self.put(), 404, 'RESOURCE_NOT_FOUND')                                       # 남의 지적에는 판단을 남길 수 없다
+        self.error(self.client.delete(f'/api/ai/v1/jobs/{self.job_id}', headers=self.headers()), 404, 'RESOURCE_NOT_FOUND')
+        self.error(self.client.get(f'/api/ai/v1/results/{self.result_id}'), 404, 'RESOURCE_NOT_FOUND')   # 기존 API는 작성자만
+        for method in ('put', 'post', 'delete', 'patch'):
+            r = getattr(self.client, method)(f'/api/ai/v1/shared/results/{self.result_id}', headers=self.headers())
+            self.assertEqual(r.status_code, 405, method)
+        self.assertEqual(self.scalar('SELECT count(*) FROM finding_feedback'), before)
+
+    def test_mine_marks_the_viewers_own_result_and_judgements(self):
+        self.put(note='author note')
+        self.login(self.viewer)
+        feedbacks = self.client.get(f'/api/ai/v1/shared/results/{self.result_id}/findings').json()['findings'][0]['feedbacks']
+        self.assertEqual([f['mine'] for f in feedbacks], [False])
+        self.login(self.w.owner)
+        self.assertEqual(self.client.get(f'/api/ai/v1/shared/results/{self.result_id}').json()['mine'], True)
+        feedbacks = self.client.get(f'/api/ai/v1/shared/results/{self.result_id}/findings').json()['findings'][0]['feedbacks']
+        self.assertEqual([f['mine'] for f in feedbacks], [True])
+
+    def test_own_results_are_not_in_the_shared_list(self):
+        self.assertEqual(self.client.get('/api/ai/v1/shared/results', params={'repository_id': self.w.repo}).json()['results'], [])
+
+    def test_repository_access_is_rechecked_on_every_request_and_hides_the_resource(self):
+        self.login(self.viewer)
+        self.api_calls.clear()
+        self.client.get(f'/api/ai/v1/shared/results/{self.result_id}')
+        self.client.get(f'/api/ai/v1/shared/results/{self.result_id}/findings')
+        self.client.get('/api/ai/v1/shared/results', params={'repository_id': self.w.repo})
+        self.assertEqual(self.api_calls, [('read', self.w.repo)] * 3)                           # 결과가 속한 저장소의 권한으로 매번 확인
+        with patch.object(jobs_api, 'authorize_ai', side_effect=AIError(ErrorCode.RESOURCE_NOT_FOUND, 'gone')):
+            for path, params in ((f'/api/ai/v1/shared/results/{self.result_id}', None),
+                                 (f'/api/ai/v1/shared/results/{self.result_id}/findings', None),
+                                 ('/api/ai/v1/shared/results', {'repository_id': self.w.repo})):
+                self.error(self.client.get(path, params=params), 404, 'RESOURCE_NOT_FOUND')
+
+    def test_deleted_expired_and_unknown_results_are_not_shared(self):
+        self.login(self.viewer)
+        self.error(self.client.get(f'/api/ai/v1/shared/results/{uuid4()}'), 404, 'RESOURCE_NOT_FOUND')
+        self.bypass("UPDATE ai_results SET expires_at = now() - interval '1 minute'")
+        self.error(self.client.get(f'/api/ai/v1/shared/results/{self.result_id}'), 410, 'RESULT_EXPIRED')
+        self.error(self.client.get(f'/api/ai/v1/shared/results/{self.result_id}/findings'), 410, 'RESULT_EXPIRED')
+        self.assertEqual(self.client.get('/api/ai/v1/shared/results', params={'repository_id': self.w.repo}).json()['results'], [])
+        self.bypass("UPDATE ai_results SET expires_at = now() + interval '1 day'")
+        self.login(self.w.owner)
+        self.assertEqual(self.client.delete(f'/api/ai/v1/jobs/{self.job_id}', headers=self.headers()).status_code, 200)
+        self.login(self.viewer)
+        self.error(self.client.get(f'/api/ai/v1/shared/results/{self.result_id}'), 404, 'RESOURCE_NOT_FOUND')
+        self.assertEqual(self.client.get('/api/ai/v1/shared/results', params={'repository_id': self.w.repo}).json()['results'], [])
+
+    def test_a_result_is_only_listed_for_its_own_repository(self):
+        self.login(self.viewer)
+        other_repo = self.make_repo()
+        self.assertEqual(self.client.get('/api/ai/v1/shared/results', params={'repository_id': other_repo}).json()['results'], [])
+
+    def test_findings_are_paged_and_login_is_required(self):
+        self.login(self.viewer)
+        first = self.client.get(f'/api/ai/v1/shared/results/{self.result_id}/findings', params={'limit': 2}).json()
+        self.assertEqual(([f['finding']['ordinal'] for f in first['findings']], bool(first['next_cursor'])), ([1, 2], True))
+        second = self.client.get(f'/api/ai/v1/shared/results/{self.result_id}/findings',
+                                 params={'limit': 2, 'cursor': first['next_cursor']}).json()
+        self.assertEqual(([f['finding']['ordinal'] for f in second['findings']], second['next_cursor']), ([3], None))
+        self.error(self.client.get(f'/api/ai/v1/shared/results/{self.result_id}/findings', params={'cursor': 'zz'}), 422, 'INVALID_SELECTION')
+        self.error(self.client.get('/api/ai/v1/shared/results', params={'repository_id': self.w.repo, 'cursor': 'zz'}), 422, 'INVALID_SELECTION')
+        anonymous = TestClient(build_app())
+        self.error(anonymous.get(f'/api/ai/v1/shared/results/{self.result_id}'), 401, 'AUTH_REQUIRED')
+        anonymous.close()
 
 
 class Usage(ApiCase):

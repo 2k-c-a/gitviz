@@ -533,5 +533,57 @@ async def feedback(fid: str, request: Request):
     return err(404, 'RESOURCE_NOT_FOUND')
 
 
+# ── 같은 저장소 구성원의 결과(읽기 전용) ──
+SHARED_ID = '00000000-0000-4000-8000-0000000000a1'
+SHARED_AUTHOR = {'login': 'teammate', 'display_name': '김팀원'}
+
+
+def shared_findings():
+    note = XSS if FLAGS.get('xss') else '실제 버그라서 다음 PR에서 고치겠습니다.'
+    def finding(n, feedbacks):
+        return {'finding_id': '00000000-0000-4000-8000-00000000b0%02d' % n, 'result_id': SHARED_ID, 'quote': 'b = 20',
+                'finding': {'ordinal': n, 'title': f'공유된 지적 {n}', 'category': 'bug', 'priority': n, 'condition': '입력이 비어 있으면', 'impact': '예외가 납니다',
+                            'evidence_ids': ['E1'], 'verification': '빈 입력으로 호출', 'suggestion': None, 'limitations': [],
+                            'location': {'path': 'main.py', 'side': 'new', 'start_line': 3, 'end_line': 3}, 'human_validation': 'unverified'},
+                'feedbacks': feedbacks}
+    fb = lambda who, verdict, text, mine=False: {'author': who, 'verdict': verdict, 'note': text, 'version': 1, 'updated_at': now(), 'mine': mine}  # noqa: E731
+    return [finding(1, [fb(SHARED_AUTHOR, 'valid', note), fb({'login': 'me', 'display_name': None}, 'uncertain', None, True)]), finding(2, [])]
+
+
+@app.get('/api/ai/v1/shared/results')
+def shared_list(request: Request, repository_id: int = 0, cursor: str | None = None, limit: int = 20):
+    if (e := guard(request)):
+        return e
+    if FLAGS.get('empty_shared'):
+        return ok({'results': [], 'next_cursor': None})
+    return ok({'results': [{'result_id': SHARED_ID, 'job_id': str(uuid4()), 'kind': 'review', 'repository_id': repository_id, 'author': SHARED_AUTHOR,
+                            'provider': 'anthropic', 'model': 'claude-opus-5-5', 'finding_count': 2, 'feedback_count': 2, 'created_at': now(), 'expires_at': now()}],
+               'next_cursor': None})
+
+
+@app.get('/api/ai/v1/shared/results/{rid}')
+def shared_result(rid: str, request: Request):
+    if (e := guard(request)):
+        return e
+    if rid != SHARED_ID:
+        return err(404, 'RESOURCE_NOT_FOUND')
+    repo = int(FLAGS.get('shared_repo', 1))
+    return ok({'result': {'result_id': SHARED_ID, 'job_id': str(uuid4()), 'kind': 'review', 'repository_id': repo, 'input_id': str(uuid4()),
+                          'payload': {'kind': 'review', 'schema_version': 'x', 'findings': []}, 'payload_hash': 'f' * 64, 'coverage': coverage(3, 2, 'complete'),
+                          'structure_validation': 'passed', 'human_validation': 'unverified', 'provider': 'anthropic', 'model': 'claude-opus-5-5',
+                          'finding_count': 2, 'created_at': now(), 'expires_at': now()},
+               'author': SHARED_AUTHOR, 'mine': False})
+
+
+@app.get('/api/ai/v1/shared/results/{rid}/findings')
+def shared_result_findings(rid: str, request: Request, cursor: str | None = None, limit: int = 20):
+    if (e := guard(request)):
+        return e
+    if rid != SHARED_ID:
+        return err(404, 'RESOURCE_NOT_FOUND')
+    return ok({'result_id': rid, 'findings': shared_findings(), 'next_cursor': None})
+
+
 if __name__ == '__main__':
+    app.mount('/', StaticFiles(directory=str(ROOT / 'frontend'), html=True), name='frontend')   # API 경로 뒤에 둔다
     uvicorn.run(app, host='127.0.0.1', port=int(sys.argv[1]) if len(sys.argv) > 1 else 8765, log_level='warning')

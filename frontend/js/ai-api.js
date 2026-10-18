@@ -177,6 +177,11 @@ export function createAiClient({ fetchImpl = (u, o) => fetch(u, o), now = () => 
     result: (resultId, signal) => get(`${BASE}/results/${id(resultId)}`, null, signal),
     findings: (resultId, { cursor = null, limit = 20 } = {}, signal) =>
       get(`${BASE}/results/${id(resultId)}/findings`, { cursor, limit }, signal),
+    sharedResults: (repositoryId, { cursor = null, limit = 20 } = {}, signal) =>
+      get(`${BASE}/shared/results`, { repository_id: repositoryId, cursor, limit }, signal),
+    sharedResult: (resultId, signal) => get(`${BASE}/shared/results/${id(resultId)}`, null, signal),
+    sharedFindings: (resultId, { cursor = null, limit = 20 } = {}, signal) =>
+      get(`${BASE}/shared/results/${id(resultId)}/findings`, { cursor, limit }, signal),
     historyOptions: (repositoryId, signal) => get(`${BASE}/history/snapshots`, { repository_id: repositoryId }, signal),
     history: (resultId, signal) => get(`${BASE}/results/${id(resultId)}/history`, null, signal),
     attachHistory: (resultId, snapshotId, signal) => send('POST', `${BASE}/results/${id(resultId)}/history`, { body: { snapshot_id: snapshotId }, signal }),

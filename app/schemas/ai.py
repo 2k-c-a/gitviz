@@ -838,6 +838,61 @@ class FindingList(_Strict):
     next_cursor: str | None = None
 
 
+class AuthorView(_Strict):
+    login: str
+    display_name: str | None = None
+
+
+class SharedFeedbackView(_Strict):
+    """같은 저장소 구성원이 남긴 판단·메모(읽기 전용). mine이면 본인 것이다."""
+    author: AuthorView
+    verdict: Verdict
+    note: str | None = None
+    version: int = Field(ge=1)
+    updated_at: datetime
+    mine: bool
+
+
+class SharedFindingView(_Strict):
+    finding_id: UUID
+    result_id: UUID
+    finding: Finding                       # 원본 그대로(human_validation 덧입힘 없음)
+    quote: str | None = None
+    feedbacks: list[SharedFeedbackView] = Field(default_factory=list)
+
+
+class SharedFindingList(_Strict):
+    result_id: UUID
+    findings: list[SharedFindingView]
+    next_cursor: str | None = None
+
+
+class SharedResultItem(_Strict):
+    result_id: UUID
+    job_id: UUID
+    kind: Literal["summary", "review"]
+    repository_id: int
+    author: AuthorView
+    provider: str | None = None
+    model: str | None = None
+    finding_count: int = Field(ge=0)
+    feedback_count: int = Field(ge=0)
+    created_at: datetime
+    expires_at: datetime
+
+
+class SharedResultList(_Strict):
+    results: list[SharedResultItem]
+    next_cursor: str | None = None
+
+
+class SharedResultView(_Strict):
+    """GET /shared/results/{id}: 다른 구성원이 만든 결과(읽기 전용). 입력 원문·작업 정보는 포함하지 않는다."""
+    result: ResultView
+    author: AuthorView
+    mine: bool
+
+
 class UsageView(_Strict):
     period_start: date
     currency: str

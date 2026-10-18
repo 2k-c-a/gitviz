@@ -100,6 +100,10 @@ textarea.ai-input { width: 100%; resize: vertical; }
 .ai-finding:first-child { border-top: none; }
 .ai-loc { margin: 4px 0 8px; }
 .ai-code { margin-top: 8px; }
+.ai-shared-fb { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ai-shared-fb li { border-left: 3px solid var(--border2, var(--border)); padding-left: 10px; }
+.ai-shared-fb b { font-size: 13px; }
+.ai-shared-note { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
 .ai-feedback { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .ai-verdict { font: inherit; font-size: 12.5px; padding: 5px 12px; border-radius: 999px; border: 0.5px solid var(--border2, var(--border)); background: var(--bg); cursor: pointer; }
 .ai-verdict.on { background: var(--blue-light, #e6f1fb); border-color: var(--blue); color: var(--blue-dark, #185fa5); font-weight: 600; }
