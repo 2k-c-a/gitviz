@@ -1,4 +1,4 @@
-/* ── 코드분석 페이지: /tree API → 트리 다이어그램 + 종합 리스트 + 기여 분포 + 변경 결합 ──
+/* ── 코드분석 페이지: /tree API → 트리 다이어그램 + 종합 리스트 + 기여 분포 + 함께 수정 ──
    cx-svg가 있을 때(=코드분석 페이지)만 동작한다.
    화면의 지표 이름·설명은 지금 열려 있는 스냅샷의 계산 버전(policy.js)을 따른다:
    새 버전은 '유지보수 점검 우선순위', 이전 버전은 'Risk Score(이전 계산 버전)'로 설명한다.
@@ -54,10 +54,10 @@ const couplingOf = (f) => (f.coupling_support === 0 ? null : f.coupling_score);
 const METRICS = {
   risk:     { key: 'avgRisk',     color: riskColor,     label: '점검 우선순위순', compare: comparePriority,
               legendTitle: '점검 우선순위', legendItems: [] },
-  coupling: { key: 'avgCoupling', color: couplingColor, label: '변경 결합순', compare: nullsLast(couplingOf, 'desc'),
-              legendTitle: '결합도', legendItems: [['후보 없음', NO_VALUE], ['낮음 (0~0.4)', '#378ADD'], ['0.4~0.7', '#EF9F27'], ['강결합 (≥0.7)', '#E24B4A']] },
-  bf:       { key: 'avgBF',       color: bfColor,       label: 'BF80순', compare: nullsLast((f) => f.bus_factor, 'asc'),
-              legendTitle: 'BF80', legendItems: [['식별된 기여 없음', NO_VALUE], ['1 (한 명에게 집중)', BF_COLORS[1]], ['2', BF_COLORS[2]], ['3', BF_COLORS[3]], ['4', BF_COLORS[4]], ['5+', BF_COLORS[5]]] },
+  coupling: { key: 'avgCoupling', color: couplingColor, label: '함께 수정순', compare: nullsLast(couplingOf, 'desc'),
+              legendTitle: '함께 수정 정도', legendItems: [['후보 없음', NO_VALUE], ['낮음 (0~0.4)', '#378ADD'], ['0.4~0.7', '#EF9F27'], ['자주 함께 수정 (≥0.7)', '#E24B4A']] },
+  bf:       { key: 'avgBF',       color: bfColor,       label: '주요 수정자순', compare: nullsLast((f) => f.bus_factor, 'asc'),
+              legendTitle: '주요 수정자 수', legendItems: [['식별된 기여 없음', NO_VALUE], ['1 (한 명에게 집중)', BF_COLORS[1]], ['2', BF_COLORS[2]], ['3', BF_COLORS[3]], ['4', BF_COLORS[4]], ['5+', BF_COLORS[5]]] },
 };
 
 /* 계산 버전에 맞춰 점수 지표의 이름·범례를 바꾼다 */
@@ -161,17 +161,17 @@ export function computeAverages(node) {
 /* 열려 있는 스냅샷의 계산 버전에 맞춰 화면의 고정 문구를 바꾼다 */
 function applyPolicyText() {
   const p = POLICY;
-  setText('cx-dash-sub', `코드 분석 — ${p.scoreShort} · BF80 · 공동 변경 결합도`);
+  setText('cx-dash-sub', `코드 분석 — ${p.scoreShort} · 주요 수정자 수 · 함께 수정 정도`);
   setText('cx-l-high', `${p.scoreShort} ≥ ${DISPLAY_THRESHOLD} 파일`);
   setText('cx-s-high', '표시 임계값 기준이며 상위 30%를 뜻하지 않음');
   setText('cx-l-avg', `평균 ${p.scoreShort}`);
-  setText('cx-l-bf', 'BF80 = 1 파일');
+  setText('cx-l-bf', '한 명 집중 파일');
   setText('cx-s-bf', '한 명에게 변경 기여 80% 이상 집중');
-  setText('cx-l-cp', '강결합 후보 파일');
-  setText('cx-s-cp', `공동 변경 결합도 ≥ ${STRONG_COUPLING} (실제 의존성 아님)`);
+  setText('cx-l-cp', '자주 함께 수정되는 파일');
+  setText('cx-s-cp', `함께 수정 정도 ≥ ${STRONG_COUPLING} (실제 의존성 아님)`);
   setText('cx-th-score', p.scoreShort);
-  setText('cx-th-bf', 'BF80');
-  setText('cx-th-cp', '결합도');
+  setText('cx-th-bf', '주요 수정자 수');
+  setText('cx-th-cp', '함께 수정 정도');
 
   const note = document.getElementById('cx-policy-note');
   if (note) {
@@ -180,8 +180,8 @@ function applyPolicyText() {
       : `이 결과는 구간 제한 없이 전체 이력을 대상으로 계산했습니다(${fmtWindow(SNAP)}).`;
     const lead = `${p.leadText} 색·배지의 0.7은 표시 임계값이며 상위 30%를 뜻하지 않습니다.`;
     const more = [win, p.summaryText, p.thresholdText,
-      '폴더는 점수가 있는 하위 파일의 평균입니다. 점수가 없는 파일(관측 변경 없음·계산 입력 누락)은 평균에서 제외하며 0으로 취급하지 않습니다. 결합도 평균도 같아서, 결합 후보가 없는 파일은 평균에서 빼고 회색으로 표시합니다.',
-      'BF80은 파일 변경 커밋의 80%를 차지하는 최소 기여자 수(식별된 기여 기준)이고, 결합도는 실제 의존성이 아닌 과거 공동 변경 신호입니다.'];
+      '폴더는 점수가 있는 하위 파일의 평균입니다. 점수가 없는 파일(관측 변경 없음·계산 입력 누락)은 평균에서 제외하며 0으로 취급하지 않습니다. 함께 수정 정도 평균도 같아서, 함께 수정된 후보가 없는 파일은 평균에서 빼고 회색으로 표시합니다.',
+      '주요 수정자 수는 파일 변경 커밋의 80%를 차지하는 최소 기여자 수(식별된 기여 기준)이고, 함께 수정 정도는 실제 의존성이 아닌 과거 함께 수정 신호입니다.'];
     note.innerHTML = `${esc(lead)} <details class="cx-more"><summary>지표 상세 설명</summary>${more.map(t => `<p>${esc(t)}</p>`).join('')}</details>`;
   }
 }
@@ -208,7 +208,7 @@ function renderSummary() {
     evidenceBox.innerHTML = `<span class="cx-evidence-title">파일 ${num(FILES.length)}개의 관측 상태</span>`
       + chip('ok', '정상 관측', count('observed'), `관측 구간 변경 ${threshold}건 이상`)
       + chip('amber', '표본 부족', count('low_support'), `변경 ${threshold}건 미만 — 점수는 있으나 근거가 적습니다`)
-      + chip('amber', '자료 부족', count('metrics_missing'), '계산 입력(Churn 등) 누락 — 점수를 계산하지 못해 순위 뒤에 둡니다')
+      + chip('amber', '자료 부족', count('metrics_missing'), '계산 입력(수정량 등) 누락 — 점수를 계산하지 못해 순위 뒤에 둡니다')
       + chip('gray', '관측 변경 없음', count('no_history'), '관측 구간에 변경이 없어 점수가 없습니다(0이 아님, 안전을 뜻하지도 않음)');
   }
 }
@@ -324,8 +324,8 @@ function nodeTitle(d) {
   const parts = [d.parent ? d.data.name : 'root'];
   if (isDir(d)) parts.push(`파일 ${num(d.data.fileCount)}개`);
   parts.push(`${isDir(d) ? '평균 ' : ''}${POLICY.scoreShort} ${d.data.avgRisk != null ? d.data.avgRisk.toFixed(2) : '없음'}`);
-  if (d.data.avgBF != null) parts.push(`BF80 ${d.data.avgBF.toFixed(1)}`);
-  if (d.data.avgCoupling != null) parts.push(`결합도 ${d.data.avgCoupling.toFixed(2)}`);
+  if (d.data.avgBF != null) parts.push(`주요 수정자 수 ${d.data.avgBF.toFixed(1)}`);
+  if (d.data.avgCoupling != null) parts.push(`함께 수정 정도 ${d.data.avgCoupling.toFixed(2)}`);
   return parts.join(' · ');
 }
 
@@ -595,13 +595,13 @@ const has = (o, k) => o != null && o[k] !== undefined;
 
 const SCORE_NA = {
   no_history: '관측 구간에 변경이 없어 점수가 없습니다 (0이 아니며 안전을 뜻하지도 않습니다)',
-  metrics_missing: '점수 계산에 필요한 입력(Churn 등)이 누락되어 계산하지 못했습니다 (자료 부족)',
+  metrics_missing: '점수 계산에 필요한 입력(수정량 등)이 누락되어 계산하지 못했습니다 (자료 부족)',
 };
 const scoreNaReason = (f) => SCORE_NA[f.evidence_status] || '점수가 없습니다';
-const BF_NA = '식별된 기여가 없어 BF80을 계산하지 못했습니다 (0이 아님)';
+const BF_NA = '식별된 기여가 없어 주요 수정자 수을 계산하지 못했습니다 (0이 아님)';
 const ENTROPY_NA = '식별된 기여가 없어 계산하지 못했습니다 (기여자 1명이면 0, 없으면 값 없음)';
 
-/* 트리 노드에 마우스를 올리거나 클릭하면 우측 카드에 점수/BF80/결합도를 한번에 보여준다 */
+/* 트리 노드에 마우스를 올리거나 클릭하면 우측 카드에 점수/주요 수정자 수/함께 수정 정도를 한번에 보여준다 */
 function showDetail(d) {
   const pathEl = document.getElementById('cx-detail-path');
   const metricsEl = document.getElementById('cx-detail-metrics');
@@ -627,26 +627,26 @@ function showDetail(d) {
     const rows = [
       row(POLICY.scoreShort, (sc != null ? chip(fmt2(sc), riskColor(sc)) : na(scoreNaReason(f))) + (ev.label ? tag(ev.tone, ev.label) : '')),
       row('변경 횟수 (관측 구간)', f.observation_count != null ? `${num(f.observation_count)}회` : DASH),
-      row('BF80', (f.bus_factor != null ? chip(f.bus_factor, bfColor(f.bus_factor)) : na(BF_NA)) + (f.is_bus_factor_risk ? tag('red', '한 명에게 집중') : '')),
+      row('주요 수정자 수', (f.bus_factor != null ? chip(f.bus_factor, bfColor(f.bus_factor)) : na(BF_NA)) + (f.is_bus_factor_risk ? tag('red', '한 명에게 집중') : '')),
     ];
     if (has(f, 'top_owner_share')) rows.push(row('최대 기여자 비율', f.top_owner_share != null ? fmtPct(f.top_owner_share) : na(BF_NA)));
     if (has(f, 'contributor_count')) rows.push(row('식별된 기여자 수', f.evidence_status === 'no_history' ? na('관측 구간에 변경 없음') : `${num(f.contributor_count)}명`));
     if (has(f, 'entropy_normalized')) {
-      rows.push(row('엔트로피 (정규화)', f.entropy_normalized != null
+      rows.push(row('기여 분산도', f.entropy_normalized != null
         ? `${fmt2(f.entropy_normalized)}${f.contributor_count === 1 ? ' <small>(기여자 1명 → 0)</small>' : ''}` : na(ENTROPY_NA)));
     }
     if (has(f, 'unidentified_share')) rows.push(row('작성자 미식별 비율', f.unidentified_share != null ? fmtPct(f.unidentified_share) : na('관측 구간에 변경 없음')));
-    rows.push(row('결합도 (최대)', cp != null
-      ? chip(fmt2(cp), couplingColor(cp)) + (f.coupling_support < 5 ? tag('gray', `표본 ${f.coupling_support}회`, '공동 변경 5건 미만 — 표본 부족(표시 정책)') : '')
-      : na('공동 변경 2건 이상인 결합 후보가 없습니다')));
-    rows.push(row(`강결합 후보 (≥${STRONG_COUPLING})`, cp != null ? `${num(f.coupled_file_count)}개` : DASH));
+    rows.push(row('함께 수정 정도 (최대)', cp != null
+      ? chip(fmt2(cp), couplingColor(cp)) + (f.coupling_support < 5 ? tag('gray', `표본 ${f.coupling_support}회`, '함께 수정 5건 미만 — 표본 부족(표시 정책)') : '')
+      : na('함께 수정 2건 이상인 함께 수정된 후보가 없습니다')));
+    rows.push(row(`자주 함께 수정되는 파일 (≥${STRONG_COUPLING})`, cp != null ? `${num(f.coupled_file_count)}개` : DASH));
     metricsEl.innerHTML = rows.join('');
   } else {
     const n = d.data.metricCounts || {};
     metricsEl.innerHTML = [
       row(`평균 ${POLICY.scoreShort}`, d.data.avgRisk != null ? chip(fmt2(d.data.avgRisk), riskColor(d.data.avgRisk)) + `<small>${num(n.avgRisk)}/${num(d.data.fileCount)}개</small>` : na('점수가 있는 하위 파일이 없습니다')),
-      row('파일별 BF80 평균', d.data.avgBF != null ? chip(fmt2(d.data.avgBF), bfColor(d.data.avgBF)) + `<small>${num(n.avgBF)}개</small>` : na(BF_NA)),
-      row('평균 결합도', d.data.avgCoupling != null ? chip(fmt2(d.data.avgCoupling), couplingColor(d.data.avgCoupling)) + `<small>후보 있는 ${num(n.avgCoupling)}/${num(d.data.fileCount)}개</small>` : na('결합 후보가 있는 하위 파일이 없습니다')),
+      row('파일별 주요 수정자 수 평균', d.data.avgBF != null ? chip(fmt2(d.data.avgBF), bfColor(d.data.avgBF)) + `<small>${num(n.avgBF)}개</small>` : na(BF_NA)),
+      row('평균 함께 수정 정도', d.data.avgCoupling != null ? chip(fmt2(d.data.avgCoupling), couplingColor(d.data.avgCoupling)) + `<small>후보 있는 ${num(n.avgCoupling)}/${num(d.data.fileCount)}개</small>` : na('함께 수정된 후보가 있는 하위 파일이 없습니다')),
       row('하위 파일 수', `${num(d.data.fileCount)}개`),
     ].join('');
   }
@@ -660,9 +660,9 @@ function fileNotes(f) {
   else if (ev === 'metrics_missing') notes.push(tag('amber', '자료 부족 · 계산 입력 누락', SCORE_NA.metrics_missing));
   else if (ev === 'low_support') notes.push(tag('amber', `표본 부족 (${num(f.observation_count)}건)`, `관측 구간 변경 ${num(f.observation_count)}건 — 점수 0도 안전을 뜻하지 않습니다`));
   if (ev !== 'no_history' && f.unidentified_share != null && f.unidentified_share > 0) {
-    notes.push(tag('gray', `작성자 미식별 ${fmtPct(f.unidentified_share)}`, '작성자를 식별하지 못한 변경 — BF80·엔트로피 계산에서 제외됩니다'));
+    notes.push(tag('gray', `작성자 미식별 ${fmtPct(f.unidentified_share)}`, '작성자를 식별하지 못한 변경 — 주요 수정자 수·기여 분산도 계산에서 제외됩니다'));
   }
-  if (f.coupling_support > 0 && f.coupling_support < 5) notes.push(tag('gray', `결합도 표본 ${f.coupling_support}회`, '공동 변경 5건 미만 — 표본 부족(표시 정책)'));
+  if (f.coupling_support > 0 && f.coupling_support < 5) notes.push(tag('gray', `함께 수정 정도 표본 ${f.coupling_support}회`, '함께 수정 5건 미만 — 표본 부족(표시 정책)'));
   return notes.join('');
 }
 
@@ -699,9 +699,9 @@ function renderList() {
     const sc = scoreOf(f);
     const cp = couplingOf(f);
     const bfBadge = f.is_bus_factor_risk
-      ? '<span class="badge badge-red" title="관측 구간에서 한 명에게 파일 변경 기여의 80% 이상이 집중됩니다">BF80=1</span>' : '';
+      ? '<span class="badge badge-red" title="관측 구간에서 한 명에게 파일 변경 기여의 80% 이상이 집중됩니다">한 명 집중</span>' : '';
     const couplingBadge = cp != null && cp >= STRONG_COUPLING
-      ? '<span class="badge badge-amber" style="margin-left:4px;" title="공동 변경 결합도가 높은 파일 — 실제 의존성을 뜻하지 않습니다">강결합</span>' : '';
+      ? '<span class="badge badge-amber" style="margin-left:4px;" title="함께 수정 정도가 높은 파일 — 실제 의존성을 뜻하지 않습니다">자주 함께 수정</span>' : '';
     const fileUrl = githubFileUrl(f.path);
     const pathHtml = fileUrl
       ? `<a href="${esc(fileUrl)}" target="_blank" rel="noopener" class="cx-file-link" title="GitHub에서 열기">${esc(f.path)}</a>`
@@ -710,7 +710,7 @@ function renderList() {
       <td class="hm-td file" title="${esc(f.path)}">${pathHtml}${bfBadge}${couplingBadge}<div class="cx-notes">${fileNotes(f)}</div></td>
       <td class="hm-td">${sc != null ? `<span class="hm-val" style="background:${riskColor(sc)}22;color:${riskColor(sc)};font-weight:600;">${fmt2(sc)}</span>` : na(scoreNaReason(f))}</td>
       <td class="hm-td" style="text-align:center;">${f.bus_factor != null ? f.bus_factor : na(BF_NA)}</td>
-      <td class="hm-td">${cp != null ? `<span class="hm-val" style="background:${couplingColor(cp)}22;color:${couplingColor(cp)};">${fmt2(cp)}</span>` : na('공동 변경 2건 이상인 결합 후보가 없습니다')}</td>
+      <td class="hm-td">${cp != null ? `<span class="hm-val" style="background:${couplingColor(cp)}22;color:${couplingColor(cp)};">${fmt2(cp)}</span>` : na('함께 수정 2건 이상인 함께 수정된 후보가 없습니다')}</td>
       <td class="hm-td" style="text-align:center;">${cp != null ? num(f.coupled_file_count) : DASH}</td>
     </tr>`;
   }).join('');
@@ -733,9 +733,9 @@ function setupSearch() {
   input.addEventListener('input', () => { searchText = input.value; renderList(); });
 }
 
-/* ── 기여 분포 (BF80) ──
-   BF80 = 관측 구간의 파일 변경 커밋 중 80%를 차지하는 최소 기여자 수(식별된 기여 기준).
-   프로젝트 전체의 지식 보유 인원이 아니다. 엔트로피가 높다고 해서 위험색을 쓰지 않는다. */
+/* ── 기여 분포 (주요 수정자 수) ──
+   주요 수정자 수 = 관측 구간의 파일 변경 커밋 중 80%를 차지하는 최소 기여자 수(식별된 기여 기준).
+   프로젝트 전체의 지식 보유 인원이 아니다. 기여 분산도가 높다고 해서 위험색을 쓰지 않는다. */
 const bfNum = (v) => (v == null ? DASH : Number.isInteger(v) ? String(v) : v.toFixed(1));
 
 async function loadContributionPanel(id) {
@@ -760,12 +760,12 @@ function renderContribution(bf, box) {
     return;
   }
 
-  setText('cx-s-bf', `파일별 BF80 중앙값 ${bfNum(s.file_bf80_median)} · 한 명에게 변경 기여 80% 이상 집중`);
+  setText('cx-s-bf', `파일별 주요 수정자 수 중앙값 ${bfNum(s.file_bf80_median)} · 한 명에게 변경 기여 80% 이상 집중`);
 
   const maxCount = Math.max(1, ...dist.map(d => d.file_count));
   const distHtml = dist.map(d => {
     const color = bfColor(d.bus_factor === '5+' ? 5 : Number(d.bus_factor));
-    return `<div class="cx-dist-row"><span class="cx-dist-label">BF80 ${esc(d.bus_factor)}</span>
+    return `<div class="cx-dist-row"><span class="cx-dist-label">주요 수정자 ${esc(d.bus_factor)}명</span>
       <div class="cx-dist-bar"><div style="width:${Math.max(2, Math.round(100 * d.file_count / maxCount))}%;background:${color};"></div></div>
       <span class="cx-dist-n">${num(d.file_count)}개</span></div>`;
   }).join('');
@@ -773,11 +773,11 @@ function renderContribution(bf, box) {
   const owners = (bf.top_owners || []).slice(0, 5).map(o =>
     `<div class="c-row" style="cursor:pointer;" onclick="window.openContributorDrilldown(${Number(o.contributor_id)})">
       <div class="c-info"><div class="c-name">${esc(o.name)}</div><div class="c-meta">한 명에게 집중된 파일 ${num(o.exclusive_file_count)}개</div></div></div>`).join('')
-    || '<div class="c-meta">BF80=1 파일이 없습니다.</div>';
+    || '<div class="c-meta">한 명 집중 파일이 없습니다.</div>';
   const modules = (bf.risky_modules || []).filter(m => m.bf1_count > 0).slice(0, 5).map(m =>
     `<div class="c-row"><div class="c-info"><div class="c-name" style="font-family:monospace;font-size:12px;">${esc(m.module)}</div>
-      <div class="c-meta">BF80=1 ${num(m.bf1_count)}/${num(m.file_count)}개 (${fmtPct(m.bf1_ratio)})</div></div></div>`).join('')
-    || '<div class="c-meta">BF80=1 파일이 있는 모듈이 없습니다.</div>';
+      <div class="c-meta">한 명 집중 파일 ${num(m.bf1_count)}/${num(m.file_count)}개 (${fmtPct(m.bf1_ratio)})</div></div></div>`).join('')
+    || '<div class="c-meta">한 명 집중 파일이 있는 모듈이 없습니다.</div>';
 
   const rows = files.map(f => `<tr style="cursor:pointer;" data-file-id="${f.file_id}">
       <td class="hm-td file" title="${esc(f.path)}">${esc(f.path)}${f.low_support ? ` ${tag('amber', '표본 부족', `식별된 변경 ${num(f.observation_count)}건 (5건 미만)`)}` : ''}</td>
@@ -791,22 +791,22 @@ function renderContribution(bf, box) {
 
   box.innerHTML = `
     <div class="metrics-4" style="margin-bottom:12px;">
-      <div class="metric-card"><div class="m-label">파일별 BF80 중앙값</div><div class="m-val">${bfNum(s.file_bf80_median)}</div><div class="m-sub">식별된 기여가 있는 ${num(analyzed)}개 파일 기준 · 프로젝트 전체 지식 인원이 아님</div></div>
-      <div class="metric-card"><div class="m-label">BF80 = 1 파일</div><div class="m-val">${num(s.high_risk_file_count)}</div><div class="m-sub">한 명에게 관측 변경 기여가 집중</div></div>
-      <div class="metric-card"><div class="m-label">BF80=1 비중이 큰 모듈</div><div class="m-val">${num(s.risky_module_count)}</div><div class="m-sub">모듈 내 BF80=1 파일 30% 이상</div></div>
-      <div class="metric-card"><div class="m-label">기여 식별 불가 파일</div><div class="m-val">${num(unidentifiedFiles)}</div><div class="m-sub">변경은 있으나 작성자 미식별 — BF80 계산 제외(0 아님)</div></div>
+      <div class="metric-card"><div class="m-label">파일별 주요 수정자 수 중앙값</div><div class="m-val">${bfNum(s.file_bf80_median)}</div><div class="m-sub">식별된 기여가 있는 ${num(analyzed)}개 파일 기준 · 프로젝트 전체 지식 인원이 아님</div></div>
+      <div class="metric-card"><div class="m-label">한 명 집중 파일</div><div class="m-val">${num(s.high_risk_file_count)}</div><div class="m-sub">한 명에게 관측 변경 기여가 집중</div></div>
+      <div class="metric-card"><div class="m-label">한 명 집중 파일이 많은 모듈</div><div class="m-val">${num(s.risky_module_count)}</div><div class="m-sub">모듈 내 한 명 집중 파일 30% 이상</div></div>
+      <div class="metric-card"><div class="m-label">기여 식별 불가 파일</div><div class="m-val">${num(unidentifiedFiles)}</div><div class="m-sub">변경은 있으나 작성자 미식별 — 주요 수정자 수 계산 제외(0 아님)</div></div>
     </div>
     <div class="col-1-1" style="margin-bottom:12px;">
-      <div><div class="cx-sub-title">BF80 분포 (파일 수)</div>${distHtml}</div>
+      <div><div class="cx-sub-title">주요 수정자 수 분포 (파일 수)</div>${distHtml}</div>
       <div class="col-1-1">
         <div><div class="cx-sub-title">한 명에게 집중된 파일이 많은 기여자</div><div class="contrib-list">${owners}</div></div>
-        <div><div class="cx-sub-title">BF80=1 비중이 큰 모듈</div><div class="contrib-list">${modules}</div></div>
+        <div><div class="cx-sub-title">한 명 집중 파일이 많은 모듈</div><div class="contrib-list">${modules}</div></div>
       </div>
     </div>
     <div class="hm-wrap"><table class="hm-table">
       <thead><tr>
-        <th class="hm-th left">파일 (BF80 낮은 순 · 상위 ${num(files.length)}개)</th><th class="hm-th">BF80</th><th class="hm-th">최대 기여자 비율</th>
-        <th class="hm-th">식별된 기여자</th><th class="hm-th" title="기여가 고르게 퍼진 정도(0~1). 높다고 위험하다는 뜻이 아님">엔트로피(정규화)</th>
+        <th class="hm-th left">파일 (주요 수정자 적은 순 · 상위 ${num(files.length)}개)</th><th class="hm-th">주요 수정자 수</th><th class="hm-th">최대 기여자 비율</th>
+        <th class="hm-th">식별된 기여자</th><th class="hm-th" title="기여가 고르게 퍼진 정도(0~1). 높다고 위험하다는 뜻이 아님">기여 분산도</th>
         <th class="hm-th" title="식별된 변경 수 / 전체 변경 수">변경 수 (식별/전체)</th><th class="hm-th">작성자 미식별</th>
       </tr></thead><tbody>${rows}</tbody></table></div>`;
 
@@ -815,10 +815,10 @@ function renderContribution(bf, box) {
   });
 }
 
-/* ── 변경 결합 (공동 변경 후보) ──
-   기본 정렬은 원 결합도·공동 변경 횟수. IDF 보정은 사용자가 고르는 실험 정렬이며,
+/* ── 함께 수정 (함께 수정 후보) ──
+   기본 정렬은 원 함께 수정 정도·함께 수정 횟수. IDF 보정은 사용자가 고르는 실험 정렬이며,
    고르면 실제 요청에 sort_by=idf를 전달한다. 선택은 주소(?sort_by=)에 남아 탭 이동·뒤로 가기에서 유지된다. */
-const SORT_LABELS = { coupling: '결합도·공동 변경 횟수순 (기본)', idf: 'IDF 보정순 (실험)' };
+const SORT_LABELS = { coupling: '함께 수정 정도·함께 수정 횟수순 (기본)', idf: 'IDF 보정순 (실험)' };
 
 function renderCouplingToggle() {
   const wrap = document.getElementById('cx-cp-toggle');
@@ -846,7 +846,7 @@ async function loadCouplingPanel(id) {
     if (policy !== getSortPolicy()) return;   // 그 사이 정책을 또 바꿨다면 오래된 응답은 버린다
     renderCoupling(data, body);
   } catch (err) {
-    body.innerHTML = `<div class="cx-panel-error">변경 결합을 불러오지 못했습니다: ${esc(err.message)}</div>`;
+    body.innerHTML = `<div class="cx-panel-error">함께 수정을 불러오지 못했습니다: ${esc(err.message)}</div>`;
   }
 }
 
@@ -855,20 +855,20 @@ function renderCoupling(data, body) {
   const pairs = data.pairs || [];
   const cov = m.pr_file_coverage;
   const metaChips = [
-    tag('blue', `공동 변경 단위: ${couplingUnitText(m)}`, FALLBACK_DETAILS[m.fallback_reason] || ''),
+    tag('blue', `함께 수정 단위: ${couplingUnitText(m)}`, FALLBACK_DETAILS[m.fallback_reason] || ''),
     tag(cov == null ? 'gray' : cov < 1 ? 'amber' : 'ok',
       cov == null ? 'PR 파일 상세: 병합 PR 없음' : `PR 파일 상세 보유 ${fmtPct(cov)} (${num(m.prs_with_files)}/${num(m.merged_pr_count)}개 PR)`,
       '파일 상세가 하나 이상 있는 병합 PR의 비율입니다. 전체 수집 완료율이 아닙니다.'),
     tag('gray', `대규모 변경으로 제외된 단위 ${num(m.excluded_unit_count)}개 (분석 단위 ${num(m.total_units)}개)`, '변경 파일이 너무 많은 PR/커밋은 결합 계산에서 제외합니다'),
-    tag('gray', `후보 쌍 ${num(m.total_pairs)}개 · 강결합(≥${STRONG_COUPLING}) ${num(m.high_coupling_count)}쌍 · ${num(pairs.length)}개 표시`),
-    tag('gray', `서버 정렬: ${m.sort_by === 'idf' ? 'IDF 보정 점수' : '결합도 → 공동 변경 횟수'}`),
+    tag('gray', `후보 쌍 ${num(m.total_pairs)}개 · 자주 함께 수정(≥${STRONG_COUPLING}) ${num(m.high_coupling_count)}쌍 · ${num(pairs.length)}개 표시`),
+    tag('gray', `서버 정렬: ${m.sort_by === 'idf' ? 'IDF 보정 점수' : '함께 수정 정도 → 함께 수정 횟수'}`),
   ].join('');
   const fallback = m.co_change_unit === 'commit' && FALLBACK_DETAILS[m.fallback_reason]
     ? `<div class="cx-fallback">${esc(FALLBACK_DETAILS[m.fallback_reason])}</div>` : '';
 
   if (!pairs.length) {
     body.innerHTML = `<div class="cx-meta-row">${metaChips}</div>${fallback}
-      <div class="cx-empty">결합 후보 0건입니다. 변경이 없다는 뜻이 아닙니다 — 공동 변경이 2건 이상인 쌍만 후보가 되며,
+      <div class="cx-empty">함께 수정된 후보 0건입니다. 변경이 없다는 뜻이 아닙니다 — 함께 수정이 2건 이상인 쌍만 후보가 되며,
       대규모 변경으로 제외된 단위가 ${num(m.excluded_unit_count)}개(분석 단위 ${num(m.total_units)}개) 있습니다.</div>`;
     return;
   }
@@ -877,8 +877,8 @@ function renderCoupling(data, body) {
   const rows = pairs.map((p, i) => `<tr>
       <td class="hm-td" style="text-align:center;">${i + 1}</td>
       <td class="hm-td file" style="max-width:340px;">${file(p.file_a_id, p.file_a_path)}${file(p.file_b_id, p.file_b_path)}</td>
-      <td class="hm-td" style="text-align:center;">${num(p.co_change_count)}회${p.low_support ? `<div>${tag('amber', `표본 ${num(p.co_change_count)}회`, '공동 변경 5건 미만 — 표본 부족(표시 정책이며 통계적 신뢰수준이 아님)')}</div>` : ''}</td>
-      <td class="hm-td"><span class="hm-val" style="background:${couplingColor(p.coupling_score)}22;color:${couplingColor(p.coupling_score)};font-weight:600;" title="공동 변경 횟수 ÷ min(두 파일의 변경 횟수)">${fmt2(p.coupling_score)}</span></td>
+      <td class="hm-td" style="text-align:center;">${num(p.co_change_count)}회${p.low_support ? `<div>${tag('amber', `표본 ${num(p.co_change_count)}회`, '함께 수정 5건 미만 — 표본 부족(표시 정책이며 통계적 신뢰수준이 아님)')}</div>` : ''}</td>
+      <td class="hm-td"><span class="hm-val" style="background:${couplingColor(p.coupling_score)}22;color:${couplingColor(p.coupling_score)};font-weight:600;" title="함께 수정 횟수 ÷ min(두 파일의 변경 횟수)">${fmt2(p.coupling_score)}</span></td>
       <td class="hm-td" style="text-align:center;" title="A가 변경된 ${num(p.change_count_a)}번 중 ${num(p.co_change_count)}번 B도 함께 변경된 과거 비율">${fmtPct(p.a_to_b_ratio)} <small>(${num(p.co_change_count)}/${num(p.change_count_a)})</small></td>
       <td class="hm-td" style="text-align:center;" title="B가 변경된 ${num(p.change_count_b)}번 중 ${num(p.co_change_count)}번 A도 함께 변경된 과거 비율">${fmtPct(p.b_to_a_ratio)} <small>(${num(p.co_change_count)}/${num(p.change_count_b)})</small></td>
       <td class="hm-td" style="text-align:center;color:var(--text2);" title="IDF 보정 점수(실험)">${fmt2(p.adjusted_score)}</td>
@@ -886,7 +886,7 @@ function renderCoupling(data, body) {
 
   body.innerHTML = `<div class="cx-meta-row">${metaChips}</div>${fallback}
     <div class="hm-wrap"><table class="hm-table">
-      <thead><tr><th class="hm-th">#</th><th class="hm-th left">파일 A ↔ 파일 B</th><th class="hm-th">공동 변경</th><th class="hm-th">결합도</th>
+      <thead><tr><th class="hm-th">#</th><th class="hm-th left">파일 A ↔ 파일 B</th><th class="hm-th">함께 수정</th><th class="hm-th">함께 수정 정도</th>
         <th class="hm-th" title="A가 바뀐 변경 중 B도 함께 바뀐 과거 비율">A → B</th><th class="hm-th" title="B가 바뀐 변경 중 A도 함께 바뀐 과거 비율">B → A</th><th class="hm-th">IDF 보정</th></tr></thead>
       <tbody>${rows}</tbody></table></div>`;
 

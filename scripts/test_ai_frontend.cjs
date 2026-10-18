@@ -770,6 +770,30 @@ test('커밋 주소·라벨 및 조회 API', async () => {
   assert.ok(urls[1].includes(`/commits/${sha}/files?repository_id=5`));
 });
 
+test('팀원 결과(읽기 전용): 주소와 조회 API', async () => {
+  const s = await js('ai-state.js');
+  const route = s.parseRoute(s.buildRoute({ repo: 5, shared: U1 }));
+  assert.equal(route.view, s.VIEWS.SHARED);
+  assert.equal(route.shared, U1);
+  assert.equal(s.buildRoute({ repo: 5, shared: U1 }), `?repo=5&shared=${U1}`);
+  assert.equal(s.buildRoute({ shared: U1 }), '');                                       // repo 없이는 만들지 않는다
+  assert.equal(s.parseRoute(`?shared=${U1}`).view, s.VIEWS.NO_REPO);
+  assert.equal(s.parseRoute(`?repo=5&shared=${U1}&job=${U2}`).view, s.VIEWS.JOB);        // 내 작업이 우선
+  assert.equal(s.parseRoute(`?repo=5&shared=${U1}&job=${U2}`).shared, null);
+  assert.equal(s.parseRoute('?repo=5&shared=nope').view, s.VIEWS.HOME);
+  assert.ok(s.parseRoute('?repo=5&shared=nope').invalid.includes('shared'));
+  const { createAiClient } = await js('ai-api.js');
+  const calls = [];
+  const client = createAiClient({ fetchImpl: async (u, o) => { calls.push([String(u), o.method]); return { ok: true, status: 200, json: async () => ({}) }; } });
+  await client.sharedResults(5, { cursor: 'c1' });
+  await client.sharedResult(U1);
+  await client.sharedFindings(U1, { cursor: 'c2' });
+  assert.ok(calls[0][0].includes('/api/ai/v1/shared/results?repository_id=5') && calls[0][0].includes('cursor=c1'));
+  assert.ok(calls[1][0].endsWith(`/api/ai/v1/shared/results/${U1}`));
+  assert.ok(calls[2][0].includes(`/api/ai/v1/shared/results/${U1}/findings`) && calls[2][0].includes('cursor=c2'));
+  assert.deepEqual(calls.map((c) => c[1]), ['GET', 'GET', 'GET']);                      // 읽기만 한다
+});
+
 (async () => {
   let failed = 0;
   for (const [name, fn] of tests) {

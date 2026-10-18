@@ -126,7 +126,7 @@ async function load() {
   await loadKeys(token);
   if (!token.current() || shared.aiDisabled) return;
   const views = {
-    [S.VIEWS.HOME]: renderHome, [S.VIEWS.FILES]: renderFiles, [S.VIEWS.PREVIEW]: renderPreview, [S.VIEWS.JOB]: renderJob,
+    [S.VIEWS.HOME]: renderHome, [S.VIEWS.FILES]: renderFiles, [S.VIEWS.PREVIEW]: renderPreview, [S.VIEWS.JOB]: renderJob, [S.VIEWS.SHARED]: renderShared,
   };
   await views[route.view](token);
 }
@@ -147,7 +147,7 @@ function renderHeader() {
   const steps = [['home', 'PR·커밋 선택'], ['files', '파일 선택'], ['preview', '미리보기·동의'], ['job', '실행·결과']];
   const at = { [S.VIEWS.HOME]: 0, [S.VIEWS.FILES]: 1, [S.VIEWS.PREVIEW]: 2, [S.VIEWS.JOB]: 3 }[route.view];
   mount($('ai-steps'), steps.map(([, label], i) => h('li', { class: `ai-step${i === at ? ' current' : i < at ? ' done' : ''}`, 'aria-current': i === at ? 'step' : null }, `${i + 1}. ${label}`)));
-  $('ai-steps').hidden = route.view === S.VIEWS.NO_REPO;
+  $('ai-steps').hidden = route.view === S.VIEWS.NO_REPO || route.view === S.VIEWS.SHARED;
 }
 
 function renderNoRepo() {
@@ -370,9 +370,106 @@ async function renderHome(token) {
         if (value === 'commit' && !commitsLoaded) loadCommits();
       }, { cls: value === 'pr' ? 'ai-tab active' : 'ai-tab' })));
   mount($('ai-main'), sourceTabs, prCard, commitCard,
-    h('section', { class: 'ai-card', id: 'ai-jobs-card' }, h('h2', { text: '이 저장소의 최근 AI 작업' })));
+    h('section', { class: 'ai-card', id: 'ai-jobs-card' }, h('h2', { text: '이 저장소의 최근 AI 작업' })),
+    h('section', { class: 'ai-card', id: 'ai-shared-card' }, h('h2', { text: '팀원이 만든 AI 결과' })));
   loadPage(true);
   renderJobsList(token, $('ai-jobs-card'));
+  renderSharedList(token, $('ai-shared-card'));
+}
+
+/* 같은 저장소 구성원이 만든 결과 목록(읽기 전용). 저장소 권한이 있으면 누구나 본다. */
+const whoLabel = (a) => (a?.display_name ? `${a.display_name} (@${a.login})` : `@${a?.login || '알 수 없음'}`);
+
+async function renderSharedList(token, card) {
+  const body = h('div', { class: 'ai-jobs' });
+  const more = button('더 보기', () => page());
+  more.hidden = true;
+  let cursor = null;
+  card.append(h('p', { class: 'ai-muted', text: '이 저장소에 접근할 수 있는 다른 사람이 만든 결과입니다. 판단과 메모를 읽을 수만 있고, 바꿀 수는 없습니다.' }),
+    body, h('div', { class: 'ai-center' }, more));
+  async function page() {
+    try {
+      const out = await api.sharedResults(route.repo, { cursor }, token.signal);
+      if (!token.current()) return;
+      if (!out.results.length && !cursor) body.append(h('div', { class: 'ai-muted', text: '다른 사람이 만든 결과가 아직 없습니다.' }));
+      out.results.forEach((r) => {
+        if (r.repository_id !== route.repo) return;             // 다른 저장소의 결과는 그리지 않는다
+        body.append(h('div', { class: 'ai-job-row' }, chip(S.KIND_LABEL[r.kind] || r.kind, 'info'),
+          h('span', { text: whoLabel(r.author) }),
+          h('span', { class: 'ai-muted', text: `${r.model || ''} · ${fmtTime(r.created_at)}${r.kind === 'review' ? ` · 지적 ${r.finding_count}건 · 판단 ${r.feedback_count}건` : ''}` }),
+          link('읽기', { repo: route.repo, shared: r.result_id })));
+      });
+      cursor = out.next_cursor; more.hidden = !cursor;
+    } catch (e) { if (e?.name !== 'AbortError' && token.current()) body.append(h('div', { class: 'ai-muted', text: `팀원 결과를 불러오지 못했습니다(${S.describeError(e).title}).` })); }
+  }
+  page();
+}
+
+async function renderShared(token) {
+  const holder = h('div', { class: 'ai-job' }, h('div', { class: 'ai-muted', text: '결과를 불러오는 중…' }));
+  mount($('ai-main'), holder);
+  let view, findings = [], cursor = null;
+  const notFound = () => Object.assign(new Error('x'), { status: 404, code: 'RESOURCE_NOT_FOUND', details: {} });
+  try {
+    view = await api.sharedResult(route.shared, token.signal);
+    if (!token.current()) return;
+    if (view.result.repository_id !== route.repo || view.result.result_id !== route.shared) throw notFound();
+    if (view.result.kind === 'review') {
+      const first = await api.sharedFindings(route.shared, {}, token.signal);
+      if (!token.current()) return;
+      findings = first.findings; cursor = first.next_cursor;
+    }
+  } catch (e) { if (e?.name === 'AbortError' || !token.current()) return; mount(holder); return showError(e, { onRetry: load }); }
+  const result = view.result;
+  const listBox = h('div', { class: 'ai-findings' });
+  const moreBtn = button('지적 더 보기', async () => {
+    try { const next = await api.sharedFindings(route.shared, { cursor }, token.signal); if (!token.current()) return; findings = findings.concat(next.findings); cursor = next.next_cursor; drawFindings(); }
+    catch (e) { if (e?.name !== 'AbortError' && token.current()) showError(e); }
+  });
+  function feedbackList(f) {
+    if (!f.feedbacks.length) return h('p', { class: 'ai-muted', text: '아직 남긴 판단이 없습니다.' });
+    return h('ul', { class: 'ai-shared-fb' }, f.feedbacks.map((b) => h('li', {},
+      h('div', { class: 'ai-row' }, chip(S.VERDICT_LABEL[b.verdict] || b.verdict, b.verdict === 'valid' ? 'ok' : 'warn'),
+        h('b', { text: b.mine ? `${whoLabel(b.author)} (나)` : whoLabel(b.author) }), h('span', { class: 'ai-muted', text: fmtTime(b.updated_at) })),
+      b.note ? h('p', { class: 'ai-shared-note', text: b.note }) : null)));
+  }
+  function findingCard(f) {
+    const x = f.finding;
+    return h('article', { class: 'ai-finding', 'data-finding': f.finding_id },
+      h('div', { class: 'ai-row between' }, h('h3', { text: `${x.ordinal}. ${x.title}` }),
+        h('span', {}, chip(x.category, 'info'), chip(`검토 순서 ${x.priority}`, 'info', '장애 등급이 아니라 검토할 순서입니다'))),
+      h('div', { class: 'ai-loc' }, h('code', { text: S.locationText(x.location) })),
+      dl([['조건', x.condition], ['영향', x.impact], ['확인 방법', x.verification], x.suggestion ? ['제안', x.suggestion] : null,
+        f.quote ? ['인용', h('pre', { class: 'ai-pre', text: f.quote })] : null,
+        x.limitations?.length ? ['한계', x.limitations.map(S.limitationLabel).join(', ')] : null]),
+      h('div', { class: 'ai-feedback' }, h('b', { text: '팀원의 판단·메모' }), feedbackList(f)));
+  }
+  function drawFindings() {
+    if (!findings.length) return mount(listBox, h('div', { class: 'ai-empty' }, h('b', { text: '지적 0건' }), h('p', { text: S.emptyFindingsText(result.coverage) })));
+    mount(listBox, findings.map(findingCard), cursor ? h('div', { class: 'ai-center' }, moreBtn) : null);
+  }
+  function summaryBody() {
+    const p = result.payload;
+    return h('div', { class: 'ai-summary' },
+      dl([['개요(코드에서 관찰한 사실)', p.overview], p.author_intent ? ['작성자 의도', p.author_intent] : null,
+        p.unknowns?.length ? ['알 수 없는 것', h('ul', {}, p.unknowns.map((u) => h('li', { text: u })))] : null]),
+      h('h3', { text: '파일별 변경' }),
+      (p.file_changes || []).length ? h('div', {}, p.file_changes.map((c) => h('div', { class: 'ai-fchange' }, h('code', { text: c.path }), h('p', { text: c.summary }))))
+        : h('p', { class: 'ai-muted', text: '파일별 설명이 없습니다(모델이 보고하지 않음). 변경이 없다는 뜻이 아닙니다.' }));
+  }
+  const cov = result.coverage;
+  mount(holder,
+    h('div', { class: 'ai-banner info', role: 'status' }, h('div', { class: 'ai-banner-title', text: '읽기 전용입니다' }),
+      h('div', { class: 'ai-banner-body', text: `${whoLabel(view.author)}${view.mine ? '(나)' : ''}가 만든 결과입니다. 판단과 메모는 만든 사람 본인만 바꿀 수 있습니다. 근거 코드 원문은 열 수 없고, 결과에 저장된 인용만 볼 수 있습니다.` })),
+    h('section', { class: 'ai-card' },
+      h('div', { class: 'ai-row between' }, h('h2', { text: `${S.KIND_LABEL[result.kind]} 결과` }), h('span', { class: 'ai-muted', text: `${result.provider || ''} / ${result.model || ''} · ${fmtTime(result.created_at)}` })),
+      dl([['만든 사람', whoLabel(view.author)], ['범위 요약', S.scopeSummary(cov)], ...S.coverageLines(cov).map((l) => [l.label, l.value]),
+        S.coverageLimitations(cov).length ? ['제외·누락 사유', S.coverageLimitations(cov).join(' · ')] : null,
+        ['결과 보관', `${fmtTime(result.expires_at)}까지`]]),
+      h('div', { class: 'ai-muted', text: `${S.STRUCTURE_NOTE} ${S.MODEL_NOTE}` })),
+    result.kind === 'review' ? h('section', { class: 'ai-card' }, h('h2', { text: `지적 ${result.finding_count}건` }), listBox) : h('section', { class: 'ai-card' }, summaryBody()),
+    h('section', { class: 'ai-card' }, h('div', { class: 'ai-row' }, link('PR·커밋 선택으로', { repo: route.repo }, 'btn-secondary ai-btn'))));
+  if (result.kind === 'review') drawFindings();
 }
 
 async function renderJobsList(token, card) {
@@ -857,7 +954,9 @@ async function renderResult(token, holder, job) {
         f.quote ? ['인용', h('pre', { class: 'ai-pre', text: f.quote })] : null,
         x.limitations?.length ? ['한계', x.limitations.map(S.limitationLabel).join(', ')] : null]),
       codeButton(f.source_file_id, x.location),
-      h('div', { class: 'ai-feedback' }, h('div', { class: 'ai-row' }, buttons), note, h('div', { class: 'ai-row' }, save, mine), status));
+      h('div', { class: 'ai-feedback' }, h('div', { class: 'ai-row' }, buttons), note,
+        h('div', { class: 'ai-muted', text: '판단과 메모는 이 저장소에 접근할 수 있는 팀원에게도 읽기 전용으로 보입니다. 비밀번호·키 같은 민감한 내용은 적지 마세요.' }),
+        h('div', { class: 'ai-row' }, save, mine), status));
   }
   function summaryBody() {
     const p = result.payload;

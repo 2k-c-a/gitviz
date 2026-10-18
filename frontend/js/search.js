@@ -2,7 +2,7 @@
    search-results가 있을 때(=검색 페이지)만 동작한다.
    GET /search/github-repositories (Track 01)가 채워주는 스키마를 그대로 그린다:
    { query, total_count, results: [{ owner, repo_name, url, description, language,
-     stars, forks, open_issues, pushed_at, is_registered, scores:{activity,popularity,language,health,total} }] } */
+     stars, forks, open_issues, pushed_at, is_registered, scores:{activity,health,total} }] } */
 
 import { isLoggedIn, openLoginModal } from './login.js';
 
@@ -62,9 +62,18 @@ function scoreRing(scores) {
   const total = scores && scores.total != null ? Math.round(scores.total) : null;
   const tier = scoreTier(total);
   const title = scores
-    ? `활동성 ${scores.activity ?? '-'}/30 · 인기도 ${scores.popularity ?? '-'}/35 · 언어 ${scores.language ?? '-'}/10 · 이슈/스타 비율 점수 ${scores.health ?? '-'}/25 · 메타데이터 기반 예비 점수이며 코드 품질을 보장하지 않습니다`
+    ? `활동성 ${scores.activity ?? '-'}/55 · 이슈 관리 ${scores.health ?? '-'}/45 · 메타데이터 기반 예비 점수이며 코드 품질을 보장하지 않습니다`
     : '점수 정보 없음';
   return `<div class="score-ring tier-${tier}" title="${esc(title)}">${total != null ? total : '—'}</div>`;
+}
+
+/* 종합 점수 옆에 항목별 점수를 칩으로 노출한다(마우스 오버 없이도 점수 근거가 보이도록). */
+function scoreBreakdown(scores) {
+  if (!scores) return '';
+  return `<div class="score-breakdown">
+    <span class="chip">활동성 ${scores.activity ?? '-'}/55</span>
+    <span class="chip">이슈 관리 ${scores.health ?? '-'}/45</span>
+  </div>`;
 }
 
 function buildCard(repo) {
@@ -95,6 +104,7 @@ function buildCard(repo) {
           <span>⚠ 이슈 ${num(repo.open_issues)}</span>
           ${pushedRel ? `<span>업데이트 ${pushedRel}</span>` : ''}
         </div>
+        ${scoreBreakdown(repo.scores)}
       </div>
       <div class="search-card-action">
         <div class="score-caption">예비 점수<br>(빠른 추정)</div>

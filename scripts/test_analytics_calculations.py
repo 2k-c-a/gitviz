@@ -80,6 +80,28 @@ class AnalyticsTests(unittest.TestCase):
         self.db.conn.execute("INSERT INTO commit_file_changes VALUES (400, 10)")
         self.assertEqual(namespace["_fetch_network_edges"](self.db, 1)["edges"], [])
 
+    def test_squash_pr_commits_outside_scope_still_count_as_co_edit(self):
+        """스쿼시 병합 PR의 원본 커밋(기본 브랜치 밖)도 PR에 연결돼 있으면 함께 수정으로 센다.
+        스냅샷 범위 CTE가 가리는 원본 테이블은 raw_table_prefix로 읽는다(SQLite 테스트는 접두사 없음)."""
+        self.db.conn.executescript("""
+            INSERT INTO pull_requests VALUES (2, 1, false, 1);
+            INSERT INTO pull_request_files VALUES (2, 30);
+            INSERT INTO commits VALUES (500, 1, 4), (600, 1, 5);
+            INSERT INTO pr_commits VALUES (2, 500), (2, 600);
+            INSERT INTO commit_file_changes VALUES (500, 30), (600, 30);
+        """)
+        edges = namespace["_fetch_network_edges"](self.db, 1)["edges"]
+        self.assertEqual({(e["source"], e["target"]) for e in edges}, {(4, 5), (5, 4)})
+
+    def test_squash_pr_without_collected_commits_has_no_co_edit(self):
+        """원본 커밋이 수집되지 않았다면(commit_id 없음) 함께 수정을 만들어 내지 않는다."""
+        self.db.conn.executescript("""
+            INSERT INTO pull_requests VALUES (3, 1, false, 1);
+            INSERT INTO pull_request_files VALUES (3, 40);
+            INSERT INTO pr_commits VALUES (3, NULL);
+        """)
+        self.assertEqual(namespace["_fetch_network_edges"](self.db, 1)["edges"], [])
+
     def test_review_direction_and_self_review(self):
         self.db.conn.executescript("INSERT INTO pr_reviews VALUES (1, 2), (1, 1);")
         edges = namespace["_fetch_network_edges"](self.db, 1)["edges"]

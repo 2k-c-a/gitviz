@@ -37,7 +37,7 @@ export function openContributorDrilldown(contributorId) {
   renderTop();
 }
 
-/* extra: 코드분석 트리(/tree)에서 이미 가져와 둔 점수/결합도 등 — 있으면 상세 응답과 함께 설명에 쓴다.
+/* extra: 코드분석 트리(/tree)에서 이미 가져와 둔 점수/함께 수정 정도 등 — 있으면 상세 응답과 함께 설명에 쓴다.
    없는 호출부(중첩 드릴다운 등)는 그냥 생략된다. */
 export function openFileDrilldown(fileId, extra) {
   _stack = [{ type: 'file', id: fileId, extra }];
@@ -99,7 +99,7 @@ async function renderContributor(contributorId) {
   const filesHtml = files.length
     ? files.map(f => `
         <div class="coup-row" style="cursor:pointer;" onclick="window.__ddPushFile(${Number(f.file_id)})" title="${esc(f.path)}">
-          <div class="coup-file">${esc(f.path)}${f.is_bus_factor_risk ? ' <span class="badge badge-red" style="font-size:9px;">BF80=1</span>' : ''}</div>
+          <div class="coup-file">${esc(f.path)}${f.is_bus_factor_risk ? ' <span class="badge badge-red" style="font-size:9px;">한 명 집중</span>' : ''}</div>
           <div class="coup-pct" title="이 파일의 관측 구간 변경 중 이 기여자의 비율">${pct(f.share)}%</div>
         </div>`).join('')
     : '<div style="padding:12px;text-align:center;color:var(--text3);font-size:12px;">기여 파일 정보 없음</div>';
@@ -122,7 +122,7 @@ async function renderContributor(contributorId) {
 }
 
 /* 점수가 있을 때만 "왜 이 점수인지"를 한두 문장으로 요약한다. 점수가 없으면 높다/낮다를 말하지 않는다.
-   extra: 목록/트리의 파일 행(점수·결합도), detail: 파일 상세 응답. */
+   extra: 목록/트리의 파일 행(점수·함께 수정 정도), detail: 파일 상세 응답. */
 export function buildRiskExplanation(extra, detail, policy = policyOf(null)) {
   if (!extra) return null;
   const score = scoreOf(extra);
@@ -131,7 +131,7 @@ export function buildRiskExplanation(extra, detail, policy = policyOf(null)) {
   reasons.push(score >= DISPLAY_THRESHOLD
     ? `${policy.scoreShort} ${fmtScoreStable(score)} — 표시 임계값(${DISPLAY_THRESHOLD}) 이상입니다`
     : `${policy.scoreShort} ${fmtScoreStable(score)} — 표시 임계값(${DISPLAY_THRESHOLD}) 미만입니다. 낮은 점수가 안전을 보장하지는 않습니다`);
-  if (detail && detail.bus_factor === 1) reasons.push('관측 구간에서 한 명에게 파일 변경 기여의 80% 이상이 집중됩니다(BF80=1)');
+  if (detail && detail.bus_factor === 1) reasons.push('관측 구간에서 한 명에게 파일 변경 기여의 80% 이상이 집중됩니다');
   if (extra.coupling_score >= STRONG_COUPLING && (extra.coupling_support ?? 1) > 0) {
     const cnt = extra.coupled_file_count ?? 0;
     reasons.push(`함께 변경되는 비율이 높은 파일이 ${cnt}개 있습니다. 과거 동반 변경 기록이며 실제 의존성이나 미래 영향을 뜻하지 않습니다`);
@@ -151,7 +151,7 @@ function priorityBlock({ policy, score, ev, row, extra, detail }) {
     const why = ev === 'no_history'
       ? '관측 구간에 변경이 없어 점수가 없습니다. 0이 아니며 안전하다는 뜻도 아닙니다.'
       : ev === 'metrics_missing'
-        ? '점수 계산에 필요한 입력(Churn 등)이 누락되어 점수를 계산하지 못했습니다(자료 부족). 점수 순위에서는 뒤에 둡니다.'
+        ? '점수 계산에 필요한 입력(수정량 등)이 누락되어 점수를 계산하지 못했습니다(자료 부족). 점수 순위에서는 뒤에 둡니다.'
         : '점수가 없습니다. 이 결과에서는 이 파일의 근거 상태를 확인할 수 없어, 변경 이력이 없다고 단정하지 않습니다.';
     html += `<div class="dd-note">${esc(why)}</div>`;
   }
@@ -161,7 +161,7 @@ function priorityBlock({ policy, score, ev, row, extra, detail }) {
     const line = (label, raw, pc) => `<tr><td>${esc(label)}</td><td class="r">${raw}</td><td class="r">${pc != null ? fmtScore(pc) : DASH}</td></tr>`;
     html += `<table class="dd-table"><thead><tr><th>구성 요소</th><th class="r">원시 값 (관측 구간)</th><th class="r" title="저장소 안의 다른 파일과 비교한 위치 0~1">백분위</th></tr></thead><tbody>
       ${line('변경 횟수', row.change_freq != null ? `${num(row.change_freq)}회` : DASH, comp.change_freq)}
-      ${line('Churn (추가+삭제 줄)', row.churn != null ? `${num(row.churn)}줄` : '<span class="cx-na" title="Churn 계산 입력 누락">계산 입력 누락</span>', comp.churn)}
+      ${line('수정량 (추가+삭제 줄)', row.churn != null ? `${num(row.churn)}줄` : '<span class="cx-na" title="수정량 계산 입력 누락">계산 입력 누락</span>', comp.churn)}
       ${line('버그 수정 커밋', row.bugfix_count != null ? `${num(row.bugfix_count)}회` : DASH, comp.bugfix_count)}
       </tbody></table>
       <div class="dd-note">세 백분위의 평균이 점검 우선순위입니다. 평균값 자체는 상위 퍼센트가 아니라 저장소 안의 상대 위치입니다. 0도 안전을 뜻하지 않습니다. 버그 수정 횟수는 커밋 메시지 분류 기반의 약한 신호입니다.</div>`;
@@ -182,18 +182,18 @@ function contributionBlock({ policy, snap, detail, row, extra }) {
   const unidentified = has(detail, 'unidentified_share') && detail.unidentified_share != null ? detail.unidentified_share : row?.unidentified_share;
   const cells = [];
   const kv = (k, v) => cells.push(`<tr><td>${esc(k)}</td><td class="r">${v}</td></tr>`);
-  /* BF80은 있는데 세부 값이 없으면 '식별된 기여 없음'이 아니라 이 결과 형식에 없는 값이다(이전 계산 버전) */
+  /* 주요 수정자 수는 있는데 세부 값이 없으면 '식별된 기여 없음'이 아니라 이 결과 형식에 없는 값이다(이전 계산 버전) */
   const absent = bf != null ? '이 결과(이전 계산 버전)에는 저장되지 않은 값입니다' : '식별된 기여가 없습니다 (0이 아님)';
 
-  kv('BF80', bf != null
+  kv('주요 수정자 수', bf != null
     ? `<b>${esc(bf)}</b>${detail.is_bus_factor_risk ? ` ${tag('red', '한 명에게 집중')}` : ''}`
-    : na('식별된 기여가 없어 BF80을 계산하지 못했습니다 (0이 아님)'));
+    : na('식별된 기여가 없어 주요 수정자 수을 계산하지 못했습니다 (0이 아님)'));
   if (has(detail, 'top_owner_share')) kv('최대 기여자 비율', detail.top_owner_share != null ? fmtPct(detail.top_owner_share) : na(absent));
   if (has(detail, 'contributor_count')) {
     kv('식별된 기여자 수', detail.contributor_count != null ? `${num(detail.contributor_count)}명` : na(absent));
   }
   if (has(detail, 'entropy_normalized')) {
-    kv('엔트로피 (정규화 0~1)', detail.entropy_normalized != null
+    kv('기여 분산도 (0~1)', detail.entropy_normalized != null
       ? `${fmtScore(detail.entropy_normalized)}${detail.contributor_count === 1 ? ' <small>(기여자 1명 → 0)</small>' : ''}`
       : na(bf != null ? absent : '식별된 기여가 없어 계산하지 못했습니다 (기여자 1명이면 0, 없으면 값 없음)'));
   }
@@ -207,15 +207,15 @@ function contributionBlock({ policy, snap, detail, row, extra }) {
   const windowText = snap.window_start
     ? `관측 구간은 이 결과에 고정된 ${fmtWindow(snap)}입니다(종료 시각 제외).`
     : `이 결과는 구간 제한 없이 전체 이력을 대상으로 했습니다. 관측 구간은 파일의 마지막 refactor 분류 커밋 이후이며, 없으면 전체 이력입니다(이전 계산 버전).`;
-  return `<div class="dd-sec-title">기여 분포 (BF80)</div>
+  return `<div class="dd-sec-title">기여 분포 (주요 수정자 수)</div>
     <table class="dd-table"><tbody>${cells.join('')}</tbody></table>
-    <div class="dd-note">BF80은 관측 구간의 파일 변경 커밋 중 80%를 차지하는 최소 기여자 수입니다. 1이면 한 명에게 관측 변경 기여가 집중되었다는 뜻이며, 실제 지식 보유 인원이 아닙니다. 작성자가 식별되지 않은 변경은 계산에서 제외합니다. ${esc(windowText)}</div>`;
+    <div class="dd-note">주요 수정자 수는 관측 구간의 파일 변경 커밋 중 80%를 차지하는 최소 기여자 수입니다. 1이면 한 명에게 관측 변경 기여가 집중되었다는 뜻이며, 실제 지식 보유 인원이 아닙니다. 작성자가 식별되지 않은 변경은 계산에서 제외합니다. ${esc(windowText)}</div>`;
 }
 
 /* ── 함께 변경된 파일 블록 ──
    선택 정책(coupling | idf)에 따라 정렬하고, 설명도 그 정책을 가리킨다. */
 const SORT_TEXT = {
-  coupling: '결합도 → 공동 변경 횟수순',
+  coupling: '함께 수정 정도 → 함께 수정 횟수순',
   idf: 'IDF 보정 점수순 (실험)',
 };
 const COUPLED_SHOWN = 20;
@@ -249,7 +249,7 @@ function couplingBlock({ detail, sortPolicy }) {
   const rows = shown.map(f => `
     <tr style="cursor:pointer;" onclick="window.__ddPushFile(${Number(f.file_id)})" title="${esc(f.path)}">
       <td class="file">${esc(f.path)}</td>
-      <td class="r">${num(f.co_change_count)}회${f.low_support ? `<div>${tag('amber', `표본 ${num(f.co_change_count)}회`, '공동 변경 5건 미만 — 표본 부족(표시 정책이며 통계적 신뢰수준이 아님)')}</div>` : ''}</td>
+      <td class="r">${num(f.co_change_count)}회${f.low_support ? `<div>${tag('amber', `표본 ${num(f.co_change_count)}회`, '함께 수정 5건 미만 — 표본 부족(표시 정책이며 통계적 신뢰수준이 아님)')}</div>` : ''}</td>
       <td class="r">${fmtScore(f.coupling_score)}</td>
       <td class="r" title="이 파일이 변경된 ${num(f.selected_change_count)}번 중 ${num(f.co_change_count)}번 상대 파일도 함께 변경된 과거 비율">${fmtPct(f.selected_to_other_ratio)}<small> (${num(f.co_change_count)}/${num(f.selected_change_count)})</small></td>
       <td class="r" title="상대 파일이 변경된 ${num(f.other_change_count)}번 중 ${num(f.co_change_count)}번 이 파일도 함께 변경된 과거 비율">${fmtPct(f.other_to_selected_ratio)}<small> (${num(f.co_change_count)}/${num(f.other_change_count)})</small></td>
@@ -257,15 +257,15 @@ function couplingBlock({ detail, sortPolicy }) {
     </tr>`).join('');
 
   const table = shown.length
-    ? `<div class="dd-scroll"><table class="dd-table dd-coupled"><thead><tr><th>상대 파일</th><th class="r">공동 변경</th><th class="r">결합도</th><th class="r">이 파일 → 상대</th><th class="r">상대 → 이 파일</th>${idf ? '<th class="r">IDF 보정</th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>`
-    : '<div style="padding:12px;text-align:center;color:var(--text3);font-size:12px;">공동 변경이 2건 이상인 파일이 없습니다(변경이 없다는 뜻이 아닙니다)</div>';
+    ? `<div class="dd-scroll"><table class="dd-table dd-coupled"><thead><tr><th>상대 파일</th><th class="r">함께 수정</th><th class="r">함께 수정 정도</th><th class="r">이 파일 → 상대</th><th class="r">상대 → 이 파일</th>${idf ? '<th class="r">IDF 보정</th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>`
+    : '<div style="padding:12px;text-align:center;color:var(--text3);font-size:12px;">함께 수정이 2건 이상인 파일이 없습니다(변경이 없다는 뜻이 아닙니다)</div>';
 
   const unit = detail.co_change_unit === 'pr' ? '병합 PR' : '커밋';
   return `<div class="dd-sec-title">함께 변경된 파일 <small>(과거 동반 변경 · ${esc(SORT_TEXT[sortPolicy])})</small>${serverSorted ? '' : ` ${tag('amber', '조회된 후보 안에서 정렬', '서버가 전체 후보를 정렬해 보내지 않은 응답입니다')}`}</div>
     ${table}
-    <div class="dd-note">${unit} 단위의 공동 변경 기록입니다${detail.co_change_unit === 'pr' ? '' : '(파일 상세가 있는 병합 PR이 없어 커밋으로 대체)'}.
+    <div class="dd-note">${unit} 단위의 함께 수정 기록입니다${detail.co_change_unit === 'pr' ? '' : '(파일 상세가 있는 병합 PR이 없어 커밋으로 대체)'}.
       '이 파일 → 상대'는 이 파일이 바뀐 변경 중 상대 파일도 함께 바뀐 과거 비율이고, '상대 → 이 파일'은 그 반대입니다.
-      미래 영향 확률이나 실제 의존성(import)이 아닙니다. 공동 변경 2건 이상인 쌍만 있고 5건 미만은 표본 부족으로 표시합니다.
+      미래 영향 확률이나 실제 의존성(import)이 아닙니다. 함께 수정 2건 이상인 쌍만 있고 5건 미만은 표본 부족으로 표시합니다.
       정렬: ${esc(SORT_TEXT[sortPolicy])}${idf ? ' — 기본 정렬이 아닌 실험용 선택입니다' : ' — 기본'} · ${esc(scopeText)}.</div>`;
 }
 

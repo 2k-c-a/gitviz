@@ -15,7 +15,7 @@ const toUuid = (v) => {
 };
 
 /* ── 주소 ── */
-export const VIEWS = { NO_REPO: 'no_repo', HOME: 'home', FILES: 'files', PREVIEW: 'preview', JOB: 'job' };
+export const VIEWS = { NO_REPO: 'no_repo', HOME: 'home', FILES: 'files', PREVIEW: 'preview', JOB: 'job', SHARED: 'shared' };
 
 export function parseRoute(search) {
   const p = new URLSearchParams(search || '');
@@ -30,20 +30,21 @@ export function parseRoute(search) {
   const repo = read('repo', toInt);
   if (repo == null) {
     /* repo 없이 온 pr/input/job은 어느 저장소의 것인지 알 수 없다 — 무시한다 */
-    return { repo: null, pr: null, input: null, job: null, retry: null, force: false, view: VIEWS.NO_REPO, invalid };
+    return { repo: null, pr: null, input: null, job: null, shared: null, retry: null, force: false, view: VIEWS.NO_REPO, invalid };
   }
   const pr = read('pr', toInt);
   const commit = read('commit', (v) => /^[0-9a-f]{40}$/.test(v) ? v : null);
   if (pr && commit) invalid.push('commit');
   const input = read('input', toUuid);
   const job = read('job', toUuid);
+  const shared = job || input ? null : read('shared', toUuid);          // 같은 저장소 구성원의 결과(읽기 전용)
   const retry = input ? read('retry', toUuid) : null;
   const force = !!input && !retry && p.get('force') === '1';          // 이미 결과가 있어도 새 generation으로 실행
-  const view = job ? VIEWS.JOB : input ? VIEWS.PREVIEW : pr || commit ? VIEWS.FILES : VIEWS.HOME;
-  return { repo, pr, commit: pr ? null : commit, input, job, retry, force, view, invalid };
+  const view = job ? VIEWS.JOB : input ? VIEWS.PREVIEW : shared ? VIEWS.SHARED : pr || commit ? VIEWS.FILES : VIEWS.HOME;
+  return { repo, pr, commit: pr ? null : commit, input, job, shared, retry, force, view, invalid };
 }
 
-export function buildRoute({ repo = null, pr = null, commit = null, input = null, job = null, retry = null, force = false } = {}) {
+export function buildRoute({ repo = null, pr = null, commit = null, input = null, job = null, shared = null, retry = null, force = false } = {}) {
   if (repo == null) return '';
   const p = new URLSearchParams();
   p.set('repo', String(repo));
@@ -52,7 +53,8 @@ export function buildRoute({ repo = null, pr = null, commit = null, input = null
     p.set('input', input);
     if (retry) p.set('retry', retry);
     else if (force) p.set('force', '1');
-  } else if (pr) p.set('pr', String(pr));
+  } else if (shared) p.set('shared', shared);
+  else if (pr) p.set('pr', String(pr));
   else if (commit) p.set('commit', commit);
   return `?${p.toString()}`;
 }

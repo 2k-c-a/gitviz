@@ -165,7 +165,7 @@ function renderCompareError(err, beforeId, afterId, offset) {
 
 /* 지표 하나의 before → after 표시. 값 없음(null)과 0, 증가/감소/동일, 한쪽 값 없음(자료 부족)을 구분한다 */
 function metricCell(m, status, { digits = 2, zeroLabel = null } = {}) {
-  /* zeroLabel: 이 지표에서 0이 '값 0'이 아니라 '해당 없음'일 때의 표기 (결합도 0 = 공동 변경 2건 이상인 후보 쌍이 없음) */
+  /* zeroLabel: 이 지표에서 0이 '값 0'이 아니라 '해당 없음'일 때의 표기 (함께 수정 정도 0 = 함께 수정 2건 이상인 후보 쌍이 없음) */
   const fmtV = (v) => (v == null ? DASH : v === 0 && zeroLabel ? zeroLabel : (digits === 0 ? num(v) : fmtScore(v, digits)));
   if (m.before == null && m.after == null) return `<span class="cx-na" title="양쪽 모두 값 없음">${DASH}</span>`;
   const pair = `${fmtV(m.before)} → ${fmtV(m.after)}`;
@@ -252,7 +252,7 @@ function renderCompare() {
     <div class="range-btns" id="cmp-filters" style="margin:10px 0;flex-wrap:wrap;">${filterBar}</div>
     <div style="font-size:11px;color:var(--text2);margin-bottom:6px;">변경 파일 ${num(pg.total_changes)}개 중 ${num(shown)}개 불러옴${more ? ' · 필터와 개수는 불러온 파일 안에서만 적용됩니다' : ''}</div>
     <div class="hm-wrap"><table class="hm-table">
-      <thead><tr><th class="hm-th left">파일</th><th class="hm-th">상태</th><th class="hm-th">${esc(policy.scoreShort)} (시작 → 종료)</th><th class="hm-th">BF80</th><th class="hm-th">결합도</th></tr></thead>
+      <thead><tr><th class="hm-th left">파일</th><th class="hm-th">상태</th><th class="hm-th">${esc(policy.scoreShort)} (시작 → 종료)</th><th class="hm-th">주요 수정자 수</th><th class="hm-th">함께 수정 정도</th></tr></thead>
       <tbody>${rows || `<tr><td class="hm-td" colspan="5" style="text-align:center;color:var(--text3);padding:20px;">${pg.total_changes ? '이 필터에 해당하는 파일이 없습니다.' : '변경된 파일이 없습니다. 두 결과의 파일 집합과 지표가 같습니다.'}</td></tr>`}</tbody>
     </table></div>
     ${more ? `<div style="text-align:center;margin-top:10px;"><button class="btn-secondary" id="cmp-more">변경 파일 더 보기 (${num(pg.total_changes - shown)}개 남음)</button></div>` : ''}`;

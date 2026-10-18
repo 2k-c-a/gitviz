@@ -26,8 +26,8 @@
         <h1>Git 프로젝트, 한눈에 파악하세요</h1>
 
         <p>
-          GitHub 레포지토리 URL 하나만 입력하면 협업 구조, 기여 집중도(BF80),
-          유지보수 점검 우선순위와 함께 변경되는 파일을 자동 분석합니다.
+          GitHub 저장소 주소만 입력하면 누가 어떤 파일을 자주 고쳤는지,
+          어떤 파일들이 함께 수정되는지 분석해 먼저 살펴볼 파일을 알려드립니다.
         </p>
 
         <div class="url-form" id="url-form">
@@ -49,35 +49,6 @@
 
           <div class="url-feedback" id="url-feedback"></div>
         </div>
-
-        <div class="chips-row">
-          <div
-            class="chip"
-            style="cursor: pointer"
-            onclick="fillUrl('https://github.com/facebook/react')"
-          >
-            facebook/react
-          </div>
-
-          <div
-            class="chip"
-            style="cursor: pointer"
-            onclick="fillUrl('https://github.com/tiangolo/fastapi')"
-          >
-            tiangolo/fastapi
-          </div>
-
-          <div
-            class="chip"
-            style="cursor: pointer"
-            onclick="fillUrl('https://github.com/django/django')"
-          >
-            django/django
-          </div>
-
-          <div class="chip">BF80 기여 집중도</div>
-          <div class="chip">PR 리뷰 분석</div>
-        </div>
       </div>
 
       <!-- 최근 분석 요청된 레포지토리 -->
@@ -91,8 +62,7 @@
 
   <div class="footer-social">
 
-     <br><strong>GitViz</strong> - Git Repository Visualization Platform 
-      (Timeline · Collaboration Network · Maintenance Priority · Co-change Coupling · BF80) </br>© 2026 Capstone Design Project | Team 거북목</p>
+     <br><strong>GitViz</strong> - Git Repository Visualization Platform </br>© 2026 Capstone Design Project | Team 거북목</p>
     
 
     <a href="https://www.instagram.com" target="_blank">
