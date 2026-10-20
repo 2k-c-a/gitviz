@@ -64,7 +64,10 @@ function scoreRing(scores) {
   const title = scores
     ? `활동성 ${scores.activity ?? '-'}/55 · 이슈 관리 ${scores.health ?? '-'}/45 · 메타데이터 기반 예비 점수이며 코드 품질을 보장하지 않습니다`
     : '점수 정보 없음';
-  return `<div class="score-ring tier-${tier}" title="${esc(title)}">${total != null ? total : '—'}</div>`;
+  return `<div class="score-col">
+    <div class="score-caption">예비 점수</div>
+    <div class="score-ring tier-${tier}" title="${esc(title)}">${total != null ? total : '—'}</div>
+  </div>`;
 }
 
 /* 종합 점수 옆에 항목별 점수를 칩으로 노출한다(마우스 오버 없이도 점수 근거가 보이도록). */
@@ -107,7 +110,6 @@ function buildCard(repo) {
         ${scoreBreakdown(repo.scores)}
       </div>
       <div class="search-card-action">
-        <div class="score-caption">예비 점수<br>(빠른 추정)</div>
         ${actionHtml}
       </div>
     </div>`;
