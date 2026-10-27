@@ -178,7 +178,7 @@ function renderContributors(contributors) {
     const name = c.github_login || c.display_name || '익명';
     const pct = Math.round(100 * c.commit_count / max);
     const recent = c.last_commit_at ? ` · 마지막 커밋 ${fmtDate(c.last_commit_at)}` : '';  // 오래된 저장 결과에서 '오늘 기준 N일 전'으로 읽히지 않게 날짜로 표시
-    return `<div class="c-row" style="cursor:pointer;" onclick="window.openContributorDrilldown(${c.id})" title="소유 파일·협업자 보기">`
+    return `<div class="c-row" style="cursor:pointer;" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([c.id]))}" title="소유 파일·협업자 보기">`
       + `<div class="avatar" style="background:#E6F1FB;color:#185FA5;">${esc(name[0].toUpperCase())}</div>`
       + `<div class="c-info"><div class="c-name">${esc(name)}</div><div class="c-meta">커밋 ${num(c.commit_count)}개${recent}</div></div>`
       + `<div class="bar-wrap"><div class="bar-fill bar-blue" style="width:${pct}%;"></div></div>`

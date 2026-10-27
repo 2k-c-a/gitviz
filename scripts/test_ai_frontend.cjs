@@ -794,6 +794,19 @@ test('팀원 결과(읽기 전용): 주소와 조회 API', async () => {
   assert.deepEqual(calls.map((c) => c[1]), ['GET', 'GET', 'GET']);                      // 읽기만 한다
 });
 
+test('desktop AI transport skips web CSRF and preserves idempotency without retrying a rejected mutation', async () => {
+  const { createAiClient } = await js('ai-api.js');
+  const calls = [];
+  const api = createAiClient({ authMode: 'desktop', fetchImpl: async (url, options) => {
+    calls.push([url, options]);
+    return { ok: false, status: 403, headers: { get: () => null }, json: async () => ({ error: { code: 'CSRF_FAILED', message: 'fixture' } }) };
+  } });
+  await assert.rejects(api.createInput({ repository_id: 2 }, 'same-desktop-key'));
+  assert.equal(calls.length, 1); assert.equal(calls[0][0], '/api/ai/v1/inputs');
+  assert.equal(calls[0][1].headers['X-CSRF-Token'], undefined);
+  assert.equal(calls[0][1].headers['Idempotency-Key'], 'same-desktop-key');
+});
+
 (async () => {
   let failed = 0;
   for (const [name, fn] of tests) {

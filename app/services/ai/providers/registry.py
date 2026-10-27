@@ -10,9 +10,15 @@ from dataclasses import dataclass, replace
 import os
 from decimal import Decimal
 
-from app.core.ai_settings import get_ai_settings
 from app.schemas.ai import REVIEW_SCHEMA_VERSION, SUMMARY_SCHEMA_VERSION
 from app.services.ai.providers.base import Provider, ProviderProfile
+
+
+def get_ai_settings():
+    # The server default is unchanged; pure profile consumers inject their own
+    # environment and never load server configuration/SQLAlchemy.
+    from app.core.ai_settings import get_ai_settings as load
+    return load()
 
 DEFAULT_PROFILE_ID = 'claude-opus-5-5-v1'
 
@@ -112,20 +118,21 @@ class UnknownProvider(Exception):
     pass
 
 
-def get_profile(profile_id: str) -> ProviderProfile:
+def get_profile(profile_id: str, *, environment=None) -> ProviderProfile:
+    environment = os.environ if environment is None else environment
     if profile_id in ('lmstudio-local-v1', 'koboldcpp-local-v1'):
         profile = PROFILES[profile_id]
         prefix, port = LOCAL_RUNTIMES[profile.provider]
-        return replace(profile, model=os.getenv(f'AI_{prefix}_MODEL', '').strip(),
-            endpoint=os.getenv(f'AI_{prefix}_URL', f'http://127.0.0.1:{port}').strip(),
-            context_window=int(os.getenv(f'AI_{prefix}_CONTEXT_WINDOW', '8192')),
-            max_input_tokens=int(os.getenv(f'AI_{prefix}_MAX_INPUT_TOKENS', '4000')),
-            max_output_tokens=int(os.getenv(f'AI_{prefix}_MAX_OUTPUT_TOKENS', '4000')),
-            timeout_seconds=int(os.getenv(f'AI_{prefix}_TIMEOUT_SECONDS', '180')))
+        return replace(profile, model=environment.get(f'AI_{prefix}_MODEL', '').strip(),
+            endpoint=environment.get(f'AI_{prefix}_URL', f'http://127.0.0.1:{port}').strip(),
+            context_window=int(environment.get(f'AI_{prefix}_CONTEXT_WINDOW', '8192')),
+            max_input_tokens=int(environment.get(f'AI_{prefix}_MAX_INPUT_TOKENS', '4000')),
+            max_output_tokens=int(environment.get(f'AI_{prefix}_MAX_OUTPUT_TOKENS', '4000')),
+            timeout_seconds=int(environment.get(f'AI_{prefix}_TIMEOUT_SECONDS', '180')))
     if profile_id == 'ollama-local-v1':
-        return replace(PROFILES[profile_id], model=os.getenv('AI_OLLAMA_MODEL', 'qwen2.5-coder:7b').strip(),
-                       model_digest=os.getenv('AI_OLLAMA_MODEL_DIGEST', '').strip(),
-                       endpoint=os.getenv('AI_OLLAMA_URL', 'http://127.0.0.1:11434').strip())
+        return replace(PROFILES[profile_id], model=environment.get('AI_OLLAMA_MODEL', 'qwen2.5-coder:7b').strip(),
+                       model_digest=environment.get('AI_OLLAMA_MODEL_DIGEST', '').strip(),
+                       endpoint=environment.get('AI_OLLAMA_URL', 'http://127.0.0.1:11434').strip())
     try:
         return PROFILES[profile_id]
     except KeyError:

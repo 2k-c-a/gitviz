@@ -1,4 +1,4 @@
-"""AI 기능 운영 도구: 설정 점검·상태 확인·작업 취소·복구·기한 삭제. 사용법과 절차는 docs/AI_OPERATIONS.md.
+"""AI 기능 운영 도구: 설정 점검·상태 확인·작업 취소·복구·기한 삭제. 사용법과 절차는 docs/operations/ai.md.
 
     python scripts/ai_ops.py check                     설정·DB(migration)·Redis 점검(문제가 있으면 종료 코드 1)
     python scripts/ai_ops.py status                    작업·대기열·예산·보관 현황

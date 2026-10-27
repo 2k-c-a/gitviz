@@ -52,6 +52,12 @@ app.add_exception_handler(RequestValidationError, ai_validation_error_response)
 session_secret = os.getenv("SESSION_SECRET_KEY", "")
 if not session_secret or session_secret == "change-me-in-production":
     raise RuntimeError("SESSION_SECRET_KEY에 고유한 비밀키를 설정해야 합니다.")
+from app.desktop_auth_middleware import DesktopAuthMiddleware
+from app.api.desktop.auth import router as desktop_auth_router
+if os.getenv('DESKTOP_AUTH_ENABLED', '0') == '1':
+    from app.services.desktop_auth import settings as desktop_auth_settings
+    desktop_auth_settings()
+app.add_middleware(DesktopAuthMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=session_secret,
@@ -69,6 +75,7 @@ app.include_router(repository_router)
 app.include_router(analytics_router)
 app.include_router(snapshots_router)
 app.include_router(auth_router.router)
+app.include_router(desktop_auth_router)
 app.include_router(ai_inputs_router)   # AI 기능이 꺼져 있으면 모든 경로가 404를 돌려준다
 app.include_router(ai_credentials_router)
 app.include_router(ai_jobs_router)

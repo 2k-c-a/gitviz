@@ -1,3 +1,4 @@
+import { request } from './platform/transport.js';
 /* ── 내 분석 프로젝트 페이지: 로그인한 사용자가 직접 분석 요청한 레포 목록 ──
    myproj-list가 있을 때(=내 분석 프로젝트 페이지)만 동작한다. 로그인 여부는
    /api/auth/me 응답으로 직접 판단한다(login.js의 currentUser는 main.js의
@@ -97,25 +98,25 @@ function statusCallout(repo) {
 function actionButtons(repo, repoName, cardId) {
   if (repo.status === 'done') {
     return `
-      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="goPage('code-analysis', ${repo.id})">결과 보기</button>
-      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" onclick="openReanalyzeToast(${repo.id})">재분석</button>
-      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" onclick="openRemoveRepoModal('${esc(repoName)}','${cardId}')">제거</button>`;
+      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-action="goPage" data-args="${encodeURIComponent(JSON.stringify(['code-analysis', repo.id]))}">결과 보기</button>
+      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" data-action="openReanalyzeToast" data-args="${encodeURIComponent(JSON.stringify([repo.id]))}">재분석</button>
+      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId]))}">제거</button>`;
   }
   if (['running', 'pending', 'rate_limited'].includes(repo.status)) {
-    return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="openJobModal('poll', ${repo.id})">진행 확인</button>`;
+    return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-action="openJobModal" data-args="${encodeURIComponent(JSON.stringify(['poll', repo.id]))}">진행 확인</button>`;
   }
   if (repo.status === 'cancelled') {
-    return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="openJobModal('poll', ${repo.id})">진행 확인</button>`;
+    return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-action="openJobModal" data-args="${encodeURIComponent(JSON.stringify(['poll', repo.id]))}">진행 확인</button>`;
   }
   if (repo.status === 'failed') {
     const last = repo.last_analyzed_at
-      ? `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="goPage('code-analysis', ${repo.id})">마지막 성공 결과</button>` : '';
+      ? `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-action="goPage" data-args="${encodeURIComponent(JSON.stringify(['code-analysis', repo.id]))}">마지막 성공 결과</button>` : '';
     return `
       ${last}
-      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" onclick="openReanalyzeToast(${repo.id})">재시도</button>
-      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" onclick="openRemoveRepoModal('${esc(repoName)}','${cardId}')">제거</button>`;
+      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" data-action="openReanalyzeToast" data-args="${encodeURIComponent(JSON.stringify([repo.id]))}">재시도</button>
+      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId]))}">제거</button>`;
   }
-  return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" onclick="openRemoveRepoModal('${esc(repoName)}','${cardId}')">제거</button>`;
+  return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId]))}">제거</button>`;
 }
 
 function buildCard(repo) {
@@ -168,7 +169,7 @@ function renderList(repos) {
     listEl.innerHTML = `
       <div class="panel" style="padding:40px 20px;text-align:center;">
         <div style="font-size:13px;color:var(--text2);margin-bottom:14px;">아직 분석 요청한 레포지토리가 없습니다.</div>
-        <button class="btn-primary" onclick="goHome()">새 레포지토리 분석하기</button>
+        <button class="btn-primary" data-action="goHome">새 레포지토리 분석하기</button>
       </div>`;
     return;
   }
@@ -189,8 +190,8 @@ async function initMyProjectsPage() {
   let meRes, reposRes;
   try {
     [meRes, reposRes] = await Promise.all([
-      fetch('/api/auth/me', { credentials: 'include' }),
-      fetch('/repositories/mine', { credentials: 'include' }),
+      request('/api/auth/me', { credentials: 'include' }),
+      request('/repositories/mine', { credentials: 'include' }),
     ]);
   } catch {
     listEl.innerHTML = errorState('목록을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.');

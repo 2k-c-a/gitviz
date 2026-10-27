@@ -4,19 +4,22 @@
   생성 요청의 consent_manifest_hash로 되돌아와 실제 전송 후보와 같은지 확인하는 데 쓴다.
 - input_hash: 실행 fingerprint에 들어가는 입력 해시(manifest + 순서 + 문맥 크기 + 수집 방식).
 """
+from __future__ import annotations
+
 import math
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from app.collectors.ai_errors import CollectionError
-from app.collectors.git import ai_diff_collector
 from app.schemas.ai import (Coverage, ErrorCode, InputManifest, PRRevision,
                             PRTransferMetadata, TokenEstimate, canonical_hash)
 from app.services.ai import token_budget
-from app.services.ai.access import AIError
 from app.services.ai.providers.registry import current_profile
 from app.services.ai.difftext import diff_lines  # noqa: F401  (S5 호환: 여기서도 가져다 쓴다)
 from app.services.ai.content_policy import POLICY_VERSION
+if TYPE_CHECKING:
+    from app.services.ai.access import AIError
 
 COLLECTOR_VERSION = 'change-diff-context25-v2'
 TOKEN_METHOD = 'local-conservative-v1'
@@ -59,7 +62,7 @@ def estimate_tokens(payload_bytes: int, metadata: PRTransferMetadata, file_count
 
 
 def assemble(collected, *, revision: PRRevision, revision_id: UUID, metadata: PRTransferMetadata,
-             policy_version: str = POLICY_VERSION) -> BuiltInput:
+             policy_version: str = POLICY_VERSION, profile=None) -> BuiltInput:
     manifest = InputManifest(revision_id=revision_id, revision=revision, policy_version=policy_version,
                              pr_metadata_hash=canonical_hash(metadata), pr_metadata=metadata,
                              files=[f.manifest for f in collected.files],
@@ -70,7 +73,7 @@ def assemble(collected, *, revision: PRRevision, revision_id: UUID, metadata: PR
     return BuiltInput(manifest=manifest, manifest_hash=manifest_hash, input_hash=input_hash,
                       coverage=collected.coverage,
                       token_estimate=estimate_tokens(collected.total_bytes, metadata,
-                                                     sum(1 for f in collected.files if f.payload is not None)))
+                                                     sum(1 for f in collected.files if f.payload is not None), profile=profile))
 
 
 def remote_url_for(repo_url: str) -> str:
@@ -87,6 +90,7 @@ def error_code_for(exc: CollectionError) -> str:
 
 
 def to_ai_error(exc: CollectionError) -> AIError:
+    from app.services.ai.access import AIError
     headers = {}
     retry_after = getattr(exc, 'retry_after', None)
     if retry_after:
@@ -94,4 +98,6 @@ def to_ai_error(exc: CollectionError) -> AIError:
     return AIError(exc.code, exc.message, retryable=exc.retryable, headers=headers)
 
 
-CONTEXT_LINES = ai_diff_collector.CONTEXT_LINES
+# Stable collector contract; importing this pure assembler must not load the
+# server's clone manager, DB authorization or Git credentials.
+CONTEXT_LINES = 25

@@ -121,4 +121,6 @@ if __name__ == '__main__':
     try:
         main()
     finally:
-        (ROOT / 'INTEGRATION_RESULTS.json').write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
+        from scripts.validation_reports import write_validation_report
+        output = write_validation_report('production-integration', results)
+        print(f'Validation report: {output}', flush=True)

@@ -1,3 +1,4 @@
+import { request } from './platform/transport.js';
 /* ── 분석 이력 · 두 결과 비교 페이지 ──
    hist-tbody가 있을 때(=분석 이력 페이지)만 동작한다.
    - GET /repositories/{id}/snapshots        : 메타데이터만 최신순, before_id 페이지네이션(결과 payload는 받지 않는다)
@@ -280,7 +281,7 @@ async function initHistoryPage() {
   REPO_ID = getRepoId();
   CURRENT = st.repo === REPO_ID ? st.snapshot : null;
 
-  fetch(`/repositories/${REPO_ID}`, { credentials: 'include' })
+  request(`/repositories/${REPO_ID}`, { credentials: 'include' })
     .then(r => (r.ok ? r.json() : null))
     .then(r => { if (r && r.url) setText('hist-repo-title', r.url.replace('https://github.com/', '')); })
     .catch(() => {});

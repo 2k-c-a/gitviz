@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "organized_on": "2026-10-23",
+  "timezone": "Asia/Seoul",
+  "source_commit": "a8351f0bf24c78625990f8756e5a03fc42a002c6",
+  "baseline": "docs/audit/preservation-baseline.json",
+  "archive_policy": "Byte-identical originals retain their original relative tree. Current documents are separate maintained guidance.",
+  "files": {
+    "HANDOFF.md": {
+      "archive": "docs/archive/originals/HANDOFF.md",
+      "current": null
+    },
+    "INTEGRATION_RESULTS.json": {
+      "archive": "docs/archive/originals/INTEGRATION_RESULTS.json",
+      "current": null
+    },
+    "INTEGRATION_VALIDATION.md": {
+      "archive": "docs/archive/originals/INTEGRATION_VALIDATION.md",
+      "current": null
+    },
+    "METRICS.md": {
+      "archive": "docs/archive/originals/METRICS.md",
+      "current": "docs/contracts/metrics.md"
+    },
+    "README.md": {
+      "archive": "docs/archive/originals/README.md",
+      "current": "README.md"
+    },
+    "REVIEW_2026-10-02.md": {
+      "archive": "docs/archive/originals/REVIEW_2026-10-02.md",
+      "current": null
+    },
+    "SNAPSHOT_AND_ACCESS.md": {
+      "archive": "docs/archive/originals/SNAPSHOT_AND_ACCESS.md",
+      "current": "docs/architecture/repository-access-and-snapshots.md"
+    },
+    "SNAPSHOT_INTEGRATION_RESULTS.json": {
+      "archive": "docs/archive/originals/SNAPSHOT_INTEGRATION_RESULTS.json",
+      "current": null
+    },
+    "docs/AI_ASSISTANT_PLAN_REVIEW_2026-10-07.md": {
+      "archive": "docs/archive/originals/docs/AI_ASSISTANT_PLAN_REVIEW_2026-10-07.md",
+      "current": null
+    },
+    "docs/AI_EVALUATION_PROTOCOL.md": {
+      "archive": "docs/archive/originals/docs/AI_EVALUATION_PROTOCOL.md",
+      "current": "docs/validation/protocols/ai-evaluation.md"
+    },
+    "docs/AI_INTERFACE_CONTRACT.md": {
+      "archive": "docs/archive/originals/docs/AI_INTERFACE_CONTRACT.md",
+      "current": "docs/contracts/ai-api.md"
+    },
+    "docs/AI_LOCAL_MODEL_PLAN.md": {
+      "archive": "docs/archive/originals/docs/AI_LOCAL_MODEL_PLAN.md",
+      "current": "docs/operations/providers.md"
+    },
+    "docs/AI_MVP_ACCEPTANCE.md": {
+      "archive": "docs/archive/originals/docs/AI_MVP_ACCEPTANCE.md",
+      "current": null
+    },
+    "docs/AI_OPERATIONS.md": {
+      "archive": "docs/archive/originals/docs/AI_OPERATIONS.md",
+      "current": "docs/operations/ai.md"
+    },
+    "docs/AI_PROVIDER_SUPPORT.md": {
+      "archive": "docs/archive/originals/docs/AI_PROVIDER_SUPPORT.md",
+      "current": "docs/operations/providers.md"
+    },
+    "docs/AI_S9_UI_DESIGN.md": {
+      "archive": "docs/archive/originals/docs/AI_S9_UI_DESIGN.md",
+      "current": "docs/contracts/frontend.md"
+    },
+    "docs/AI_TEAM_ACCESS.md": {
+      "archive": "docs/archive/originals/docs/AI_TEAM_ACCESS.md",
+      "current": null
+    },
+    "docs/ANALYSIS_VALIDATION_PLAN.md": {
+      "archive": "docs/archive/originals/docs/ANALYSIS_VALIDATION_PLAN.md",
+      "current": "docs/product/analysis-validation-plan.md"
+    },
+    "docs/BACKEND_IMPROVEMENTS.md": {
+      "archive": "docs/archive/originals/docs/BACKEND_IMPROVEMENTS.md",
+      "current": null
+    },
+    "docs/DATA_COLLECTION_HANDOFF.md": {
+      "archive": "docs/archive/originals/docs/DATA_COLLECTION_HANDOFF.md",
+      "current": "docs/contracts/collection.md"
+    },
+    "docs/GitViz_AI_도우미_기획_v0.2.md": {
+      "archive": "docs/archive/originals/docs/GitViz_AI_도우미_기획_v0.2.md",
+      "current": null
+    },
+    "docs/GitViz_AI_요구사항_및_시스템설계_v0.4.md": {
+      "archive": "docs/archive/originals/docs/GitViz_AI_요구사항_및_시스템설계_v0.4.md",
+      "current": null
+    },
+    "docs/GitViz_AI_의존성기반_구현계획_v0.5.md": {
+      "archive": "docs/archive/originals/docs/GitViz_AI_의존성기반_구현계획_v0.5.md",
+      "current": "docs/product/roadmap.md"
+    },
+    "docs/GitViz_AI_활용_기획_v0.3.md": {
+      "archive": "docs/archive/originals/docs/GitViz_AI_활용_기획_v0.3.md",
+      "current": null
+    },
+    "docs/LIVE_VALIDATION.md": {
+      "archive": "docs/archive/originals/docs/LIVE_VALIDATION.md",
+      "current": null
+    },
+    "docs/LIVE_VALIDATION_INITIAL.json": {
+      "archive": "docs/archive/originals/docs/LIVE_VALIDATION_INITIAL.json",
+      "current": null
+    },
+    "docs/LIVE_VALIDATION_RESULTS.json": {
+      "archive": "docs/archive/originals/docs/LIVE_VALIDATION_RESULTS.json",
+      "current": null
+    },
+    "docs/POSTGRES_VALIDATION_2026-10-03.md": {
+      "archive": "docs/archive/originals/docs/POSTGRES_VALIDATION_2026-10-03.md",
+      "current": null
+    },
+    "docs/VISUALIZATION_HANDOFF.md": {
+      "archive": "docs/archive/originals/docs/VISUALIZATION_HANDOFF.md",
+      "current": "docs/contracts/frontend.md"
+    },
+    "docs/WEB_INTEGRATION_2026-10-03.md": {
+      "archive": "docs/archive/originals/docs/WEB_INTEGRATION_2026-10-03.md",
+      "current": null
+    },
+    "migrations/README": {
+      "archive": "docs/archive/originals/migrations/README",
+      "current": "migrations/README"
+    }
+  }
+}

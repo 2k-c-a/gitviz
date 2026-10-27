@@ -3,7 +3,7 @@
     python scripts/ai_ui_mock_server.py [port]      # 기본 8765
     http://127.0.0.1:8765/pages/ai-review.html?repo=1
 
-frontend/를 그대로 서빙하고 /api/ai/v1/* 응답을 계약(docs/AI_INTERFACE_CONTRACT.md)의 모양으로 흉내 낸다.
+frontend/를 그대로 서빙하고 /api/ai/v1/* 응답을 계약(docs/contracts/ai-api.md)의 모양으로 흉내 낸다.
 시나리오는 /mock/set?key=value (여러 개 가능)와 /mock/reset으로 바꾼다:
   unauth=1  disabled=1  pulls_error=429|503|404  xss=1  outcome=success|uncertain|result_lost|cancelled|access|keyless
   empty=1  expired=1  no_reviewable=1  head_changed=1  transfer_off=1  no_key=1  fail_create=<에러코드>  slow=1

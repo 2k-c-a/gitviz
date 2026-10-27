@@ -144,9 +144,10 @@ class RemoteDatabaseCA(unittest.TestCase):
             with ai_env(DATABASE_SSL_CA=str(bad)):
                 with self.assertRaises(ssl.SSLError):
                     _async_ssl_context(REMOTE_DB_ASYNC)
-            with ai_env(DATABASE_SSL_CA=''):                     # 기존 동작 유지
+            with ai_env(DATABASE_SSL_CA=''):                     # System trust; verification stays mandatory.
                 ctx = _async_ssl_context(REMOTE_DB_ASYNC)
-                self.assertEqual(ctx.verify_mode, ssl.CERT_NONE)
+                self.assertEqual(ctx.verify_mode, ssl.CERT_REQUIRED)
+                self.assertTrue(ctx.check_hostname)
 
     def test_sync_connect_args(self):
         from app.core.database import _sync_connect_args

@@ -73,7 +73,9 @@ def main(auth_fixture=False):
         check('empty data explicitly reported',empty['file_count']==0 and empty['data_quality']['commit_count']==0 and empty['data_quality']['target_tree_file_count']>0)
         coupling=client.get(f'/repositories/9/analytics/coupling?snapshot_id={sid}').json()
         check('directional ratios/support',all(p['a_to_b_ratio']==round(p['co_change_count']/p['change_count_a'],4) and p['low_support']==(p['co_change_count']<5) for p in coupling['pairs']))
-    Path('SNAPSHOT_INTEGRATION_RESULTS.json').write_text(json.dumps({'authorization_mode':'test_fixture' if auth_fixture else 'live_github','checks':checks},ensure_ascii=False,indent=2),encoding='utf-8')
+    from scripts.validation_reports import write_validation_report
+    output = write_validation_report('snapshot-integration', {'authorization_mode':'test_fixture' if auth_fixture else 'live_github','checks':checks})
+    print(f'Validation report: {output}')
     print(f'{len(checks)} checks passed')
 
 

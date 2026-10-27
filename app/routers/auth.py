@@ -41,6 +41,10 @@ GITHUB_SCOPES = "read:user,repo"
 # ── 헬퍼: 세션에서 로그인 사용자 ID 꺼내기 ───────────────────────────────────
 
 def _get_session_user_id(request: Request) -> uuid.UUID | None:
+    from app.services.desktop_auth import DesktopPrincipal
+    principal = getattr(request.state, 'desktop_principal', None)
+    if isinstance(principal, DesktopPrincipal):
+        return principal.user_id
     raw = request.session.get("user_id")
     if not raw:
         return None
@@ -59,6 +63,8 @@ async def github_login(request: Request):
     """
     state = secrets.token_urlsafe(32)
     request.session["oauth_state"] = state
+    # Signed browser session binds the existing OAuth state to one desktop flow.
+    request.session['desktop_oauth_flow'] = request.session.get('desktop_flow')
 
     params = urlencode(
         {
@@ -89,6 +95,7 @@ async def github_callback(
     """
     # ① CSRF state 검증
     stored_state = request.session.pop("oauth_state", None)
+    desktop_flow = request.session.pop('desktop_oauth_flow', None)
     if not stored_state or stored_state != state:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -120,7 +127,8 @@ async def github_callback(
     request.session["user_id"] = str(user.id)
     request.session.pop("csrf_token", None)  # 로그인 시 CSRF 토큰 재발급
     return RedirectResponse(
-        url=f"{FRONTEND_URL}/",
+        url=(f'/api/desktop/v1/auth/authorize?{urlencode({"flow": desktop_flow})}'
+             if desktop_flow and desktop_flow == request.session.get('desktop_flow') else f"{FRONTEND_URL}/"),
         status_code=status.HTTP_302_FOUND,
     )
 

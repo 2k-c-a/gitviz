@@ -1,7 +1,7 @@
 <!-- ═══════════ NAV ═══════════ -->
 <nav class="nav">
   <a class="logo"
-   onclick="goHome()">
+   data-action="goHome">
     <div class="logo-dot"></div>
     GitViz
   </a>
@@ -12,11 +12,11 @@
 
 
   <div class="nav-links" id="nav-links">
-    <div class="nav-link" onclick="goPage('search')">
+    <div class="nav-link" data-action="goPage" data-args="%5B%22search%22%5D">
       레포 검색
     </div>
 
-<div class="nav-link" onclick="goAiReview()">
+<div class="nav-link" data-action="goAiReview">
   AI 리뷰
 </div>
 
@@ -42,7 +42,7 @@
           align-items: center;
           gap: 6px;
         "
-        onclick="githubLogin()"
+        data-action="githubLogin"
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
           <path
@@ -67,9 +67,9 @@
           border-radius: var(--r-md);
           transition: background 0.12s;
         "
-        onmouseenter="this.style.background = 'var(--bg2)'"
-        onmouseleave="this.style.background = ''"
-        onclick="toggleUserMenu()"
+        data-hover="var(--bg2)"
+        data-leave=""
+        data-action="toggleUserMenu"
       >
         <div
           class="avatar"
@@ -130,11 +130,9 @@
               cursor: pointer;
               border-radius: var(--r-md);
             "
-            onmouseenter="this.style.background = 'var(--bg2)'"
-            onmouseleave="this.style.background = ''"
-           onclick="
-            goMyProjects();
-            closeUserMenu();">
+            data-hover="var(--bg2)"
+            data-leave=""
+           data-action="goMyProjects">
             내 분석 프로젝트
           </div>
           <div
@@ -145,9 +143,9 @@
               cursor: pointer;
               border-radius: var(--r-md);
             "
-            onmouseenter="this.style.background = 'var(--red-light)'"
-            onmouseleave="this.style.background = ''"
-            onclick="logout()"
+            data-hover="var(--red-light)"
+            data-leave=""
+            data-action="logout"
           >
             로그아웃
           </div>

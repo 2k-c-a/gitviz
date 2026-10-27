@@ -1,1 +1,13 @@
-Generic single-database configuration.
+GitViz schema migrations
+
+Run from the repository root after configuring the environment:
+    python -m alembic upgrade head
+
+The application does not install schema at import/startup.
+Current migration files form a single head: a9d2f4c6e8b0 (reviewed 2026-10-23).
+This file does not assert the revision deployed to any database.
+
+Setup: docs/operations/setup.md
+Snapshot/access maintenance: docs/architecture/repository-access-and-snapshots.md
+Validation and limits: docs/validation/current-status.md
+Historical original: docs/archive/originals/migrations/README

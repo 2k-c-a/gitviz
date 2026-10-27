@@ -1,0 +1,13 @@
+{
+  "include": [
+    "app/workspace",
+    "tests/workspace",
+    "scripts/build_workspace_agent.py"
+  ],
+  "typeCheckingMode": "strict",
+  "pythonVersion": "3.12",
+  "pythonPlatform": "Windows",
+  "venvPath": ".validation",
+  "venv": "venv-workspace",
+  "reportMissingTypeStubs": false
+}

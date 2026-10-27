@@ -1,0 +1,119 @@
+import './profile';
+/** P06 frozen production agent, owned loopback fake provider, no Python dependency. */
+import assert from 'node:assert/strict';
+import { app, safeStorage } from 'electron';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { createServer } from 'node:http';
+import { Agent } from '../src/agent';
+import { Contracts } from '../src/contracts';
+import { registerHealth } from '../src/ipc';
+import { registerProjects } from '../src/projects';
+import { registerProposals } from '../src/proposals';
+import { registerImpact } from '../src/impact';
+import { registerScheme, serveAssets, APP_URL } from '../src/app-protocol';
+import { createWindow } from '../src/window';
+import { loadKey } from '../src/secrets';
+
+registerScheme(); app.on('window-all-closed', () => {});
+let phase = 'startup';
+const deadline = setTimeout(() => { process.stderr.write(`FAIL P06 deadline (${phase})\n`); app.exit(1); }, 90000);
+async function hashes(directory: string, prefix = ''): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name), name = prefix + entry.name;
+    if (entry.isDirectory()) Object.assign(result, await hashes(path, name + '/'));
+    else result[name] = createHash('sha256').update(await readFile(path)).digest('hex');
+  }
+  return result;
+}
+void app.whenReady().then(async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'gitviz-p06-'));
+  const root = join(temporary, '한글 project'); await mkdir(root);
+  const git = (...args: string[]) => execFileSync(join(process.env.ProgramFiles ?? 'C:/Program Files', 'Git/cmd/git.exe'), ['-C', root, ...args], {
+    env: { SystemRoot: process.env.SystemRoot, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: 'NUL' }, stdio: 'pipe', windowsHide: true });
+  git('init', '-b', 'main'); git('config', 'user.name', 'P06 fixture'); git('config', 'user.email', 'fixture@example.invalid'); git('config', 'core.autocrlf', 'false');
+  await writeFile(join(root, 'app.py'), 'def own(): return 1\r\nvalue = 1\r\nown()\r\n'); await writeFile(join(root, 'app.ts'), 'export function hello(){return 1;}\nconst value = 1;\nhello();\n'); git('add', '.'); git('commit', '-m', 'fixture');
+  await writeFile(join(root, 'app.py'), 'def own(): return 1\r\nvalue = 2\r\nown()\r\n'); await writeFile(join(root, 'app.ts'), 'export function hello(){return 1;}\nconst value = 2;\nhello();\n');
+
+  await writeFile(join(root, 'package.json'), JSON.stringify({ scripts: { pretest: 'echo MUST_NOT_EXECUTE', test: 'node test.js' }, devDependencies: { typescript: '1' } }));
+  await writeFile(join(root, 'package-lock.json'), '{}');
+  const before = await hashes(root);
+  const contracts = new Contracts(join(__dirname, '../schema'));
+  const agent = new Agent(contracts);
+  const model = createServer((request, response) => {
+    const chunks: Buffer[] = []; let size = 0;
+    request.on('data', (chunk: Buffer) => { size += chunk.length; if (size > 65536) request.destroy(); else chunks.push(chunk); });
+    request.on('end', () => {
+      try {
+        assert.equal(request.method, 'POST'); assert.equal(request.url, '/api/chat');
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { messages: { role: string; content: string }[] };
+        const input = JSON.parse(body.messages.find(item => item.role === 'user')!.content) as { purpose: string; files: { fileId: string; facet: string; path: string; preimageHash: string; source: string }[] };
+        const changes = input.files.map(file => {
+          const original = file.source.split(/\r?\n/)[1]!;
+          assert.equal(original.includes(' = 2'), true);
+          return { fileId: file.fileId, facet: file.facet, path: file.path, preimageHash: file.preimageHash,
+            patch: `--- a/${file.path}\n+++ b/${file.path}\n@@ -2,1 +2,1 @@\n-${original}\n+${original.replace(' = 2', ' = 8')}\n` };
+        });
+        const output = { schemaVersion: 'workspace-refactor-v1', purpose: input.purpose, changes,
+          expectedEffects: ['Fixture prediction.'], risks: ['Not executed.'], validationSuggestions: ['Separate validation.'], limitations: [] };
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ model: 'qwen2.5-coder:7b', done: true, done_reason: 'stop', message: { role: 'assistant', content: JSON.stringify(output) }, prompt_eval_count: 100, eval_count: 50 }));
+      } catch { response.writeHead(400); response.end('{}'); }
+    });
+  });
+  const directory = join(temporary, 'data');
+  const executable = app.isPackaged ? join(process.resourcesPath, 'agent/gitviz-workspace-agent.exe') : join(__dirname, '../../../dist/workspace-agent/agent/gitviz-workspace-agent.exe');
+  const key = () => loadKey(join(directory, 'key.dpapi'), { available: () => safeStorage.isAsyncEncryptionAvailable(), encrypt: value => safeStorage.encryptStringAsync(value), decrypt: async value => (await safeStorage.decryptStringAsync(value)).result });
+  const window = createWindow(false);
+  const health = registerHealth(window, () => agent.health());
+  const projects = registerProjects(window, agent, contracts, { select: async () => root, confirm: async () => true });
+  let nativeConsent = false;
+  const proposals = registerProposals(window, agent, contracts, { confirm: async () => nativeConsent });
+  const impact = registerImpact(window, agent, contracts);
+  const evaluate = (source: string) => window.webContents.executeJavaScript(source);
+  async function wait(source: string): Promise<void> {
+    for (let i = 0; i < 200; i++) { if (await evaluate(source)) return; await new Promise(resolve => setTimeout(resolve, 30)); }
+    throw new Error('ASSERTION: ' + source.slice(0, 70));
+  }
+  try {
+    await new Promise<void>((resolve, reject) => { model.once('error', reject); model.listen(11434, '127.0.0.1', resolve); });
+    await serveAssets(join(__dirname, '../ui')); await agent.start(executable, directory, key); await window.loadURL(APP_URL);
+    phase = 'register'; const project = await evaluate('workspace.selectAndRegister()');
+    await evaluate(`document.getElementById('reload-projects').click()`);
+    await wait(`document.querySelectorAll('#project-picker option').length===2`);
+    await evaluate(`document.getElementById('project-picker').value=${JSON.stringify(project.id)};document.getElementById('project-picker').dispatchEvent(new Event('change'));`);
+    await wait(`document.querySelectorAll('#change-selection input').length>=2`);
+    phase = 'capture';
+    await evaluate(`for(const item of document.querySelectorAll('#change-selection input'))if(['app.py','app.ts'].includes(item.dataset.path))item.checked=true;document.getElementById('capture-changes').click()`);
+    await wait(`document.getElementById('capture-message').textContent==='선택한 입력을 고정했습니다.'`);
+    phase = 'refactor-generate';
+    await evaluate(`document.getElementById('review-kind').value='refactor';document.getElementById('review-kind').dispatchEvent(new Event('input'));document.getElementById('review-preview').click()`);
+    await wait(`document.getElementById('review-preview-meta').textContent.includes('user-pc')`);
+    await evaluate(`document.getElementById('review-consent').click();document.getElementById('review-start').click()`);
+    await wait(`document.getElementById('review-result').textContent.includes('succeeded')`);
+    await evaluate(`document.querySelector('#review-result button').click()`);
+    await wait(`document.getElementById('proposal-view').textContent.includes('pending')`);
+    assert.deepEqual(await hashes(root), before);
+    await assert.rejects(evaluate(`workspace.applyProposal({projectId:${JSON.stringify(project.id)},proposalId:crypto.randomUUID(),approvalId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID()})`), /APPROVAL_REQUIRED/);
+    phase = 'native-cancel'; await evaluate(`document.querySelectorAll('#proposal-view button')[0].click()`);
+    await new Promise(resolve => setTimeout(resolve, 100)); assert.deepEqual(await hashes(root), before);
+    assert.equal(await evaluate(`document.querySelectorAll('#proposal-view button')[1].disabled`), true);
+    nativeConsent = true; phase = 'native-approve';
+    await evaluate(`document.querySelectorAll('#proposal-view button')[0].click()`);
+    await wait(`document.querySelectorAll('#proposal-view button')[1].disabled===false`);
+    phase = 'apply'; await evaluate(`document.querySelectorAll('#proposal-view button')[1].click()`);
+    await wait(`document.querySelector('#proposal-view h3')?.textContent.startsWith('applied')`);
+    const applied = await hashes(root); assert.equal(before['.git/index'], applied['.git/index']);
+    assert.notEqual(before['app.py'], applied['app.py']); assert.notEqual(before['app.ts'], applied['app.ts']);
+    phase = 'impact'; await evaluate(`document.getElementById('analyze-impact').click()`);
+    await wait(`document.getElementById('impact-view').textContent.includes('typescript-6.0.3-v1')`);
+    assert.equal(await evaluate(`document.getElementById('impact-view').textContent.includes('python-ast-v1')`), true);
+    assert.equal(await evaluate(`document.getElementById('impact-view').textContent.includes('unavailable')`), true);
+    process.stdout.write('PASS P06 frozen agent native approval/apply Python/TS evidence; owned-loopback-fake-only; no Python runtime\n');
+  } finally { const diagnostic = await readFile(join(directory, 'p06-fixture-apply-error.json'), 'utf8').catch(() => ''); if (diagnostic) process.stderr.write(diagnostic + '\n'); model.closeAllConnections(); model.close(); impact(); proposals(); health(); projects(); window.destroy(); await agent.stop(); clearTimeout(deadline); await rm(temporary, { recursive: true, force: true }); }
+}).then(() => app.exit(0)).catch(error => { process.stderr.write(`FAIL P06 (${phase}): ${error instanceof Error ? error.message.slice(0, 120) : 'assertion'}\n`); app.exit(1); });
+

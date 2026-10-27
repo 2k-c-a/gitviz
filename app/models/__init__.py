@@ -20,3 +20,4 @@ from app.models.ai_evidence import AIEvidence
 # Retired S12/S13 models remain registered for historical migrations/data only.
 from app.models.ai_team import Team, TeamMember, TeamRepository, TeamResourceShare, TeamReport
 from app.models.ai_handover import HandoverTarget, HandoverPreparationVersion, HandoverGeneration, HandoverDocument, HandoverDocumentVersion
+from app.models.desktop_session import DesktopAuthTransaction, DesktopSession

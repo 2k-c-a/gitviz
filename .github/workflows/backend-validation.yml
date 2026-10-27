@@ -3,6 +3,16 @@ on:
   push:
   pull_request:
 jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -B docs/audit/check_documents.py
+      - run: python -B docs/audit/test_check_documents.py
+      - run: python -B scripts/test_validation_reports.py
   postgres:
     runs-on: ubuntu-latest
     services:
@@ -39,6 +49,8 @@ jobs:
       - run: node scripts/test_metric_display.cjs
       - run: python scripts/test_ai_contracts.py
       - run: python scripts/test_ai_security.py
+      - run: python scripts/test_desktop_auth.py
+      - run: python scripts/test_desktop_api_compat.py
       - run: python scripts/test_ai_schema.py
       - run: python scripts/test_ai_pr_collection.py
       - run: python scripts/test_ai_commit_collection.py

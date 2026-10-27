@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script src="../vendor/chart-4.4.1/chart.umd.min.js"></script>
     <link rel="stylesheet" href="../css/index.css">
     <title>GitViz</title>
 </head>
@@ -22,14 +22,14 @@
         <div class="status-dot" style="background:#639922;"></div>
         <span style="font-size:12px;color:var(--text2);">분석 완료</span>
       </div>
-      <button class="btn-secondary" data-auth="1" id="btn-reanalyze" onclick="openReanalyzeToast()">재분석</button>
+      <button class="btn-secondary" data-auth="1" id="btn-reanalyze" data-action="openReanalyzeToast">재분석</button>
     </div>
   </div>
   <div class="sub-tabs">
     <div class="sub-tab active">타임라인</div>
-    <div class="sub-tab" onclick="goPage('network')">협업 네트워크</div>
-    <div class="sub-tab" onclick="goPage('code-analysis')">코드분석</div>
-    <div class="sub-tab" onclick="goPage('history')">분석 이력·비교</div>
+    <div class="sub-tab" data-action="goPage" data-args="%5B%22network%22%5D">협업 네트워크</div>
+    <div class="sub-tab" data-action="goPage" data-args="%5B%22code-analysis%22%5D">코드분석</div>
+    <div class="sub-tab" data-action="goPage" data-args="%5B%22history%22%5D">분석 이력·비교</div>
   </div>
   <div class="body">
     <div class="metrics-4">

@@ -1,3 +1,4 @@
+import { request, isDesktop } from './platform/transport.js';
 /* ── 결과 Analytics API 클라이언트 ──
    프론트는 FastAPI가 같은 오리진(/)에서 서빙하므로 상대경로로 호출한다.
 
@@ -26,6 +27,7 @@ export function getRepoId() {
     setRepoId(fromQuery);
     return fromQuery;
   }
+  if (isDesktop()) return null;
   const stored = parseInt(localStorage.getItem(REPO_KEY), 10);
   if (Number.isInteger(stored)) return stored;
   return 1;
@@ -58,9 +60,10 @@ export class ApiError extends Error {
 }
 
 async function readJSON(url) {
+  if (isDesktop() && /\/repositories\/(?:null|undefined)\//.test(url)) throw new ApiError('원격 분석 저장소를 먼저 선택하세요.', 409, null);
   let res;
   try {
-    res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+    res = await request(url, { credentials: 'same-origin', cache: 'no-store' });
   } catch {
     throw new ApiError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.', 0, null);
   }
@@ -76,6 +79,7 @@ async function readJSON(url) {
 /* 저장소별 결과 메타 — 한 번만 조회한다. 주소에 snapshot이 있으면 그 결과를, 없으면 최신 결과를 연다.
    조회가 끝나면 주소에 repo/snapshot을 확정해 넣어, 이후 탭 이동·새로고침·뒤로 가기에서도 같은 결과를 본다. */
 const snapshotMetas = new Map();
+globalThis.addEventListener?.('gitviz-account-changed', () => snapshotMetas.clear());
 export function fetchSnapshotMeta(id) {
   if (!snapshotMetas.has(id)) {
     const requested = getSnapshotId(id);

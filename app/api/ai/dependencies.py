@@ -40,6 +40,9 @@ def require_csrf(request: Request) -> None:
     """변경 요청의 Origin과 X-CSRF-Token을 검사한다. 안전한 메서드는 통과."""
     if request.method.upper() in SAFE_METHODS:
         return
+    from app.services.desktop_auth import DesktopPrincipal
+    if isinstance(getattr(request.state, 'desktop_principal', None), DesktopPrincipal):
+        return
     fail = AIError(ErrorCode.CSRF_FAILED, '요청을 확인할 수 없습니다.')
     origin = (request.headers.get('origin') or '').strip().lower()
     if origin not in get_ai_settings().allowed_origins:
@@ -60,6 +63,9 @@ def ai_error_response(request: Request, exc: AIError) -> JSONResponse:
 
 async def ai_validation_error_response(request: Request, exc: RequestValidationError) -> JSONResponse:
     """AI API의 요청 검증 오류를 ErrorEnvelope로 바꾼다. 입력값은 담지 않고 문제 필드만 알린다."""
+    if request.url.path.startswith('/api/desktop/'):
+        return JSONResponse({'detail': '요청 형식이 올바르지 않습니다.'}, status_code=422,
+                            headers={'Cache-Control': 'private, no-store'})
     if not request.url.path.startswith('/api/ai/'):
         return await request_validation_exception_handler(request, exc)
     fields = sorted({'.'.join(str(p) for p in err['loc'] if p != 'body') or 'request' for err in exc.errors()})

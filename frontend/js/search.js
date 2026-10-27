@@ -1,3 +1,4 @@
+import { request } from './platform/transport.js';
 /* ── 저장소 검색 페이지: GitHub 레포 검색 + 경량 예비 점수 리스트 ──
    search-results가 있을 때(=검색 페이지)만 동작한다.
    GET /search/github-repositories (Track 01)가 채워주는 스키마를 그대로 그린다:
@@ -27,7 +28,7 @@ const normalizeUrl = (url) => String(url ?? '').trim().replace(/\/+$/, '').repla
 
 async function loadRegisteredMap() {
   try {
-    const res = await fetch('/repositories?limit=200');
+    const res = await request('/repositories?limit=200');
     if (!res.ok) return;
     const repos = await res.json();
     repos.forEach(r => registeredMap.set(normalizeUrl(r.url), r.id));
@@ -96,7 +97,7 @@ function buildCard(repo) {
       <div class="search-card-body">
         <div class="search-card-title">
           ${GITHUB_ICON}
-          <a class="search-card-name" href="${esc(repo.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="GitHub에서 열기">${esc(fullName)}</a>
+          <a class="search-card-name" href="${esc(repo.url)}" target="_blank" rel="noopener" data-action="stop" title="GitHub에서 열기">${esc(fullName)}</a>
           ${langBadge}
           ${registeredBadge}
         </div>
@@ -171,7 +172,7 @@ async function runSearch() {
   showLoading();
   btnEl.disabled = true;
   try {
-    const res = await fetch(`/search/github-repositories?q=${encodeURIComponent(q)}&sort=${encodeURIComponent(sortEl.value)}&per_page=20`);
+    const res = await request(`/search/github-repositories?q=${encodeURIComponent(q)}&sort=${encodeURIComponent(sortEl.value)}&per_page=20`);
     if (!res.ok) {
       if (res.status === 429) showError('GitHub 검색 API 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.');
       else showError(`검색에 실패했습니다 (HTTP ${res.status}).`);

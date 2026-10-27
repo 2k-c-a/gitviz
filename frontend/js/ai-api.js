@@ -1,3 +1,4 @@
+import { request, isDesktop } from './platform/transport.js';
 /* ── AI API 클라이언트 (/api/ai/v1) ──
    - 변경 요청에는 CSRF 토큰(X-CSRF-Token)을 붙인다. 토큰이 틀리면(403 CSRF_FAILED) 한 번 새로 받아 같은 요청을 다시 보낸다.
    - 접수 요청(POST /inputs·/jobs·/retry)은 호출하는 쪽이 정한 Idempotency-Key를 붙인다.
@@ -39,7 +40,7 @@ function query(params) {
   return s ? `?${s}` : '';
 }
 
-export function createAiClient({ fetchImpl = (u, o) => fetch(u, o), now = () => Date.now() } = {}) {
+export function createAiClient({ fetchImpl = (u, o) => request(u, o), now = () => Date.now(), authMode = isDesktop() ? 'desktop' : 'cookie' } = {}) {
   let csrf = null;
 
   async function loadCsrf(signal) {
@@ -87,8 +88,10 @@ export function createAiClient({ fetchImpl = (u, o) => fetch(u, o), now = () => 
     const mutating = method !== 'GET';
     const headers = { Accept: 'application/json' };
     if (mutating) {
-      if (!csrf) await loadCsrf(signal);
-      headers['X-CSRF-Token'] = csrf;
+      if (authMode === 'cookie') {
+        if (!csrf) await loadCsrf(signal);
+        headers['X-CSRF-Token'] = csrf;
+      }
       headers['Content-Type'] = 'application/json';
       if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
     }
@@ -105,7 +108,7 @@ export function createAiClient({ fetchImpl = (u, o) => fetch(u, o), now = () => 
     try {
       return await parse(res);
     } catch (e) {
-      if (mutating && !retried && e instanceof AiApiError && e.code === 'CSRF_FAILED') {
+      if (authMode === 'cookie' && mutating && !retried && e instanceof AiApiError && e.code === 'CSRF_FAILED') {
         csrf = null;                               // 토큰이 낡았다: 새로 받아 같은 요청(같은 멱등 key)을 한 번만 다시 보낸다
         return send(method, path, { params, body, signal, idempotencyKey }, true);
       }

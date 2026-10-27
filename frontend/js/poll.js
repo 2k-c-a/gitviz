@@ -1,3 +1,4 @@
+import { request } from './platform/transport.js';
 /* ── 작업 상태 폴링 컨트롤러 (DOM 의존 없음) ──
    GET /repositories/{id}/status 를 반복 조회한다.
    - 요청은 항상 직렬: 이전 요청이 끝나야 다음 요청을 예약한다(중복 요청 없음).
@@ -49,7 +50,7 @@ export function nextInterval(idle, hidden = false) {
 
 export function createStatusPoller({
   url,
-  fetchImpl = (u, o) => fetch(u, o),
+  fetchImpl = (u, o) => request(u, o),
   onUpdate,                       // (status) => 'stop' | void   — 정상 응답. 'stop'을 돌려주면 종료(완료·실패 등)
   onNotice = () => {},            // ({kind, message, retryAt, attempt, max, status}) — 재시도 대기 안내
   onStop = () => {},              // ({reason, status, message}) — 더 이상 조회하지 않음

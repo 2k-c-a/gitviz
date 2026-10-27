@@ -14,13 +14,13 @@
   <div class="dash-head">
     <div><div class="dash-title" id="hist-repo-title">—</div><div class="dash-sub">분석 이력 — 저장된 결과를 열어 보거나 두 결과를 비교합니다</div></div>
     <div style="display:flex;align-items:center;gap:10px;">
-      <button class="btn-secondary" data-auth="1" id="btn-reanalyze" onclick="openReanalyzeToast()">재분석</button>
+      <button class="btn-secondary" data-auth="1" id="btn-reanalyze" data-action="openReanalyzeToast">재분석</button>
     </div>
   </div>
   <div class="sub-tabs">
-    <div class="sub-tab" onclick="goPage('timeline')">타임라인</div>
-    <div class="sub-tab" onclick="goPage('network')">협업 네트워크</div>
-    <div class="sub-tab" onclick="goPage('code-analysis')">코드분석</div>
+    <div class="sub-tab" data-action="goPage" data-args="%5B%22timeline%22%5D">타임라인</div>
+    <div class="sub-tab" data-action="goPage" data-args="%5B%22network%22%5D">협업 네트워크</div>
+    <div class="sub-tab" data-action="goPage" data-args="%5B%22code-analysis%22%5D">코드분석</div>
     <div class="sub-tab active">분석 이력·비교</div>
   </div>
   <div class="body">

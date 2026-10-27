@@ -771,7 +771,7 @@ function renderContribution(bf, box) {
   }).join('');
 
   const owners = (bf.top_owners || []).slice(0, 5).map(o =>
-    `<div class="c-row" style="cursor:pointer;" onclick="window.openContributorDrilldown(${Number(o.contributor_id)})">
+    `<div class="c-row" style="cursor:pointer;" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([Number(o.contributor_id)]))}">
       <div class="c-info"><div class="c-name">${esc(o.name)}</div><div class="c-meta">한 명에게 집중된 파일 ${num(o.exclusive_file_count)}개</div></div></div>`).join('')
     || '<div class="c-meta">한 명 집중 파일이 없습니다.</div>';
   const modules = (bf.risky_modules || []).filter(m => m.bf1_count > 0).slice(0, 5).map(m =>

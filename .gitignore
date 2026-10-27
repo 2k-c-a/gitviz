@@ -13,6 +13,9 @@ venv/
 .venv/
 .validation/
 
+# Generated presentation and document outputs
+/outputs/
+
 # Secrets / environment (절대 커밋 금지)
 .env
 .env.*

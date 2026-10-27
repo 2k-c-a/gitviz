@@ -98,7 +98,7 @@ async function renderContributor(contributorId) {
   const files = owned.files || [];
   const filesHtml = files.length
     ? files.map(f => `
-        <div class="coup-row" style="cursor:pointer;" onclick="window.__ddPushFile(${Number(f.file_id)})" title="${esc(f.path)}">
+        <div class="coup-row" style="cursor:pointer;" data-action="__ddPushFile" data-args="${encodeURIComponent(JSON.stringify([Number(f.file_id)]))}" title="${esc(f.path)}">
           <div class="coup-file">${esc(f.path)}${f.is_bus_factor_risk ? ' <span class="badge badge-red" style="font-size:9px;">한 명 집중</span>' : ''}</div>
           <div class="coup-pct" title="이 파일의 관측 구간 변경 중 이 기여자의 비율">${pct(f.share)}%</div>
         </div>`).join('')
@@ -107,7 +107,7 @@ async function renderContributor(contributorId) {
   const collaborators = collab.collaborators || [];
   const collabHtml = collaborators.length
     ? collaborators.map(c => `
-        <div class="c-row" style="cursor:pointer;" onclick="window.__ddPushContributor(${Number(c.contributor.id)})">
+        <div class="c-row" style="cursor:pointer;" data-action="__ddPushContributor" data-args="${encodeURIComponent(JSON.stringify([Number(c.contributor.id)]))}">
           <div class="avatar" style="background:#E6F1FB;color:#185FA5;">${avatarLetter(c.contributor.name)}</div>
           <div class="c-info"><div class="c-name">${esc(c.contributor.name)}</div><div class="c-meta">협업 강도 ${(c.edge_weight * 100).toFixed(1)}</div></div>
         </div>`).join('')
@@ -247,7 +247,7 @@ function couplingBlock({ detail, sortPolicy }) {
     ? `전체 후보 ${num(total)}개를 이 기준으로 서버에서 정렬한 상위 ${num(shown.length)}개`
     : `조회된 후보 ${num(fetched)}개 안에서만 정렬했습니다. 전체 후보 기준의 정확한 순위가 아닐 수 있습니다`;
   const rows = shown.map(f => `
-    <tr style="cursor:pointer;" onclick="window.__ddPushFile(${Number(f.file_id)})" title="${esc(f.path)}">
+    <tr style="cursor:pointer;" data-action="__ddPushFile" data-args="${encodeURIComponent(JSON.stringify([Number(f.file_id)]))}" title="${esc(f.path)}">
       <td class="file">${esc(f.path)}</td>
       <td class="r">${num(f.co_change_count)}회${f.low_support ? `<div>${tag('amber', `표본 ${num(f.co_change_count)}회`, '함께 수정 5건 미만 — 표본 부족(표시 정책이며 통계적 신뢰수준이 아님)')}</div>` : ''}</td>
       <td class="r">${fmtScore(f.coupling_score)}</td>
@@ -305,7 +305,7 @@ async function renderFile(fileId, extra) {
   const editors = detail.editors || [];
   const editorsHtml = editors.length
     ? editors.map(e => `
-        <div class="c-row" style="cursor:pointer;" onclick="window.__ddPushContributor(${Number(e.contributor_id)})">
+        <div class="c-row" style="cursor:pointer;" data-action="__ddPushContributor" data-args="${encodeURIComponent(JSON.stringify([Number(e.contributor_id)]))}">
           <div class="avatar" style="background:#E6F1FB;color:#185FA5;">${avatarLetter(e.name)}</div>
           <div class="c-info"><div class="c-name">${esc(e.name)}</div><div class="c-meta">변경 지분 ${pct(e.share)}%</div></div>
         </div>`).join('')

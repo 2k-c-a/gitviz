@@ -199,11 +199,11 @@ function renderTopPairs(pairs, dq) {
   wrap.innerHTML = pairs.map(p => {
     const a = p.contributor_a, b = p.contributor_b;
     return `<div class="c-row" style="margin-bottom:10px;">
-      <div class="avatar" style="cursor:pointer;background:#E6F1FB;color:#185FA5;" onclick="window.openContributorDrilldown(${a.id})">${avatarLetter(a.name)}</div>
-      <div class="c-info"><div class="c-name" style="cursor:pointer;" onclick="window.openContributorDrilldown(${a.id})">${esc(a.name)}</div></div>
+      <div class="avatar" style="cursor:pointer;background:#E6F1FB;color:#185FA5;" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([a.id]))}">${avatarLetter(a.name)}</div>
+      <div class="c-info"><div class="c-name" style="cursor:pointer;" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([a.id]))}">${esc(a.name)}</div></div>
       <div style="color:var(--text3);font-size:12px;flex-shrink:0;">↔</div>
-      <div class="avatar" style="cursor:pointer;background:#E6F1FB;color:#185FA5;" onclick="window.openContributorDrilldown(${b.id})">${avatarLetter(b.name)}</div>
-      <div class="c-info"><div class="c-name" style="cursor:pointer;" onclick="window.openContributorDrilldown(${b.id})">${esc(b.name)}</div></div>
+      <div class="avatar" style="cursor:pointer;background:#E6F1FB;color:#185FA5;" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([b.id]))}">${avatarLetter(b.name)}</div>
+      <div class="c-info"><div class="c-name" style="cursor:pointer;" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([b.id]))}">${esc(b.name)}</div></div>
       <div class="c-count">${fmt3(p.edge_weight)}</div>
     </div>`;
   }).join('');

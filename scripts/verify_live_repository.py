@@ -197,6 +197,7 @@ def main(names,output):
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('--repos',nargs='+',default=['octocat/git-consortium','navdeep-G/samplemod'])
-    parser.add_argument('--output',type=Path,default=ROOT/'docs'/'LIVE_VALIDATION_RESULTS.json')
+    from scripts.validation_reports import new_report_path
+    parser.add_argument('--output',type=Path,default=new_report_path('live-repository'))
     args=parser.parse_args()
     raise SystemExit(0 if main(args.repos,args.output) else 1)

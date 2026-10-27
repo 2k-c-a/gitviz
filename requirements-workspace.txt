@@ -1,0 +1,4 @@
+# Standalone agent runtime; do not install server requirements into its environment.
+jsonschema==4.26.0
+cryptography==50.0.2
+pydantic==2.13.4

@@ -1,0 +1,39 @@
+{
+  "name": "gitviz-workspace",
+  "version": "0.7.0",
+  "private": true,
+  "description": "GitViz Windows workspace foundation",
+  "author": "GitViz",
+  "license": "UNLICENSED",
+  "main": "dist/src/main.js",
+  "engines": {
+    "node": ">=24.20.0 <25"
+  },
+  "config": {
+    "forge": "./dist/forge.config.js"
+  },
+  "scripts": {
+    "lint": "eslint src contracts tests scripts ui forge.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.preload.json",
+    "typecheck:agent": "pyright --project ../pyright-workspace.json",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.preload.json && node scripts/build.mjs",
+    "test": "node --test dist/tests/*.test.js",
+    "test:foundation": "electron dist/tests/foundation.e2e.js",
+    "start": "electron .",
+    "package": "electron-forge package --platform=win32 --arch=x64"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "typescript": "6.0.3"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "8.0.1",
+    "@electron-forge/shared-types": "8.0.1",
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "electron": "45.0.0",
+    "eslint": "10.13.0",
+    "pyright": "1.1.414",
+    "typescript-eslint": "8.72.0"
+  }
+}

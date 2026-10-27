@@ -1,3 +1,6 @@
+import './platform/actions.js';
+import { esc } from './fmt.js';
+import { request } from './platform/transport.js';
 import { loadNavbar } from './navbar-loader.js';
 import { loadModal } from './modal-loader.js';
 
@@ -80,7 +83,7 @@ async function loadRecentRepos() {
 
   let repos;
   try {
-    const res = await fetch('/repositories');
+    const res = await request('/repositories');
     if (!res.ok) throw new Error(res.status);
     repos = await res.json();
   } catch {
@@ -104,15 +107,15 @@ async function loadRecentRepos() {
       : hasCountdown ? `${fmtDuration(repo.remaining_seconds)} 후 재개` : '진행 상황 보기';
     const countdownAttr = hasCountdown ? ` data-countdown-id="${repo.id}" data-remaining="${repo.remaining_seconds}"` : '';
     const progressLink = isActive
-      ? `<span class="pending-link"${countdownAttr} onclick="openJobModal('poll', ${repo.id})">${linkText}</span>`
+      ? `<span class="pending-link"${countdownAttr} data-action="openJobModal" data-args="${encodeURIComponent(JSON.stringify(['poll', repo.id]))}">${linkText}</span>`
       : '';
     const clickAttr = repo.status === 'done'
-      ? `onclick="window.goPage && window.goPage('timeline', ${repo.id})"` : '';
+      ? `data-action="goPage" data-args="${encodeURIComponent(JSON.stringify(['timeline', repo.id]))}"` : '';
 
     return `
       <div class="repo-item${isActive ? ' pending' : ''}" ${clickAttr} style="${repo.status === 'done' ? 'cursor:pointer' : ''}">
         <div>
-          <a class="repo-name" href="${repo.url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" title="GitHub에서 열기">${repoName}</a>
+          <a class="repo-name" href="${esc(repo.url)}" target="_blank" rel="noopener noreferrer" data-action="stop" title="GitHub에서 열기">${esc(repoName)}</a>
           <div class="repo-meta">${meta}</div>
         </div>
         <div class="repo-item-right">

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitViz Workspace</title><link rel="stylesheet" href="styles.css"><script defer src="status.js"></script><script type="module" src="projects.js"></script><script type="module" src="desktop-auth.js"></script><script type="module" src="changes.js"></script><script type="module" src="review.js"></script><script type="module" src="proposal.js"></script><script type="module" src="impact.js"></script><script type="module" src="validation.js"></script><script type="module" src="comparison.js"></script></head>
+<body><main>
+<p class="eyebrow">GitViz Workspace</p><h1>로컬 프로젝트</h1>
+<p><a href="web/index.html">GitHub 검색·원격 분석·AI 리뷰 열기</a></p>
+<p id="desktop-account" role="status"></p><button id="desktop-login">원격 로그인 화면</button><button id="desktop-logout" disabled>로그아웃·세션 폐기 재시도</button>
+<p id="status" role="status" aria-live="polite">로컬 구성 요소를 확인하고 있습니다.</p><button id="refresh" type="button">구성 요소 상태 확인</button>
+<section aria-labelledby="projects-title"><h2 id="projects-title">프로젝트 선택</h2>
+<button id="register-project" type="button">폴더 선택·등록</button><button id="reload-projects" type="button">목록 새로고침</button>
+<label for="project-picker">등록한 프로젝트</label><select id="project-picker"><option value="">프로젝트를 선택하세요</option></select><button id="more-projects" type="button" hidden>더 보기</button>
+<button id="unregister-project" type="button" disabled>등록 해제</button>
+<label for="recent-limit">최근 커밋 수</label><input id="recent-limit" type="number" min="1" max="100" value="20"><button id="save-project-settings" type="button" disabled>설정 저장</button>
+<p id="project-message" role="status" aria-live="polite"></p></section>
+<section aria-labelledby="git-title"><h2 id="git-title">Git 상태</h2><button id="reload-git" type="button" disabled>Git 상태 새로고침</button><div id="git-state"></div></section>
+<section><h2>고정 변경 입력</h2><button id="reload-changes">변경 선택 새로고침</button><div id="change-selection"></div><label><input id="include-untracked" type="checkbox">선택한 untracked 포함</label><button id="capture-changes">선택 변경 캡처</button><p id="capture-message" role="status"></p><div id="capture-result"></div><pre id="fixed-preview"></pre></section>
+<section><h2>도구 탐지·명령 계획</h2><label>프로젝트 내 작업 폴더 <input id="detection-cwd" value="."></label><label>패키지 관리자 <select id="package-manager"><option value="">lock 기준</option><option value="npm">npm</option><option value="yarn">yarn</option><option value="pnpm">pnpm</option></select></label><button id="detect-validation">manifest 읽기·탐지</button><div id="detected-tools"></div></section>
+<section><h2>고정 입력 로컬 리뷰</h2>
+<p>PC의 Ollama · qwen2.5-coder:7b · 127.0.0.1:11434로만 전송합니다. 원격 공개 매핑이 검증되지 않은 cloud BYOK는 차단됩니다. 모델 설치·실행은 자동으로 하지 않습니다.</p>
+<label>생성 종류 <select id="review-kind"><option value="review">리뷰</option><option value="refactor">작은 리팩토링 제안</option></select></label>
+<label>리뷰 목적 <textarea id="review-purpose" maxlength="1000">버그·보안·성능·품질·테스트 누락 검토</textarea></label>
+<label>동일 입력 실행 세대 <input id="review-generation" type="number" min="1" max="1000" value="1"></label>
+<button id="review-preview">전송 내용 미리보기</button><div id="review-preview-meta"></div><pre id="review-preview-bytes"></pre>
+<label><input id="review-consent" type="checkbox">위 고정 입력·목적·문맥·파일명과 표시한 PC 모델 전송 범위를 확인했습니다.</label>
+<label><input id="review-duplicate-risk" type="checkbox">새 실행 세대는 이전 요청과 별도 호출이며 중복 비용·자원 사용 가능성을 확인했습니다.</label>
+<button id="review-start" disabled>동의한 입력으로 리뷰 시작</button><button id="review-cancel" disabled>취소 요청</button><button id="review-history">로컬 리뷰 이력</button>
+<p id="review-message" role="status"></p><div id="review-history-list"></div><div id="review-result"></div>
+<p>모델 결과는 실행으로 검증한 결함이 아닙니다. 지적 0건도 결함 없음을 뜻하지 않습니다. 취소는 이미 전송된 내용을 회수하지 않으며 결과 불명 작업은 자동 재전송하지 않습니다. PC 모델 provider 요금 추정은 USD 0이며 시스템 자원 비용은 별도입니다.</p>
+</section><p>선택 입력·리뷰 결과는 PC의 암호화 저장소에 보관합니다. 명령 실행은 별도 승인 단계입니다.</p>
+<p class="note">조회·캡처는 읽기 전용입니다. 파일 적용과 프로젝트 검증은 별도 승인으로 실행합니다. 외부 Git 메타데이터는 native 확인 후 접근하며 submodule 내부 상태는 확장하지 않습니다.</p>
+<section><h2>리팩토링 제안·승인 적용·복구</h2><p>생성 동의는 파일 쓰기 승인이 아닙니다. 적용은 별도 native 확인과 일회 승인에 묶입니다. 2단계 게시 중 원래 경로가 잠시 없을 수 있으며, 중단 시 복구 상태를 확인하세요. 다른 도구의 변경은 덮어쓰지 않습니다.</p><button id="reload-recovery">복구 필요 목록 확인</button><div id="proposal-recovery-list"></div><p id="proposal-message" role="status"></p><div id="proposal-view"></div></section>
+<section><h2>고정 입력 영향 근거</h2><p>Python·JS/TS parser가 읽은 구문과 정적 바인딩만 표시합니다. 동적 호출과 외부 모듈은 미해결이며 실행 결과를 뜻하지 않습니다. 이력과 AI 예측은 별도로 표시합니다.</p><button id="analyze-impact">고정 snapshot 분석</button><p id="impact-message" role="status"></p><div id="impact-view"></div></section>
+<section><h2>외부 에디터·검증 실행</h2><label>에디터 <select id="editor-id"><option value="vscode">VS Code</option><option value="cursor">Cursor</option></select></label><button id="save-editor">프로젝트 기본 에디터 저장</button><button id="configure-editor">실행 파일 선택·설정</button><p>검증 코드는 현재 사용자 권한으로 파일과 네트워크에 접근합니다. 계획별 native 확인과 프로젝트 신뢰 승인이 필요합니다.</p><div id="validation-plans"></div><button id="validation-cancel" disabled>검증 자식 트리 취소</button><p id="validation-message" role="status"></p><div id="validation-view"></div></section>
+<section><h2>전후 고정 입력·실측 비교</h2><label>이전 <select id="comparison-before"></select></label><label>이후 <select id="comparison-after"></select></label><label><input id="comparison-link-proposal" type="checkbox">선택 제안과 연결</label><button id="compare-snapshots">실측 비교</button><p>변경 전에 baseline 검증을 명시 실행하세요. 미측정·환경 불일치는 not_comparable로 표시합니다.</p><div id="comparison-view"></div></section></main></body></html>

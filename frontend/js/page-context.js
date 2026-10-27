@@ -65,7 +65,7 @@ export function renderContextBanner(data) {
       <span class="ctx-id" title="이 화면이 보고 있는 저장된 분석 결과 번호">저장 결과 #${esc(snap.id)}</span>
       <span class="ctx-item"><b>관측 기간</b> ${esc(windowText)}</span>
       <span class="ctx-item"><b>지표 정책</b> ${esc(policy.versionLabel)}</span>
-      <a class="ctx-link" href="#" onclick="goPage('history');return false;">분석 이력·비교 →</a>
+      <a class="ctx-link" href="#" data-action="goPage" data-args="%5B%22history%22%5D">분석 이력·비교 →</a>
     </div>
     <div class="ctx-row">
       <span class="ctx-chip ok" title="저장된 결과를 불러왔습니다. 수집이 끝났거나 분석 근거가 충분하다는 뜻이 아닙니다.">결과 조회 성공</span>
@@ -87,14 +87,14 @@ export function renderLoadError(err) {
   const st = parseState(location.search);
   let title = '분석 결과를 불러오지 못했습니다';
   let body = err?.message || '알 수 없는 오류';
-  let actions = '<a class="btn-secondary" href="#" onclick="location.reload();return false;">다시 시도</a>';
+  let actions = '<a class="btn-secondary" href="#" data-action="reloadPage">다시 시도</a>';
 
   if (err?.status === 404) {
     title = st.snapshot != null ? `저장 결과 #${st.snapshot}을(를) 열 수 없습니다` : '분석 결과를 찾을 수 없습니다';
     body = '이 저장소의 결과가 아니거나 삭제되었거나 접근 권한이 없을 수 있습니다.';
     if (st.snapshot != null) {
       const latest = buildQuery({ repo: st.repo });
-      actions = `<a class="btn-secondary" href="#" onclick="location.href=location.pathname+'${latest}';return false;">최신 결과 보기</a>`;
+      actions = `<a class="btn-secondary" href="#" data-action="latestResult" data-args="${encodeURIComponent(JSON.stringify([latest]))}">최신 결과 보기</a>`;
     }
   } else if (err?.status === 409) {
     title = '표시할 수 있는 결과가 없습니다';
@@ -109,6 +109,6 @@ export function renderLoadError(err) {
   box.innerHTML = `<div class="ctx-error-title">${esc(title)}</div>
     <div class="ctx-error-body">${esc(body)}</div>
     <div class="ctx-error-actions">${actions}
-      <a class="btn-secondary" href="#" onclick="goPage('history');return false;">분석 이력 보기</a></div>`;
+      <a class="btn-secondary" href="#" data-action="goPage" data-args="%5B%22history%22%5D">분석 이력 보기</a></div>`;
   container.prepend(box);
 }

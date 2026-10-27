@@ -1,0 +1,4256 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "ok": {
+          "const": true
+        },
+        "result": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "agentVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[0-9A-Za-z.+-]+$"
+                },
+                "protocolVersion": {
+                  "type": "integer",
+                  "const": 1
+                },
+                "localSchemaRange": {
+                  "type": "object",
+                  "properties": {
+                    "min": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 2147483647
+                    },
+                    "max": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 2147483647
+                    }
+                  },
+                  "required": [
+                    "min",
+                    "max"
+                  ],
+                  "additionalProperties": false
+                },
+                "capabilities": {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "workspace.system.handshake",
+                      "workspace.system.health",
+                      "workspace.system.shutdown",
+                      "workspace.projects.selectAndRegister",
+                      "workspace.projects.list",
+                      "workspace.projects.get",
+                      "workspace.projects.updateSettings",
+                      "workspace.projects.unregister",
+                      "workspace.git.status",
+                      "workspace.changes.capture",
+                      "workspace.files.preview",
+                      "workspace.validation.detect",
+                      "workspace.validation.plan",
+                      "workspace.reviews.preview",
+                      "workspace.reviews.start",
+                      "workspace.reviews.get",
+                      "workspace.reviews.list",
+                      "workspace.reviews.cancel",
+                      "workspace.reviews.feedback",
+                      "workspace.proposals.create",
+                      "workspace.proposals.get",
+                      "workspace.proposals.reject",
+                      "workspace.proposals.requestRevision",
+                      "workspace.proposals.approve",
+                      "workspace.proposals.apply",
+                      "workspace.proposals.recoveryPlan",
+                      "workspace.proposals.approveRecovery",
+                      "workspace.proposals.recover",
+                      "workspace.impact.prepare",
+                      "workspace.impact.read",
+                      "workspace.impact.append",
+                      "workspace.impact.finish",
+                      "workspace.impact.get",
+                      "workspace.proposals.listRecovery",
+                      "workspace.validation.prepare",
+                      "workspace.validation.approve",
+                      "workspace.validation.start",
+                      "workspace.validation.get",
+                      "workspace.validation.cancel",
+                      "workspace.comparisons.create",
+                      "workspace.comparisons.get",
+                      "workspace.files.locate",
+                      "workspace.impact.release",
+                      "workspace.projects.setEditor"
+                    ]
+                  },
+                  "uniqueItems": true,
+                  "maxItems": 44
+                },
+                "state": {
+                  "const": "initializing"
+                }
+              },
+              "required": [
+                "agentVersion",
+                "protocolVersion",
+                "localSchemaRange",
+                "capabilities",
+                "state"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "enum": [
+                    "ready",
+                    "degraded",
+                    "unavailable"
+                  ]
+                },
+                "components": {
+                  "type": "object",
+                  "properties": {
+                    "store": {
+                      "enum": [
+                        "ready",
+                        "degraded",
+                        "unavailable"
+                      ]
+                    },
+                    "secrets": {
+                      "enum": [
+                        "ready",
+                        "degraded",
+                        "unavailable"
+                      ]
+                    },
+                    "lifecycle": {
+                      "enum": [
+                        "ready",
+                        "degraded",
+                        "unavailable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "store",
+                    "secrets",
+                    "lifecycle"
+                  ],
+                  "additionalProperties": false
+                },
+                "errorCode": {
+                  "enum": [
+                    "STORAGE_UNAVAILABLE",
+                    "ACCESS_DENIED",
+                    "UNSUPPORTED_PROTOCOL",
+                    "RECOVERY_REQUIRED"
+                  ]
+                }
+              },
+              "required": [
+                "state",
+                "components"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "accepted": {
+                  "const": true
+                }
+              },
+              "required": [
+                "accepted"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "$ref": "#/definitions/project"
+            },
+            {
+              "$ref": "#/definitions/selection"
+            },
+            {
+              "$ref": "#/definitions/projects"
+            },
+            {
+              "$ref": "#/definitions/git"
+            },
+            {
+              "$ref": "#/definitions/unregistered"
+            },
+            {
+              "$ref": "#/definitions/snapshot"
+            },
+            {
+              "$ref": "#/definitions/preview"
+            },
+            {
+              "$ref": "#/definitions/detection"
+            },
+            {
+              "$ref": "#/definitions/plan"
+            },
+            {
+              "$ref": "#/definitions/reviewPreview"
+            },
+            {
+              "$ref": "#/definitions/reviewRun"
+            },
+            {
+              "$ref": "#/definitions/reviewList"
+            },
+            {
+              "$ref": "#/definitions/proposal"
+            },
+            {
+              "$ref": "#/definitions/proposalApproval"
+            },
+            {
+              "$ref": "#/definitions/recoveryPlan"
+            },
+            {
+              "$ref": "#/definitions/impactPrepared"
+            },
+            {
+              "$ref": "#/definitions/impactChunk"
+            },
+            {
+              "$ref": "#/definitions/impactAccepted"
+            },
+            {
+              "$ref": "#/definitions/impactResult"
+            },
+            {
+              "$ref": "#/definitions/recoveryList"
+            },
+            {
+              "$ref": "#/definitions/validationPrepared"
+            },
+            {
+              "$ref": "#/definitions/validationRun"
+            },
+            {
+              "$ref": "#/definitions/comparison"
+            },
+            {
+              "$ref": "#/definitions/validationApproval"
+            },
+            {
+              "$ref": "#/definitions/fileLocation"
+            },
+            {
+              "$ref": "#/definitions/releasedImpact"
+            }
+          ]
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "requestId",
+        "ok",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "enum": [
+                "INVALID_REQUEST",
+                "UNSUPPORTED_PROTOCOL",
+                "NOT_A_REPOSITORY",
+                "GIT_UNAVAILABLE",
+                "PROJECT_UNAVAILABLE",
+                "PATH_OUTSIDE_SCOPE",
+                "ACCESS_DENIED",
+                "RESOURCE_NOT_FOUND",
+                "CAPTURE_CHANGED",
+                "PRECONDITION_FAILED",
+                "APPROVAL_REQUIRED",
+                "APPROVAL_EXPIRED",
+                "CONFLICT",
+                "BUSY",
+                "INPUT_EXPIRED",
+                "INPUT_TOO_LARGE",
+                "TRANSFER_BLOCKED",
+                "AUTH_REQUIRED",
+                "RATE_LIMITED",
+                "PROVIDER_UNAVAILABLE",
+                "OUTPUT_INVALID",
+                "OUTCOME_UNCERTAIN",
+                "COMMAND_NOT_ALLOWED",
+                "TIMED_OUT",
+                "CANCELLED",
+                "RECOVERY_REQUIRED",
+                "STORAGE_UNAVAILABLE",
+                "GIT_NOT_FOUND",
+                "PROJECT_MOVED",
+                "OUTPUT_LIMIT",
+                "UNSUPPORTED_FILENAME",
+                "UNSUPPORTED_REPOSITORY",
+                "METADATA_GRANT_REQUIRED",
+                "SELECTION_EXPIRED",
+                "CLOUD_MAPPING_REQUIRED",
+                "CONTENT_EXCLUDED",
+                "CONSENT_EXPIRED",
+                "CONSENT_REQUIRED",
+                "EMPTY_INPUT",
+                "UNSUPPORTED_KIND",
+                "DUPLICATE_RISK_CONFIRMATION_REQUIRED",
+                "REVIEW_DATA_REQUIRES_EXPLICIT_REMOVAL",
+                "RECOVERY_CONFLICT",
+                "HISTORY_MAPPING_REQUIRED",
+                "PATCH_SCOPE_UNSUPPORTED",
+                "PATCH_INVALID",
+                "PATCH_ENCODING_UNSUPPORTED",
+                "PATCH_TOO_LARGE",
+                "AMBIGUOUS_FACETS",
+                "ROOT_GRANT_REQUIRED",
+                "WINDOWS_REQUIRED",
+                "INDEX_UNAVAILABLE"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "details": {
+              "type": "object",
+              "properties": {},
+              "required": [],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "retryable",
+            "details"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "requestId",
+        "ok",
+        "error"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "definitions": {
+    "project": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[^\\u0000]+$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "accessState": {
+          "enum": [
+            "available",
+            "unavailable"
+          ]
+        },
+        "remoteRepositoryId": {
+          "type": "null"
+        },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "recentLimit": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                }
+              },
+              "required": [
+                "value",
+                "version"
+              ],
+              "additionalProperties": false
+            },
+            "editorId": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "enum": [
+                    "vscode",
+                    "cursor"
+                  ]
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                }
+              },
+              "required": [
+                "value",
+                "version"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "recentLimit"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "version",
+        "accessState",
+        "remoteRepositoryId",
+        "settings"
+      ],
+      "additionalProperties": false
+    },
+    "selection": {
+      "type": "object",
+      "properties": {
+        "selectionId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confirmation": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "ROOT_GRANT_REQUIRED",
+                    "METADATA_GRANT_REQUIRED",
+                    "PROJECT_RECONNECT_REQUIRED"
+                  ]
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096,
+                  "pattern": "^[^\\u0000]+$"
+                }
+              },
+              "required": [
+                "kind",
+                "path"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "selectionId",
+        "confirmation"
+      ],
+      "additionalProperties": false
+    },
+    "projects": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "pattern": "^[^\\u0000]+$"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              },
+              "accessState": {
+                "enum": [
+                  "available",
+                  "unavailable"
+                ]
+              },
+              "remoteRepositoryId": {
+                "type": "null"
+              },
+              "settings": {
+                "type": "object",
+                "properties": {
+                  "recentLimit": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100
+                      },
+                      "version": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 2147483647
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "version"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "editorId": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "enum": [
+                          "vscode",
+                          "cursor"
+                        ]
+                      },
+                      "version": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 2147483647
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "version"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "recentLimit"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "displayName",
+              "version",
+              "accessState",
+              "remoteRepositoryId",
+              "settings"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 50
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ],
+      "additionalProperties": false
+    },
+    "git": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024,
+              "pattern": "^[^\\u0000]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "head": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "detached": {
+          "type": "boolean"
+        },
+        "unborn": {
+          "type": "boolean"
+        },
+        "objectFormat": {
+          "enum": [
+            "sha1",
+            "sha256"
+          ]
+        },
+        "staged": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048,
+                "pattern": "^[^\\u0000]+$"
+              },
+              "status": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 2
+              },
+              "oldPath": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048,
+                "pattern": "^[^\\u0000]+$"
+              }
+            },
+            "required": [
+              "path",
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 2000
+        },
+        "unstaged": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048,
+                "pattern": "^[^\\u0000]+$"
+              },
+              "status": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 2
+              },
+              "oldPath": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048,
+                "pattern": "^[^\\u0000]+$"
+              }
+            },
+            "required": [
+              "path",
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 2000
+        },
+        "untracked": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048,
+                "pattern": "^[^\\u0000]+$"
+              },
+              "status": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 2
+              },
+              "oldPath": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048,
+                "pattern": "^[^\\u0000]+$"
+              }
+            },
+            "required": [
+              "path",
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 2000
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048,
+                "pattern": "^[^\\u0000]+$"
+              },
+              "status": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 2
+              },
+              "oldPath": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048,
+                "pattern": "^[^\\u0000]+$"
+              }
+            },
+            "required": [
+              "path",
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 2000
+        },
+        "recentCommits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "oid": {
+                "type": "string",
+                "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+              },
+              "author": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512,
+                "pattern": "^[^\\u0000]+$"
+              },
+              "authoredAt": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "pattern": "^[^\\u0000]+$"
+              },
+              "subject": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096,
+                "pattern": "^[^\\u0000]+$"
+              }
+            },
+            "required": [
+              "oid",
+              "author",
+              "authoredAt",
+              "subject"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 100
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[^\\u0000]+$"
+          },
+          "maxItems": 10
+        }
+      },
+      "required": [
+        "projectId",
+        "branch",
+        "head",
+        "detached",
+        "unborn",
+        "objectFormat",
+        "staged",
+        "unstaged",
+        "untracked",
+        "conflicts",
+        "recentCommits",
+        "limitations"
+      ],
+      "additionalProperties": false
+    },
+    "unregistered": {
+      "type": "object",
+      "properties": {
+        "unregistered": {
+          "const": true
+        }
+      },
+      "required": [
+        "unregistered"
+      ],
+      "additionalProperties": false
+    },
+    "snapshot": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "head": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "objectFormat": {
+          "enum": [
+            "sha1",
+            "sha256"
+          ]
+        },
+        "indexHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "inputHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "policyVersion": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "capturedAt": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "expiresAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 2048
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "changed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "selected": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "read": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "excluded": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            }
+          },
+          "required": [
+            "changed",
+            "selected",
+            "read",
+            "excluded"
+          ],
+          "additionalProperties": false
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "facet": {
+                "enum": [
+                  "staged",
+                  "unstaged",
+                  "untracked",
+                  "selected"
+                ]
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "oldPath": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "state": {
+                "enum": [
+                  "read",
+                  "excluded"
+                ]
+              },
+              "exclusionReason": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "beforeHash": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "afterHash": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "fileId",
+              "facet",
+              "path",
+              "oldPath",
+              "state",
+              "exclusionReason",
+              "beforeHash",
+              "afterHash"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 50
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 2048
+          },
+          "maxItems": 20
+        },
+        "inventoryHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "projectId",
+        "snapshotId",
+        "head",
+        "objectFormat",
+        "indexHash",
+        "inputHash",
+        "policyVersion",
+        "capturedAt",
+        "expiresAt",
+        "coverage",
+        "files",
+        "limitations",
+        "inventoryHash"
+      ],
+      "additionalProperties": false
+    },
+    "preview": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "fileId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "side": {
+          "enum": [
+            "LEFT",
+            "RIGHT"
+          ]
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 200000
+              },
+              "kind": {
+                "enum": [
+                  "context",
+                  "added",
+                  "removed"
+                ]
+              }
+            },
+            "required": [
+              "line",
+              "text",
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 200
+        }
+      },
+      "required": [
+        "projectId",
+        "snapshotId",
+        "fileId",
+        "side",
+        "lines"
+      ],
+      "additionalProperties": false
+    },
+    "detection": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "cwdRelative": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "language": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "confidence": {
+                "const": "manifest"
+              },
+              "framework": {
+                "type": "string",
+                "maxLength": 128
+              }
+            },
+            "required": [
+              "language",
+              "path",
+              "confidence",
+              "framework"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 20
+        },
+        "packageManagers": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "npm",
+              "yarn",
+              "pnpm"
+            ]
+          },
+          "maxItems": 3
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 2048
+          },
+          "maxItems": 10
+        },
+        "configHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "candidateId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "packageManager": {
+                "enum": [
+                  "npm",
+                  "yarn",
+                  "pnpm",
+                  "python"
+                ]
+              },
+              "available": {
+                "type": "boolean"
+              },
+              "scripts": {
+                "type": "object",
+                "properties": {
+                  "pretest": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "test": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "posttest": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "prelint": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "lint": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "postlint": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "pretypecheck": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "typecheck": {
+                    "type": "string",
+                    "maxLength": 4096
+                  },
+                  "posttypecheck": {
+                    "type": "string",
+                    "maxLength": 4096
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "candidateId",
+              "name",
+              "packageManager",
+              "available",
+              "scripts"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 10
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 2048
+          },
+          "maxItems": 20
+        }
+      },
+      "required": [
+        "projectId",
+        "cwdRelative",
+        "evidence",
+        "packageManagers",
+        "conflicts",
+        "configHash",
+        "candidates",
+        "limitations"
+      ],
+      "additionalProperties": false
+    },
+    "plan": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "executable": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "executableIdentity": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 2048
+          },
+          "maxItems": 10
+        },
+        "cwdRelative": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "configHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "scripts": {
+          "type": "object",
+          "properties": {
+            "pretest": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "test": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "posttest": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "prelint": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "lint": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "postlint": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "pretypecheck": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "typecheck": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "posttypecheck": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "envAllowlist": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "SystemRoot",
+              "WINDIR",
+              "TEMP",
+              "TMP",
+              "PATH",
+              "npm_config_userconfig",
+              "npm_config_globalconfig",
+              "npm_config_update_notifier",
+              "npm_config_audit",
+              "npm_config_fund",
+              "PYTHONDONTWRITEBYTECODE",
+              "PYTHONUTF8",
+              "npm_config_cache",
+              "npm_config_logs_max"
+            ]
+          },
+          "maxItems": 14
+        },
+        "timeoutMs": {
+          "const": 120000
+        },
+        "outputLimit": {
+          "const": 1048576
+        },
+        "risk": {
+          "const": "same-user-code-and-network-access-not-sandboxed"
+        },
+        "executionAllowed": {
+          "const": false
+        },
+        "planId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "planHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "environment": {
+          "type": "object",
+          "properties": {
+            "SystemRoot": {
+              "type": "string",
+              "maxLength": 32768
+            },
+            "WINDIR": {
+              "type": "string",
+              "maxLength": 32768
+            },
+            "TEMP": {
+              "type": "string",
+              "maxLength": 32768
+            },
+            "TMP": {
+              "type": "string",
+              "maxLength": 32768
+            },
+            "PATH": {
+              "type": "string",
+              "maxLength": 32768
+            },
+            "npm_config_userconfig": {
+              "type": "string",
+              "maxLength": 32768
+            },
+            "npm_config_globalconfig": {
+              "type": "string",
+              "maxLength": 32768
+            },
+            "npm_config_update_notifier": {
+              "type": "string",
+              "maxLength": 32768
+            },
+            "npm_config_audit": {
+              "type": "string",
+              "maxLength": 32768
+            },
+            "npm_config_fund": {
+              "type": "string",
+              "maxLength": 32768
+            },
+            "PYTHONDONTWRITEBYTECODE": {
+              "const": "1"
+            },
+            "PYTHONUTF8": {
+              "const": "1"
+            },
+            "npm_config_cache": {
+              "type": "string",
+              "maxLength": 32768
+            },
+            "npm_config_logs_max": {
+              "const": "0"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "projectId",
+        "snapshotId",
+        "executable",
+        "executableIdentity",
+        "argv",
+        "cwdRelative",
+        "configHash",
+        "scripts",
+        "envAllowlist",
+        "timeoutMs",
+        "outputLimit",
+        "risk",
+        "executionAllowed",
+        "planId",
+        "planHash"
+      ],
+      "additionalProperties": false
+    },
+    "p05Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "fileId": {
+          "maxLength": 36,
+          "minLength": 36,
+          "title": "Fileid",
+          "type": "string"
+        },
+        "facet": {
+          "enum": [
+            "staged",
+            "unstaged",
+            "untracked",
+            "selected"
+          ],
+          "title": "Facet",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "side": {
+          "enum": [
+            "LEFT",
+            "RIGHT"
+          ],
+          "title": "Side",
+          "type": "string"
+        },
+        "startLine": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "title": "Startline",
+          "type": "integer"
+        },
+        "endLine": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "title": "Endline",
+          "type": "integer"
+        },
+        "quote": {
+          "maxLength": 1000,
+          "minLength": 3,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fileId",
+        "facet",
+        "path",
+        "side",
+        "startLine",
+        "endLine",
+        "quote"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "p05Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "enum": [
+            "correctness",
+            "security",
+            "performance",
+            "quality",
+            "testing"
+          ],
+          "title": "Category",
+          "type": "string"
+        },
+        "priority": {
+          "enum": [
+            "P0",
+            "P1",
+            "P2",
+            "P3"
+          ],
+          "title": "Priority",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "unknown"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "severityReason": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Severityreason",
+          "type": "string"
+        },
+        "condition": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Condition",
+          "type": "string"
+        },
+        "impact": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Impact",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/definitions/p05Evidence"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "suggestion": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Suggestion",
+          "type": "string"
+        },
+        "verification": {
+          "const": "not_executed",
+          "title": "Verification",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Limitations",
+          "type": "array"
+        },
+        "humanValidation": {
+          "const": "unverified"
+        },
+        "findingId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "feedback": {
+          "type": "object",
+          "properties": {
+            "verdict": {
+              "enum": [
+                "valid",
+                "false_positive",
+                "uncertain",
+                "unverified"
+              ]
+            },
+            "note": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "verdict",
+            "note",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "category",
+        "priority",
+        "severity",
+        "severityReason",
+        "condition",
+        "impact",
+        "evidence",
+        "suggestion",
+        "verification",
+        "limitations",
+        "humanValidation",
+        "findingId",
+        "feedback"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "reviewPreview": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "inputHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "kind": {
+          "enum": [
+            "review",
+            "refactor"
+          ]
+        },
+        "purposeHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "profile": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "const": "ollama-local-v1"
+            },
+            "provider": {
+              "const": "ollama"
+            },
+            "model": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "endpoint": {
+              "const": "http://127.0.0.1:11434"
+            },
+            "executionLocation": {
+              "const": "user-pc"
+            },
+            "timeoutSeconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 180
+            },
+            "maxInputTokens": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 24000
+            },
+            "maxOutputTokens": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4000
+            },
+            "contextWindow": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 32768
+            },
+            "promptVersion": {
+              "enum": [
+                "workspace-review-v1",
+                "workspace-refactor-v1"
+              ]
+            },
+            "schemaVersion": {
+              "enum": [
+                "workspace-review-v1",
+                "workspace-refactor-v1"
+              ]
+            },
+            "outputSchemaHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "transportVersion": {
+              "const": "ollama-chat-v1"
+            }
+          },
+          "required": [
+            "id",
+            "provider",
+            "model",
+            "endpoint",
+            "executionLocation",
+            "timeoutSeconds",
+            "maxInputTokens",
+            "maxOutputTokens",
+            "contextWindow",
+            "promptVersion",
+            "schemaVersion",
+            "outputSchemaHash",
+            "transportVersion"
+          ],
+          "additionalProperties": false
+        },
+        "profileFingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "destination": {
+          "const": "http://127.0.0.1:11434"
+        },
+        "executionLocation": {
+          "const": "user-pc"
+        },
+        "credentialRef": {
+          "type": "null"
+        },
+        "credentialVersion": {
+          "type": "null"
+        },
+        "policyVersion": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "maxEstimatedCost": {
+          "const": "0"
+        },
+        "currency": {
+          "const": "USD"
+        },
+        "costIsEstimate": {
+          "const": true
+        },
+        "estimatedInputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 24000
+        },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "changed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "selected": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "read": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "excluded": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            }
+          },
+          "required": [
+            "changed",
+            "selected",
+            "read",
+            "excluded"
+          ],
+          "additionalProperties": false
+        },
+        "excluded": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "facet": {
+                "enum": [
+                  "staged",
+                  "unstaged",
+                  "untracked",
+                  "selected"
+                ]
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "oldPath": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "state": {
+                "enum": [
+                  "read",
+                  "excluded"
+                ]
+              },
+              "exclusionReason": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "beforeHash": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "afterHash": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "fileId",
+              "facet",
+              "path",
+              "oldPath",
+              "state",
+              "exclusionReason",
+              "beforeHash",
+              "afterHash"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 50
+        },
+        "system": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "user": {
+          "type": "string",
+          "maxLength": 24000
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "fileId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "facet": {
+                    "enum": [
+                      "staged",
+                      "unstaged",
+                      "untracked",
+                      "selected"
+                    ]
+                  },
+                  "path": {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  "lines": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "context",
+                            "added",
+                            "removed"
+                          ]
+                        },
+                        "left_line": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 2147483647
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "right_line": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 2147483647
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "text": {
+                          "type": "string",
+                          "maxLength": 200000
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "left_line",
+                        "right_line",
+                        "text"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 200000
+                  }
+                },
+                "required": [
+                  "fileId",
+                  "facet",
+                  "path",
+                  "lines"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "fileId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  "path": {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  "facet": {
+                    "enum": [
+                      "staged",
+                      "unstaged",
+                      "untracked",
+                      "selected"
+                    ]
+                  },
+                  "preimageHash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "source": {
+                    "type": "string",
+                    "maxLength": 200000
+                  }
+                },
+                "required": [
+                  "fileId",
+                  "path",
+                  "facet",
+                  "preimageHash",
+                  "source"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "maxItems": 50
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "maxItems": 20
+        },
+        "manifestHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "previewId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "expiresAt": {
+          "type": "number"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "purpose": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "previewHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "requestHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "requestBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 24000
+        },
+        "revisionOf": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "projectId",
+        "snapshotId",
+        "inputHash",
+        "kind",
+        "purposeHash",
+        "profile",
+        "profileFingerprint",
+        "destination",
+        "executionLocation",
+        "credentialRef",
+        "credentialVersion",
+        "policyVersion",
+        "maxEstimatedCost",
+        "currency",
+        "costIsEstimate",
+        "estimatedInputTokens",
+        "coverage",
+        "excluded",
+        "system",
+        "user",
+        "files",
+        "limitations",
+        "manifestHash",
+        "previewId",
+        "expiresAt",
+        "generation",
+        "purpose",
+        "previewHash",
+        "requestHash",
+        "requestBytes",
+        "revisionOf"
+      ],
+      "additionalProperties": false
+    },
+    "reviewRun": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "cancel_requested",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "uncertain"
+          ]
+        },
+        "attemptCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "budgetReserved": {
+          "const": "0"
+        },
+        "outcomeUncertain": {
+          "type": "boolean"
+        },
+        "errorCode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 80
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "createdAt": {
+          "type": "number"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/p05Finding"
+          },
+          "maxItems": 30
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "maxItems": 20
+        },
+        "kind": {
+          "enum": [
+            "review",
+            "refactor"
+          ]
+        },
+        "refactor": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/refactorResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "projectId",
+        "runId",
+        "snapshotId",
+        "status",
+        "attemptCount",
+        "budgetReserved",
+        "outcomeUncertain",
+        "errorCode",
+        "version",
+        "createdAt",
+        "findings",
+        "limitations",
+        "kind",
+        "refactor"
+      ],
+      "additionalProperties": false
+    },
+    "reviewList": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "runId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "snapshotId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "status": {
+                "enum": [
+                  "queued",
+                  "running",
+                  "cancel_requested",
+                  "succeeded",
+                  "failed",
+                  "cancelled",
+                  "uncertain"
+                ]
+              },
+              "createdAt": {
+                "type": "number"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              }
+            },
+            "required": [
+              "runId",
+              "snapshotId",
+              "status",
+              "createdAt",
+              "version"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 50
+        }
+      },
+      "required": [
+        "projectId",
+        "runs"
+      ],
+      "additionalProperties": false
+    },
+    "p06RefactorChange": {
+      "additionalProperties": false,
+      "properties": {
+        "fileId": {
+          "maxLength": 36,
+          "minLength": 36,
+          "title": "Fileid",
+          "type": "string"
+        },
+        "facet": {
+          "enum": [
+            "staged",
+            "unstaged",
+            "untracked",
+            "selected"
+          ],
+          "title": "Facet",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "preimageHash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Preimagehash",
+          "type": "string"
+        },
+        "patch": {
+          "maxLength": 24000,
+          "minLength": 1,
+          "title": "Patch",
+          "type": "string"
+        },
+        "targetHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "fileId",
+        "facet",
+        "path",
+        "preimageHash",
+        "patch",
+        "targetHash"
+      ],
+      "title": "RefactorChange",
+      "type": "object"
+    },
+    "refactorResult": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "workspace-refactor-v1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "purpose": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Purpose",
+          "type": "string"
+        },
+        "expectedEffects": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "title": "Expectedeffects",
+          "type": "array"
+        },
+        "risks": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "title": "Risks",
+          "type": "array"
+        },
+        "validationSuggestions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "title": "Validationsuggestions",
+          "type": "array"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/definitions/p06RefactorChange"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Changes",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Limitations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "purpose",
+        "expectedEffects",
+        "risks",
+        "validationSuggestions",
+        "changes",
+        "limitations"
+      ],
+      "title": "RefactorOutput",
+      "type": "object"
+    },
+    "proposal": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "proposalId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "refactorRunId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "previousProposalId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "approved",
+            "rejected",
+            "superseded",
+            "applying",
+            "applied",
+            "partial",
+            "recovery_required",
+            "restored"
+          ]
+        },
+        "patchHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "preconditionsHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "purpose": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "expectedEffects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "maxItems": 5
+        },
+        "risks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "maxItems": 5
+        },
+        "validationSuggestions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "maxItems": 5
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "maxItems": 20
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/p06RefactorChange"
+          },
+          "maxItems": 3
+        },
+        "journal": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "journalId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "state": {
+                "enum": [
+                  "prepared",
+                  "original_moved",
+                  "replaced",
+                  "verified",
+                  "recovery_required",
+                  "restored"
+                ]
+              }
+            },
+            "required": [
+              "journalId",
+              "path",
+              "state"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 3
+        }
+      },
+      "required": [
+        "projectId",
+        "proposalId",
+        "snapshotId",
+        "refactorRunId",
+        "previousProposalId",
+        "version",
+        "status",
+        "patchHash",
+        "preconditionsHash",
+        "purpose",
+        "expectedEffects",
+        "risks",
+        "validationSuggestions",
+        "limitations",
+        "changes",
+        "journal"
+      ],
+      "additionalProperties": false
+    },
+    "proposalApproval": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "proposalId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "approvalId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "projectId",
+        "proposalId",
+        "approvalId"
+      ],
+      "additionalProperties": false
+    },
+    "recoveryPlan": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "proposalId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "journalId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "expectedCurrentHashes": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "object",
+                    "properties": {
+                      "identity": {
+                        "type": "string",
+                        "maxLength": 128
+                      },
+                      "hash": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      }
+                    },
+                    "required": [
+                      "identity",
+                      "hash"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "old": {
+                    "type": "object",
+                    "properties": {
+                      "identity": {
+                        "type": "string",
+                        "maxLength": 128
+                      },
+                      "hash": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      }
+                    },
+                    "required": [
+                      "identity",
+                      "hash"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "new": {
+                    "type": "object",
+                    "properties": {
+                      "identity": {
+                        "type": "string",
+                        "maxLength": 128
+                      },
+                      "hash": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      }
+                    },
+                    "required": [
+                      "identity",
+                      "hash"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "restore": {
+                    "type": "object",
+                    "properties": {
+                      "identity": {
+                        "type": "string",
+                        "maxLength": 128
+                      },
+                      "hash": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      }
+                    },
+                    "required": [
+                      "identity",
+                      "hash"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "remove": {
+                    "type": "object",
+                    "properties": {
+                      "identity": {
+                        "type": "string",
+                        "maxLength": 128
+                      },
+                      "hash": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      }
+                    },
+                    "required": [
+                      "identity",
+                      "hash"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "restoreHash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "journalId",
+              "path",
+              "expectedCurrentHashes",
+              "restoreHash"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 3
+        },
+        "indexHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "rootIdentity": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "recoveryHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "projectId",
+        "proposalId",
+        "version",
+        "files",
+        "indexHash",
+        "rootIdentity",
+        "recoveryHash"
+      ],
+      "additionalProperties": false
+    },
+    "impactPrepared": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "facet": {
+                "enum": [
+                  "staged",
+                  "unstaged",
+                  "untracked",
+                  "selected"
+                ]
+              },
+              "sourceHash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "byteCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 200000
+              },
+              "language": {
+                "enum": [
+                  "python",
+                  "typescript",
+                  "unsupported"
+                ]
+              }
+            },
+            "required": [
+              "fileId",
+              "path",
+              "facet",
+              "sourceHash",
+              "byteCount",
+              "language"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 50
+        }
+      },
+      "required": [
+        "projectId",
+        "sessionId",
+        "snapshotId",
+        "files"
+      ],
+      "additionalProperties": false
+    },
+    "impactChunk": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "sessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "fileId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "chunkBase64": {
+          "type": "string",
+          "maxLength": 21336,
+          "pattern": "^[A-Za-z0-9+/]*={0,2}$"
+        },
+        "totalBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 200000
+        }
+      },
+      "required": [
+        "projectId",
+        "sessionId",
+        "fileId",
+        "chunkBase64",
+        "totalBytes"
+      ],
+      "additionalProperties": false
+    },
+    "impactAccepted": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "accepted": {
+          "const": true
+        }
+      },
+      "required": [
+        "projectId",
+        "accepted"
+      ],
+      "additionalProperties": false
+    },
+    "impactResult": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "analysisId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "inputHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "static_reference"
+              },
+              "observed": {
+                "const": true
+              },
+              "fileId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "facet": {
+                "enum": [
+                  "staged",
+                  "unstaged",
+                  "untracked",
+                  "selected"
+                ]
+              },
+              "sourceHash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "referenceKind": {
+                "enum": [
+                  "import",
+                  "call",
+                  "type"
+                ]
+              },
+              "symbol": {
+                "type": "string",
+                "maxLength": 256
+              },
+              "startByte": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 200000
+              },
+              "endByte": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200000
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200001
+              },
+              "column": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200001
+              },
+              "resolved": {
+                "type": "boolean"
+              },
+              "targetFileId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "targetLine": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 200001
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "toolVersion": {
+                "enum": [
+                  "python-ast-v1",
+                  "typescript-6.0.3-v1"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "observed",
+              "fileId",
+              "path",
+              "facet",
+              "sourceHash",
+              "referenceKind",
+              "symbol",
+              "startByte",
+              "endByte",
+              "line",
+              "column",
+              "resolved",
+              "targetFileId",
+              "targetLine",
+              "toolVersion"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 25
+        },
+        "totalRecords": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1500
+        },
+        "nextOffset": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1500
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inferences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "ai_inference"
+              },
+              "observed": {
+                "const": false
+              },
+              "proposalId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 1000
+              }
+            },
+            "required": [
+              "kind",
+              "observed",
+              "proposalId",
+              "text"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 5
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "maxItems": 30
+        },
+        "historical": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "unavailable"
+            },
+            "reason": {
+              "const": "authenticated-remote-mapping-required"
+            }
+          },
+          "required": [
+            "status",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "projectId",
+        "analysisId",
+        "snapshotId",
+        "inputHash",
+        "records",
+        "totalRecords",
+        "nextOffset",
+        "inferences",
+        "limitations",
+        "historical"
+      ],
+      "additionalProperties": false
+    },
+    "recoveryList": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "proposals": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "properties": {
+              "proposalId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "status": {
+                "const": "recovery_required"
+              }
+            },
+            "required": [
+              "proposalId",
+              "version",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "projectId",
+        "proposals",
+        "truncated"
+      ],
+      "additionalProperties": false
+    },
+    "validationApproval": {
+      "type": "object",
+      "properties": {
+        "validationApprovalId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "validationApprovalId",
+        "projectId"
+      ],
+      "additionalProperties": false
+    },
+    "validationPrepared": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "plan": {
+          "$ref": "#/definitions/plan"
+        },
+        "confirmationHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "risk": {
+          "const": "same-user-code-and-network-access-not-sandboxed"
+        },
+        "trustRequired": {
+          "const": true
+        },
+        "root": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "projectName": {
+          "type": "string",
+          "maxLength": 4096
+        }
+      },
+      "required": [
+        "projectId",
+        "plan",
+        "confirmationHash",
+        "risk",
+        "trustRequired",
+        "root",
+        "projectName"
+      ],
+      "additionalProperties": false
+    },
+    "validationRun": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "planId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "conditions": {
+          "type": "object",
+          "properties": {
+            "rootIdentity": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "inputHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "runtime": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "maxProperties": 5
+            },
+            "environmentHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "platform": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "dependencyFingerprint": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "configHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "planHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "unselectedFingerprint": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "environmentProfile": {
+              "const": "runtime-config-lock-installed-metadata-v1"
+            }
+          },
+          "required": [
+            "rootIdentity",
+            "inputHash",
+            "runtime",
+            "environmentHash",
+            "platform",
+            "dependencyFingerprint",
+            "configHash",
+            "planHash",
+            "unselectedFingerprint",
+            "environmentProfile"
+          ],
+          "additionalProperties": false
+        },
+        "startedAt": {
+          "type": "number",
+          "minimum": 0
+        },
+        "finishedAt": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exitCode": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "output": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sequence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "stream": {
+                "enum": [
+                  "stdout",
+                  "stderr"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 8192
+              },
+              "bytesBase64": {
+                "type": "string",
+                "maxLength": 1368,
+                "pattern": "^[A-Za-z0-9+/]*={0,2}$"
+              }
+            },
+            "required": [
+              "sequence",
+              "stream",
+              "text",
+              "bytesBase64"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 10
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "maxItems": 20
+        },
+        "status": {
+          "enum": [
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "timed_out",
+            "output_limit",
+            "interrupted",
+            "launch_failed",
+            "precondition_failed"
+          ]
+        },
+        "nextOffset": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "treeTerminated": {
+          "type": "boolean"
+        },
+        "inputChanged": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fileId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 32768
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "column": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "code": {
+                "type": "string",
+                "pattern": "^[A-Z]+[0-9]{1,6}$"
+              },
+              "tool": {
+                "enum": [
+                  "colon-diagnostic",
+                  "typescript"
+                ]
+              },
+              "sourceHash": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "scope": {
+                "const": "selected-snapshot"
+              },
+              "limitations": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 32768
+                },
+                "maxItems": 5
+              },
+              "columnEncoding": {
+                "enum": [
+                  "utf16",
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "fileId",
+              "path",
+              "line",
+              "column",
+              "code",
+              "tool",
+              "sourceHash",
+              "scope",
+              "limitations",
+              "columnEncoding"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "runId",
+        "projectId",
+        "planId",
+        "snapshotId",
+        "conditions",
+        "startedAt",
+        "finishedAt",
+        "exitCode",
+        "output",
+        "truncated",
+        "limitations",
+        "status",
+        "nextOffset",
+        "diagnostics"
+      ],
+      "additionalProperties": false
+    },
+    "comparison": {
+      "type": "object",
+      "properties": {
+        "comparisonId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "beforeSnapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "afterSnapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "proposalId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "beforeInputHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "afterInputHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "before": {
+          "type": "object",
+          "properties": {
+            "bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "files": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "lines": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "pythonFunctionCount": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "pythonBranchMetric": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "denominatorPythonFiles": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "unsupported": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "maxItems": 50
+            },
+            "toolVersion": {
+              "const": "gitviz-snapshot-metrics-v1"
+            },
+            "duplication": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "tokenWindows": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3000000
+                    },
+                    "duplicatedTokenWindows": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3000000
+                    },
+                    "windowSize": {
+                      "const": 20
+                    },
+                    "normalization": {
+                      "const": "comments-whitespace-only-exact-token-text"
+                    }
+                  },
+                  "required": [
+                    "tokenWindows",
+                    "duplicatedTokenWindows",
+                    "windowSize",
+                    "normalization"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "limitations": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "maxItems": 20
+            },
+            "pythonParserVersion": {
+              "const": "python-ast-v1"
+            },
+            "javascriptParserVersion": {
+              "const": "typescript-6.0.3-metrics-v1"
+            },
+            "javascriptFunctionCount": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 3000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "javascriptBranchMetric": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 6000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "denominatorJavascriptFiles": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50
+            },
+            "denominatorPythonDuplicationFiles": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50
+            },
+            "denominatorJavascriptDuplicationFiles": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50
+            },
+            "javascriptDuplication": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "tokenWindows": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3000000
+                    },
+                    "duplicatedTokenWindows": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3000000
+                    },
+                    "windowSize": {
+                      "const": 20
+                    },
+                    "normalization": {
+                      "const": "comments-whitespace-only-exact-token-text"
+                    }
+                  },
+                  "required": [
+                    "tokenWindows",
+                    "duplicatedTokenWindows",
+                    "windowSize",
+                    "normalization"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "bytes",
+            "files",
+            "lines",
+            "pythonFunctionCount",
+            "pythonBranchMetric",
+            "denominatorPythonFiles",
+            "unsupported",
+            "toolVersion",
+            "duplication",
+            "limitations",
+            "pythonParserVersion",
+            "javascriptParserVersion",
+            "javascriptFunctionCount",
+            "javascriptBranchMetric",
+            "denominatorJavascriptFiles",
+            "denominatorPythonDuplicationFiles",
+            "denominatorJavascriptDuplicationFiles",
+            "javascriptDuplication"
+          ],
+          "additionalProperties": false
+        },
+        "after": {
+          "type": "object",
+          "properties": {
+            "bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "files": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "lines": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "pythonFunctionCount": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "pythonBranchMetric": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "denominatorPythonFiles": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "unsupported": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "maxItems": 50
+            },
+            "toolVersion": {
+              "const": "gitviz-snapshot-metrics-v1"
+            },
+            "duplication": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "tokenWindows": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3000000
+                    },
+                    "duplicatedTokenWindows": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3000000
+                    },
+                    "windowSize": {
+                      "const": 20
+                    },
+                    "normalization": {
+                      "const": "comments-whitespace-only-exact-token-text"
+                    }
+                  },
+                  "required": [
+                    "tokenWindows",
+                    "duplicatedTokenWindows",
+                    "windowSize",
+                    "normalization"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "limitations": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 4096
+              },
+              "maxItems": 20
+            },
+            "pythonParserVersion": {
+              "const": "python-ast-v1"
+            },
+            "javascriptParserVersion": {
+              "const": "typescript-6.0.3-metrics-v1"
+            },
+            "javascriptFunctionCount": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 3000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "javascriptBranchMetric": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 6000000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "denominatorJavascriptFiles": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50
+            },
+            "denominatorPythonDuplicationFiles": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50
+            },
+            "denominatorJavascriptDuplicationFiles": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50
+            },
+            "javascriptDuplication": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "tokenWindows": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3000000
+                    },
+                    "duplicatedTokenWindows": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3000000
+                    },
+                    "windowSize": {
+                      "const": 20
+                    },
+                    "normalization": {
+                      "const": "comments-whitespace-only-exact-token-text"
+                    }
+                  },
+                  "required": [
+                    "tokenWindows",
+                    "duplicatedTokenWindows",
+                    "windowSize",
+                    "normalization"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "bytes",
+            "files",
+            "lines",
+            "pythonFunctionCount",
+            "pythonBranchMetric",
+            "denominatorPythonFiles",
+            "unsupported",
+            "toolVersion",
+            "duplication",
+            "limitations",
+            "pythonParserVersion",
+            "javascriptParserVersion",
+            "javascriptFunctionCount",
+            "javascriptBranchMetric",
+            "denominatorJavascriptFiles",
+            "denominatorPythonDuplicationFiles",
+            "denominatorJavascriptDuplicationFiles",
+            "javascriptDuplication"
+          ],
+          "additionalProperties": false
+        },
+        "changedFiles": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "additions": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deletions": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "validationStatus": {
+          "enum": [
+            "comparable",
+            "not_comparable"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "maxItems": 20
+        },
+        "beforeRunId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "afterRunId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "testTransitions": {
+          "type": "null"
+        },
+        "performanceChange": {
+          "type": "null"
+        },
+        "qualityImprovement": {
+          "type": "null"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "maxItems": 20
+        },
+        "diffToolVersion": {
+          "const": "difflib-sequence-matcher-autojunk-v1"
+        },
+        "diffLimitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "maxItems": 5
+        },
+        "purpose": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 4096
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expectedEffects": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "maxItems": 5
+        },
+        "remainingRisks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "maxItems": 5
+        },
+        "validationOutcomes": {
+          "type": "object",
+          "properties": {
+            "before": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "after": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "before",
+            "after"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "comparisonId",
+        "projectId",
+        "beforeSnapshotId",
+        "afterSnapshotId",
+        "proposalId",
+        "beforeInputHash",
+        "afterInputHash",
+        "before",
+        "after",
+        "changedFiles",
+        "additions",
+        "deletions",
+        "validationStatus",
+        "reasons",
+        "beforeRunId",
+        "afterRunId",
+        "testTransitions",
+        "performanceChange",
+        "qualityImprovement",
+        "limitations",
+        "diffToolVersion",
+        "diffLimitations",
+        "purpose",
+        "expectedEffects",
+        "remainingRisks",
+        "validationOutcomes"
+      ],
+      "additionalProperties": false
+    },
+    "fileLocation": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "fileId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "root": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "absolutePath": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "sourceHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "projectId",
+        "snapshotId",
+        "fileId",
+        "root",
+        "absolutePath",
+        "sourceHash",
+        "line",
+        "column"
+      ],
+      "additionalProperties": false
+    },
+    "releasedImpact": {
+      "type": "object",
+      "properties": {
+        "releasedSessionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "releasedSessionId",
+        "projectId"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

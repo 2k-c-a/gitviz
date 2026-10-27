@@ -27,7 +27,8 @@ from app.core.database import Base  # noqa: E402
 import app.models  # noqa: E402,F401
 from app.models import AIInput, AIJob, PRRevision  # noqa: E402
 
-HEAD = 'a9d2f4c6e8b0'
+HEAD = 'b7e1d9c3a502'
+AI_HEAD = 'a9d2f4c6e8b0'  # Historical AI-only downgrade excludes preserved desktop auth tables.
 PREVIOUS = 'a1b2c3d4e5f6'
 AI_TABLES = ['pr_revisions', 'ai_inputs', 'ai_input_files', 'ai_jobs', 'ai_attempts', 'ai_results', 'ai_findings',
              'finding_feedback', 'request_idempotency', 'task_outbox', 'usage_budgets', 'usage_reservations',
@@ -676,7 +677,7 @@ class UpgradeFromPreviousHead(unittest.TestCase):
             {'r': rid, 's': SHA, 'h': H('a'), 'p': '{"a": 1}'})
         self.conn.commit()
 
-        command.upgrade(CONFIG, 'head')
+        command.upgrade(CONFIG, AI_HEAD)
         self.assertEqual(self.ai_tables(), set(AI_TABLES))
         self.assertEqual(self.conn.execute(text('SELECT github_login FROM users')).scalar(), 'keep-me')
         self.assertEqual(self.conn.execute(text('SELECT count(*) FROM analysis_snapshots')).scalar(), 1)
@@ -695,7 +696,7 @@ class UpgradeFromPreviousHead(unittest.TestCase):
             "SELECT proname FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace "
             "WHERE n.nspname=:s AND proname LIKE 'gitviz_ai_%'"), {'s': self.schema}).all()
         self.assertEqual(leftovers, [])
-        command.upgrade(CONFIG, 'head')        # 다시 올릴 수 있다
+        command.upgrade(CONFIG, AI_HEAD)       # Historical AI-only schema can be recreated.
         self.assertEqual(self.ai_tables(), set(AI_TABLES))
         self.conn.commit()
 
