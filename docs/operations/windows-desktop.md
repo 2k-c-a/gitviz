@@ -21,17 +21,33 @@
 
 | 항목 | 상태 |
 | --- | --- |
-| 서명 인증서 | 없음. 확보 후 종류·보관 방식 결정 |
-| publisher | 인증서 subject 확정 후 설정 |
+| 서명 인증서 | 공개 신뢰 인증서 없음. 서명 없는 배포가 기본, 자체 서명은 개발 시험용 |
+| publisher | 공개 신뢰 인증서를 확보할 때까지 비움 |
 | 배포 위치 | GitHub Releases로 가정. 실제 `<owner>/<repo>` 미설정 |
 | maker-squirrel | 의존성 설치 별도 승인 필요 |
+
+## 배포 방침 (졸업작품·소규모 팀)
+
+- 공개 신뢰 서명(Azure Artifact Signing 등)은 지역·신원 요건 때문에 한국 개인·학생 팀에는 적용하기 어렵다고 판단했다. 요건은 가입 전에 Microsoft 공식 문서로 다시 확인한다.
+- 기본은 **서명 없는 배포**다. 설치 파일은 매니페스트의 크기와 SHA-256으로만 검증하며 `unsigned-not-trusted`로 취급한다. Windows SmartScreen 경고가 표시될 수 있다.
+- 서명 검증 경로는 자체 서명 인증서로 개발 시험한다. 자체 서명 인증서는 공개 신뢰가 아니므로 배포용 신뢰 근거로 쓰지 않는다.
 
 ## 수동 검증
 
 설치 파일을 실행하지 않고 매니페스트와 대조한다.
 
 ```powershell
-pwsh -NoProfile -File desktop/tests/install-update.ps1 -InstallerPath <설치파일> -ManifestPath <manifest.json> [-ExpectedPublisher '<인증서 subject>']
+pwsh -NoProfile -File desktop/tests/install-update.ps1 -InstallerPath <설치파일> -ManifestPath <manifest.json> [-ExpectedPublisher '<인증서 subject>' | -PinnedThumbprint '<자체 서명 지문>']
 ```
 
-종료 코드: 0 검증됨, 1 크기·해시·서명 불일치, 2 서명 미확인(publisher 미지정).
+- `-ExpectedPublisher`: 공개 신뢰 서명(`Valid`)과 subject 일치를 요구한다.
+- `-PinnedThumbprint`: 자체 서명 개발 인증서용이다. 루트가 신뢰되지 않아도 서명자 지문이 일치하면 통과한다. 둘을 함께 쓸 수 없다.
+- 종료 코드: 0 검증됨, 1 크기·해시·서명 불일치, 2 서명 미확인(서명 옵션 미지정).
+
+## 자체 서명 종단 시험
+
+```powershell
+pwsh -NoProfile -File desktop/tests/self-signed-update.ps1
+```
+
+`Cert:\CurrentUser\My`에 7일짜리 시험 인증서를 만들어 임시 복사본에 서명하고 정상·지문 불일치·변조·루트 미신뢰·무서명 5경우를 확인한 뒤 인증서와 임시 파일을 삭제한다. 신뢰 저장소는 변경하지 않는다. 개발 전용이다.
