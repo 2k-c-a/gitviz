@@ -209,3 +209,7 @@ P08은 두 부분으로 나눈다. 위 의존성 절의 "event/store 기반은 P
 - **P08b 원격 연결:** `workspace.projects.connectRemote`, 알려진 원격 분석 job의 terminal 전환 감지, navbar·page-context 진입점. 선행 P03 실제 서버 인수 또는 그에 준하는 승인.
 
 작업 브랜치는 `feat/p08-workspace-inbox`다. P08a 착수 자체와 이벤트 발생 모듈 수정 범위는 별도 승인 대상이다.
+
+## P08a 구현·검증 — 2026-10-28
+
+사용자가 승인한 P08a 전체 범위를 구현했다(커밋 `5eb990b`). schema 7 이벤트·알림, 같은 transaction 기록, `notifications.list/markRead`·`events.read`, main relay, 앱 내 inbox를 포함한다. 호스트 Windows에서 18단계(정적·빌드·host 30·workspace 120·Electron e2e 10종)가 통과했다. 승인 목록 밖의 연결·기대값 수정, 실패 이력, 설계와의 차이는 [P08a 기록](validation/p08a-2026-10-28.md)에 있다. P08b와 패키지 clean VM 인수는 별도 승인 대상이다.

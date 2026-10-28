@@ -129,3 +129,8 @@ P00 전체 정책·의존성 검토는 미완료이며 실제 Windows/보안/성
 QA 단계 D의 79단계 실행 결과와 로그 대조는 [Stage D 기록](validation/stage-d-2026-10-28.md), 요구사항별 상태는 [통합 추적표](validation/traceability-2026-10-28.md)에 있다.
 
 Windows 검증 경로: 이 저장소의 인수 세션은 Windows 셸을 직접 쓸 수 없다. 2026-10-28 사용자는 Windows 테스트에 Hyper-V를 사용하도록 지시했다. 구체적 실행 방식(기존 clean VM과 개발 도구가 있는 VM의 구분)은 P08a 실행 기록에 남긴다.
+
+## P08a 검증 — 2026-10-28
+
+- T09: `tests/workspace/test_notifications.py`, `desktop/tests/notifications.test.ts`, `desktop/tests/inbox.e2e.ts`를 작성했다.
+- 실행기: `.validation/p08/host-run.ps1`(무시 대상). 최종 18단계가 통과했다. 실행 기록은 [P08a 기록](validation/p08a-2026-10-28.md)에 있다.

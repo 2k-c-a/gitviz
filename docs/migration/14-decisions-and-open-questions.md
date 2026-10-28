@@ -116,3 +116,9 @@ P06의 격리 단위·S11·source Electron과 별도 승인한 frozen agent/독�
 - **작업 브랜치:** 인수 에이전트가 `feat/p08-workspace-inbox`를 만들었다. push는 하지 않는다.
 
 Q08 전체, Q09, D01~D03은 이 결정으로 해결되지 않는다.
+
+## P08a 결정 반영 — 2026-10-28
+
+- Windows 검증은 호스트에서 실행했다(사용자 지시 변경). Hyper-V 개발 VM 시도와 중단은 [P08a 기록](validation/p08a-2026-10-28.md)에 남겼다.
+- 알림은 Q08 결정 전까지 자동 삭제하지 않는다. 알림은 해당 리뷰·검증 기록과 같이 프로젝트 등록 해제를 막는 데이터로 남는다(FK, cascade 없음).
+- `events.subscribe/unsubscribe`는 main↔renderer IPC로 구현했다. agent에는 catch-up 조회 `workspace.events.read`를 추가했다.

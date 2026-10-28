@@ -24,7 +24,7 @@
 | P05 | 부분 구현 | PC 로컬 경로 완료, D-02로 main 네이티브 동의. cloud BYOK·공개 매핑·실제 모델 품질 미완료 |
 | P06 | 검증 완료(승인 범위) | historical evidence는 원격 매핑 부재로 unavailable |
 | P07 | 부분 구현 | 단위·Electron·패키지 fixture 통과. 에디터 줄·열 화면 인수 연기. 독립 패키지는 HEAD 이전 agent(`113A…`) 기준 |
-| P08 | 미착수 | P08a(로컬 inbox)부터 진행 예정 |
+| P08 | 부분 구현 | P08a 로컬 inbox 검증 완료(호스트 fixture, [P08a 기록](p08a-2026-10-28.md)). P08b(원격 분석 완료·connectRemote·navbar) 미착수 |
 | P09 | 미착수 | P08·정책 결정 선행 |
 | P10 | 미착수 | Q01/Q02/Q08/Q10·서명 자격 선행 |
 
@@ -51,7 +51,7 @@
 | N05·C05 | F05·S01/S03/S05/S06 | P04/P07 | `detection.py`, `validation.py`, `runner.py`, `diagnostics.py`; `validation.*` | T06, validation e2e | 검증 완료(fixture) | OS sandbox 아님(설계상 고지). detect는 변경 규모와 무관(D-07) |
 | N06·C06 | F06·S02/S04 | P04/P06 | `impact.py`, `desktop/src/impact*.ts`; `impact.*` | T07 | 부분 구현 | historical evidence unavailable(`projects.connectRemote` 미구현) |
 | N07·C07 | F07·S03/S04 | P07 | `comparisons.py`, `comparison-metrics.ts`, `metrics.ts`; `comparisons.*` | T08 `test_comparison_metrics.py` | 검증 완료(fixture) | 실측 지표는 분기 수·exact window 중복만 |
-| N08·C08 | F08·S02/S06 | P08 | 예정 `events.py`, `notifications.py`, `inbox.js`, `navigation.js`; `notifications.*`, `events.*` | T09 예정 `test_notifications.py` | 미구현 | P08a/P08b로 진행 |
+| N08·C08 | F08·S02/S06 | P08 | `events.py`, `notifications.py`, `notification_schema.py`, `desktop/src/notifications.ts`, `inbox.js`, `navigation.js`; `notifications.list/markRead`, `events.read`, main IPC `workspace:events-subscribe/unsubscribe` | T09 `test_notifications.py`(17), `notifications.test.ts`(3), `inbox.e2e.ts` | 부분 구현 | 로컬 review/validation/apply 사건은 검증 완료(호스트 fixture). 원격 분석 완료 통합(P08b)·OS toast(Q09) 미구현 |
 
 ## 플랫폼 요구 REQ-P01~P08
 
@@ -71,11 +71,11 @@
 | ID | 상태 | 증거 |
 |---|---|---|
 | S01 경계 | 검증 완료(시험 경로) | PV 48·PVS 5·HL-01 |
-| S02 프로젝트·계정 분리 | 부분 구현 | IPC-07, A03 other-project. T09(N08) 미작성 |
+| S02 프로젝트·계정 분리 | 부분 구현 | IPC-07, A03 other-project, T09 다른 프로젝트 알림 위조 거부·inbox e2e. 원격 계정 분리는 P03 실제 서버 인수 대기 |
 | S03 승인·hash·journal | 검증 완료(시험 경로) | AP 9·IPC-02~06, D-10 상수 시간 비교 |
 | S04 untrusted source·동의 bytes | 검증 완료(시험 경로) | A03 13건 |
 | S05 고정 실행·자식 제한 | 검증 완료(시험 경로) | T06, validation e2e |
-| S06 암호화·비식별 로그 | 검증 완료(시험 경로) | CN-01a/b·CN-02 |
+| S06 암호화·비식별 로그 | 검증 완료(시험 경로) | CN-01a/b·CN-02. 이벤트/알림에 소스·경로·프롬프트 미저장(T09) |
 | S07 renderer 격리 | 검증 완료(시험 경로) | IPC-01, A05-a/b/c |
 | S08 서명·배포 | 미구현 | P10 |
 
@@ -83,4 +83,4 @@
 
 ## 출시 차단 항목
 
-N08·REQ-P05 미구현, P03 실제 서버 인수, P07 에디터 화면 인수, 정책 D01·D02·D03·Q01·Q02·Q03·Q08·Q10, Windows CI 부재. 전체 출시 완료로 선언하지 않는다.
+N08 원격 부분(P08b)·REQ-P05 미구현, P03 실제 서버 인수, P07 에디터 화면 인수, 정책 D01·D02·D03·Q01·Q02·Q03·Q08·Q10, Windows CI 부재. 전체 출시 완료로 선언하지 않는다.

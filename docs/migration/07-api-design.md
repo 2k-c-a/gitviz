@@ -166,3 +166,12 @@ files.locate는 snapshot/file/line/column을 확인하고 main에만 실제 경�
 - 오류 코드: 위 목록 외에 스키마에 27개가 추가됐다. `AMBIGUOUS_FACETS`, `CHANGESET_TOO_LARGE`, `CLOUD_MAPPING_REQUIRED`, `CONSENT_EXPIRED`, `CONSENT_REQUIRED`, `CONTENT_EXCLUDED`, `DUPLICATE_RISK_CONFIRMATION_REQUIRED`, `EMPTY_INPUT`, `GIT_NOT_FOUND`, `HISTORY_MAPPING_REQUIRED`, `INDEX_UNAVAILABLE`, `METADATA_GRANT_REQUIRED`, `OUTPUT_LIMIT`, `PATCH_ENCODING_UNSUPPORTED`, `PATCH_INVALID`, `PATCH_SCOPE_UNSUPPORTED`, `PATCH_TOO_LARGE`, `PROJECT_MOVED`, `PROJECT_RECONNECT_REQUIRED`, `RECOVERY_CONFLICT`, `REVIEW_DATA_REQUIRES_EXPLICIT_REMOVAL`, `ROOT_GRANT_REQUIRED`, `SELECTION_EXPIRED`, `UNSUPPORTED_FILENAME`, `UNSUPPORTED_KIND`, `UNSUPPORTED_REPOSITORY`, `WINDOWS_REQUIRED`. 모두 추가만 한 변경이다.
 - `CHANGESET_TOO_LARGE`의 details는 `operation`과 `limitBytes/observedBytes` 또는 `limitItems/observedItems`만 담고 경로를 담지 않는다(D-07, [Stage D 기록](validation/stage-d-2026-10-28.md)).
 - `workspace:review-start`는 main이 기억한 preview(projectId·previewHash·manifestHash·maxEstimatedCost 일치)에 대해 네이티브 확인을 받은 뒤에만 agent로 전달한다(D-02).
+
+## P08a 실제 계약 — 2026-10-28
+
+추가된 local RPC는 3개다(총 47개).
+- `workspace.notifications.list`: filters(projectIds, types, severities, read), opaque cursor, limit. cursor는 필터에 묶여 있어 다른 필터로 쓰면 INVALID_REQUEST다.
+- `workspace.notifications.markRead`: projectId, notificationId, expectedVersion, read를 받는다. 다른 프로젝트의 ID는 RESOURCE_NOT_FOUND다.
+- `workspace.events.read`: afterSequence, limit, projectIds를 받아 events, lastSequence, reset, hasMore를 돌려준다.
+
+위 표의 `events.subscribe/unsubscribe`는 main↔renderer IPC(`workspace:events-subscribe/unsubscribe`, push `workspace:event`)로 구현했다. push 신호에는 본문이 없다. 상세는 [P08a 기록](validation/p08a-2026-10-28.md)에 있다.

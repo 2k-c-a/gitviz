@@ -114,3 +114,9 @@ erDiagram
 ## P07 local schema6 보충
 
 validation_approval은 project/plan/confirmationHash/capabilityHash/expiry/consumed를, validation_run은 project/plan/status와 암호화된 입력·환경 증거·출력·diagnostic을 보관한다. comparison은 같은 project의 before/after snapshot·선택 proposal/run 복합 FK와 암호화 측정 결과를 보관한다. project_setting은 recentLimit를 보존하고 editorId(vscode/cursor)를 CAS로 추가한다. migration은 동일한 pre-v6 backup·transaction rollback·foreign_key_check를 사용한다. 기존 payload AAD는 변경하지 않고 새 실행/비교 payload만 schema6 AAD로 보관한다. 원문·출력·목적/추론 텍스트는 operation ledger에 평문으로 넣지 않는다.
+
+## schema 7 실제 구현 — 2026-10-28
+
+- `workspace_event`에 전역 `sequence`와 요약 `summary`(수치·enum만)를 추가했다. 갱신은 trigger로 금지한다.
+- `notification`은 `created_at`을 가지며, 심각도와 유형은 event에서 읽는다.
+- 두 표 모두 `local_project` FK가 cascade가 아니다. 원격 연결 사건(P08b)은 아직 기록하지 않는다. [P08a 기록](validation/p08a-2026-10-28.md)
