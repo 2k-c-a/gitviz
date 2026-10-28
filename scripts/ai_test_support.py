@@ -6,6 +6,7 @@
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +34,22 @@ def require_test_database(env=None):
     env.setdefault('SESSION_SECRET_KEY', 'isolated-validation-secret')
     # 앱은 import 때 .env를 읽는다(기존 환경변수는 덮어쓰지 않음). 개발자 .env의 기본 모델 같은 값이 시험 결과를 바꾸지 않도록 고정한다.
     env['AI_PROVIDER_PROFILE'] = 'claude-opus-5-5-v1'
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from app.core.ai_settings import AISettings
+    defaults = AISettings()
+    for name, field in {
+        'AI_DAILY_JOB_LIMIT': 'daily_job_limit',
+        'AI_USER_MONTHLY_BUDGET': 'user_monthly_budget',
+        'AI_SERVER_MONTHLY_BUDGET': 'server_monthly_budget',
+        'AI_CREDENTIAL_VERIFY_LIMIT_PER_HOUR': 'credential_verify_limit_per_hour',
+        'AI_ENABLED': 'enabled',
+        'AI_ALLOW_EXTERNAL_TRANSFER': 'allow_external_transfer',
+    }.items():
+        value = getattr(defaults, field)
+        env[name] = str(int(value)) if isinstance(value, bool) else str(value)
+    # Not an AISettings field: registry's dynamic local-runtime flag defaults to '0'.
+    env['AI_KOBOLDCPP_ENABLED'] = '0'
     return url
 
 
