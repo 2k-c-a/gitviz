@@ -50,6 +50,7 @@ jobs:
       - run: python scripts/test_ai_contracts.py
       - run: python scripts/test_ai_security.py
       - run: python scripts/test_desktop_auth.py
+      - run: python scripts/test_desktop_auth.py --postgres
       - run: python scripts/test_desktop_api_compat.py
       - run: python scripts/test_ai_schema.py
       - run: python scripts/test_ai_pr_collection.py
