@@ -22,8 +22,10 @@ $completed = $false
 function Save-State([string]$Label) {
     & git -C $repo rev-parse HEAD | Set-Content -LiteralPath (Join-Path $evidence "$Label-head.txt") -Encoding utf8
     if ($LASTEXITCODE -ne 0) { throw 'Git state read failed.' }
-    & git -C $repo status --porcelain=v1 -uall | Set-Content -LiteralPath (Join-Path $evidence "$Label-status.txt") -Encoding utf8
+    $status = @(& git -C $repo status --porcelain=v1 -uall)
     if ($LASTEXITCODE -ne 0) { throw 'Git state read failed.' }
+    # Set-Content writes no file for an empty pipeline, which a clean CI checkout produces.
+    [IO.File]::WriteAllText((Join-Path $evidence "$Label-status.txt"), (($status | ForEach-Object { "$_`n" }) -join ''), [Text.UTF8Encoding]::new($false))
 }
 function Run-Step([string]$Name, [string]$Executable, [string[]]$Arguments, [int]$Timeout = 600, [string]$WorkingDirectory = $repo) {
     $info = [Diagnostics.ProcessStartInfo]::new()
