@@ -119,6 +119,7 @@ start.addEventListener('click', async () => {
       manifestHash: value.manifestHash, maxEstimatedCost: value.maxEstimatedCost, acknowledged: true,
       duplicateRiskAcknowledged: document.getElementById('review-duplicate-risk').checked, idempotencyKey: startKey });
     if (generation !== turn || approved?.previewId !== value.previewId || snapshot?.snapshotId !== value.snapshotId) return;
+      if (response === null) { message.textContent = '사용자가 전송을 취소했습니다'; start.disabled = !consent.checked; return; }
     clearTimeout(timer); show(response); void poll(value.projectId, response.runId, turn);
   } catch (error) { if (generation === turn) { fail(error); start.disabled = !consent.checked; } }
 });
