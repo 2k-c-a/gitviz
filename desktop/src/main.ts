@@ -22,6 +22,7 @@ import { confirmRemote, registerRemoteWorkspace } from './remote-workspace-ipc';
 import { registerDiagnostics } from './diagnostics-ipc';
 import { CloudReview } from './cloud-review';
 import { HistoricalImpact } from './historical-impact';
+import { createUpdateService, DISABLED_UPDATE_POLICY } from './update';
 
 registerScheme();
 let window: BrowserWindow | undefined;
@@ -62,7 +63,7 @@ else {
       const bodies = JSON.parse(readFileSync(join(__dirname, '../schema/ai-bodies.json'), 'utf8')) as Record<string, Record<string, unknown>>;
       remote = new Remote(new RemoteContracts(bodies), http, auth.identity, auth.invalidate);
     }
-    window.once('closed', registerDesktop(window, auth, remote));
+    window.once('closed', registerDesktop(window, auth, remote, createUpdateService(app.getVersion(), DISABLED_UPDATE_POLICY)));
     const remoteWorkspace = auth && remote && origin ? new RemoteWorkspace(agent, auth, remote, origin, detail => confirmRemote(window!, detail)) : null;
     window.once('closed', registerRemoteWorkspace(window, remoteWorkspace));
     const cloud = remoteWorkspace && auth ? new CloudReview(agent, remoteWorkspace, () => auth?.identity()?.generation ?? null) : null;

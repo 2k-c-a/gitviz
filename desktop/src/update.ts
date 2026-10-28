@@ -46,6 +46,15 @@ export function checkUpdate(currentVersion: string, manifestJson: unknown, polic
   return compareVersions(manifest.version, currentVersion) > 0 ? { status: 'available', manifest } : { status: 'current' };
 }
 
+/** Disabled until a release location is configured; nothing is fetched while the prefix is empty. */
+export const DISABLED_UPDATE_POLICY: UpdatePolicy = Object.freeze({ releasePrefix: '', publisher: '' });
+export interface UpdateService { status: () => { status: 'unconfigured' | 'not-checked'; currentVersion: string } }
+
+/** Renderer-facing status only: no fetch, no manifest and no installer path is reachable from here. */
+export function createUpdateService(currentVersion: string, policy: UpdatePolicy): UpdateService {
+  return { status: () => ({ status: policy.releasePrefix ? 'not-checked' : 'unconfigured', currentVersion }) };
+}
+
 async function sha256Of(filePath: string): Promise<string> {
   const hash = createHash('sha256');
   for await (const chunk of createReadStream(filePath)) hash.update(chunk as Buffer);

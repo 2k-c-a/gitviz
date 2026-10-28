@@ -2,11 +2,13 @@ import { ipcMain, type BrowserWindow } from 'electron';
 import { trustedSender } from './ipc';
 import type { DesktopAuth } from './auth';
 import type { Remote } from './remote';
+import type { UpdateService } from './update';
 
-export function registerDesktop(window: BrowserWindow, auth: DesktopAuth | null, remote: Remote | null): () => void {
-  const channels = ['desktop:auth-start', 'desktop:auth-status', 'desktop:auth-logout', 'desktop:remote'];
+export function registerDesktop(window: BrowserWindow, auth: DesktopAuth | null, remote: Remote | null, update?: UpdateService): () => void {
+  const channels = ['desktop:auth-start', 'desktop:auth-status', 'desktop:auth-logout', 'desktop:remote', 'desktop:update-status'];
   for (const channel of channels) ipcMain.handle(channel, async (event, ...args: unknown[]) => {
     if (!trustedSender(event, window) || args.length !== (channel === 'desktop:remote' ? 1 : 0)) throw new Error('ACCESS_DENIED');
+    if (channel === 'desktop:update-status') { if (!update) throw new Error('UPDATE_UNAVAILABLE'); return update.status(); }
     if (!auth || !remote) throw new Error('SERVER_NOT_CONFIGURED');
     try {
       if (channel === 'desktop:remote') return await remote.request(args[0]);

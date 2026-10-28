@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { checkUpdate, compareVersions, parseManifest, verifyInstaller, type UpdateManifest, type UpdatePolicy } from '../src/update';
+import { checkUpdate, compareVersions, createUpdateService, DISABLED_UPDATE_POLICY, parseManifest, verifyInstaller, type UpdateManifest, type UpdatePolicy } from '../src/update';
 
 const policy: UpdatePolicy = { releasePrefix: 'https://github.com/example/gitviz/releases/download/', publisher: '' };
 const manifest = (over: Record<string, unknown> = {}) => ({ version: '0.8.0', assetName: 'GitVizSetup.exe', sha256: 'a'.repeat(64), size: 10,
@@ -23,6 +23,12 @@ test('update check reports unconfigured, current, available and invalid without 
   assert.equal(checkUpdate('0.8.0', manifest(), policy).status, 'current');
   assert.equal(checkUpdate('0.7.0', manifest(), policy).status, 'available');
   assert.equal(checkUpdate('0.7.0', { nope: true }, policy).status, 'invalid');
+});
+
+test('renderer-facing update service is inert: unconfigured by default and never reports an unchecked release as current', () => {
+  assert.deepEqual(createUpdateService('0.7.0', DISABLED_UPDATE_POLICY).status(), { status: 'unconfigured', currentVersion: '0.7.0' });
+  assert.deepEqual(createUpdateService('0.7.0', policy).status(), { status: 'not-checked', currentVersion: '0.7.0' });
+  assert.ok(Object.isFrozen(DISABLED_UPDATE_POLICY));
 });
 
 test('installer verification checks size and hash first, and never trusts an installer without a configured publisher', async () => {

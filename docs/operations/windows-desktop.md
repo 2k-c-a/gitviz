@@ -8,6 +8,10 @@
 - 서명 인증서와 publisher가 없어 installer 빌드·서명·배포는 하지 않았다. 설치 파일은 아직 제공되지 않는다.
 - `forge.config.ts`의 `makers`는 비어 있고 maker-squirrel은 설치하지 않았다.
 
+## 앱 연결 상태
+
+렌더러에는 읽기 전용 `desktop.update.status()`만 노출된다. 릴리스 위치가 설정되기 전에는 항상 `unconfigured`를 반환하며 네트워크 조회·다운로드·설치를 하지 않는다. `.github/workflows/windows-release.yml`은 수동 실행 전용 초안으로, 서명 없는 패키지 zip과 SHA-256만 워크플로 artifact로 올리고 릴리스를 게시하지 않는다.
+
 ## 업데이트 검증 규칙
 
 `desktop/src/update.ts`가 구현한다. 네트워크 조회·다운로드·실행 경로는 없다.
