@@ -26,7 +26,7 @@
 | P07 | 부분 구현 | 단위·Electron·패키지 fixture 통과. 에디터 줄·열 화면 인수 연기. 독립 패키지는 HEAD 이전 agent(`113A…`) 기준 |
 | P08 | 부분 구현 | P08a 로컬 inbox 검증 완료([P08a 기록](p08a-2026-10-28.md)). P08b connectRemote·알려진 job 전환·navbar 구현, 호스트 fixture 23단계 통과([P08b·P09 기록](p08b-p09-2026-10-28.md), 커밋 `c28c05e`). 실제 서버·clean VM 미검증 |
 | P09 | 구현 중 | Windows CI 설정·로컬 23단계 검증기·golden DDL·정적 번들 감사 작성, 개발 호스트 통과. CI 원격 실행·P09 서비스 회귀(승인 대기)·staging·clean VM·실제 provider·SLO 미완료 |
-| P10 | 미착수 | Q01/Q02/Q08/Q10·서명 자격 선행 |
+| P10 | 부분 구현 | 서명 없는 범위만: 업데이트 검증 모듈·수동 검증 스크립트·운영 문서, 개발 호스트 23단계 통과([P10 기록](p10-partial-2026-10-28.md)). 인증서·publisher·배포 위치·maker-squirrel·installer 서명·배포·clean VM 미완료 |
 
 ## 기존 기능 E01~E10
 

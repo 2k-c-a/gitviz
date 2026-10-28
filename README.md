@@ -36,7 +36,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 python -m celery -A app.core.celery_app:celery worker --loglevel=info --pool=solo
 ```
 
-접속 주소는 `http://localhost:8000`이다. 앱은 스키마를 자동 생성하지 않으며 새 분석·재분석에는 로그인이 필요하다. [설치·프로세스 안내](docs/operations/setup.md)와 [접근·스냅샷·backfill](docs/architecture/repository-access-and-snapshots.md)을 참조한다.
+접속 주소는 `http://localhost:8000`이다. 앱은 스키마를 자동 생성하지 않으며 새 분석·재분석에는 로그인이 필요하다. [설치·프로세스 안내](docs/operations/setup.md)와 [접근·스냅샷·backfill](docs/architecture/repository-access-and-snapshots.md)을 참조한다. Windows 데스크톱 앱 설치·업데이트 상태는 [Windows 데스크톱 안내](docs/operations/windows-desktop.md)를 따른다.
 
 ## AI 리뷰
 
