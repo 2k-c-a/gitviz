@@ -122,3 +122,18 @@ Q08 전체, Q09, D01~D03은 이 결정으로 해결되지 않는다.
 - Windows 검증은 호스트에서 실행했다(사용자 지시 변경). Hyper-V 개발 VM 시도와 중단은 [P08a 기록](validation/p08a-2026-10-28.md)에 남겼다.
 - 알림은 Q08 결정 전까지 자동 삭제하지 않는다. 알림은 해당 리뷰·검증 기록과 같이 프로젝트 등록 해제를 막는 데이터로 남는다(FK, cascade 없음).
 - `events.subscribe/unsubscribe`는 main↔renderer IPC로 구현했다. agent에는 catch-up 조회 `workspace.events.read`를 추가했다.
+
+## 후속 사용자 결정 — 2026-10-28 P08b/P09
+
+- identity 읽기 API와 GitHub 확인 visibility(public/private) 확장, schema8 계정·origin·numeric GitHub ID·remote hash 연결, 추적 중 job 전환 알림·클릭 재검증, 임시 DB migration, 독립 검증 패키징을 승인했다.
+- Windows CI 고정 lock 설치 구성과 fixture 로그7일 보관을 승인했다. push·Actions 실제 실행 승인은 아니다.
+- Q01/Q02: 초기 Windows11 x64 표준 사용자·사용자별 설치·서명 검증 후 수동 업데이트. 자동 업데이트 서버와 ARM64/Windows10은 후속 범위다. 실제 installer·서명·배포는 자격·배포 위치 확인과 별도 승인 뒤다.
+- Q08: 자동 삭제 없음으로 확정. 암호문·journal·알림을 유지하며 명시 정리 기능은 별도 승인이다. 용량과 키 소실·백업 복구 책임은 계속 공지해야 한다.
+- Q04: public proof·기존 preview/native 동의 경로 구현을 승인했다. private/unknown/unmapped는 계속 차단한다. BYOK는 main 메모리에만 있고 agent는 key 필드를 받지 않는다. 실제 provider 호출은 승인/실행하지 않았다.
+- 실제 OAuth staging은 사용자가 준비 안 됨으로 확인했다. P03 실제 서버 인수 미완료다. Q10의 SLO·지원 기간·운영 자격 전체가 결정된 것은 아니다.
+
+증거와 한계는 [후속 기록](validation/p08b-p09-2026-10-28.md)을 따른다.
+
+사용자는 N06 historical 응답 확장·기존 snapshot/coupling 읽기 연결·fixture 검증을 추가 승인했다. 로컬 경로/소스를 서버에 보내지 않고 계정/origin/numeric ID/config와 서버 snapshot/기준 commit을 검증하는 범위다. 실제 서버 호출은 제외한다. [후속 증거](validation/p08b-p09-2026-10-28.md). Q10 추적 자원 상한은 별도 결정 대기다.
+
+Q10 자원 정책 후속 확정: 사용자는 현재 창의 동시 원격 추적16개 상한 유지와 UI 명시를 선택했다. 무제한 또는128개 확대는 승인/적용하지 않았다. SLO 수치·지연/메모리 실측·운영 지원 기간 전체를 확정한 것으로 해석하지 않는다.

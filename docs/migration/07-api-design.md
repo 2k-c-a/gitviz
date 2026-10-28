@@ -175,3 +175,11 @@ files.locate는 snapshot/file/line/column을 확인하고 main에만 실제 경�
 - `workspace.events.read`: afterSequence, limit, projectIds를 받아 events, lastSequence, reset, hasMore를 돌려준다.
 
 위 표의 `events.subscribe/unsubscribe`는 main↔renderer IPC(`workspace:events-subscribe/unsubscribe`, push `workspace:event`)로 구현했다. push 신호에는 본문이 없다. 상세는 [P08a 기록](validation/p08a-2026-10-28.md)에 있다.
+
+## 승인된 P08b/후속 cloud 계약 — 2026-10-28
+
+protocol1·schema8의 정확한 계약은 공통 JSON schema와 Python/TS operation 목록이다. projects.connectRemote(inspect/connect), remote.connections/observeAnalysis/getAnalysis를 추가한다. main이 계정·서버 identity를 확인하고 native 확인 후 연결한다. renderer는 proof·계정·origin·hash를 지정하지 못한다. remote 연결·열기는 명명된 IPC만 제공하며 native 확인 취소 시 연결 쓰기가 없다.
+
+`GET /api/desktop/v1/repositories/{id}/identity`는 기존 read 권한/인증을 재사용하고 accountId·repositoryId·githubId·canonicalUrl·visibility를 no-store로 반환한다. visibility는 GitHub 확인 strict boolean에서만 public/private로 만든다. 기존 HTTP DTO·권한 정책·서버 DB schema는 유지한다. 실제 배포/호출 인수는 미실행이다.
+
+reviews.cloudContext는 main-only 공개 proof·credentialRef/버전만 받고 API key를 거부한다. reviews.cloudExchange(take/complete)는 승인된 요청 bytes/hash와 bounded provider 응답을 교환한다. take는 한 번만 가능하고 key는 main에서 고정 HTTPS header에만 사용한다. native 동의 후 fresh 공개 증명과 exact bytes를 재검사한다. 원격 credential 저장·모델 호출·재전송을 preview에서 하지 않는다. [구현·검증 기록](validation/p08b-p09-2026-10-28.md)에 비용·만료·실패·미검증을 명시한다.

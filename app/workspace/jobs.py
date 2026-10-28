@@ -125,8 +125,20 @@ class Jobs:
                 (status, int(uncertain), result, error, now, run))
             self.db.execute('UPDATE review_attempt SET status=?,provider_request_id=?,usage=?,finished_at=? WHERE run_id=?',
                 (status, reply.request_id if reply else None, json.dumps(reply.usage) if reply and reply.usage else None, now, run))
+            consent = self.db.execute('SELECT c.id,c.payload FROM transfer_consent c JOIN review_run r ON r.consent_id=c.id WHERE r.id=?', (run,)).fetchone()
+            manifest = self.decrypt(project, consent[0], consent[1])
+            cloud = manifest['profile']['provider'] in ('anthropic', 'openai', 'gemini')
+            actual: str | None = None if uncertain else '0'
+            unsettled = uncertain
+            if cloud and reply is not None:
+                if reply.usage is None:
+                    actual, unsettled = None, True
+                else:
+                    from .adapters import ai_core
+                    from app.services.ai.token_budget import cost_of
+                    actual = str(cost_of(ai_core.profile(manifest['profile']['id'], {}), reply.usage['inputTokens'], reply.usage['outputTokens']))
             self.db.execute('UPDATE local_usage_ledger SET outcome_uncertain=?,actual_cost=?,settled_at=? WHERE run_id=?',
-                (int(uncertain), None if uncertain else '0', None if uncertain else now, run))
+                (int(unsettled), actual, None if unsettled else now, run))
             if status == 'succeeded' and 'findings' in output:
                 for ordinal, finding in enumerate(output['findings']):
                     finding_id = str(uuid.uuid4())
@@ -154,11 +166,14 @@ class Jobs:
         row = self.db.execute('SELECT snapshot_id,status,attempt_count,budget_reserved,outcome_uncertain,error_code,version,created_at,kind FROM review_run WHERE project_id=? AND id=?', (project, run)).fetchone()
         if row is None:
             raise ScopeError('RESOURCE_NOT_FOUND')
+        consent = self.db.execute('SELECT c.id,c.payload FROM review_run r JOIN transfer_consent c ON c.id=r.consent_id WHERE r.id=?', (run,)).fetchone()
+        credential_ref = self.decrypt(project, consent[0], consent[1]).get('credentialRef')
         result: dict[str, Any] = {'projectId': project, 'runId': run, 'snapshotId': row[0], 'status': row[1],
+            'credentialRef': credential_ref,
             'attemptCount': row[2], 'budgetReserved': row[3], 'outcomeUncertain': bool(row[4]), 'errorCode': row[5],
             'version': row[6], 'createdAt': row[7], 'kind': row[8], 'refactor': None, 'findings': [], 'limitations': [
                 'model-inference-not-executed', 'zero-findings-is-not-defect-free', 'retention-policy-pending',
-                'pc-model-provider-fee-zero-system-resource-cost-not-zero']}
+                'cost-reservation-may-remain-unsettled-provider-billing-is-authoritative']}
         encrypted = self.db.execute('SELECT result FROM review_run WHERE id=?', (run,)).fetchone()[0]
         if encrypted is not None:
             output = self.decrypt(project, run, encrypted)

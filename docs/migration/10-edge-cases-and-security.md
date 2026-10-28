@@ -54,3 +54,9 @@ agent는 상속 pipe로만 통신하고 raw stdio 메시지를 renderer에 전�
 현재 [공유 GET](../../app/api/ai/shared.py)은 단순 '팀원 전용'으로 표현할 수 없다. 원격 기존 동작을 자동 변경하지 않으며 노출 안내와 제품 결정 D01/Q05를 출시 게이트로 둔다. 로컬 결과는 별도 저장이므로 기존 shared 경로에 신규 자료가 유입되지 않게 한다.
 
 서버 OAuth의 client secret·암호화 key는 앱에 넣지 않는다. 인증 handoff의 challenge·pollSecret·browser binding·한 번 소비·짧은 TTL·CSRF를 함께 검증한다. UI에서 인증 실패와 네트워크 실패를 구분하고 불명 상태에서 로그인 계정이나 GitHub 접근을 추측하지 않는다.
+
+## 후속 보안 조건과 검증 한계 — 2026-10-28
+
+공개 매핑은 renderer가 주장하지 못하고 main이 current account/origin/GitHub numeric ID/config hash와30초 proof로 묶는다. native 확인은 실제 canonical 폴더·server identity·목적지·bytes/hash·비용을 보여 준다. 여러 fetch URL의 secondary public URL은 proof로 쓰지 않는다.
+
+cloud API key는 사용자 입력의 일시 renderer 상태를 제외하면 main에서만 보유하며5분/계정 변경/종료 시 참조를 해제한다. IPC 뒤 입력을 비우고 agent/DB/preview/로그에는 반환하지 않는다. HTTP debug 환경에서는 cloud를 차단하고, upstream error 원문 및 literal/unicode-escaped key 반사를 agent로 넘기지 않는다. 완전한 메모리 소거를 주장하지 않는다. 전송 bytes 변경·private/unknown/unmapped·계정/권한 변경·조작된 snapshot hash는 차단하며 unknown 비용 예약은 유지한다. 실제 서비스·모델·clean VM·성능 인수와 최종 취약점 검토는 [후속 기록](validation/p08b-p09-2026-10-28.md)의 미완료를 따른다.

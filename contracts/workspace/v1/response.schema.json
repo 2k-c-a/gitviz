@@ -100,11 +100,18 @@
                       "workspace.projects.setEditor",
                       "workspace.notifications.list",
                       "workspace.notifications.markRead",
-                      "workspace.events.read"
+                      "workspace.events.read",
+                      "workspace.projects.connectRemote",
+                      "workspace.remote.observeAnalysis",
+                      "workspace.remote.getAnalysis",
+                      "workspace.reviews.cloudContext",
+                      "workspace.reviews.cloudExchange",
+                      "workspace.remote.connections",
+                      "workspace.impact.historical"
                     ]
                   },
                   "uniqueItems": true,
-                  "maxItems": 47
+                  "maxItems": 54
                 },
                 "state": {
                   "const": "initializing"
@@ -274,6 +281,27 @@
             },
             {
               "$ref": "#/definitions/eventBatch"
+            },
+            {
+              "$ref": "#/definitions/remoteInspection"
+            },
+            {
+              "$ref": "#/definitions/remoteConnected"
+            },
+            {
+              "$ref": "#/definitions/remoteObserved"
+            },
+            {
+              "$ref": "#/definitions/remoteAnalysis"
+            },
+            {
+              "$ref": "#/definitions/cloudExchange"
+            },
+            {
+              "$ref": "#/definitions/remoteConnectionsList"
+            },
+            {
+              "$ref": "#/definitions/historicalContext"
             }
           ]
         }
@@ -357,7 +385,8 @@
                 "ROOT_GRANT_REQUIRED",
                 "WINDOWS_REQUIRED",
                 "INDEX_UNAVAILABLE",
-                "CHANGESET_TOO_LARGE"
+                "CHANGESET_TOO_LARGE",
+                "BUDGET_EXCEEDED"
               ]
             },
             "message": {
@@ -1802,20 +1831,39 @@
           "type": "object",
           "properties": {
             "id": {
-              "const": "ollama-local-v1"
+              "enum": [
+                "ollama-local-v1",
+                "claude-opus-5-5-v1",
+                "claude-sonnet-5-5-v1",
+                "gpt-5.4-v1",
+                "gemini-3.5-flash-lite-v1"
+              ]
             },
             "provider": {
-              "const": "ollama"
+              "enum": [
+                "ollama",
+                "anthropic",
+                "openai",
+                "gemini"
+              ]
             },
             "model": {
               "type": "string",
               "maxLength": 128
             },
             "endpoint": {
-              "const": "http://127.0.0.1:11434"
+              "enum": [
+                "http://127.0.0.1:11434",
+                "https://api.openai.com",
+                "https://api.anthropic.com",
+                "https://generativelanguage.googleapis.com"
+              ]
             },
             "executionLocation": {
-              "const": "user-pc"
+              "enum": [
+                "user-pc",
+                "cloud-provider"
+              ]
             },
             "timeoutSeconds": {
               "type": "integer",
@@ -1835,7 +1883,7 @@
             "contextWindow": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 32768
+              "maximum": 1000000
             },
             "promptVersion": {
               "enum": [
@@ -1854,7 +1902,20 @@
               "pattern": "^[0-9a-f]{64}$"
             },
             "transportVersion": {
-              "const": "ollama-chat-v1"
+              "enum": [
+                "ollama-chat-v1",
+                "workspace-cloud-rest-v1"
+              ]
+            },
+            "effort": {
+              "enum": [
+                "none",
+                "low"
+              ]
+            },
+            "credentialRef": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
             }
           },
           "required": [
@@ -1879,23 +1940,50 @@
           "pattern": "^[0-9a-f]{64}$"
         },
         "destination": {
-          "const": "http://127.0.0.1:11434"
+          "enum": [
+            "http://127.0.0.1:11434",
+            "https://api.openai.com",
+            "https://api.anthropic.com",
+            "https://generativelanguage.googleapis.com"
+          ]
         },
         "executionLocation": {
-          "const": "user-pc"
+          "enum": [
+            "user-pc",
+            "cloud-provider"
+          ]
         },
         "credentialRef": {
-          "type": "null"
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "credentialVersion": {
-          "type": "null"
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "policyVersion": {
           "type": "string",
           "maxLength": 64
         },
         "maxEstimatedCost": {
-          "const": "0"
+          "type": "string",
+          "maxLength": 32,
+          "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,12})?$"
         },
         "currency": {
           "const": "USD"
@@ -2209,6 +2297,58 @@
               "type": "null"
             }
           ]
+        },
+        "cloudMapping": {
+          "type": "object",
+          "properties": {
+            "connectionId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "accountId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "serverOrigin": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "repositoryId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "githubId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "canonicalUrl": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "visibility": {
+              "const": "public"
+            },
+            "configHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "required": [
+            "connectionId",
+            "accountId",
+            "serverOrigin",
+            "repositoryId",
+            "githubId",
+            "canonicalUrl",
+            "visibility",
+            "configHash"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -2278,7 +2418,9 @@
           "maximum": 1
         },
         "budgetReserved": {
-          "const": "0"
+          "type": "string",
+          "maxLength": 32,
+          "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,12})?$"
         },
         "outcomeUncertain": {
           "type": "boolean"
@@ -2327,6 +2469,17 @@
           "anyOf": [
             {
               "$ref": "#/definitions/refactorResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "credentialRef": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
             },
             {
               "type": "null"
@@ -3192,20 +3345,192 @@
           "maxItems": 30
         },
         "historical": {
-          "type": "object",
-          "properties": {
-            "status": {
-              "const": "unavailable"
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "unavailable"
+                },
+                "reason": {
+                  "enum": [
+                    "authenticated-remote-mapping-required",
+                    "remote-binding-changed",
+                    "snapshot-head-unavailable",
+                    "snapshot-head-mismatch",
+                    "remote-evidence-unavailable"
+                  ]
+                }
+              },
+              "required": [
+                "status",
+                "reason"
+              ],
+              "additionalProperties": false
             },
-            "reason": {
-              "const": "authenticated-remote-mapping-required"
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "available"
+                },
+                "reason": {
+                  "const": "historical-cochange-not-a-dependency"
+                },
+                "repositoryId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "serverSnapshotId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "targetSha": {
+                  "type": "string",
+                  "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                "payloadSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "formulaVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096,
+                  "pattern": "^[^\\u0000-\\u001f]+$"
+                },
+                "windowStart": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096,
+                      "pattern": "^[^\\u0000-\\u001f]+$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "windowEnd": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096,
+                  "pattern": "^[^\\u0000-\\u001f]+$"
+                },
+                "coChangeUnit": {
+                  "enum": [
+                    "pr",
+                    "commit"
+                  ]
+                },
+                "totalUnits": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "excludedUnits": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "totalPairs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "truncated": {
+                  "type": "boolean"
+                },
+                "pairs": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "pathA": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096,
+                        "pattern": "^[^\\u0000-\\u001f]+$"
+                      },
+                      "pathB": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096,
+                        "pattern": "^[^\\u0000-\\u001f]+$"
+                      },
+                      "support": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "changesA": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "changesB": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "ratioAtoB": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "ratioBtoA": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "score": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                      },
+                      "lowSupport": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "pathA",
+                      "pathB",
+                      "support",
+                      "changesA",
+                      "changesB",
+                      "ratioAtoB",
+                      "ratioBtoA",
+                      "score",
+                      "lowSupport"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "maxItems": 200
+                }
+              },
+              "required": [
+                "status",
+                "reason",
+                "repositoryId",
+                "serverSnapshotId",
+                "targetSha",
+                "payloadSha256",
+                "formulaVersion",
+                "windowStart",
+                "windowEnd",
+                "coChangeUnit",
+                "totalUnits",
+                "excludedUnits",
+                "totalPairs",
+                "truncated",
+                "pairs"
+              ],
+              "additionalProperties": false
             }
-          },
-          "required": [
-            "status",
-            "reason"
-          ],
-          "additionalProperties": false
+          ]
         }
       },
       "required": [
@@ -4345,7 +4670,8 @@
           "enum": [
             "review",
             "validation",
-            "proposal"
+            "proposal",
+            "analysis"
           ]
         },
         "sourceRevision": {
@@ -4369,7 +4695,9 @@
             "validation.precondition_failed",
             "proposal.applied",
             "proposal.recovery_required",
-            "proposal.restored"
+            "proposal.restored",
+            "analysis.succeeded",
+            "analysis.failed"
           ]
         },
         "severity": {
@@ -4457,6 +4785,28 @@
                   "type": "null"
                 }
               ]
+            },
+            "repositoryId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "jobId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "snapshotId": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "required": [],
@@ -4469,7 +4819,8 @@
               "enum": [
                 "review",
                 "validation",
-                "proposal"
+                "proposal",
+                "analysis"
               ]
             },
             "projectId": {
@@ -4589,7 +4940,9 @@
                   "validation.precondition_failed",
                   "proposal.applied",
                   "proposal.recovery_required",
-                  "proposal.restored"
+                  "proposal.restored",
+                  "analysis.succeeded",
+                  "analysis.failed"
                 ]
               },
               "resourceId": {
@@ -4632,6 +4985,471 @@
         "hasMore"
       ],
       "additionalProperties": false
+    },
+    "remoteInspection": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "projectVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "configHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "remotes": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "canonicalUrl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            },
+            "required": [
+              "name",
+              "canonicalUrl"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "connection": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "connectionId": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "accountId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "serverOrigin": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "repositoryId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "githubId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "canonicalUrl": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "remoteName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "configHash": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "required": [
+                "connectionId",
+                "accountId",
+                "serverOrigin",
+                "repositoryId",
+                "githubId",
+                "canonicalUrl",
+                "remoteName",
+                "configHash"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "canonicalRoot": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32767
+        }
+      },
+      "required": [
+        "projectId",
+        "projectVersion",
+        "configHash",
+        "remotes",
+        "connection",
+        "displayName",
+        "canonicalRoot"
+      ],
+      "additionalProperties": false
+    },
+    "remoteConnected": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "connectionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "projectId",
+        "connectionId"
+      ],
+      "additionalProperties": false
+    },
+    "remoteObserved": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "analysisId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "projectId",
+        "analysisId"
+      ],
+      "additionalProperties": false
+    },
+    "remoteAnalysis": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "analysisId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "connectionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "repositoryId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "githubId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "canonicalUrl": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "jobId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "snapshotId": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "done",
+            "failed"
+          ]
+        }
+      },
+      "required": [
+        "projectId",
+        "analysisId",
+        "connectionId",
+        "repositoryId",
+        "githubId",
+        "canonicalUrl",
+        "jobId",
+        "snapshotId",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "remoteConnectionResult": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/remoteInspection"
+        },
+        {
+          "$ref": "#/definitions/remoteConnected"
+        }
+      ]
+    },
+    "cloudContextAccepted": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "accepted": {
+          "const": true
+        }
+      },
+      "required": [
+        "projectId",
+        "accepted"
+      ],
+      "additionalProperties": false
+    },
+    "cloudExchange": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "projectId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "ready": {
+              "const": false
+            }
+          },
+          "required": [
+            "projectId",
+            "ready"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "projectId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "ready": {
+              "const": true
+            },
+            "profileId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "provider": {
+              "enum": [
+                "anthropic",
+                "openai",
+                "gemini"
+              ]
+            },
+            "destination": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "credentialRef": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "requestHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "requestBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 163840
+            },
+            "bodyBase64": {
+              "type": "string",
+              "maxLength": 218456,
+              "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+            }
+          },
+          "required": [
+            "projectId",
+            "ready",
+            "profileId",
+            "provider",
+            "destination",
+            "credentialRef",
+            "requestHash",
+            "requestBytes",
+            "bodyBase64"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "remoteConnectionsList": {
+      "type": "object",
+      "properties": {
+        "projectIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "maxItems": 16,
+          "uniqueItems": true
+        },
+        "hasMore": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "projectIds",
+        "hasMore"
+      ],
+      "additionalProperties": false
+    },
+    "historicalContext": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "analysisId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "head": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "paths": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "pattern": "^[^\\u0000-\\u001f]+$"
+          },
+          "uniqueItems": true
+        },
+        "binding": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "connectionId": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "accountId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "serverOrigin": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "repositoryId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "githubId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "canonicalUrl": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "configHash": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "required": [
+                "connectionId",
+                "accountId",
+                "serverOrigin",
+                "repositoryId",
+                "githubId",
+                "canonicalUrl",
+                "configHash"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "projectId",
+        "analysisId",
+        "head",
+        "paths",
+        "binding"
+      ],
+      "additionalProperties": false
+    },
+    "historicalResult": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/historicalContext"
+        },
+        {
+          "$ref": "#/definitions/impactResult"
+        }
+      ]
     }
   }
 }

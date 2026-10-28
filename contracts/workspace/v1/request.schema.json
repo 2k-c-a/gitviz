@@ -729,6 +729,10 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 1000
+            },
+            "credentialRef": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
             }
           },
           "required": [
@@ -2719,7 +2723,9 @@
                           "validation.precondition_failed",
                           "proposal.applied",
                           "proposal.recovery_required",
-                          "proposal.restored"
+                          "proposal.restored",
+                          "analysis.succeeded",
+                          "analysis.failed"
                         ]
                       },
                       "minItems": 1,
@@ -2914,6 +2920,816 @@
         "requestId",
         "operation",
         "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "operation": {
+          "const": "workspace.projects.connectRemote"
+        },
+        "payload": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "phase": {
+                  "const": "inspect"
+                }
+              },
+              "required": [
+                "phase"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "phase": {
+                  "const": "connect"
+                },
+                "expectedVersion": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "accountId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "serverOrigin": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "repositoryId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "githubId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "canonicalUrl": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "remoteName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "configHash": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "required": [
+                "phase",
+                "expectedVersion",
+                "accountId",
+                "serverOrigin",
+                "repositoryId",
+                "githubId",
+                "canonicalUrl",
+                "remoteName",
+                "configHash"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "requestId",
+        "operation",
+        "payload",
+        "projectId",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "operation": {
+          "const": "workspace.remote.observeAnalysis"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "connectionId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "accountId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "serverOrigin": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "jobId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "status": {
+              "enum": [
+                "queued",
+                "running",
+                "done",
+                "failed"
+              ]
+            },
+            "snapshotId": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "connectionId",
+            "accountId",
+            "serverOrigin",
+            "jobId",
+            "status",
+            "snapshotId"
+          ],
+          "additionalProperties": false
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "requestId",
+        "operation",
+        "payload",
+        "projectId",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "operation": {
+          "const": "workspace.remote.getAnalysis"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "analysisId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "accountId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "serverOrigin": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "analysisId",
+            "accountId",
+            "serverOrigin"
+          ],
+          "additionalProperties": false
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "requestId",
+        "operation",
+        "payload",
+        "projectId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "operation": {
+          "const": "workspace.reviews.cloudContext"
+        },
+        "payload": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "phase": {
+                  "const": "revoke"
+                }
+              },
+              "required": [
+                "phase"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "phase": {
+                  "const": "authorize"
+                },
+                "profileId": {
+                  "enum": [
+                    "claude-opus-5-5-v1",
+                    "claude-sonnet-5-5-v1",
+                    "gpt-5.4-v1",
+                    "gemini-3.5-flash-lite-v1"
+                  ]
+                },
+                "credentialRef": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "credentialVersion": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "proof": {
+                  "type": "object",
+                  "properties": {
+                    "connectionId": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                    },
+                    "accountId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "serverOrigin": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "repositoryId": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "githubId": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "canonicalUrl": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "visibility": {
+                      "const": "public"
+                    },
+                    "configHash": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "expiresAt": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "connectionId",
+                    "accountId",
+                    "serverOrigin",
+                    "repositoryId",
+                    "githubId",
+                    "canonicalUrl",
+                    "visibility",
+                    "configHash",
+                    "expiresAt"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "phase",
+                "profileId",
+                "credentialRef",
+                "credentialVersion",
+                "proof"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "requestId",
+        "operation",
+        "payload",
+        "projectId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "operation": {
+          "const": "workspace.reviews.cloudExchange"
+        },
+        "payload": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "phase": {
+                  "const": "take"
+                },
+                "runId": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                }
+              },
+              "required": [
+                "phase",
+                "runId"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "phase": {
+                  "const": "complete"
+                },
+                "runId": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "httpStatus": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 599
+                },
+                "rawBase64": {
+                  "type": "string",
+                  "maxLength": 218456,
+                  "pattern": "^[A-Za-z0-9+/]*={0,2}$"
+                },
+                "errorCode": {
+                  "enum": [
+                    null,
+                    "PROVIDER_ERROR",
+                    "PROVIDER_TIMEOUT",
+                    "OUTPUT_LIMIT"
+                  ]
+                },
+                "uncertain": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "phase",
+                "runId",
+                "httpStatus",
+                "rawBase64",
+                "errorCode",
+                "uncertain"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "requestId",
+        "operation",
+        "payload",
+        "projectId"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "operation": {
+          "const": "workspace.remote.connections"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "accountId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "serverOrigin": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "accountId",
+            "serverOrigin"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "requestId",
+        "operation",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "operation": {
+          "const": "workspace.impact.historical"
+        },
+        "payload": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "phase": {
+                  "const": "inspect"
+                },
+                "analysisId": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                }
+              },
+              "required": [
+                "phase",
+                "analysisId"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "phase": {
+                  "const": "attach"
+                },
+                "analysisId": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "proof": {
+                  "type": "object",
+                  "properties": {
+                    "connectionId": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                    },
+                    "accountId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "serverOrigin": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "repositoryId": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "githubId": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "canonicalUrl": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "visibility": {
+                      "enum": [
+                        "public",
+                        "private"
+                      ]
+                    },
+                    "configHash": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "expiresAt": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "connectionId",
+                    "accountId",
+                    "serverOrigin",
+                    "repositoryId",
+                    "githubId",
+                    "canonicalUrl",
+                    "visibility",
+                    "configHash",
+                    "expiresAt"
+                  ],
+                  "additionalProperties": false
+                },
+                "historical": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "available"
+                    },
+                    "reason": {
+                      "const": "historical-cochange-not-a-dependency"
+                    },
+                    "repositoryId": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "serverSnapshotId": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "targetSha": {
+                      "type": "string",
+                      "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                    },
+                    "payloadSha256": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "formulaVersion": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096,
+                      "pattern": "^[^\\u0000-\\u001f]+$"
+                    },
+                    "windowStart": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4096,
+                          "pattern": "^[^\\u0000-\\u001f]+$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "windowEnd": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4096,
+                      "pattern": "^[^\\u0000-\\u001f]+$"
+                    },
+                    "coChangeUnit": {
+                      "enum": [
+                        "pr",
+                        "commit"
+                      ]
+                    },
+                    "totalUnits": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "excludedUnits": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "totalPairs": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    },
+                    "pairs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "pathA": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 4096,
+                            "pattern": "^[^\\u0000-\\u001f]+$"
+                          },
+                          "pathB": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 4096,
+                            "pattern": "^[^\\u0000-\\u001f]+$"
+                          },
+                          "support": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "changesA": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "changesB": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "ratioAtoB": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "ratioBtoA": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "score": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "lowSupport": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "pathA",
+                          "pathB",
+                          "support",
+                          "changesA",
+                          "changesB",
+                          "ratioAtoB",
+                          "ratioBtoA",
+                          "score",
+                          "lowSupport"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "maxItems": 200
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "reason",
+                    "repositoryId",
+                    "serverSnapshotId",
+                    "targetSha",
+                    "payloadSha256",
+                    "formulaVersion",
+                    "windowStart",
+                    "windowEnd",
+                    "coChangeUnit",
+                    "totalUnits",
+                    "excludedUnits",
+                    "totalPairs",
+                    "truncated",
+                    "pairs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "phase",
+                "analysisId",
+                "proof",
+                "historical"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "requestId",
+        "operation",
+        "payload",
+        "projectId",
+        "idempotencyKey"
       ],
       "additionalProperties": false
     }

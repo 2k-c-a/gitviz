@@ -5,6 +5,10 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
   remote: Object.freeze({ request: (options: unknown) => ipcRenderer.invoke('desktop:remote', options) }),
 }));
 if (location.protocol === 'gitviz:' && location.host === 'app' && location.pathname === '/index.html') contextBridge.exposeInMainWorld('workspace', Object.freeze({
+  exportDiagnostics: () => ipcRenderer.invoke('workspace:export-diagnostics'),
+  connectRemote: (options: unknown) => ipcRenderer.invoke('workspace:connect-remote', options),
+  getRemoteConnection: (options: unknown) => ipcRenderer.invoke('workspace:remote-connection', options),
+  openRemoteAnalysis: (options: unknown) => ipcRenderer.invoke('workspace:open-remote-analysis', options),
   getHealth: () => ipcRenderer.invoke('workspace:health'),
   selectAndRegister: () => ipcRenderer.invoke('workspace:select-project'),
   listProjects: (options: unknown) => ipcRenderer.invoke('workspace:list-projects', options),

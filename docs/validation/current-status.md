@@ -59,3 +59,7 @@
 ## Windows 데스크톱 작업 상태 — 2026-10-28
 
 위 내용은 2026-10-23 문서 정리 시점 기록이다. 이후 Windows 데스크톱 전환(P01~P07)과 QA 단계 D 결함 수정이 진행됐다. 현재 상태는 [통합 추적표](../migration/validation/traceability-2026-10-28.md)와 [Stage D 기록](../migration/validation/stage-d-2026-10-28.md)을 따른다.
+
+## P08b·P09 후속 상태 — 2026-10-28
+
+[후속 구현·검증 기록](../migration/validation/p08b-p09-2026-10-28.md)과 [통합 추적표 증분](../migration/validation/traceability-2026-10-28.md)을 따른다. schema8 연결·원격 job 알림·공개 증명/cloud 동의·최소 진단·Windows CI 구성을 추가했다. 실제 서버 OAuth·웹/앱 동시 사용 인수는 staging 미준비로 미완료다. 현재 후보 clean VM·실제 모델·editor 화면·installer/서명/배포와 최종 보안 인수는 완료가 아니다.

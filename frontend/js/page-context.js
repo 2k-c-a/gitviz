@@ -7,6 +7,7 @@
 import { esc, fmtDateTime, fmtWindow, windowDays, num } from './fmt.js';
 import { policyOf, assessDataQuality, COLLECTION_TEXT, EVIDENCE_TEXT, STATUS_TONE, COLLECTION_NOTE, evidenceNote } from './policy.js';
 import { parseState, buildQuery } from './viz-state.js';
+import { workspaceEntryUrl } from './platform/workspace-navigation.js';
 
 const host = () => document.querySelector('.page.active .body') || document.querySelector('.page.active') || document.querySelector('main') || document.body;
 
@@ -78,6 +79,13 @@ export function renderContextBanner(data) {
     <details class="ctx-details"><summary>수집 범위 · 기술 정보</summary>
       <table class="info-table">${techRows(snap, dq)}</table>
     </details>`;
+  const entry = workspaceEntryUrl(location.href);
+  if (entry) {
+    const link = document.createElement('a');
+    link.href = entry; link.className = 'ctx-link'; link.dataset.workspaceEntry = '';
+    link.textContent = '로컬 프로젝트·통합 알림으로 이동';
+    el.append(link);
+  }
 }
 
 /* 결과 조회 실패 안내 — 404(없는/남의 저장소 결과)·409(결과 없음/무결성)·네트워크 오류를 구분한다 */

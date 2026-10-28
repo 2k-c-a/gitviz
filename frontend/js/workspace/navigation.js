@@ -1,6 +1,15 @@
 /** Inbox click = navigation only. The agent re-checks project FK on every target read; nothing is executed or approved here. */
+import { readWorkspaceEntry } from '/web/js/platform/workspace-navigation.js';
 const api = window.workspace;
 const picker = document.getElementById('project-picker');
+const entry = readWorkspaceEntry(location.href);
+if (entry) {
+  const notice = document.createElement('p');
+  notice.textContent = entry.repositoryId === null ? '로컬 통합 알림으로 이동했습니다.' :
+    `원격 저장소 #${entry.repositoryId}${entry.snapshotId === null ? '' : ` · 저장 결과 #${entry.snapshotId}`}에서 이동했습니다. 로컬 프로젝트 연결은 별도로 확인해야 합니다.`;
+  document.getElementById('inbox-detail')?.append(notice);
+  document.getElementById('inbox-title')?.scrollIntoView({ block: 'nearest' });
+}
 
 function node(tag, text) { const element = document.createElement(tag); if (text !== undefined) element.textContent = text; return element; }
 function code(error) { return String(error?.message ?? error).replace(/^.*Error invoking remote method.*Error: /, ''); }
@@ -30,6 +39,10 @@ export async function openTarget(item, detail) {
   if (picker.value !== target.projectId) {
     picker.value = target.projectId;
     picker.dispatchEvent(new Event('change'));  // Project modules reset synchronously before the target is shown.
+  }
+  if (target.kind === 'analysis') {
+    try { await api.openRemoteAnalysis({ projectId: target.projectId, analysisId: target.resourceId }); return '권한을 확인하고 서버 분석으로 이동했습니다.'; }
+    catch (error) { return code(error); }
   }
   let value;
   try {

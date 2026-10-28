@@ -12,6 +12,7 @@ from .proposals import Proposals
 from .scoped_files import ScopeError
 from .snapshots import image_hash
 from .patches import validate_encoding
+from .remote_connections import RemoteConnections
 
 
 def python_references(file: dict[str, Any], source: bytes) -> tuple[list[dict[str, Any]], list[str]]:
@@ -195,5 +196,40 @@ class Impact:
         start = payload['offset']
         records = body['records'][start:start + 25]
         return {'projectId': project, 'analysisId': payload['analysisId'], 'snapshotId': row[0], 'inputHash': row[1],
-            **{k: v for k, v in body.items() if k != 'records'}, 'records': records, 'totalRecords': len(body['records']),
+            **{k: v for k, v in body.items() if k not in ('records', '_historicalBinding')}, 'records': records, 'totalRecords': len(body['records']),
             'nextOffset': start + 25 if start + 25 < len(body['records']) else None}
+
+    def historical(self, project: str, payload: dict[str, Any], key: str) -> dict[str, Any]:
+        analysis = payload['analysisId']
+        row = self.db.execute('SELECT snapshot_id,payload FROM impact_analysis WHERE project_id=? AND id=?', (project, analysis)).fetchone()
+        if row is None:
+            raise ScopeError('RESOURCE_NOT_FOUND')
+        snapshot = self.snapshots.get(project, row[0])
+        body = self.proposals.decrypt(project, analysis, row[1])
+        if payload['phase'] == 'inspect':
+            return {'projectId': project, 'analysisId': analysis, 'head': snapshot['head'],
+                    'paths': sorted({file['path'] for file in snapshot['files']}), 'binding': body.get('_historicalBinding')}
+        proof, history = payload['proof'], payload['historical']
+        if not time.time() < proof['expiresAt'] <= time.time() + 31:
+            raise ScopeError('PRECONDITION_FAILED')
+        inspected = RemoteConnections(self.snapshots.projects).inspect(project)
+        connection = inspected['connection']
+        fields = ('connectionId', 'accountId', 'serverOrigin', 'repositoryId', 'githubId', 'canonicalUrl', 'configHash')
+        if (connection is None or inspected['configHash'] != proof['configHash'] or any(connection[name] != proof[name] for name in fields)
+                or history['targetSha'] != snapshot['head'] or history['repositoryId'] != proof['repositoryId']):
+            raise ScopeError('PRECONDITION_FAILED')
+        paths = {file['path'] for file in snapshot['files']}
+        if any(pair['pathA'] not in paths and pair['pathB'] not in paths for pair in history['pairs']):
+            raise ScopeError('OUTPUT_INVALID')
+        def action() -> dict[str, Any]:
+            if body['historical']['status'] == 'available':
+                if body['historical'] != history:
+                    raise ScopeError('CONFLICT')
+            else:
+                body['historical'] = history
+                body['_historicalBinding'] = {name: proof[name] for name in fields}
+                self.db.execute('UPDATE impact_analysis SET payload=? WHERE project_id=? AND id=?',
+                    (self.proposals.encrypt(project, analysis, body), project, analysis))
+            return {'analysisId': analysis}
+        self.snapshots.projects.mutate(project, 'impact.historical', key, payload, action)
+        return self.get(project, {'analysisId': analysis, 'offset': 0})

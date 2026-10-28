@@ -4,7 +4,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def version(connection: sqlite3.Connection) -> int:
@@ -13,7 +13,7 @@ def version(connection: sqlite3.Connection) -> int:
             raise ValueError("UNSUPPORTED_SCHEMA")
         return 0
     rows = connection.execute("SELECT version FROM schema_meta ORDER BY version").fetchall()
-    if rows not in ([(1,)], [(2,)], [(3,)], [(4,)], [(5,)], [(6,)], [(SCHEMA_VERSION,)]):
+    if rows not in ([(1,)], [(2,)], [(3,)], [(4,)], [(5,)], [(6,)], [(7,)], [(SCHEMA_VERSION,)]):
         raise ValueError("UNSUPPORTED_SCHEMA")
     tables: set[str] = set()
     if rows[0][0] >= 2:
@@ -37,6 +37,10 @@ def version(connection: sqlite3.Connection) -> int:
     if rows[0][0] >= 7:
         from .notification_schema import TABLES as NOTIFICATION_TABLES
         if not NOTIFICATION_TABLES <= tables:
+            raise ValueError('UNSUPPORTED_SCHEMA')
+    if rows[0][0] >= 8:
+        from .remote_schema import TABLES as REMOTE_TABLES
+        if not REMOTE_TABLES <= tables:
             raise ValueError('UNSUPPORTED_SCHEMA')
     return rows[0][0]
 
@@ -81,10 +85,14 @@ def migrate(connection: sqlite3.Connection) -> None:
         if version(connection) < 6:
             from .validation_schema import create as create_validation
             create_validation(connection)
-        from .notification_schema import create as create_notifications
-        create_notifications(connection)
+        if version(connection) < 7:
+            from .notification_schema import create as create_notifications
+            create_notifications(connection)
+        if version(connection) < 8:
+            from .remote_schema import create as create_remote
+            create_remote(connection)
         connection.execute("ALTER TABLE schema_meta RENAME TO schema_meta_previous")
-        connection.execute("CREATE TABLE schema_meta (version INTEGER PRIMARY KEY CHECK(version=7), applied_at TEXT NOT NULL, app_version TEXT NOT NULL)")
+        connection.execute("CREATE TABLE schema_meta (version INTEGER PRIMARY KEY CHECK(version=8), applied_at TEXT NOT NULL, app_version TEXT NOT NULL)")
         connection.execute("INSERT INTO schema_meta VALUES (?,?,?)", (SCHEMA_VERSION, datetime.now(timezone.utc).isoformat(), "0.8.0"))
         connection.execute("DROP TABLE schema_meta_previous")
         if connection.execute('PRAGMA foreign_key_check').fetchone() is not None:

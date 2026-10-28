@@ -16,10 +16,11 @@ OPERATIONS = (
     "workspace.projects.updateSettings", "workspace.projects.unregister", "workspace.git.status",
     "workspace.reviews.preview", "workspace.reviews.start", "workspace.reviews.get", "workspace.reviews.list", "workspace.reviews.cancel", "workspace.reviews.feedback",
     "workspace.changes.capture", "workspace.files.preview", "workspace.validation.detect", "workspace.validation.plan",
-    "workspace.proposals.create", "workspace.proposals.get", "workspace.proposals.reject", "workspace.proposals.requestRevision", "workspace.proposals.approve", "workspace.proposals.apply", "workspace.proposals.recoveryPlan", "workspace.proposals.approveRecovery", "workspace.proposals.recover", "workspace.impact.prepare", "workspace.impact.read", "workspace.impact.append", "workspace.impact.finish", "workspace.impact.get",
+    "workspace.proposals.create", "workspace.proposals.get", "workspace.proposals.reject", "workspace.proposals.requestRevision", "workspace.proposals.approve", "workspace.proposals.apply", "workspace.proposals.recoveryPlan", "workspace.proposals.approveRecovery", "workspace.proposals.recover", "workspace.impact.prepare", "workspace.impact.read", "workspace.impact.append", "workspace.impact.finish", "workspace.impact.get", "workspace.impact.historical",
     "workspace.projects.setEditor", "workspace.impact.release", "workspace.files.locate", "workspace.proposals.listRecovery",
     "workspace.validation.prepare", "workspace.validation.approve", "workspace.validation.start", "workspace.validation.get", "workspace.validation.cancel", "workspace.comparisons.create", "workspace.comparisons.get",
     "workspace.notifications.list", "workspace.notifications.markRead", "workspace.events.read",
+    "workspace.projects.connectRemote", "workspace.remote.observeAnalysis", "workspace.remote.getAnalysis", "workspace.remote.connections", "workspace.reviews.cloudContext", "workspace.reviews.cloudExchange",
 )
 SCHEMA_ROOT = (Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
                / "contracts" / "workspace" / "v1")

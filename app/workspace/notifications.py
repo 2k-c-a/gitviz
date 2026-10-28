@@ -10,7 +10,7 @@ from typing import Any, cast
 from .projects import Projects
 from .scoped_files import ScopeError
 
-TARGET_TABLES = {'review': 'review_run', 'validation': 'validation_run', 'proposal': 'proposal'}
+TARGET_TABLES = {'review': 'review_run', 'validation': 'validation_run', 'proposal': 'proposal', 'analysis': 'remote_analysis'}
 UUID_LENGTH = 36
 
 

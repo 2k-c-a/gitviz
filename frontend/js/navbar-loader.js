@@ -1,4 +1,5 @@
 import { nextQuery } from './viz-state.js';
+import { workspaceEntryUrl } from './platform/workspace-navigation.js';
 
 export async function loadNavbar() {
 
@@ -14,6 +15,9 @@ export async function loadNavbar() {
   const html = await response.text();
 
   document.getElementById('navbar-container').innerHTML = html;
+  const workspace = document.querySelector('[data-workspace-entry]');
+  const entry = workspaceEntryUrl(window.location.href);
+  if (workspace && entry) { workspace.href = entry; workspace.hidden = false; }
 
   // 햄버거 메뉴 이벤트
   const hamburgerBtn = document.getElementById('hamburger-btn');

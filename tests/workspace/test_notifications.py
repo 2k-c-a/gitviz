@@ -228,9 +228,9 @@ class HandshakeContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             dispatcher = Dispatcher(Path(tmp) / 'data', lambda _: None)
             answer = dispatcher.dispatch({'protocolVersion': 1, 'requestId': uid(), 'operation': 'workspace.system.handshake',
-                'payload': {'appVersion': '0.8.0', 'protocolVersion': 1, 'localSchemaRange': {'min': 7, 'max': 7}}})
+                'payload': {'appVersion': '0.8.0', 'protocolVersion': 1, 'localSchemaRange': {'min': 8, 'max': 8}}})
             self.assertTrue(answer['ok'], answer.get('error'))
-            self.assertEqual(answer['result']['localSchemaRange'], {'min': 7, 'max': 7})
+            self.assertEqual(answer['result']['localSchemaRange'], {'min': 8, 'max': 8})
             self.assertTrue({'workspace.notifications.list', 'workspace.notifications.markRead', 'workspace.events.read'} <= set(answer['result']['capabilities']))
 
 

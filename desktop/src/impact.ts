@@ -5,6 +5,7 @@ import type { Agent } from './agent';
 import type { Contracts } from './contracts';
 import { workspaceSender } from './ipc';
 import type { Source, Reference } from './impact-worker';
+import type { HistoricalImpact } from './historical-impact';
 
 async function parse(files: Source[]): Promise<{ records: Reference[]; limitations: string[] }> {
   if (!files.length) return { records: [], limitations: [] };
@@ -30,7 +31,12 @@ async function parse(files: Source[]): Promise<{ records: Reference[]; limitatio
   });
 }
 
-export function registerImpact(window: BrowserWindow, agent: Pick<Agent, 'call'>, contracts: Contracts): () => void {
+export function registerImpact(window: BrowserWindow, agent: Pick<Agent, 'call'>, contracts: Contracts, history: HistoricalImpact | null = null): () => void {
+  async function result(value: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const decorated = history ? await history.decorate(value) : { ...value, historical: { status: 'unavailable', reason: 'authenticated-remote-mapping-required' } };
+    contracts.result('workspace.impact.get', decorated);
+    return decorated;
+  }
   let busy = false;
   ipcMain.handle('workspace:impact-analyze', async (event, options: unknown) => {
     if (!workspaceSender(event, window)) throw new Error('ACCESS_DENIED');
@@ -54,7 +60,7 @@ export function registerImpact(window: BrowserWindow, agent: Pick<Agent, 'call'>
       }
       const parsed = await parse(files);
       for (let index = 0; index < parsed.records.length; index += 25) await agent.call('workspace.impact.append', { sessionId: prepared.sessionId, records: parsed.records.slice(index, index + 25) }, scope);
-      return await agent.call('workspace.impact.finish', { sessionId: prepared.sessionId, limitations: parsed.limitations }, { ...scope, idempotencyKey: randomUUID() });
+      return await result(await agent.call('workspace.impact.finish', { sessionId: prepared.sessionId, limitations: parsed.limitations }, { ...scope, idempotencyKey: randomUUID() }));
     } catch (error) {
       // eslint-disable-next-line preserve-caught-error -- No parser/code/native diagnostics cross the renderer boundary.
       throw new Error(error instanceof Error && /^[A-Z_]+$/.test(error.message) ? error.message : 'PARSER_UNAVAILABLE');
@@ -64,7 +70,7 @@ export function registerImpact(window: BrowserWindow, agent: Pick<Agent, 'call'>
     if (!workspaceSender(event, window) || !options || typeof options !== 'object' || Array.isArray(options)) throw new Error('INVALID_REQUEST');
     const { projectId, ...payload } = options as Record<string, unknown>;
     contracts.request({ protocolVersion: 1, requestId: randomUUID(), operation: 'workspace.impact.get', projectId, payload });
-    return await agent.call('workspace.impact.get', payload, { projectId: String(projectId) });
+    return await result(await agent.call('workspace.impact.get', payload, { projectId: String(projectId) }));
   });
   return () => { ipcMain.removeHandler('workspace:impact-analyze'); ipcMain.removeHandler('workspace:impact-get'); };
 }

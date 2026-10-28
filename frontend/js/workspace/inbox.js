@@ -15,11 +15,13 @@ let generation = 0;
 let refreshTimer = null;
 
 const TYPES = {
+  analysis: ['analysis.succeeded', 'analysis.failed'],
   review: ['review.succeeded', 'review.failed', 'review.cancelled', 'review.uncertain'],
   validation: ['validation.succeeded', 'validation.failed', 'validation.cancelled', 'validation.timed_out', 'validation.output_limit', 'validation.interrupted', 'validation.launch_failed', 'validation.precondition_failed'],
   proposal: ['proposal.applied', 'proposal.recovery_required', 'proposal.restored'],
 };
 const LABELS = {
+  'analysis.succeeded': '서버 분석 완료', 'analysis.failed': '서버 분석 실패',
   'review.succeeded': '로컬 AI 리뷰 완료', 'review.failed': '로컬 AI 리뷰 실패', 'review.cancelled': '로컬 AI 리뷰 취소', 'review.uncertain': '로컬 AI 리뷰 결과 불명',
   'validation.succeeded': '검증 명령 성공', 'validation.failed': '검증 명령 실패', 'validation.cancelled': '검증 취소', 'validation.timed_out': '검증 시간 초과',
   'validation.output_limit': '검증 출력 상한 도달', 'validation.interrupted': '검증 중단(앱 재시작)', 'validation.launch_failed': '검증 실행 실패',

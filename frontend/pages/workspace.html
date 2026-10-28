@@ -5,17 +5,18 @@
 <p class="eyebrow">GitViz Workspace</p><h1>로컬 프로젝트</h1>
 <p><a href="web/index.html">GitHub 검색·원격 분석·AI 리뷰 열기</a></p>
 <p id="desktop-account" role="status"></p><button id="desktop-login">원격 로그인 화면</button><button id="desktop-logout" disabled>로그아웃·세션 폐기 재시도</button>
-<p id="status" role="status" aria-live="polite">로컬 구성 요소를 확인하고 있습니다.</p><button id="refresh" type="button">구성 요소 상태 확인</button>
+<p id="status" role="status" aria-live="polite">로컬 구성 요소를 확인하고 있습니다.</p><button id="export-diagnostics" type="button">최소 진단 정보 저장</button><span id="diagnostics-message" role="status"></span><button id="refresh" type="button">구성 요소 상태 확인</button>
 <section aria-labelledby="projects-title"><h2 id="projects-title">프로젝트 선택</h2>
 <button id="register-project" type="button">폴더 선택·등록</button><button id="reload-projects" type="button">목록 새로고침</button>
 <label for="project-picker">등록한 프로젝트</label><select id="project-picker"><option value="">프로젝트를 선택하세요</option></select><button id="more-projects" type="button" hidden>더 보기</button>
 <button id="unregister-project" type="button" disabled>등록 해제</button>
 <label for="recent-limit">최근 커밋 수</label><input id="recent-limit" type="number" min="1" max="100" value="20"><button id="save-project-settings" type="button" disabled>설정 저장</button>
+<label for="remote-repository-id">서버 저장소 ID</label><input id="remote-repository-id" type="number" min="1" step="1"><button id="connect-remote" type="button">계정·저장소 확인 후 연결</button><button id="refresh-remote" type="button">연결 상태 확인</button><p>현재 창의 동시 원격 추적은 최대16개입니다. 상한에 도달하면 새 연결을 보류하며 기존 기록은 보존합니다.</p><p id="remote-connection-message" role="status"></p>
 <p id="project-message" role="status" aria-live="polite"></p></section>
 <section aria-labelledby="inbox-title"><h2 id="inbox-title">통합 알림</h2>
 <p>등록한 모든 프로젝트의 리뷰·검증·제안 적용 결과를 모읍니다. 알림을 눌러도 이동만 하며 코드 수정·명령 실행·전송은 일어나지 않습니다. AI 지적은 추론이고, 검증 실패는 실제 명령 결과입니다.</p>
 <label>프로젝트 <select id="inbox-project"><option value="">모든 프로젝트</option></select></label>
-<label>종류 <select id="inbox-source"><option value="">전체</option><option value="review">로컬 AI 리뷰</option><option value="validation">검증 실행</option><option value="proposal">제안 적용</option></select></label>
+<label>종류 <select id="inbox-source"><option value="">전체</option><option value="review">로컬 AI 리뷰</option><option value="validation">검증 실행</option><option value="proposal">제안 적용</option><option value="analysis">서버 분석</option></select></label>
 <label>심각도 <select id="inbox-severity"><option value="">전체</option><option value="error">오류</option><option value="warning">주의</option><option value="info">정보</option></select></label>
 <label>읽음 <select id="inbox-read"><option value="all">전체</option><option value="unread">안 읽음</option><option value="read">읽음</option></select></label>
 <button id="inbox-refresh" type="button">알림 새로고침</button>
@@ -27,6 +28,8 @@
 <section><h2>고정 입력 로컬 리뷰</h2>
 <p>PC의 Ollama · qwen2.5-coder:7b · 127.0.0.1:11434로만 전송합니다. 원격 공개 매핑이 검증되지 않은 cloud BYOK는 차단됩니다. 모델 설치·실행은 자동으로 하지 않습니다.</p>
 <label>생성 종류 <select id="review-kind"><option value="review">리뷰</option><option value="refactor">작은 리팩토링 제안</option></select></label>
+<label>모델 <select id="review-profile"><option value="ollama-local-v1">PC Ollama</option><option value="claude-opus-5-5-v1">Anthropic Opus 5.5 (BYOK)</option><option value="claude-sonnet-5-5-v1">Anthropic Sonnet 5.5 (BYOK)</option><option value="gpt-5.4-v1">OpenAI GPT-5.4 (BYOK)</option><option value="gemini-3.5-flash-lite-v1">Gemini 3.5 Flash-Lite (BYOK)</option></select></label>
+<label>이번 미리보기의 API 키 <input id="review-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false"></label><p>cloud는 현재 계정으로 공개 확인된 연결만 허용합니다. 키는 이번 동의 동안 main 메모리에만 유지하며 저장하지 않습니다. 앱 월 USD20 한도에 미정산 예약도 포함됩니다.</p>
 <label>리뷰 목적 <textarea id="review-purpose" maxlength="1000">버그·보안·성능·품질·테스트 누락 검토</textarea></label>
 <label>동일 입력 실행 세대 <input id="review-generation" type="number" min="1" max="1000" value="1"></label>
 <button id="review-preview">전송 내용 미리보기</button><div id="review-preview-meta"></div><pre id="review-preview-bytes"></pre>

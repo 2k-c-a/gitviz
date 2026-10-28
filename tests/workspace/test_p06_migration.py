@@ -97,7 +97,7 @@ class P06MigrationTests(WorkspaceFixture):
             current.jobs.close()
         finally:
             upgraded.close()
-        for backup in historic.glob('pre-v7-*.sqlite3'):
+        for backup in historic.glob('pre-v8-*.sqlite3'):
             with closing(connect(backup)) as saved:
                 self.assertEqual(saved.execute('SELECT version FROM schema_meta').fetchone()[0], 4)
                 self.assertEqual(saved.execute('PRAGMA integrity_check').fetchone()[0], 'ok')

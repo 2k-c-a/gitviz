@@ -213,3 +213,7 @@ P08은 두 부분으로 나눈다. 위 의존성 절의 "event/store 기반은 P
 ## P08a 구현·검증 — 2026-10-28
 
 사용자가 승인한 P08a 전체 범위를 구현했다(커밋 `5eb990b`). schema 7 이벤트·알림, 같은 transaction 기록, `notifications.list/markRead`·`events.read`, main relay, 앱 내 inbox를 포함한다. 호스트 Windows에서 18단계(정적·빌드·host 30·workspace 120·Electron e2e 10종)가 통과했다. 승인 목록 밖의 연결·기대값 수정, 실패 이력, 설계와의 차이는 [P08a 기록](validation/p08a-2026-10-28.md)에 있다. P08b와 패키지 clean VM 인수는 별도 승인 대상이다.
+
+## P08b와 P09 후속 구현 — 2026-10-28
+
+사용자가 identity API, schema8 연결·추적 job·임시 DB 검증, Windows CI 설정과 fixture 로그 보관, 재빌드·독립 검증 패키징 및 공개 증명/cloud 동의 경로를 승인했다. [P08b·P09 기록](validation/p08b-p09-2026-10-28.md)에 변경 파일·실행 결과·실패 수정·미검증 범위를 구분한다. 실제 staging은 준비되지 않아 P03 실제 OAuth/웹·앱 동시 사용 인수는 보류한다. N06 이력 계약과 P09 필수 게이트가 남아 있으므로 P08~P10 전체 완료를 뜻하지 않는다. Q01/Q02 초기 Windows11 x64·사용자별 설치·서명 확인 후 수동 업데이트, Q08 자동 삭제 없음은 확정했으며 installer·서명·배포 실행은 여전히 별도 승인이다.

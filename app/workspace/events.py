@@ -25,7 +25,9 @@ VALIDATION = {'succeeded': ('validation.succeeded', 'info', 'command-exit-zero')
               'precondition_failed': ('validation.precondition_failed', 'warning', 'PRECONDITION_FAILED')}
 PROPOSAL = {'applied': ('proposal.applied', 'info', 'APPLIED'), 'recovery_required': ('proposal.recovery_required', 'error', 'RECOVERY_REQUIRED'),
             'restored': ('proposal.restored', 'info', 'RESTORED')}
-SOURCES = {'review': REVIEW, 'validation': VALIDATION, 'proposal': PROPOSAL}
+ANALYSIS = {'done': ('analysis.succeeded', 'info', 'remote-analysis-done'),
+            'failed': ('analysis.failed', 'error', 'remote-analysis-failed')}
+SOURCES = {'review': REVIEW, 'validation': VALIDATION, 'proposal': PROPOSAL, 'analysis': ANALYSIS}
 FINDING_ORDER = ('unknown', 'low', 'medium', 'high', 'critical')
 
 

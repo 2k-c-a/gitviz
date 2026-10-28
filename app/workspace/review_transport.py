@@ -31,6 +31,9 @@ Transport = Callable[[dict[str, Any], str, str, threading.Event], Reply]
 
 
 def request_body(profile: dict[str, Any], system: str, user: str) -> bytes:
+    if profile['provider'] in ('anthropic', 'openai', 'gemini'):
+        from .cloud_transport import body
+        return body(profile, system, user)
     return json.dumps({'model': profile['model'], 'stream': False, 'format': output_schema(profile.get('schemaVersion', 'workspace-review-v1')),
         'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}],
         'options': {'num_ctx': profile['contextWindow'], 'num_predict': profile['maxOutputTokens']}},

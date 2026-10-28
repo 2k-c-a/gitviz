@@ -47,7 +47,7 @@ CREATE TABLE local_operation(project_scope TEXT NOT NULL,operation TEXT NOT NULL
             self.assertEqual(old.execute('SELECT version FROM schema_meta').fetchone()[0], 2)
             self.assertIsNone(old.execute("SELECT name FROM sqlite_master WHERE name='change_snapshot'").fetchone())
             self.assertEqual(old.execute('SELECT value FROM project_setting').fetchone()[0], '17')
-        backup = next(directory.glob('pre-v7-*.sqlite3'))
+        backup = next(directory.glob('pre-v8-*.sqlite3'))
         with closing(connect(backup)) as saved:
             self.assertEqual(saved.execute('SELECT version FROM schema_meta').fetchone()[0], 2)
             self.assertEqual(saved.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
@@ -55,7 +55,7 @@ CREATE TABLE local_operation(project_scope TEXT NOT NULL,operation TEXT NOT NULL
         upgraded.open()
         try:
             assert upgraded.connection is not None
-            self.assertEqual(upgraded.connection.execute('SELECT version FROM schema_meta').fetchone()[0], 7)
+            self.assertEqual(upgraded.connection.execute('SELECT version FROM schema_meta').fetchone()[0], 8)
             self.assertEqual(Projects(upgraded.connection).get(self.project_id)['settings']['recentLimit']['value'], 17)
         finally:
             upgraded.close()

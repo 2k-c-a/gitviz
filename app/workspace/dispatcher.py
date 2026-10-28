@@ -24,6 +24,7 @@ from .impact import Impact
 from .validation import Validation
 from .comparisons import Comparisons
 from .notifications import Notifications
+from .remote_connections import RemoteConnections
 from . import events
 
 
@@ -47,6 +48,7 @@ class Dispatcher:
         self.validation: Validation | None = None
         self.comparisons: Comparisons | None = None
         self.notifications: Notifications | None = None
+        self.remote_connections: RemoteConnections | None = None
 
     def bootstrap(self, message: Any) -> None:
         validate("bootstrap", message)
@@ -89,6 +91,7 @@ class Dispatcher:
             self.validation = Validation(self.detection)
             self.comparisons = Comparisons(self.validation)
             self.notifications = Notifications(self.projects)
+            self.remote_connections = RemoteConnections(self.projects)
         except ValueError as error:
             self.state = "unavailable"
             self.error_code = "UNSUPPORTED_PROTOCOL" if str(error) == "UNSUPPORTED_SCHEMA" else "RECOVERY_REQUIRED"
@@ -147,6 +150,28 @@ class Dispatcher:
                     result = self.notifications.mark_read(request['projectId'], payload, request['idempotencyKey'])
                 elif op == 'workspace.events.read':
                     result = events.read(projects.connection, payload)
+                elif op == 'workspace.impact.historical':
+                    assert self.impact is not None
+                    result = self.impact.historical(request['projectId'], payload, request['idempotencyKey'])
+                elif op == 'workspace.reviews.cloudExchange':
+                    assert self.reviews is not None
+                    result = self.reviews.cloud_exchange(request['projectId'], payload)
+                elif op == 'workspace.reviews.cloudContext':
+                    assert self.reviews is not None
+                    result = self.reviews.cloud.authorize(request['projectId'], payload)
+                elif op == 'workspace.projects.connectRemote':
+                    assert self.remote_connections is not None
+                    result = (self.remote_connections.inspect(request['projectId']) if payload['phase'] == 'inspect'
+                              else self.remote_connections.connect(request['projectId'], payload, request['idempotencyKey']))
+                elif op == 'workspace.remote.connections':
+                    assert self.remote_connections is not None
+                    result = self.remote_connections.connections(payload)
+                elif op == 'workspace.remote.observeAnalysis':
+                    assert self.remote_connections is not None
+                    result = self.remote_connections.observe(request['projectId'], payload, request['idempotencyKey'])
+                elif op == 'workspace.remote.getAnalysis':
+                    assert self.remote_connections is not None
+                    result = self.remote_connections.get(request['projectId'], payload)
                 elif op == "workspace.projects.selectAndRegister":
                     result = (projects.inspect(payload["selectedRoot"], payload["metadataScopes"], payload["expandedRoot"], payload["reconnectApproved"])
                               if payload["phase"] == "inspect" else projects.register(payload["selectionId"], request["idempotencyKey"]))

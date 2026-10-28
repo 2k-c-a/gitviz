@@ -105,3 +105,9 @@ SecretStore는 main의 async OS 보호 API, payload 암호화는 agent의 AEAD �
 ## 구현 상태 주석 — 2026-10-28
 
 서두의 "모두 예정"은 설계 시점 표현이다. 위 파일 구성 중 `events.py`, `notifications.py`, inbox UI, `src/update.ts`, `.github/workflows/windows-desktop.yml`만 아직 없다. preload의 workspace 브리지는 `gitviz://app/index.html` 문서에만 노출되고, main의 workspace 핸들러도 같은 문서의 sender만 허용한다(D-03). 다른 앱 문서에는 `window.desktop`(auth·remote)만 남는다.
+
+## 후속 cloud·historical 경계 — 2026-10-28
+
+승인된 cloud 공개 증명 경로는 키를 agent에 전달하지 않는다. 번들 UI password 입력은 IPC 직후 비우고 main이5분 한정 참조를 보유한다. agent는 short-lived public mapping·immutable manifest·wire hash·durable attempt와 출력 검증만 담당한다. main은 native 동의 뒤 현재 계정/권한/remote hash를 재검사하고 고정 HTTPS endpoint로 한 번 전송한다. secret-free cloudContext/cloudExchange만 stdio에 추가하며 raw invoke는 제공하지 않는다. PC Ollama 경로는 기존 agent loopback transport를 유지한다.
+
+N06은 main에서 기존 snapshot/coupling GET을 읽되 local path를 서버 query에 넣지 않는다. 로컬 HEAD와 target SHA·payload hash를 맞춘 evidence만 agent에서 암호화 저장하고, 다시 열 때 live read 권한과 binding을 확인한다. 불일치는 unavailable로 표시한다. 상세·실행 한계는 [후속 기록](validation/p08b-p09-2026-10-28.md).

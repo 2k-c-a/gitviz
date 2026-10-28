@@ -4,6 +4,7 @@ import { Agent } from './agent';
 import { Contracts } from './contracts';
 import { workspaceSender } from './ipc';
 import type { Operation } from '../contracts/workspace';
+import type { CloudReview } from './cloud-review';
 
 export interface NativeProjectDialogs {
   select(window: BrowserWindow): Promise<string | null>;
@@ -60,7 +61,9 @@ export class ReviewConsent {
     try {
       const detail = `${String(preview.executionLocation)} · ${String(preview.destination)}\n${String(preview.kind)}\n` +
         preview.files.slice(0, 20).join('\n') + (preview.files.length > 20 ? `\n외 ${preview.files.length - 20}개` : '') +
-        `\n전송 ${String(preview.requestBytes)} bytes · SHA256 ${preview.requestHash.slice(0, 16)}\n취소해도 이미 보낸 내용은 회수할 수 없습니다.`;
+        `\n전송 ${String(preview.requestBytes)} bytes · SHA256 ${preview.requestHash.slice(0, 16)}\n최대 비용 예약 추정 USD ${String(preview.maxEstimatedCost)}` +
+        (preview.executionLocation === 'cloud-provider' ? '\n이 앱의 월 USD20 한도에 미정산 예약도 포함됩니다. 제공자의 실제 청구가 기준입니다.' : '') +
+        '\n취소해도 이미 보낸 내용은 회수할 수 없습니다.';
       const accepted = await confirm(detail);
       if (this.disposed || this.closed()) throw new Error('ACCESS_DENIED');
       if (!accepted) return null;
@@ -70,7 +73,7 @@ export class ReviewConsent {
     } finally { this.confirming = false; }
   }
 }
-export function registerProjects(window: BrowserWindow, agent: Pick<Agent, 'call'>, contracts: Contracts, native: NativeProjectDialogs = nativeDialogs): () => void {
+export function registerProjects(window: BrowserWindow, agent: Pick<Agent, 'call'>, contracts: Contracts, native: NativeProjectDialogs = nativeDialogs, cloud: CloudReview | null = null): () => void {
   const channels: string[] = [];
   const consent = new ReviewConsent(() => window.isDestroyed());
   let selecting = false;
@@ -120,14 +123,26 @@ export function registerProjects(window: BrowserWindow, agent: Pick<Agent, 'call
   for (const [name, operation] of methods) handle(`workspace:${name}`, async (...args) => {
     if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) throw new Error('INVALID_REQUEST');
     const value = args[0] as Record<string, unknown>;
-    const { projectId, idempotencyKey, ...payload } = value;
+    const { projectId, idempotencyKey, ...rawPayload } = value;
+    const payload = { ...rawPayload };
+    let apiKey: unknown;
+    if (operation === 'workspace.reviews.preview') {
+      if ('credentialRef' in payload) throw new Error('INVALID_REQUEST');
+      apiKey = payload.apiKey; delete payload.apiKey;
+      if (payload.profileId === 'ollama-local-v1' && apiKey !== undefined) throw new Error('INVALID_REQUEST');
+    }
     const request = { protocolVersion: 1, requestId: randomUUID(), operation, payload, ...(projectId !== undefined ? { projectId } : {}), ...(idempotencyKey !== undefined ? { idempotencyKey } : {}) };
     contracts.request(request);
     if (operation.endsWith('unregister')) {
       const project = await agent.call('workspace.projects.get', {}, { projectId: request.projectId });
       if (!await native.confirm(window, `${String(project.displayName)}의 로컬 등록을 해제할까요?`, '원본 프로젝트 폴더와 Git 파일은 보존됩니다.')) return null;
     }
-    const result = await agent.call(operation, payload, { ...(request.projectId ? { projectId: request.projectId } : {}), ...(request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : {}) });
+    let result: Record<string, unknown>;
+    if (operation === 'workspace.reviews.preview' && payload.profileId !== 'ollama-local-v1') {
+      if (!cloud) throw new Error('CLOUD_MAPPING_REQUIRED');
+      result = await cloud.preview(String(projectId), payload, apiKey);
+    } else result = await agent.call(operation, payload, { ...(request.projectId ? { projectId: request.projectId } : {}), ...(request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : {}) });
+    if (operation === 'workspace.reviews.cancel') cloud?.cancel(String(payload.runId));
     if (operation === 'workspace.reviews.preview') { contracts.result(operation, result); consent.remember(result); }
     return result;
   });
@@ -137,8 +152,9 @@ export function registerProjects(window: BrowserWindow, agent: Pick<Agent, 'call
     const { projectId, idempotencyKey, ...payload } = value;
     const request = { protocolVersion: 1, requestId: randomUUID(), operation: 'workspace.reviews.start', projectId, idempotencyKey, payload };
     contracts.request(request);
-    return await consent.start(value, detail => native.confirm(window, '로컬 AI에 코드를 전송할까요?', detail),
-      () => agent.call('workspace.reviews.start', payload, { projectId: request.projectId, idempotencyKey: request.idempotencyKey }));
+    const forward = () => agent.call('workspace.reviews.start', payload, { projectId: request.projectId, idempotencyKey: request.idempotencyKey });
+    return await consent.start(value, detail => native.confirm(window, '선택한 AI에 코드를 전송할까요?', detail),
+      () => cloud ? cloud.start(value, forward) : forward());
   });
-  return () => { consent.dispose(); for (const channel of channels) ipcMain.removeHandler(channel); };
+  return () => { cloud?.dispose(); consent.dispose(); for (const channel of channels) ipcMain.removeHandler(channel); };
 }

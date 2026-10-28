@@ -24,6 +24,7 @@ from app.api.snapshots import router as snapshots_router
 
 # ── feat/login 팀: 비동기 auth 라우터 ────────────────────────────────────────
 from app.routers import auth as auth_router
+from app.api.desktop.repositories import router as desktop_repositories_router
 
 app = FastAPI(title="GitViz API", version="0.1.0")
 
@@ -76,6 +77,7 @@ app.include_router(analytics_router)
 app.include_router(snapshots_router)
 app.include_router(auth_router.router)
 app.include_router(desktop_auth_router)
+app.include_router(desktop_repositories_router)
 app.include_router(ai_inputs_router)   # AI 기능이 꺼져 있으면 모든 경로가 404를 돌려준다
 app.include_router(ai_credentials_router)
 app.include_router(ai_jobs_router)

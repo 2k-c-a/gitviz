@@ -131,7 +131,8 @@ class Projects:
             if (self.connection.execute('SELECT 1 FROM review_run WHERE project_id=? LIMIT 1', (project_id,)).fetchone()
                     or self.connection.execute('SELECT 1 FROM validation_run WHERE project_id=? LIMIT 1', (project_id,)).fetchone()
                     or self.connection.execute('SELECT 1 FROM comparison WHERE project_id=? LIMIT 1', (project_id,)).fetchone()
-                    or self.connection.execute('SELECT 1 FROM impact_analysis WHERE project_id=? LIMIT 1', (project_id,)).fetchone()):
+                    or self.connection.execute('SELECT 1 FROM impact_analysis WHERE project_id=? LIMIT 1', (project_id,)).fetchone()
+                    or self.connection.execute('SELECT 1 FROM remote_connection WHERE project_id=? LIMIT 1', (project_id,)).fetchone()):
                 raise ScopeError('REVIEW_DATA_REQUIRES_EXPLICIT_REMOVAL')
             self.connection.execute("DELETE FROM local_project WHERE id=?", (project_id,))
             return {"unregistered": True}

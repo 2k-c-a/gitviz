@@ -11,6 +11,7 @@ export const endpoints: Record<string, Endpoint> = {
   repositories: definition('GET', '/repositories', {}, { limit: 'number' }),
   mine: definition('GET', '/repositories/mine'),
   repository: definition('GET', '/repositories/{repositoryId}', { repositoryId: 'id' }),
+  repositoryIdentity: definition('GET', '/api/desktop/v1/repositories/{repositoryId}/identity', { repositoryId: 'id' }),
   registerRepository: definition('POST', '/repositories', {}, { github_url: 'text' }),
   reanalyze: definition('POST', '/repositories/{repositoryId}/reanalyze', { repositoryId: 'id' }),
   repositoryStatus: definition('GET', '/repositories/{repositoryId}/status', { repositoryId: 'id' }),

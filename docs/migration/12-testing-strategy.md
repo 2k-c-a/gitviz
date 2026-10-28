@@ -134,3 +134,7 @@ Windows 검증 경로: 이 저장소의 인수 세션은 Windows 셸을 직접 �
 
 - T09: `tests/workspace/test_notifications.py`, `desktop/tests/notifications.test.ts`, `desktop/tests/inbox.e2e.ts`를 작성했다.
 - 실행기: `.validation/p08/host-run.ps1`(무시 대상). 최종 18단계가 통과했다. 실행 기록은 [P08a 기록](validation/p08a-2026-10-28.md)에 있다.
+
+## P08b 및 P09 실행 상태 — 2026-10-28
+
+[후속 기록](validation/p08b-p09-2026-10-28.md)에 실제 Windows host/임시 DB/frozen Electron/package 실행과 실패 수정 결과를 기록했다. 구버전 binary 인수, export한 golden DDL fixture, GitHub Actions 설정/실제 실행, host와 clean VM, fake와 실제 provider를 구분한다. staging 미준비로 실제 OAuth/웹·앱 동시 사용 인수는 미완료다. 서명·installer·운영 배포·현재 후보 clean VM 검증은 실행하지 않았다.

@@ -17,28 +17,41 @@ let startKey = null;
 let previewEpoch = 0;
 
 function node(tag, text) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; return el; }
-function fail(error) { message.textContent = String(error?.message || error).replace(/^.*Error invoking remote method.*Error: /, ''); }
+function fail(error) {
+  const reason = String(error?.message || error).replace(/^.*Error invoking remote method.*Error: /, '');
+  const guidance = {
+    CLOUD_MAPPING_REQUIRED: '현재 계정으로 연결한 공개 저장소만 cloud를 사용할 수 있습니다. 연결·공개 여부·권한을 다시 확인하세요. PC 모델 경로는 사용할 수 있습니다.',
+    BUDGET_EXCEEDED: '이 앱의 월 USD20 예약·사용 한도를 넘습니다. 미정산·결과 불명 예약도 포함하므로 제공자 사용량과 기록을 확인하세요.',
+    ACCOUNT_CHANGED: '계정이 바뀌어 전송을 중단했습니다. 새 계정에서 미리보기와 동의를 다시 진행하세요.',
+    AUTH_REQUIRED: '원격 계정에 로그인한 뒤 저장소 연결을 확인하세요.',
+  };
+  message.textContent = guidance[reason] ?? reason;
+}
 function invalidate() {
   previewEpoch++;
   approved = null; startKey = null; consent.checked = false; start.disabled = true;
   bytes.textContent = ''; meta.replaceChildren();
 }
 function reset() {
-  generation++; clearTimeout(timer); snapshot = null; current = null;
+  generation++; clearTimeout(timer); snapshot = null; current = null; document.getElementById('review-api-key').value = '';
   invalidate(); result.replaceChildren(); history.replaceChildren(); message.textContent = ''; cancel.disabled = true;
 }
 window.addEventListener('workspace-project-changed', reset);
 window.addEventListener('workspace-snapshot-changed', event => { reset(); snapshot = event.detail; });
-for (const id of ['review-purpose', 'review-generation', 'review-kind']) document.getElementById(id).addEventListener('input', invalidate);
+for (const id of ['review-purpose', 'review-generation', 'review-kind', 'review-profile', 'review-api-key']) document.getElementById(id).addEventListener('input', invalidate);
 consent.addEventListener('change', () => { start.disabled = !approved || !consent.checked; });
 
 document.getElementById('review-preview').addEventListener('click', async () => {
   invalidate(); const turn = generation; const epoch = previewEpoch; const selected = snapshot;
   if (!selected || selected.projectId !== picker.value) { message.textContent = '먼저 변경 입력을 캡처하세요.'; return; }
   try {
-    const value = await api.previewReview({ projectId: picker.value, snapshotId: selected.snapshotId, kind: document.getElementById('review-kind').value,
-      purpose: document.getElementById('review-purpose').value, profileId: 'ollama-local-v1',
-      generation: Number(document.getElementById('review-generation').value) });
+    const options = { projectId: picker.value, snapshotId: selected.snapshotId, kind: document.getElementById('review-kind').value,
+      purpose: document.getElementById('review-purpose').value, profileId: document.getElementById('review-profile').value,
+      ...(document.getElementById('review-profile').value === 'ollama-local-v1' ? {} : { apiKey: document.getElementById('review-api-key').value }),
+      generation: Number(document.getElementById('review-generation').value) };
+    document.getElementById('review-api-key').value = '';
+    const pending = api.previewReview(options); delete options.apiKey;
+    const value = await pending;
     if (generation !== turn || previewEpoch !== epoch || snapshot?.snapshotId !== selected.snapshotId) return;
     approved = value; startKey = crypto.randomUUID();
     meta.textContent = `실행 위치 ${value.executionLocation} · 대상 ${value.destination} · 모델 ${value.profile.model} · 입력 추정 ${value.estimatedInputTokens} tokens · provider 요금 추정 USD ${value.maxEstimatedCost}\n입력 ${value.inputHash}\n전송 ${value.manifestHash}\nprofile ${value.profileFingerprint}\n정책 ${value.policyVersion}\n선택 ${value.coverage.selected} / 읽음 ${value.coverage.read} / 제외 ${value.coverage.excluded}`;
@@ -46,6 +59,7 @@ document.getElementById('review-preview').addEventListener('click', async () => 
     meta.append(document.createTextNode(`\n실제 요청 ${value.requestBytes} bytes · SHA256 ${value.requestHash}`));
     message.textContent = '위 내용이 실제 전송 범위입니다. 동의는 5분 동안 유효합니다.';
   } catch (error) { if (generation === turn) fail(error); }
+  finally { document.getElementById('review-api-key').value = ''; }
 });
 
 function show(value) {

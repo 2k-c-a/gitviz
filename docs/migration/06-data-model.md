@@ -120,3 +120,7 @@ validation_approval은 project/plan/confirmationHash/capabilityHash/expiry/consu
 - `workspace_event`에 전역 `sequence`와 요약 `summary`(수치·enum만)를 추가했다. 갱신은 trigger로 금지한다.
 - `notification`은 `created_at`을 가지며, 심각도와 유형은 event에서 읽는다.
 - 두 표 모두 `local_project` FK가 cascade가 아니다. 원격 연결 사건(P08b)은 아직 기록하지 않는다. [P08a 기록](validation/p08a-2026-10-28.md)
+
+## schema8 후속 구현 — 2026-10-28
+
+승인된 schema8은 remote_connection과 remote_analysis를 추가하고 workspace_event의 analysis 완료/실패 CHECK만 확장한다. 기존 event/notification·암호문·read/count/version을 보존하고 실패 시 transaction rollback, pre-v8 backup과 FK 검사를 수행한다. active 연결은 project별 하나이며 과거 연결은 보존한다. 계정·origin·repository ID·numeric GitHub ID·canonical URL·remote config hash를 묶는다. 첫 terminal 관측은 기준선이고, 이전 nonterminal이 있는 전환만 사건으로 저장한다. 자동 삭제하지 않는다. 실제 사용자 DB migration은 실행하지 않았다. cloud proof와 credentialRef는 일시 context이고 API key 원문은 SQLite/agent에 보관하지 않는다. [실행 증거](validation/p08b-p09-2026-10-28.md).

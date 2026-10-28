@@ -55,10 +55,10 @@ export class Agent {
     });
     const deadline = setTimeout(() => { this.fail(); child.kill(); }, 15000);
     try {
-      const hello = await this.request('workspace.system.handshake', { appVersion: '0.8.0', protocolVersion: 1, localSchemaRange: { min: 7, max: 7 } });
+      const hello = await this.request('workspace.system.handshake', { appVersion: '0.8.0', protocolVersion: 1, localSchemaRange: { min: 8, max: 8 } });
       const capabilities = hello.capabilities as string[];
       const range = hello.localSchemaRange as { min: number; max: number };
-      if (range.min > 7 || range.max < 7 || range.min > range.max) throw new Error('UNSUPPORTED_PROTOCOL');
+      if (range.min > 8 || range.max < 8 || range.min > range.max) throw new Error('UNSUPPORTED_PROTOCOL');
       if (!['workspace.system.health', 'workspace.system.shutdown'].every(op => capabilities.includes(op))) throw new Error('UNSUPPORTED_PROTOCOL');
       const secret = await key();
       try { this.write({ type: 'bootstrap', protocolVersion: 1, keyVersion: 1, keyBase64: secret.toString('base64') }, 'bootstrap'); }

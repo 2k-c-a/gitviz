@@ -84,3 +84,24 @@
 ## 출시 차단 항목
 
 N08 원격 부분(P08b)·REQ-P05 미구현, P03 실제 서버 인수, P07 에디터 화면 인수, 정책 D01·D02·D03·Q01·Q02·Q03·Q08·Q10, Windows CI 부재. 전체 출시 완료로 선언하지 않는다.
+
+## 후속 상태 갱신 — 2026-10-28 P08b/P09
+
+앞선 표는 P08a까지의 기준이다. 아래는 [후속 구현 기록](p08b-p09-2026-10-28.md)을 근거로 한 최신 증분 상태이며 전체 출시 인수를 뜻하지 않는다.
+
+| ID | 후속 구현·검증 | 최신 잔여 |
+|---|---|---|
+| N02/C02/S04/S06 | public proof·native 동의·main-only BYOK·exact wire hash·단일 요청·비용 예약/정산 fixture 구현 | 실제 provider/API 호환성·품질·최종 회귀·보안 검토 미완료 |
+| N06/C06 | 로컬/서버 연결 선행 코드 구현 | historical 응답 확장 승인 및 실제 coupling 근거 연결 미완료 |
+| N08/C08/S02/S06 | 계정/origin/numeric ID/remote hash 연결, 알려진 job 전환 알림, 권한 재검증 후 고정 앱 경로 이동; Electron fixture 통과 | 최신 job 관측 누락 가능·창당16 연결 상한·실제 서버 및 clean VM 미검증, toast는 선택 |
+| REQ-P01 | workspace.e2e.ts navbar/context의 repo/snapshot 보존·query 비권한성 검증 | clean VM·실제 서버 인수 남음 |
+| REQ-P03 | 실제 v7 DB 보존·rollback·pre-v8 백업·FK·immutable event 확인; Q08 자동 삭제 없음 확정 | 실제 userData migration 미실행, 명시 정리 기능 별도 승인 |
+| REQ-P08/S06 | 버전·component 상태만 내보내는 최소 진단 코드와 순수 단위 검사 | native 저장 UI 실인수·진단 운영 절차 잔여 |
+| REQ-P05 | Q01/Q02 초기 지원·서명 확인 후 수동 업데이트 정책 확정 | P09 선행 gate 미충족; installer·서명·업데이트·제거 실인수 미구현/미실행 |
+| REQ-P02/P06/P07 | additive identity와 기존 auth/remote 회귀를 fixture로 검사 | staging 준비 안 됨; OAuth·웹/앱 동시 사용 실제 인수 미완료 |
+
+P09 CI는 설정을 작성했으며 원격 실행·통과를 보고하지 않는다. P09 전체·P10 출시 완료를 선언하지 않는다.
+
+N06/C06 후속: historical 계약 확장 승인을 받아 pinned server snapshot·target SHA·payload hash·통계 범위·암호화 저장·다음 조회 권한 재검증을 구현했다. 로컬 경로 전송 없이 main에서 비교한다. Python1/main2 fixture 통과, 최종 frozen/Electron 회귀는 후속 기록을 따른다. 실제 서버 이력 인수는 staging 미준비로 미검증이다.
+
+최종 회귀(19:55 KST): 개발 호스트 23/23 통과, frozen cloud 재시작 복구 시험 포함, 전후 git status 동일. agent 정적 감사 통과. 최신 후보 재패키징·ASAR 감사·clean VM·P09 서비스 시험은 미실행이다. 상세는 [후속 구현 기록](p08b-p09-2026-10-28.md) 마지막 절.

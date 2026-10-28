@@ -72,3 +72,33 @@ if (api?.listProjects) {
     catch (error) { if (turn === generation) note(error); }
   });
 } else note('로컬 데스크톱 앱에서 사용할 수 있습니다.');
+
+const remoteNote = document.getElementById('remote-connection-message');
+async function remoteAction(connect) {
+  const projectId = picker.value;
+  const turn = generation;
+  if (!projectId) { remoteNote.textContent = '로컬 프로젝트를 먼저 선택하세요.'; return; }
+  try {
+    if (connect) {
+      const repositoryId = Number(document.getElementById('remote-repository-id').value);
+      if (!Number.isSafeInteger(repositoryId) || repositoryId < 1) throw new Error('INVALID_REQUEST');
+      const result = await api.connectRemote({ projectId, repositoryId });
+      if (!result) { if (turn === generation) remoteNote.textContent = '연결을 취소했습니다.'; return; }
+    }
+    const result = await api.getRemoteConnection({ projectId });
+    if (turn !== generation || picker.value !== projectId) return;
+    remoteNote.textContent = result.connected ? `연결됨: ${result.canonicalUrl} · GitHub #${result.githubId} · 서버 #${result.repositoryId}. 이 앱에서 추적한 상태 전환만 알립니다.` : '현재 계정으로 확인된 연결이 없습니다.';
+    if (connect) await selected();
+  } catch (error) { if (turn === generation) { const reason = String(error?.message ?? error).replace(/^.*Error invoking remote method.*Error: /, ''); remoteNote.textContent = reason === 'BUSY' ? '동시 추적 상한16개 또는 확인 중인 작업 때문에 새 연결을 보류했습니다. 기존 연결과 기록은 보존됩니다.' : reason; } }
+}
+if (api?.connectRemote) {
+  document.getElementById('connect-remote').addEventListener('click', () => { void remoteAction(true); });
+  document.getElementById('refresh-remote').addEventListener('click', () => { void remoteAction(false); });
+  picker.addEventListener('change', () => { remoteNote.textContent = ''; });
+}
+
+if (api?.exportDiagnostics) document.getElementById('export-diagnostics').addEventListener('click', async () => {
+  const notice = document.getElementById('diagnostics-message');
+  try { const value = await api.exportDiagnostics(); notice.textContent = value.exported ? '버전·구성 요소 상태만 저장했습니다. 계정·경로·소스·원본 로그는 제외했습니다.' : '진단 저장을 취소했습니다.'; }
+  catch { notice.textContent = '진단을 저장하지 못했습니다. 새 파일 이름과 쓰기 권한을 확인하세요.'; }
+});

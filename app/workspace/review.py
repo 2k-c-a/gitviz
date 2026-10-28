@@ -19,23 +19,25 @@ from .refactor_models import output_schema
 from .patches import MAX_FILES, writable_path, validate_encoding
 from .scoped_files import ScopeError
 from .snapshots import Snapshots, fingerprint, image_hash
+from .cloud_context import CloudContexts
+from .remote_connections import RemoteConnections
 
 
 class Reviews:
     def __init__(self, snapshots: Snapshots, transport: Transport = pc_ollama):
         self.snapshots = snapshots
         self.db = snapshots.db
-        self.jobs = Jobs(snapshots, transport)
+        self.cloud = CloudContexts(RemoteConnections(snapshots.projects))
+        self.jobs = Jobs(snapshots, lambda profile, system, user, cancelled:
+                         self.cloud.transport(profile, system, user, cancelled) if profile['provider'] in ('anthropic', 'openai', 'gemini')
+                         else transport(profile, system, user, cancelled))
         self.previews: dict[str, tuple[float, dict[str, Any]]] = {}
 
     def manifest(self, project: str, payload: dict[str, Any]) -> dict[str, Any]:
         kind = payload['kind']
         if kind not in ('review', 'refactor'):
             raise ScopeError('UNSUPPORTED_KIND')
-        # Local projects currently have no authenticated server-public mapping proof.
-        # Neither a Git remote URL nor renderer-provided visibility can authorize cloud.
-        if payload['profileId'] != 'ollama-local-v1':
-            raise ScopeError('CLOUD_MAPPING_REQUIRED')
+        cloud = None if payload['profileId'] == 'ollama-local-v1' else self.cloud.get(project, payload['profileId'], payload.get('credentialRef'))
         purpose = payload['purpose']
         if ai_core.policy.content_exclusion(purpose, byte_count=len(purpose.encode())) is not None:
             raise ScopeError('CONTENT_EXCLUDED')
@@ -70,7 +72,7 @@ class Reviews:
             raise ScopeError('EMPTY_INPUT')
         if kind == 'refactor' and len(files) > MAX_FILES:
             raise ScopeError('PATCH_TOO_LARGE')
-        base = ai_core.profile('ollama-local-v1', {})
+        base = ai_core.profile(payload['profileId'], {})
         prompt_root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parents[2]))
         schema_version = 'workspace-refactor-v1' if kind == 'refactor' else 'workspace-review-v1'
         system = (prompt_root / f'app/services/ai/prompts/{schema_version.replace("-", "_")}.txt').read_text(encoding='utf-8')
@@ -79,8 +81,13 @@ class Reviews:
             'maxInputTokens': base.max_input_tokens, 'maxOutputTokens': base.max_output_tokens,
             'contextWindow': base.context_window, 'promptVersion': schema_version, 'schemaVersion': schema_version,
             'outputSchemaHash': fingerprint(output_schema(schema_version)), 'transportVersion': 'ollama-chat-v1'}
+        if cloud is not None:
+            from .cloud_transport import DESTINATIONS
+            profile.update(endpoint='https://' + DESTINATIONS[base.provider][0], executionLocation='cloud-provider',
+                           transportVersion='workspace-cloud-rest-v1', effort=base.effort,
+                           credentialRef=cloud['credentialRef'])
         profile_hash = fingerprint({'base': {k: str(v) if isinstance(v, Decimal) else v for k, v in asdict(base).items()},
-            'workspace': profile, 'systemHash': fingerprint(system)})
+            'workspace': {key: value for key, value in profile.items() if key != 'credentialRef'}, 'systemHash': fingerprint(system)})
         user = json.dumps({'purpose': purpose, 'files': files}, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
         # Reuse the same conservative prompt estimator and context guard as server core.
         from app.services.ai.token_budget import estimate_prompt_tokens, check_input_limit
@@ -92,13 +99,18 @@ class Reviews:
             check_input_limit(base, estimated)
         except TokenLimitExceeded:
             raise ScopeError('INPUT_TOO_LARGE') from None
+        from app.services.ai.token_budget import max_cost
+        cost = str(max_cost(base, estimated)) if cloud is not None else '0'
         manifest: dict[str, Any] = {'projectId': project, 'snapshotId': snapshot['snapshotId'], 'inputHash': snapshot['inputHash'],
             'kind': kind, 'purposeHash': fingerprint(purpose), 'profile': profile, 'profileFingerprint': profile_hash,
-            'destination': profile['endpoint'], 'executionLocation': 'user-pc', 'credentialRef': None, 'credentialVersion': None,
-            'policyVersion': ai_core.POLICY_VERSION, 'maxEstimatedCost': '0', 'currency': 'USD', 'costIsEstimate': True,
+            'destination': profile['endpoint'], 'executionLocation': profile['executionLocation'],
+            'credentialRef': cloud['credentialRef'] if cloud else None, 'credentialVersion': cloud['credentialVersion'] if cloud else None,
+            'policyVersion': ai_core.POLICY_VERSION, 'maxEstimatedCost': cost, 'currency': 'USD', 'costIsEstimate': True,
             'estimatedInputTokens': estimated, 'coverage': snapshot['coverage'], 'excluded': [f for f in snapshot['files'] if f['state'] != 'read'],
             'system': system, 'user': user, 'files': files, 'requestHash': image_hash(wire), 'requestBytes': len(wire),
             'limitations': ['content-secret-detection-is-heuristic', 'model-inference-not-executed', 'retention-policy-pending']}
+        if cloud:
+            manifest['cloudMapping'] = {name: cloud['proof'][name] for name in ('accountId', 'serverOrigin', 'repositoryId', 'githubId', 'canonicalUrl', 'connectionId', 'configHash', 'visibility')}
         manifest['manifestHash'] = fingerprint(manifest)
         return manifest
 
@@ -133,7 +145,7 @@ class Reviews:
             if payload['acknowledged'] is not True:
                 raise ScopeError('CONSENT_REQUIRED')
             current = self.manifest(project, {'snapshotId': approved['snapshotId'], 'kind': approved['kind'],
-                'purpose': approved['purpose'], 'profileId': approved['profile']['id']})
+                'purpose': approved['purpose'], 'profileId': approved['profile']['id'], 'credentialRef': approved['credentialRef']})
             if current['manifestHash'] != approved['manifestHash']:
                 raise ScopeError('PRECONDITION_FAILED')
             identity = fingerprint({k: approved[k] for k in ('projectId', 'inputHash', 'kind', 'purposeHash', 'profileFingerprint', 'policyVersion')})
@@ -148,6 +160,14 @@ class Reviews:
                 raise ScopeError('DUPLICATE_RISK_CONFIRMATION_REQUIRED')
             if self.jobs.active is not None:
                 raise ScopeError('BUSY')
+            if approved['profile']['provider'] in ('anthropic', 'openai', 'gemini'):
+                # Match the existing server default: USD20 per calendar month, app-wide.
+                # Unsettled/uncertain reservations continue counting; no key/account reset bypass.
+                month = time.strftime('%Y-%m', time.gmtime())
+                costs = self.db.execute('SELECT reserved_cost,actual_cost,settled_at FROM local_usage_ledger WHERE period_start LIKE ?', (month + '%',)).fetchall()
+                total = sum((Decimal(actual) if settled is not None and actual is not None else Decimal(reserved) for reserved, actual, settled in costs), Decimal('0'))
+                if total + Decimal(approved['maxEstimatedCost']) > Decimal('20'):
+                    raise ScopeError('BUDGET_EXCEEDED')
             run, consent = str(uuid.uuid4()), str(uuid.uuid4())
             now = time.time()
             self.db.execute('INSERT INTO transfer_consent VALUES(?,?,?,?,?,?,?,?,?)',
@@ -171,6 +191,16 @@ class Reviews:
         rows = self.db.execute('SELECT id,snapshot_id,status,created_at,version FROM review_run WHERE project_id=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?',
             (project, payload['limit'], payload['offset'])).fetchall()
         return {'projectId': project, 'runs': [{'runId': r[0], 'snapshotId': r[1], 'status': r[2], 'createdAt': r[3], 'version': r[4]} for r in rows]}
+
+    def cloud_exchange(self, project: str, payload: dict[str, Any]) -> dict[str, Any]:
+        self.jobs.drain()
+        row = self.db.execute('SELECT c.id,c.payload FROM review_run r JOIN transfer_consent c ON c.id=r.consent_id WHERE r.project_id=? AND r.id=?', (project, payload['runId'])).fetchone()
+        if row is None:
+            raise ScopeError('RESOURCE_NOT_FOUND')
+        manifest = self.jobs.decrypt(project, row[0], row[1])
+        if manifest['profile']['provider'] not in ('anthropic', 'openai', 'gemini'):
+            raise ScopeError('INVALID_REQUEST')
+        return self.cloud.exchange(project, manifest['credentialRef'], payload)
 
     def feedback(self, project: str, payload: dict[str, Any], key: str) -> dict[str, Any]:
         def action() -> dict[str, Any]:
