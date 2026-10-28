@@ -41,4 +41,14 @@ if (location.protocol === 'gitviz:' && location.host === 'app' && location.pathn
   copyLocation: (options: unknown) => ipcRenderer.invoke('workspace:copy-location', options),
   openEditor: (options: unknown) => ipcRenderer.invoke('workspace:open-editor', options),
   planValidation: (options: unknown) => ipcRenderer.invoke('workspace:plan-validation', options),
+  listNotifications: (options: unknown) => ipcRenderer.invoke('workspace:list-notifications', options),
+  markNotificationRead: (options: unknown) => ipcRenderer.invoke('workspace:mark-notification-read', options),
+  // The listener receives only the cloned signal object, never the IPC event or sender.
+  subscribeEvents: (options: unknown, listener: unknown) => {
+    if (typeof listener !== 'function') return Promise.reject(new Error('INVALID_REQUEST'));
+    ipcRenderer.removeAllListeners('workspace:event');
+    ipcRenderer.on('workspace:event', (_event, signal: unknown) => { (listener as (value: unknown) => void)(signal); });
+    return ipcRenderer.invoke('workspace:events-subscribe', options);
+  },
+  unsubscribeEvents: () => { ipcRenderer.removeAllListeners('workspace:event'); return ipcRenderer.invoke('workspace:events-unsubscribe', {}); },
 }));

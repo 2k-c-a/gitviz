@@ -58,7 +58,7 @@ class P07MigrationTests(ApplyFixture):
         upgraded.open()
         try:
             assert upgraded.connection is not None
-            self.assertEqual(upgraded.connection.execute('SELECT version FROM schema_meta').fetchone()[0], 6)
+            self.assertEqual(upgraded.connection.execute('SELECT version FROM schema_meta').fetchone()[0], 7)
             self.assertEqual(upgraded.connection.execute('PRAGMA foreign_keys').fetchone()[0], 1)
             self.assertEqual(upgraded.connection.execute('PRAGMA foreign_key_check').fetchall(), [])
             self.assertEqual(upgraded.connection.execute('SELECT payload FROM proposal').fetchone()[0], before)
@@ -69,7 +69,7 @@ class P07MigrationTests(ApplyFixture):
             reviews.jobs.close()
         finally:
             upgraded.close()
-        backups = list(historic.glob('pre-v6-*.sqlite3'))
+        backups = list(historic.glob('pre-v7-*.sqlite3'))
         self.assertTrue(backups)
         for backup in backups:
             with closing(sqlite3.connect(backup)) as saved:

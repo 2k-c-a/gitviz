@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from . import events
 from .detection import Detection, runner_environment, runtime_paths
 from .diagnostics import extract
 from .git_service import LocalGit
@@ -98,8 +99,17 @@ class Validation:
         self.active: tuple[str, threading.Event] | None = None
         self.completed: queue.Queue[tuple[str, str, dict[str, Any]]] = queue.Queue(maxsize=1)
         self.pending: tuple[str, str, dict[str, Any]] | None = None
-        self.db.execute('UPDATE validation_approval SET consumed=1 WHERE consumed=0')
-        self.db.execute("UPDATE validation_run SET status='interrupted' WHERE status='running'")
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            self.db.execute('UPDATE validation_approval SET consumed=1 WHERE consumed=0')
+            interrupted = self.db.execute("SELECT project_id,id FROM validation_run WHERE status='running'").fetchall()
+            self.db.execute("UPDATE validation_run SET status='interrupted' WHERE status='running'")
+            for project, run in interrupted:
+                events.record(self.db, project=project, source_type='validation', source_id=run, revision=1, status='interrupted')
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
 
     def aad(self, project: str, resource: str) -> bytes:
         return f'GitVizWorkspace/project/{project}/validation/{resource}/schema-6'.encode()
@@ -273,8 +283,18 @@ class Validation:
         except (ScopeError, OSError):
             record['inputChanged'] = None
             record['limitations'] = [*record['limitations'], 'input-condition-unavailable']
-        self.db.execute('UPDATE validation_run SET status=?,payload=? WHERE id=? AND project_id=?',
-            (record['status'], self.encrypt(project, run, record), run, project))
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            self.db.execute('UPDATE validation_run SET status=?,payload=? WHERE id=? AND project_id=?',
+                (record['status'], self.encrypt(project, run, record), run, project))
+            exit_code = record.get('exitCode')
+            events.record(self.db, project=project, source_type='validation', source_id=run, revision=1, status=record['status'],
+                          summary={'exitCode': exit_code if isinstance(exit_code, int) else None},
+                          occurred_at=record.get('finishedAt') if isinstance(record.get('finishedAt'), float) else None)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise  # pending stays set so the next drain retries the same terminal write.
         self.active = None
         self.pending = None
 

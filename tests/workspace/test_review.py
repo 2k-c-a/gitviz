@@ -356,7 +356,7 @@ class ReviewMigrationTests(WorkspaceFixture):
         captured = self.capture([{'facet': 'selected', 'path': 'app.py'}])
         original = self.db.execute('SELECT payload FROM change_file').fetchone()[0]
         # Historical v3 fixture: precisely the seven v3 tables, constraints and old encrypted payload.
-        for name in ['comparison', 'validation_run', 'validation_approval', 'impact_analysis', 'apply_journal', 'approval', 'proposal_event', 'proposal', 'review_feedback', 'review_finding', 'local_usage_ledger', 'review_attempt', 'review_run', 'transfer_consent']:
+        for name in ['notification', 'workspace_event', 'comparison', 'validation_run', 'validation_approval', 'impact_analysis', 'apply_journal', 'approval', 'proposal_event', 'proposal', 'review_feedback', 'review_finding', 'local_usage_ledger', 'review_attempt', 'review_run', 'transfer_consent']:
             self.db.execute('DROP TABLE ' + name)
         self.db.execute('DROP INDEX uq_command_plan_project_id')
         self.db.execute('ALTER TABLE project_setting RENAME TO current_settings')
@@ -384,14 +384,14 @@ class ReviewMigrationTests(WorkspaceFixture):
         self.store.open()
         assert self.store.connection is not None
         current = self.store.connection
-        self.assertEqual(current.execute('SELECT version FROM schema_meta').fetchone()[0], 6)
+        self.assertEqual(current.execute('SELECT version FROM schema_meta').fetchone()[0], 7)
         self.assertTrue(TABLES <= {r[0] for r in current.execute("SELECT name FROM sqlite_master WHERE type='table'")})
         self.assertEqual(current.execute('PRAGMA foreign_key_check').fetchall(), [])
         self.assertEqual(current.execute('SELECT payload FROM change_file').fetchone()[0], original)
         fixed = Snapshots(Projects(current), self.cipher).preview(self.project_id,
             {'snapshotId': captured['snapshotId'], 'fileId': captured['files'][0]['fileId'], 'side': 'RIGHT', 'startLine': 1, 'endLine': 5})
         self.assertIn('x = 1', [line['text'] for line in fixed['lines']])
-        backups = list((self.root / 'data').glob('pre-v6-*.sqlite3'))
+        backups = list((self.root / 'data').glob('pre-v7-*.sqlite3'))
         self.assertEqual(len(backups), 2)
         for backup in backups:
             with closing(sqlite3.connect(backup)) as saved:

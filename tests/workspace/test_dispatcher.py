@@ -59,7 +59,7 @@ os.link=wrapped_link
 def secure(path):
     if path.name.startswith('secret-check.') and path.name.endswith('.pending'):checkpoint('probe_open')
 d=Dispatcher(directory,secure)
-d.dispatch({'protocolVersion':1,'requestId':'00000000-0000-4000-8000-000000000001','operation':'workspace.system.handshake','payload':{'appVersion':'0.1.0','protocolVersion':1,'localSchemaRange':{'min':6,'max':6}}})
+d.dispatch({'protocolVersion':1,'requestId':'00000000-0000-4000-8000-000000000001','operation':'workspace.system.handshake','payload':{'appVersion':'0.1.0','protocolVersion':1,'localSchemaRange':{'min':7,'max':7}}})
 d.bootstrap({'type':'bootstrap','protocolVersion':1,'keyVersion':1,'keyBase64':base64.b64encode(bytes(range(32))).decode()})
 assert d.state=='ready'
 checkpoint('ready')
@@ -83,7 +83,7 @@ raise RuntimeError('checkpoint not reached')
                     before = probe.read_bytes() if probe.exists() else None
                     dispatcher = Dispatcher(directory, lambda _: None)
                     try:
-                        dispatcher.dispatch(request("handshake", {"appVersion": "0.1.0", "protocolVersion": 1, "localSchemaRange": {"min": 6, "max": 6}}))
+                        dispatcher.dispatch(request("handshake", {"appVersion": "0.1.0", "protocolVersion": 1, "localSchemaRange": {"min": 7, "max": 7}}))
                         dispatcher.bootstrap({"type": "bootstrap", "protocolVersion": 1, "keyVersion": 1, "keyBase64": base64.b64encode(bytes(range(32))).decode()})
                         self.assertEqual(dispatcher.state, "ready")
                         if before is not None:
@@ -99,7 +99,7 @@ raise RuntimeError('checkpoint not reached')
     def test_stdio_schema_mismatch_and_invalid_operation_do_not_create_database(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp) / "not-opened"
-            hello = request("handshake", {"appVersion": "0.1.0", "protocolVersion": 1, "localSchemaRange": {"min": 7, "max": 8}})
+            hello = request("handshake", {"appVersion": "0.1.0", "protocolVersion": 1, "localSchemaRange": {"min": 8, "max": 9}})
             # Windows venv python.exe is a redirector with a second PID. Use the
             # real interpreter so the tested parent handle is the actual parent.
             executable = getattr(sys, "_base_executable", sys.executable)
@@ -122,7 +122,7 @@ raise RuntimeError('checkpoint not reached')
             directory = Path(tmp) / "data"
             dispatcher = Dispatcher(directory, lambda _: None)
             self.assertFalse(dispatcher.dispatch(request("health"))["ok"])
-            result = dispatcher.dispatch(request("handshake", {"appVersion": "0.1.0", "protocolVersion": 1, "localSchemaRange": {"min": 7, "max": 8}}))
+            result = dispatcher.dispatch(request("handshake", {"appVersion": "0.1.0", "protocolVersion": 1, "localSchemaRange": {"min": 8, "max": 9}}))
             self.assertFalse(result["ok"])
             self.assertFalse(directory.exists())
             with self.assertRaises(ProtocolError):
@@ -136,7 +136,7 @@ raise RuntimeError('checkpoint not reached')
             for turn in range(3):
                 dispatcher = Dispatcher(directory, lambda _: None)
                 try:
-                    hello = dispatcher.dispatch(request("handshake", {"appVersion": "0.1.0", "protocolVersion": 1, "localSchemaRange": {"min": 6, "max": 6}}))
+                    hello = dispatcher.dispatch(request("handshake", {"appVersion": "0.1.0", "protocolVersion": 1, "localSchemaRange": {"min": 7, "max": 7}}))
                     validate("response", hello)
                     dispatcher.bootstrap({**bootstrap, "keyBase64": base64.b64encode(bytes(32)).decode()} if turn == 2 else bootstrap)
                     self.assertEqual(dispatcher.state, "unavailable" if turn == 2 else "ready")

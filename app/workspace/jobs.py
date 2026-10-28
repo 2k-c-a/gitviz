@@ -8,6 +8,7 @@ import time
 import uuid
 from typing import Any
 
+from . import events
 from .review_models import validate_output
 from .refactor_models import validate_refactor
 from .review_transport import Reply, Transport, TransportFailure, request_body
@@ -43,11 +44,14 @@ class Jobs:
         now = time.time()
         self.db.execute('BEGIN IMMEDIATE')
         try:
+            affected = self.db.execute("SELECT id FROM review_run WHERE status IN ('running','cancel_requested','queued')").fetchall()
             self.db.execute("UPDATE review_run SET status='uncertain',outcome_uncertain=1,error_code='INTERRUPTED_UNCERTAIN',version=version+1,updated_at=? WHERE status IN ('running','cancel_requested')", (now,))
             self.db.execute("UPDATE review_attempt SET status='uncertain',finished_at=? WHERE status='running'", (now,))
             self.db.execute("UPDATE local_usage_ledger SET outcome_uncertain=1 WHERE run_id IN (SELECT id FROM review_run WHERE status='uncertain')")
             self.db.execute("UPDATE review_run SET status='cancelled',error_code='INTERRUPTED_BEFORE_SEND',version=version+1,updated_at=? WHERE status='queued'", (now,))
             self.db.execute("UPDATE local_usage_ledger SET actual_cost='0',settled_at=? WHERE settled_at IS NULL AND run_id IN (SELECT id FROM review_run WHERE status='cancelled' AND attempt_count=0)", (now,))
+            for (run,) in affected:
+                self.event(run, None)
             self.db.commit()
         except Exception:
             self.db.rollback()
@@ -130,6 +134,7 @@ class Jobs:
                         (finding_id, project, run, snapshot, finding['evidence'][0]['fileId'], ordinal, self.encrypt(project, finding_id, finding)))
                     self.db.execute('INSERT INTO review_feedback VALUES(?,\'unverified\',?,1,?)',
                         (finding_id, self.encrypt(project, finding_id + '/feedback', ''), now))
+            self.event(run, output if status == 'succeeded' else None)
             self.db.commit()
         except Exception:
             self.db.rollback()
@@ -137,6 +142,12 @@ class Jobs:
             raise
         self.pending_completion = None
         self.active = None
+
+    def event(self, run: str, output: dict[str, Any] | None) -> None:
+        """Record the terminal transition just written in the caller's transaction."""
+        row = self.db.execute('SELECT project_id,status,version,kind,error_code,updated_at FROM review_run WHERE id=?', (run,)).fetchone()
+        events.record(self.db, project=row[0], source_type='review', source_id=run, revision=row[2], status=row[1],
+                      summary=events.review_summary(row[3], output), cause=row[4], occurred_at=row[5])
 
     def get(self, project: str, run: str) -> dict[str, Any]:
         self.drain()

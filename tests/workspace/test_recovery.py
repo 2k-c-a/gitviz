@@ -44,7 +44,7 @@ class RecoveryTests(unittest.TestCase):
             with closing(connect(path)) as connection:
                 self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
                 self.assertEqual(connection.execute("SELECT name FROM sqlite_master").fetchall(), [])
-            backups = list(directory.glob("pre-v6-*.sqlite3"))
+            backups = list(directory.glob("pre-v7-*.sqlite3"))
             self.assertEqual(len(backups), 1)
             with closing(connect(backups[0])) as backup:
                 self.assertEqual(backup.execute("PRAGMA integrity_check").fetchone(), ("ok",))
@@ -95,7 +95,7 @@ def secure(path):
     if path==root:checkpoint('root')
     elif path.name=='workspace.sqlite3':checkpoint('database_open')
     elif path.name.endswith('.pending'):checkpoint('backup_open')
-    elif path.name.startswith('pre-v6-'):checkpoint('backup_published')
+    elif path.name.startswith('pre-v7-'):checkpoint('backup_published')
 store=LocalStore(root,secure);store.open();store.close()
 raise RuntimeError('checkpoint not reached')
 '''
@@ -126,8 +126,8 @@ raise RuntimeError('checkpoint not reached')
                     with closing(sqlite3.connect(path)) as connection:
                         self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
                         schema = connection.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
-                        self.assertEqual(schema, [('apply_journal',), ('approval',), ('change_file',), ('change_snapshot',), ('command_plan',), ('comparison',), ('impact_analysis',), ('local_operation',), ('local_project',), ('local_usage_ledger',), ('project_setting',), ('proposal',), ('proposal_event',), ('review_attempt',), ('review_feedback',), ('review_finding',), ('review_run',), ('schema_meta',), ('transfer_consent',), ('validation_approval',), ('validation_run',)] if phase == "committed" else [])
-                    for backup in directory.glob("pre-v6-*.sqlite3"):
+                        self.assertEqual(schema, [('apply_journal',), ('approval',), ('change_file',), ('change_snapshot',), ('command_plan',), ('comparison',), ('impact_analysis',), ('local_operation',), ('local_project',), ('local_usage_ledger',), ('notification',), ('project_setting',), ('proposal',), ('proposal_event',), ('review_attempt',), ('review_feedback',), ('review_finding',), ('review_run',), ('schema_meta',), ('transfer_consent',), ('validation_approval',), ('validation_run',), ('workspace_event',)] if phase == "committed" else [])
+                    for backup in directory.glob("pre-v7-*.sqlite3"):
                         with closing(sqlite3.connect(backup)) as connection:
                             self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
                     reopened = LocalStore(directory, no_acl)
@@ -148,7 +148,7 @@ raise RuntimeError('checkpoint not reached')
                 assert first.connection
                 self.assertEqual(first.connection.execute("PRAGMA foreign_keys").fetchone(), (1,))
                 self.assertEqual(first.connection.execute("PRAGMA journal_mode").fetchone(), ("wal",))
-                self.assertEqual(first.connection.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall(), [('apply_journal',), ('approval',), ('change_file',), ('change_snapshot',), ('command_plan',), ('comparison',), ('impact_analysis',), ('local_operation',), ('local_project',), ('local_usage_ledger',), ('project_setting',), ('proposal',), ('proposal_event',), ('review_attempt',), ('review_feedback',), ('review_finding',), ('review_run',), ('schema_meta',), ('transfer_consent',), ('validation_approval',), ('validation_run',)])
+                self.assertEqual(first.connection.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall(), [('apply_journal',), ('approval',), ('change_file',), ('change_snapshot',), ('command_plan',), ('comparison',), ('impact_analysis',), ('local_operation',), ('local_project',), ('local_usage_ledger',), ('notification',), ('project_setting',), ('proposal',), ('proposal_event',), ('review_attempt',), ('review_feedback',), ('review_finding',), ('review_run',), ('schema_meta',), ('transfer_consent',), ('validation_approval',), ('validation_run',), ('workspace_event',)])
                 with self.assertRaises(OSError):
                     LocalStore(directory, no_acl).open()
             finally:
@@ -178,7 +178,7 @@ raise RuntimeError('checkpoint not reached')
             with patch("app.workspace.store.migrate", side_effect=sqlite3.OperationalError("full")):
                 with self.assertRaises(sqlite3.OperationalError):
                     LocalStore(directory, no_acl).open()
-            backups = list(directory.glob("pre-v6-*.sqlite3"))
+            backups = list(directory.glob("pre-v7-*.sqlite3"))
             self.assertEqual(len(backups), 1)
             with closing(sqlite3.connect(backups[0])) as backup:
                 self.assertEqual(backup.execute("PRAGMA integrity_check").fetchone(), ("ok",))

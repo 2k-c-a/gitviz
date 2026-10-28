@@ -97,11 +97,14 @@
                       "workspace.comparisons.get",
                       "workspace.files.locate",
                       "workspace.impact.release",
-                      "workspace.projects.setEditor"
+                      "workspace.projects.setEditor",
+                      "workspace.notifications.list",
+                      "workspace.notifications.markRead",
+                      "workspace.events.read"
                     ]
                   },
                   "uniqueItems": true,
-                  "maxItems": 44
+                  "maxItems": 47
                 },
                 "state": {
                   "const": "initializing"
@@ -262,6 +265,15 @@
             },
             {
               "$ref": "#/definitions/releasedImpact"
+            },
+            {
+              "$ref": "#/definitions/notificationItem"
+            },
+            {
+              "$ref": "#/definitions/notificationList"
+            },
+            {
+              "$ref": "#/definitions/eventBatch"
             }
           ]
         }
@@ -4305,6 +4317,319 @@
       "required": [
         "releasedSessionId",
         "projectId"
+      ],
+      "additionalProperties": false
+    },
+    "notificationItem": {
+      "type": "object",
+      "properties": {
+        "notificationId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "projectName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[^\\u0000]+$"
+        },
+        "eventId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "sourceType": {
+          "enum": [
+            "review",
+            "validation",
+            "proposal"
+          ]
+        },
+        "sourceRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "type": {
+          "enum": [
+            "review.succeeded",
+            "review.failed",
+            "review.cancelled",
+            "review.uncertain",
+            "validation.succeeded",
+            "validation.failed",
+            "validation.cancelled",
+            "validation.timed_out",
+            "validation.output_limit",
+            "validation.interrupted",
+            "validation.launch_failed",
+            "validation.precondition_failed",
+            "proposal.applied",
+            "proposal.recovery_required",
+            "proposal.restored"
+          ]
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "causeCode": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]{1,64}$"
+        },
+        "occurredAt": {
+          "type": "number",
+          "minimum": 0
+        },
+        "createdAt": {
+          "type": "number",
+          "minimum": 0
+        },
+        "lastSeenAt": {
+          "type": "number",
+          "minimum": 0
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "readAt": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "enum": [
+                "review",
+                "refactor"
+              ]
+            },
+            "findings": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            "highestFindingSeverity": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "critical",
+                    "high",
+                    "medium",
+                    "low",
+                    "unknown"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "exitCode": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -2147483648,
+                  "maximum": 4294967295
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "enum": [
+                "review",
+                "validation",
+                "proposal"
+              ]
+            },
+            "projectId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "resourceId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          },
+          "required": [
+            "kind",
+            "projectId",
+            "resourceId"
+          ],
+          "additionalProperties": false
+        },
+        "targetState": {
+          "enum": [
+            "available",
+            "unavailable"
+          ]
+        }
+      },
+      "required": [
+        "notificationId",
+        "projectId",
+        "projectName",
+        "eventId",
+        "sourceType",
+        "sourceRevision",
+        "type",
+        "severity",
+        "causeCode",
+        "occurredAt",
+        "createdAt",
+        "lastSeenAt",
+        "count",
+        "readAt",
+        "version",
+        "summary",
+        "target",
+        "targetState"
+      ],
+      "additionalProperties": false
+    },
+    "notificationList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/notificationItem"
+          },
+          "maxItems": 100
+        },
+        "unreadCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,512}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "unreadCount",
+        "nextCursor"
+      ],
+      "additionalProperties": false
+    },
+    "eventBatch": {
+      "type": "object",
+      "properties": {
+        "events": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "properties": {
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              },
+              "eventId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "projectId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "type": {
+                "enum": [
+                  "review.succeeded",
+                  "review.failed",
+                  "review.cancelled",
+                  "review.uncertain",
+                  "validation.succeeded",
+                  "validation.failed",
+                  "validation.cancelled",
+                  "validation.timed_out",
+                  "validation.output_limit",
+                  "validation.interrupted",
+                  "validation.launch_failed",
+                  "validation.precondition_failed",
+                  "proposal.applied",
+                  "proposal.recovery_required",
+                  "proposal.restored"
+                ]
+              },
+              "resourceId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+              },
+              "sourceRevision": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              }
+            },
+            "required": [
+              "sequence",
+              "eventId",
+              "projectId",
+              "type",
+              "resourceId",
+              "sourceRevision"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "lastSequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "reset": {
+          "type": "boolean"
+        },
+        "hasMore": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "events",
+        "lastSequence",
+        "reset",
+        "hasMore"
       ],
       "additionalProperties": false
     }

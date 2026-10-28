@@ -16,6 +16,7 @@ import { registerProposals } from './proposals';
 import { registerImpact } from './impact';
 import { registerValidation } from './validation';
 import { registerEditor } from './editor';
+import { registerNotifications } from './notifications';
 
 registerScheme();
 let window: BrowserWindow | undefined;
@@ -43,6 +44,7 @@ else {
     window.once('closed', registerImpact(window, agent, contracts));
     window.once('closed', registerValidation(window, agent, contracts));
     window.once('closed', registerEditor(window, agent, contracts, directory));
+    window.once('closed', registerNotifications(window, agent, contracts));
     // Deployment-controlled HTTPS origin only; never taken from renderer input.
     const origin = process.env.GITVIZ_SERVER_ORIGIN;
     let auth: DesktopAuth | null = null;

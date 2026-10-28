@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ko">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitViz Workspace</title><link rel="stylesheet" href="styles.css"><script defer src="status.js"></script><script type="module" src="projects.js"></script><script type="module" src="desktop-auth.js"></script><script type="module" src="changes.js"></script><script type="module" src="review.js"></script><script type="module" src="proposal.js"></script><script type="module" src="impact.js"></script><script type="module" src="validation.js"></script><script type="module" src="comparison.js"></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitViz Workspace</title><link rel="stylesheet" href="styles.css"><script defer src="status.js"></script><script type="module" src="projects.js"></script><script type="module" src="desktop-auth.js"></script><script type="module" src="changes.js"></script><script type="module" src="review.js"></script><script type="module" src="proposal.js"></script><script type="module" src="impact.js"></script><script type="module" src="validation.js"></script><script type="module" src="comparison.js"></script><script type="module" src="inbox.js"></script></head>
 <body><main>
 <p class="eyebrow">GitViz Workspace</p><h1>로컬 프로젝트</h1>
 <p><a href="web/index.html">GitHub 검색·원격 분석·AI 리뷰 열기</a></p>
@@ -12,6 +12,15 @@
 <button id="unregister-project" type="button" disabled>등록 해제</button>
 <label for="recent-limit">최근 커밋 수</label><input id="recent-limit" type="number" min="1" max="100" value="20"><button id="save-project-settings" type="button" disabled>설정 저장</button>
 <p id="project-message" role="status" aria-live="polite"></p></section>
+<section aria-labelledby="inbox-title"><h2 id="inbox-title">통합 알림</h2>
+<p>등록한 모든 프로젝트의 리뷰·검증·제안 적용 결과를 모읍니다. 알림을 눌러도 이동만 하며 코드 수정·명령 실행·전송은 일어나지 않습니다. AI 지적은 추론이고, 검증 실패는 실제 명령 결과입니다.</p>
+<label>프로젝트 <select id="inbox-project"><option value="">모든 프로젝트</option></select></label>
+<label>종류 <select id="inbox-source"><option value="">전체</option><option value="review">로컬 AI 리뷰</option><option value="validation">검증 실행</option><option value="proposal">제안 적용</option></select></label>
+<label>심각도 <select id="inbox-severity"><option value="">전체</option><option value="error">오류</option><option value="warning">주의</option><option value="info">정보</option></select></label>
+<label>읽음 <select id="inbox-read"><option value="all">전체</option><option value="unread">안 읽음</option><option value="read">읽음</option></select></label>
+<button id="inbox-refresh" type="button">알림 새로고침</button>
+<p id="inbox-unread" role="status"></p><p id="inbox-message" role="status" aria-live="polite"></p>
+<ul id="inbox-list"></ul><button id="inbox-more" type="button" hidden>더 보기</button><div id="inbox-detail"></div></section>
 <section aria-labelledby="git-title"><h2 id="git-title">Git 상태</h2><button id="reload-git" type="button" disabled>Git 상태 새로고침</button><div id="git-state"></div></section>
 <section><h2>고정 변경 입력</h2><button id="reload-changes">변경 선택 새로고침</button><div id="change-selection"></div><label><input id="include-untracked" type="checkbox">선택한 untracked 포함</label><button id="capture-changes">선택 변경 캡처</button><p id="capture-message" role="status"></p><div id="capture-result"></div><pre id="fixed-preview"></pre></section>
 <section><h2>도구 탐지·명령 계획</h2><label>프로젝트 내 작업 폴더 <input id="detection-cwd" value="."></label><label>패키지 관리자 <select id="package-manager"><option value="">lock 기준</option><option value="npm">npm</option><option value="yarn">yarn</option><option value="pnpm">pnpm</option></select></label><button id="detect-validation">manifest 읽기·탐지</button><div id="detected-tools"></div></section>

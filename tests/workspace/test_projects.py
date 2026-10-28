@@ -83,7 +83,7 @@ class ProjectTests(unittest.TestCase):
                 self.assertEqual(connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall(), [("schema_meta",)])
                 self.assertEqual(connection.execute("SELECT * FROM schema_meta").fetchall(), [(1, "fixture", "0.1.0")])
                 self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone(), ("ok",))
-            backup, = root.glob("pre-v6-*.sqlite3")
+            backup, = root.glob("pre-v7-*.sqlite3")
             with closing(connect(backup)) as connection:
                 self.assertEqual(connection.execute("SELECT * FROM schema_meta").fetchall(), [(1, "fixture", "0.1.0")])
             reopened = LocalStore(root, lambda _: None)
@@ -155,8 +155,8 @@ class ProjectTests(unittest.TestCase):
             store.open()
             try:
                 assert store.connection is not None
-                self.assertEqual(store.connection.execute("SELECT version FROM schema_meta").fetchall(), [(6,)])
-                backup, = root.glob("pre-v6-*.sqlite3")
+                self.assertEqual(store.connection.execute("SELECT version FROM schema_meta").fetchall(), [(7,)])
+                backup, = root.glob("pre-v7-*.sqlite3")
                 with closing(sqlite3.connect(backup)) as connection:
                     self.assertEqual(connection.execute("SELECT * FROM schema_meta").fetchall(), before)
                     self.assertEqual(connection.execute("SELECT sql FROM sqlite_master WHERE name='schema_meta'").fetchone(), before_schema)

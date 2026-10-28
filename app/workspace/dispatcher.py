@@ -23,6 +23,8 @@ from .apply import Application
 from .impact import Impact
 from .validation import Validation
 from .comparisons import Comparisons
+from .notifications import Notifications
+from . import events
 
 
 class Dispatcher:
@@ -44,6 +46,7 @@ class Dispatcher:
         self.impact: Impact | None = None
         self.validation: Validation | None = None
         self.comparisons: Comparisons | None = None
+        self.notifications: Notifications | None = None
 
     def bootstrap(self, message: Any) -> None:
         validate("bootstrap", message)
@@ -85,6 +88,7 @@ class Dispatcher:
             self.impact = Impact(self.proposals)
             self.validation = Validation(self.detection)
             self.comparisons = Comparisons(self.validation)
+            self.notifications = Notifications(self.projects)
         except ValueError as error:
             self.state = "unavailable"
             self.error_code = "UNSUPPORTED_PROTOCOL" if str(error) == "UNSUPPORTED_SCHEMA" else "RECOVERY_REQUIRED"
@@ -106,7 +110,7 @@ class Dispatcher:
             reject_links(self.directory)
             self.directory.mkdir(parents=True, exist_ok=True)
             self.secure(self.directory)
-            result = {"agentVersion": "0.7.0", "protocolVersion": 1,
+            result = {"agentVersion": "0.8.0", "protocolVersion": 1,
                       "localSchemaRange": {"min": SCHEMA_VERSION, "max": SCHEMA_VERSION}, "capabilities": list(OPERATIONS), "state": "initializing"}
         elif not self.negotiated:
             return {**response, "ok": False, "error": {"code": "UNSUPPORTED_PROTOCOL", "message": "초기화가 필요합니다.", "retryable": False, "details": {}}}
@@ -131,7 +135,19 @@ class Dispatcher:
                 if (self.proposals is not None and request.get('projectId') and self.proposals.recovery_required(request['projectId'])
                         and op in ('workspace.changes.capture', 'workspace.reviews.preview', 'workspace.reviews.start', 'workspace.validation.plan', 'workspace.validation.prepare', 'workspace.validation.approve', 'workspace.validation.start')):
                     raise ScopeError('RECOVERY_REQUIRED')
-                if op == "workspace.projects.selectAndRegister":
+                if op.startswith('workspace.notifications.') or op == 'workspace.events.read':
+                    # Terminal background work becomes durable events before the inbox is read.
+                    assert self.reviews is not None and self.notifications is not None
+                    self.reviews.jobs.drain()
+                if op == 'workspace.notifications.list':
+                    assert self.notifications is not None
+                    result = self.notifications.list(payload)
+                elif op == 'workspace.notifications.markRead':
+                    assert self.notifications is not None
+                    result = self.notifications.mark_read(request['projectId'], payload, request['idempotencyKey'])
+                elif op == 'workspace.events.read':
+                    result = events.read(projects.connection, payload)
+                elif op == "workspace.projects.selectAndRegister":
                     result = (projects.inspect(payload["selectedRoot"], payload["metadataScopes"], payload["expandedRoot"], payload["reconnectApproved"])
                               if payload["phase"] == "inspect" else projects.register(payload["selectionId"], request["idempotencyKey"]))
                 elif op == "workspace.projects.list":

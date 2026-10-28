@@ -11,6 +11,7 @@ from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import Any, Generator
 
+from . import events
 from .patches import apply_patch_bytes, writable_path
 from .review import Reviews
 from .scoped_files import ScopeError
@@ -63,6 +64,7 @@ class Proposals:
         self.db.execute('UPDATE proposal SET status=?,version=version+1 WHERE project_id=? AND id=?', (status, project, proposal))
         row = self.row(project, proposal)
         self.db.execute('INSERT INTO proposal_event VALUES(?,?,?,?,?,?)', (str(uuid.uuid4()), project, proposal, row[3], status, time.time()))
+        events.record(self.db, project=project, source_type='proposal', source_id=proposal, revision=row[3], status=status)
 
     def recovery_required(self, project: str) -> bool:
         return bool(self.db.execute("SELECT 1 FROM proposal WHERE project_id=? AND status IN ('applying','partial','recovery_required')", (project,)).fetchone())

@@ -38,7 +38,7 @@ test('unknown response ID and truncated stdout fail before any key is released',
 });
 test('stderr flood after handshake stops initialization and does not become UI output', async () => {
   const agent = fixtureAgent((request, output, diagnostics) => {
-    if (request.operation === 'workspace.system.handshake') output.write(JSON.stringify({ protocolVersion: 1, requestId: request.requestId, ok: true, result: { agentVersion: '0.1.0', protocolVersion: 1, localSchemaRange: { min: 6, max: 6 }, capabilities: ['workspace.system.health', 'workspace.system.shutdown'], state: 'initializing' } }) + '\n');
+    if (request.operation === 'workspace.system.handshake') output.write(JSON.stringify({ protocolVersion: 1, requestId: request.requestId, ok: true, result: { agentVersion: '0.1.0', protocolVersion: 1, localSchemaRange: { min: 7, max: 7 }, capabilities: ['workspace.system.health', 'workspace.system.shutdown'], state: 'initializing' } }) + '\n');
     else diagnostics.write(Buffer.alloc(65537, 65));
   });
   await assert.rejects(agent.start('fixture', 'fixture', async () => Buffer.alloc(32)));
@@ -48,7 +48,7 @@ test('storage recovery classification survives transport shutdown', async () => 
   const agent = fixtureAgent((request, output) => {
     if (!request.operation) return;
     const result = request.operation === 'workspace.system.handshake'
-      ? { agentVersion: '0.1.0', protocolVersion: 1, localSchemaRange: { min: 6, max: 6 }, capabilities: ['workspace.system.health', 'workspace.system.shutdown'], state: 'initializing' }
+      ? { agentVersion: '0.1.0', protocolVersion: 1, localSchemaRange: { min: 7, max: 7 }, capabilities: ['workspace.system.health', 'workspace.system.shutdown'], state: 'initializing' }
       : { state: 'unavailable', components: { store: 'unavailable', secrets: 'unavailable', lifecycle: 'ready' }, errorCode: 'RECOVERY_REQUIRED' };
     output.write(JSON.stringify({ protocolVersion: 1, requestId: request.requestId, ok: true, result }) + '\n');
   });

@@ -10,7 +10,7 @@ await cp(resolve(desktop, '../frontend/pages/workspace.html'), resolve(desktop, 
 await cp(resolve(desktop, '../frontend/js/workspace/projects.js'), resolve(desktop, 'dist/ui/projects.js'));
 await cp(resolve(desktop, '../frontend/js/workspace/status.js'), resolve(desktop, 'dist/ui/git-status.js'));
 await cp(resolve(desktop, '../frontend/js/workspace/desktop-auth.js'), resolve(desktop, 'dist/ui/desktop-auth.js'));
-for (const name of ['proposal', 'diff', 'impact', 'validation', 'comparison']) await cp(resolve(desktop, `../frontend/js/workspace/${name}.js`), resolve(desktop, `dist/ui/${name}.js`));
+for (const name of ['proposal', 'diff', 'impact', 'validation', 'comparison', 'inbox', 'navigation']) await cp(resolve(desktop, `../frontend/js/workspace/${name}.js`), resolve(desktop, `dist/ui/${name}.js`));
 await cp(resolve(desktop, '../frontend/js/workspace/review.js'), resolve(desktop, 'dist/ui/review.js'));
 await cp(resolve(desktop, '../frontend/js/workspace/changes.js'), resolve(desktop, 'dist/ui/changes.js'));
 await cp(resolve(desktop, '../contracts/desktop/v1/ai-bodies.json'), resolve(desktop, 'dist/schema/ai-bodies.json'));

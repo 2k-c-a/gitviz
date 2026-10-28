@@ -15,6 +15,8 @@ const assets: Record<string, { file: string; mime: string }> = {
   '/validation.js': { file: 'validation.js', mime: 'text/javascript; charset=utf-8' }, '/comparison.js': { file: 'comparison.js', mime: 'text/javascript; charset=utf-8' }, '/impact.js': { file: 'impact.js', mime: 'text/javascript; charset=utf-8' },
   '/review.js': { file: 'review.js', mime: 'text/javascript; charset=utf-8' },
   '/changes.js': { file: 'changes.js', mime: 'text/javascript; charset=utf-8' },
+  '/inbox.js': { file: 'inbox.js', mime: 'text/javascript; charset=utf-8' },
+  '/navigation.js': { file: 'navigation.js', mime: 'text/javascript; charset=utf-8' },
 };
 const documents = new Set(['/index.html', '/web/index.html', ...['timeline', 'network', 'code-analysis', 'search', 'myprojects', 'history', 'ai-review'].map(name => `/web/pages/${name}.html`)]);
 export function isAppDocument(value: string): boolean {
