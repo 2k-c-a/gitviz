@@ -115,13 +115,18 @@ class LocalGit:
     def status(self, grant: dict[str, str], recent_limit: int = 20) -> dict[str, Any]:
         if type(recent_limit) is not int or not 1 <= recent_limit <= 100:
             raise ScopeError("INVALID_REQUEST")
-        with pinned(grant):
-            raw = self._run(grant, ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all", "--ignore-submodules=all"])
+        unsupported: list[str] = []
+        with pinned(grant, unsupported=unsupported):
+            exclusions = [':(top,exclude,literal)' + path for path in unsupported]
+            raw = self._run(grant, ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all", "--ignore-submodules=all",
+                *(['--', ':(top)**', *exclusions] if exclusions else [])])
             try:
                 records = iter(raw.decode("utf-8", errors="strict").split("\0"))
                 result: dict[str, Any] = {"branch": None, "head": None, "detached": False, "unborn": False,
                                           "staged": [], "unstaged": [], "untracked": [], "conflicts": [], "recentCommits": [],
-                                          "limitations": ["submodule-status-not-expanded", "reparse-points-rejected", "config-includes-rejected", "repository-filters-disabled"]}
+                                          "limitations": ["submodule-status-not-expanded", "reparse-points-listed-unsupported", "config-includes-rejected", "repository-filters-disabled"]}
+                if unsupported:
+                    result['unsupported'] = [{'path': path, 'status': '--', 'unsupported': 'reparse-point'} for path in sorted(set(unsupported))]
                 for record in records:
                     if record.startswith("# branch.oid "):
                         oid = record[13:]
@@ -156,7 +161,7 @@ class LocalGit:
                 result["objectFormat"] = self._run(grant, ["rev-parse", "--show-object-format"]).decode("ascii").strip()
                 if any((Path(grant[key]) / "info/sparse-checkout").exists() for key in ("gitDir", "commonDir")):
                     result["limitations"].append("sparse-checkout-metadata-present")
-                counts = [len(result[key]) for key in ('staged', 'unstaged', 'untracked', 'conflicts')]
+                counts = [len(result.get(key, [])) for key in ('staged', 'unstaged', 'untracked', 'conflicts', 'unsupported')]
                 if max(counts) > 2000:
                     raise ScopeError('CHANGESET_TOO_LARGE', details={'operation': 'status', 'limitItems': 2000, 'observedItems': max(counts)})
                 size = len(json.dumps(result, ensure_ascii=False).encode())

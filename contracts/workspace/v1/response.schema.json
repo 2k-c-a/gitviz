@@ -876,6 +876,33 @@
             "pattern": "^[^\\u0000]+$"
           },
           "maxItems": 10
+        },
+        "unsupported": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048,
+                "pattern": "^[^\\u0000]+$"
+              },
+              "status": {
+                "const": "--"
+              },
+              "unsupported": {
+                "const": "reparse-point"
+              }
+            },
+            "required": [
+              "path",
+              "status",
+              "unsupported"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [

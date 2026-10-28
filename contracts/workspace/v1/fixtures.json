@@ -765,5 +765,72 @@
       }
     },
     "valid": false
+  },
+  {
+    "name": "status-unsupported-reparse",
+    "schema": "response",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": true,
+      "result": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "branch": "main",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "detached": false,
+        "unborn": false,
+        "objectFormat": "sha1",
+        "staged": [],
+        "unstaged": [],
+        "untracked": [],
+        "conflicts": [],
+        "recentCommits": [],
+        "limitations": [
+          "reparse-points-listed-unsupported"
+        ],
+        "unsupported": [
+          {
+            "path": "jdir",
+            "status": "--",
+            "unsupported": "reparse-point"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "status-unsupported-no-content",
+    "schema": "response",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": true,
+      "result": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "branch": "main",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "detached": false,
+        "unborn": false,
+        "objectFormat": "sha1",
+        "staged": [],
+        "unstaged": [],
+        "untracked": [],
+        "conflicts": [],
+        "recentCommits": [],
+        "limitations": [
+          "reparse-points-listed-unsupported"
+        ],
+        "unsupported": [
+          {
+            "path": "jdir",
+            "status": "--",
+            "unsupported": "reparse-point",
+            "content": "must never be present"
+          }
+        ]
+      }
+    }
   }
 ]

@@ -76,6 +76,67 @@ class GitStatusTests(unittest.TestCase):
             with self.assertRaisesRegex(ScopeError, "INVALID_REQUEST"):
                 self.service.status(discover(self.root), limit)
 
+    def test_junction_is_listed_without_reading_target_or_hiding_other_status(self):
+        outside = self.root.parent / 'outside'
+        outside.mkdir()
+        (outside / 'SECRET_CANARY.txt').write_text('DO_NOT_READ_CANARY')
+        (self.root / 'normal.py').write_text('x = 1\n')
+        link = self.root / 'jdir'
+        subprocess.run([str(Path(os.environ['SystemRoot']) / 'System32/cmd.exe'), '/d', '/c',
+            'mklink', '/J', str(link), str(outside)], check=True, capture_output=True)
+        try:
+            grant = discover(self.root)
+            state = self.service.status(grant)
+            self.assertEqual(state['unsupported'], [{'path': 'jdir', 'status': '--', 'unsupported': 'reparse-point'}])
+            self.assertIn('normal.py', [item['path'] for item in state['untracked']])
+            self.assertNotIn('CANARY', str(state))
+            from app.workspace.scoped_files import pinned, read_scoped
+            with self.assertRaisesRegex(ScopeError, 'PATH_OUTSIDE_SCOPE'):
+                read_scoped(grant, 'jdir/SECRET_CANARY.txt')
+            with self.assertRaisesRegex(ScopeError, 'PATH_OUTSIDE_SCOPE'):
+                with pinned(grant):
+                    self.fail('capture/write pins must remain strict')
+        finally:
+            os.rmdir(link)
+
+    def test_file_and_directory_symlinks_are_unsupported_and_metadata_links_rejected(self):
+        outside = self.root.parent / 'symlink-target'
+        outside.mkdir()
+        target = outside / 'target.txt'
+        target.write_text('EXTERNAL_CANARY')
+        created: list[Path] = []
+        try:
+            for name, destination, directory in [('dir-link', outside, True), ('file-link', target, False)]:
+                link = self.root / name
+                try:
+                    os.symlink(destination, link, target_is_directory=directory)
+                except OSError as error:
+                    if getattr(error, 'winerror', None) == 1314:
+                        continue  # Developer mode / symbolic-link privilege is optional; junction test is mandatory.
+                    raise
+                created.append(link)
+            if created:
+                state = self.service.status(discover(self.root))
+                self.assertEqual({item['path'] for item in state['unsupported']}, {p.name for p in created})
+                self.assertNotIn('EXTERNAL_CANARY', str(state))
+            git_dir = self.root / '.git'
+            moved = self.root.parent / 'real-git'
+            git_dir.rename(moved)
+            subprocess.run([str(Path(os.environ['SystemRoot']) / 'System32/cmd.exe'), '/d', '/c',
+                'mklink', '/J', str(git_dir), str(moved)], check=True, capture_output=True)
+            try:
+                with self.assertRaisesRegex(ScopeError, 'PATH_OUTSIDE_SCOPE'):
+                    self.service.status(discover(self.root))
+            finally:
+                os.rmdir(git_dir)
+                moved.rename(git_dir)
+        finally:
+            for link in created:
+                if link.is_dir():
+                    os.rmdir(link)
+                else:
+                    link.unlink()
+
     def test_sha256_object_format_and_sparse_checkout_limitation(self):
         self.root = self.root.parent / "sha256"
         self.root.mkdir()

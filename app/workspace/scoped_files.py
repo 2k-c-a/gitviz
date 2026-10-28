@@ -131,8 +131,13 @@ def verify(grant: dict[str, str]) -> None:
         raise ScopeError("PROJECT_MOVED")
 
 
-def _pin(path: Path, stack: ExitStack) -> None:
-    identity(path)
+def _pin(path: Path, stack: ExitStack, *, reparse: bool = False) -> None:
+    def entry_identity() -> str:
+        if not reparse:
+            return identity(path)
+        info = path.stat(follow_symlinks=False)
+        return f'{info.st_dev}:{info.st_ino}'
+    before = entry_identity()
     if os.name != "nt":
         return
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -145,7 +150,8 @@ def _pin(path: Path, stack: ExitStack) -> None:
     if handle == ctypes.c_void_p(-1).value:
         raise ScopeError("ACCESS_DENIED")
     stack.callback(kernel.CloseHandle, handle)
-    identity(path)
+    if entry_identity() != before:
+        raise ScopeError('CAPTURE_CHANGED')
 
 
 def pin_path(path: Path, stack: ExitStack) -> None:
@@ -177,7 +183,7 @@ def pinned_paths(grant: dict[str, str], paths: list[str]) -> Generator[None, Non
 
 
 @contextmanager
-def pinned(grant: dict[str, str]) -> Generator[None, None, None]:
+def pinned(grant: dict[str, str], *, unsupported: list[str] | None = None) -> Generator[None, None, None]:
     with ExitStack() as stack:
         count = 0
         visited: set[str] = set()
@@ -197,7 +203,19 @@ def pinned(grant: dict[str, str]) -> Generator[None, None, None]:
                     count += 1
                     if count > 20000:
                         raise ScopeError("CHANGESET_TOO_LARGE", details={'operation': 'pin', 'limitItems': 20000, 'observedItems': count})
-                    _pin(path, stack)
+                    reparse = False
+                    metadata = False
+                    if unsupported is not None:
+                        info = path.stat(follow_symlinks=False)
+                        reparse = stat.S_ISLNK(info.st_mode) or bool(getattr(info, 'st_file_attributes', 0) & 0x400)
+                        metadata = any(path.is_relative_to(Path(grant[key])) for key in ('gitDir', 'commonDir'))
+                    if reparse and unsupported is not None and not metadata:
+                        _pin(path, stack, reparse=True)
+                        unsupported.append(path.relative_to(Path(grant['root'])).as_posix())
+                        if name in children:
+                            children.remove(name)
+                    else:
+                        _pin(path, stack)
                     visited.add(normalized)
         verify(grant)
         yield
