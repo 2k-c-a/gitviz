@@ -1,2 +1,3 @@
 # Archived snapshots are byte-preserved evidence, including original line endings.
 docs/archive/originals/** -text
+frontend/vendor/** -text
