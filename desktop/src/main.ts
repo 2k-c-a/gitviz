@@ -23,12 +23,15 @@ import { registerDiagnostics } from './diagnostics-ipc';
 import { CloudReview } from './cloud-review';
 import { HistoricalImpact } from './historical-impact';
 import { createUpdateService, DISABLED_UPDATE_POLICY } from './update';
+import { runSquirrel, squirrelAction } from './squirrel';
 
 registerScheme();
 let window: BrowserWindow | undefined;
 let agent: Agent | undefined;
 let quitting = false;
-if (!app.requestSingleInstanceLock()) app.quit();
+const squirrel = squirrelAction(process.platform, process.argv, process.execPath);
+if (squirrel) runSquirrel(squirrel, () => app.quit());
+else if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { if (window && !window.isDestroyed()) { if (window.isMinimized()) window.restore(); window.focus(); } });
   app.on('before-quit', event => {

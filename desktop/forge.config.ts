@@ -21,7 +21,11 @@ const config = {
       await writeFile(path, JSON.stringify(manifest));
     }] : [],
   },
-  makers: [], publishers: [], plugins: [],
+  // Per-user install under %LocalAppData% (Q01): no MSI, no Squirrel auto-update. Signing only when both variables are provided.
+  makers: [{ name: '@electron-forge/maker-squirrel', config: {
+    name: 'GitVizWorkspace', setupExe: 'GitVizWorkspaceSetup.exe', noMsi: true, authors: 'GitViz', description: 'GitViz Windows workspace',
+    ...(process.env.GITVIZ_SIGN_PFX && process.env.GITVIZ_SIGN_PFX_PASSWORD ? { certificateFile: process.env.GITVIZ_SIGN_PFX, certificatePassword: process.env.GITVIZ_SIGN_PFX_PASSWORD } : {}),
+  } }], publishers: [], plugins: [],
 };
 if (p06 || p07 || p08b) {
   config.packagerConfig.name = p08b ? 'GitVizWorkspaceP08bVerify' : p07 ? 'GitVizWorkspaceP07Verify' : 'GitVizWorkspaceP06Verify';

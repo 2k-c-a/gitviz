@@ -20,7 +20,8 @@
     "test": "node --test dist/tests/*.test.js",
     "test:foundation": "electron dist/tests/foundation.e2e.js",
     "start": "electron .",
-    "package": "electron-forge package --platform=win32 --arch=x64"
+    "package": "electron-forge package --platform=win32 --arch=x64",
+    "make": "electron-forge make --platform=win32 --arch=x64"
   },
   "dependencies": {
     "ajv": "8.20.0",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@electron-forge/cli": "8.0.1",
+    "@electron-forge/maker-squirrel": "8.0.1",
     "@electron-forge/shared-types": "8.0.1",
     "@eslint/js": "10.0.1",
     "@types/node": "24.19.2",

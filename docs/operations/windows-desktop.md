@@ -2,11 +2,24 @@
 
 기존 웹 서버 실행([설치·프로세스 안내](setup.md))은 그대로 유지한다. 데스크톱 앱은 서버를 대체하지 않으며 같은 서버에 접속하는 별도 클라이언트다.
 
-## 현재 상태 (2026-10-28)
+## 현재 상태 (2026-10-29)
 
-- 대상은 Windows 11 x64, 사용자별 설치(관리자 권한 불필요)다. 업데이트는 서명 확인 후 **수동**이며 자동 다운로드·설치·삭제는 하지 않는다.
-- 서명 인증서와 publisher가 없어 installer 빌드·서명·배포는 하지 않았다. 설치 파일은 아직 제공되지 않는다.
-- `forge.config.ts`의 `makers`는 비어 있고 maker-squirrel은 설치하지 않았다.
+- 대상은 Windows 11 x64, 사용자별 설치(`%LocalAppData%`, 관리자 권한 불필요)다. 업데이트는 서명 확인 후 **수동**이며 자동 다운로드·설치·삭제는 하지 않는다. Squirrel의 자동 업데이트(`Update.exe`)는 사용하지 않는다.
+- 공개 신뢰 서명 인증서와 publisher는 없다. 배포용 설치 파일은 아직 제공하지 않는다.
+- maker-squirrel `8.0.1`을 설치했고(`npm run make`), 서명 없는 설치기와 자체 서명 개발 설치기를 로컬에서 빌드했다. 어느 PC에서도 설치 실행은 하지 않았다(clean VM 인수 전).
+
+## 설치기 빌드
+
+```powershell
+npm --prefix desktop run build
+npm --prefix desktop run make      # desktop/out/make/squirrel.windows/x64/
+```
+
+산출물은 `GitVizWorkspaceSetup.exe`, `GitVizWorkspace-<버전>-full.nupkg`, `RELEASES`다. MSI는 만들지 않는다(사용자별 설치).
+
+- `electron-winstaller`의 설치 스크립트(arch별 7-Zip 복사)는 `npm ci --ignore-scripts` 때문에 실행되지 않는다. 그러면 `make`가 `7z.exe`를 찾지 못해 실패한다. `desktop/node_modules/electron-winstaller/vendor`에서 `7z-x64.exe`·`7z-x64.dll`을 `7z.exe`·`7z.dll`로 복사하면 같은 효과다(`npm ci`로 되돌린다).
+- 서명은 환경 변수 `GITVIZ_SIGN_PFX`(pfx 경로)와 `GITVIZ_SIGN_PFX_PASSWORD`가 **둘 다** 있을 때만 적용한다. 값은 저장소·로그에 남기지 않는다.
+- 앱은 `--squirrel-install/updated/uninstall/obsolete` 이벤트에 고정 인자로 `Update.exe`를 호출해 바로가기를 만들거나 지우고 종료한다(`desktop/src/squirrel.ts`).
 
 ## 앱 연결 상태
 
@@ -28,7 +41,8 @@
 | 서명 인증서 | 공개 신뢰 인증서 없음. 서명 없는 배포가 기본, 자체 서명은 개발 시험용 |
 | publisher | 공개 신뢰 인증서를 확보할 때까지 비움 |
 | 배포 위치 | GitHub Releases로 가정. 실제 `<owner>/<repo>` 미설정 |
-| maker-squirrel | 의존성 설치 별도 승인 필요 |
+| maker-squirrel | 8.0.1 설치 완료(사용자 승인). 의존성 32개 추가, 모두 dev·optional |
+| 설치 실행 검증 | clean VM 미실행 |
 
 ## 배포 방침 (졸업작품·소규모 팀)
 
