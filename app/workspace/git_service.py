@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 import re
 import subprocess
 import threading
@@ -73,12 +74,15 @@ class LocalGit:
         output = bytearray()
         assert process.stdout is not None and process.stderr is not None
         exceeded = threading.Event()
+        overflow: dict[str, int | str] = {}
 
         def drain(stream: Any, keep: bool, limit: int) -> None:
             size = 0
             while chunk := stream.read(4096):
                 size += len(chunk)
                 if size > limit:
+                    if keep:
+                        overflow.update(operation='git-' + arguments[0] if arguments[0] in ('status', 'diff', 'log') else 'git-read', limitBytes=limit, observedBytes=size)
                     exceeded.set()
                     process.kill()
                     break
@@ -101,6 +105,8 @@ class LocalGit:
             process.stdout.close()
             process.stderr.close()
         if exceeded.is_set():
+            if overflow:
+                raise ScopeError("CHANGESET_TOO_LARGE", details=overflow)
             raise ScopeError("OUTPUT_LIMIT")
         if process.returncode:
             raise ScopeError("GIT_UNAVAILABLE")
@@ -150,6 +156,12 @@ class LocalGit:
                 result["objectFormat"] = self._run(grant, ["rev-parse", "--show-object-format"]).decode("ascii").strip()
                 if any((Path(grant[key]) / "info/sparse-checkout").exists() for key in ("gitDir", "commonDir")):
                     result["limitations"].append("sparse-checkout-metadata-present")
+                counts = [len(result[key]) for key in ('staged', 'unstaged', 'untracked', 'conflicts')]
+                if max(counts) > 2000:
+                    raise ScopeError('CHANGESET_TOO_LARGE', details={'operation': 'status', 'limitItems': 2000, 'observedItems': max(counts)})
+                size = len(json.dumps(result, ensure_ascii=False).encode())
+                if size > 200000:
+                    raise ScopeError('CHANGESET_TOO_LARGE', details={'operation': 'status', 'limitBytes': 200000, 'observedBytes': size})
                 return result
             except (UnicodeError, StopIteration, IndexError):
                 raise ScopeError("UNSUPPORTED_FILENAME") from None

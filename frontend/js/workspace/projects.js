@@ -1,4 +1,4 @@
-import { renderStatus } from './git-status.js';
+import { renderStatus, statusError } from './git-status.js';
 
 const api = window.workspace;
 const picker = document.getElementById('project-picker');
@@ -11,7 +11,7 @@ let listing = 0;
 let nextCursor = null;
 let project = null;
 
-function note(error) { const code = String(error?.message ?? error).replace(/^.*Error invoking remote method.*Error: /, ''); message.textContent = code === 'REVIEW_DATA_REQUIRES_EXPLICIT_REMOVAL' ? '리뷰·영향·비용·검증·비교 기록이 남아 있어 등록 해제를 보류합니다. 보존·삭제 정책 확인 후 별도 정리가 필요합니다. 원본 프로젝트는 유지됩니다.' : code; }
+function note(error) { const code = String(error?.message ?? error).replace(/^.*Error invoking remote method.*Error: /, ''); message.textContent = code === 'REVIEW_DATA_REQUIRES_EXPLICIT_REMOVAL' ? '리뷰·영향·비용·검증·비교 기록이 남아 있어 등록 해제를 보류합니다. 보존·삭제 정책 확인 후 별도 정리가 필요합니다. 원본 프로젝트는 유지됩니다.' : statusError(code); }
 function controls(enabled) { for (const id of ['reload-git', 'save-project-settings', 'unregister-project']) document.getElementById(id).disabled = !enabled; }
 async function selected() {
   const turn = ++generation;

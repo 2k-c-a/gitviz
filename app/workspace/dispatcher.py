@@ -233,9 +233,12 @@ class Dispatcher:
                     else:
                         result = impact.get(project, payload)
                 if len(json.dumps(result, ensure_ascii=False).encode()) > 200000:
+                    if op in ('workspace.git.status', 'workspace.changes.capture', 'workspace.validation.detect'):
+                        raise ScopeError('CHANGESET_TOO_LARGE', details={'operation': 'result', 'limitBytes': 200000,
+                            'observedBytes': len(json.dumps(result, ensure_ascii=False).encode())})
                     raise ScopeError("OUTPUT_LIMIT")
             except ScopeError as error:
-                return {**response, "ok": False, "error": {"code": error.code, "message": error.code, "retryable": False, "details": {}}}
+                return {**response, "ok": False, "error": {"code": error.code, "message": error.code, "retryable": False, "details": error.details if error.code == 'CHANGESET_TOO_LARGE' else {}}}
             except (OSError, ValueError):
                 return {**response, "ok": False, "error": {"code": "ACCESS_DENIED", "message": "ACCESS_DENIED", "retryable": False, "details": {}}}
             except sqlite3.Error:

@@ -704,5 +704,66 @@
       }
     },
     "valid": false
+  },
+  {
+    "name": "changeset-size-limit",
+    "schema": "response",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": false,
+      "error": {
+        "code": "CHANGESET_TOO_LARGE",
+        "message": "CHANGESET_TOO_LARGE",
+        "retryable": false,
+        "details": {
+          "operation": "pin",
+          "limitItems": 20000,
+          "observedItems": 20001
+        }
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "changeset-size-no-path",
+    "schema": "response",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": false,
+      "error": {
+        "code": "CHANGESET_TOO_LARGE",
+        "message": "CHANGESET_TOO_LARGE",
+        "retryable": false,
+        "details": {
+          "operation": "pin",
+          "limitItems": 20000,
+          "observedItems": 20001,
+          "path": "private/path"
+        }
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "changeset-size-negative-count",
+    "schema": "response",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": false,
+      "error": {
+        "code": "CHANGESET_TOO_LARGE",
+        "message": "CHANGESET_TOO_LARGE",
+        "retryable": false,
+        "details": {
+          "operation": "pin",
+          "limitItems": 20000,
+          "observedItems": -1
+        }
+      }
+    },
+    "valid": false
   }
 ]

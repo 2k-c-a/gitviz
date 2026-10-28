@@ -1,4 +1,7 @@
 /** Render repository strings exclusively as text. A path is never markup or a URL. */
+export function statusError(code) {
+  return code === 'CHANGESET_TOO_LARGE' ? '변경 파일 또는 저장소 항목이 너무 많아 조회할 수 없습니다. 커밋·stash로 변경 수를 줄이거나 더 작은 저장소 범위를 선택해 주세요.' : code;
+}
 export function renderStatus(target, state) {
   target.replaceChildren();
   const heading = document.createElement('p');

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, cast
 
 from .adapters import ai_core
-from .scoped_files import ScopeError, identity, pinned, read_scoped, relative_path
+from .scoped_files import ScopeError, identity, pinned, pinned_paths, read_scoped, relative_path
 from .snapshots import Snapshots, fingerprint, image_hash
 from .contracts import decode, ProtocolError
 from .windows import secure_path
@@ -129,7 +129,8 @@ class Detection:
     def detect(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         grant = self.projects.grant(project_id)
         cwd = payload['cwdRelative']
-        with pinned(grant):
+        paths = [name if cwd == '.' else cwd + '/' + name for name in CONFIGS]
+        with pinned_paths(grant, paths):
             texts, hashes = self.configs(grant, cwd)
             evidence: list[dict[str, str]] = []
             proposals: list[dict[str, Any]] = []

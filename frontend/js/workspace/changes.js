@@ -11,7 +11,7 @@ let pendingCapture = null;
 const planKeys = new Map();
 
 function node(tag, text) { const element = document.createElement(tag); if (text !== undefined) element.textContent = text; return element; }
-function fail(error) { message.textContent = String(error?.message || error).replace(/^.*Error invoking remote method.*Error: /, ''); }
+function fail(error) { const code = String(error?.message || error).replace(/^.*Error invoking remote method.*Error: /, ''); message.textContent = code === 'CHANGESET_TOO_LARGE' ? '변경 파일 또는 저장소 항목이 너무 많아 조회할 수 없습니다. 커밋·stash로 변경 수를 줄이거나 더 작은 저장소 범위를 선택해 주세요.' : code; }
 function clear() {
   window.dispatchEvent(new CustomEvent('workspace-snapshot-changed', { detail: null }));
   generation++; snapshot = null; pendingCapture = null; planKeys.clear();

@@ -21,6 +21,6 @@ export interface Request {
 }
 export type Response = { protocolVersion: 1; requestId: string } & (
   { ok: true; result: Record<string, unknown> } |
-  { ok: false; error: { code: string; message: string; retryable: boolean; details: Record<string, never> } }
+  { ok: false; error: { code: string; message: string; retryable: boolean; details: { operation?: string; limitBytes?: number; observedBytes?: number; limitItems?: number; observedItems?: number } } }
 );
 export const unavailable = (): Health => ({ state: 'unavailable', components: { store: 'unavailable', secrets: 'unavailable', lifecycle: 'unavailable' } });

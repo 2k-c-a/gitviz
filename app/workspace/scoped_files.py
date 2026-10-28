@@ -11,10 +11,11 @@ from typing import Generator
 
 
 class ScopeError(Exception):
-    def __init__(self, code: str, requested_path: str | None = None):
+    def __init__(self, code: str, requested_path: str | None = None, *, details: dict[str, int | str] | None = None):
         super().__init__(code)
         self.code = code
         self.requested_path = requested_path
+        self.details = details or {}
 
 
 def identity(path: Path) -> str:
@@ -153,6 +154,29 @@ def pin_path(path: Path, stack: ExitStack) -> None:
 
 
 @contextmanager
+def pinned_paths(grant: dict[str, str], paths: list[str]) -> Generator[None, None, None]:
+    """Manifest-only reads: pin grant boundaries and explicit file ancestors, never inventory."""
+    with ExitStack() as stack:
+        visited: set[str] = set()
+        candidates = [Path(grant[key]) for key in ('root', 'gitDir', 'commonDir')]
+        candidates += [Path(grant['root']) / '.git', Path(grant['gitDir']) / 'commondir']
+        candidates += [Path(grant['root']).joinpath(*relative_path(path).split('/')) for path in paths]
+        for candidate in candidates:
+            for path in (*reversed(candidate.parents), candidate):
+                name = os.path.normcase(str(path))
+                if name in visited:
+                    continue
+                try:
+                    _pin(path, stack)
+                except FileNotFoundError:
+                    break
+                visited.add(name)
+        verify(grant)
+        yield
+        verify(grant)
+
+
+@contextmanager
 def pinned(grant: dict[str, str]) -> Generator[None, None, None]:
     with ExitStack() as stack:
         count = 0
@@ -172,7 +196,7 @@ def pinned(grant: dict[str, str]) -> Generator[None, None, None]:
                         continue
                     count += 1
                     if count > 20000:
-                        raise ScopeError("OUTPUT_LIMIT")
+                        raise ScopeError("CHANGESET_TOO_LARGE", details={'operation': 'pin', 'limitItems': 20000, 'observedItems': count})
                     _pin(path, stack)
                     visited.add(normalized)
         verify(grant)

@@ -344,7 +344,8 @@
                 "AMBIGUOUS_FACETS",
                 "ROOT_GRANT_REQUIRED",
                 "WINDOWS_REQUIRED",
-                "INDEX_UNAVAILABLE"
+                "INDEX_UNAVAILABLE",
+                "CHANGESET_TOO_LARGE"
               ]
             },
             "message": {
@@ -357,7 +358,35 @@
             },
             "details": {
               "type": "object",
-              "properties": {},
+              "properties": {
+                "operation": {
+                  "enum": [
+                    "pin",
+                    "status",
+                    "result",
+                    "git-status",
+                    "git-diff",
+                    "git-log",
+                    "git-read"
+                  ]
+                },
+                "limitBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "observedBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "limitItems": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "observedItems": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
               "required": [],
               "additionalProperties": false
             }
