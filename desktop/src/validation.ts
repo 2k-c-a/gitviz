@@ -2,7 +2,7 @@ import { dialog, ipcMain, type BrowserWindow } from 'electron';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Agent } from './agent';
 import { Contracts } from './contracts';
-import { trustedSender } from './ipc';
+import { workspaceSender } from './ipc';
 import type { Operation } from '../contracts/workspace';
 import { collectMetrics } from './comparison-metrics';
 
@@ -27,7 +27,7 @@ export function registerValidation(window: BrowserWindow, agent: Pick<Agent, 'ca
   function handle(name: string, action: (value: Record<string, unknown>) => Promise<unknown>) {
     channels.push(name);
     ipcMain.handle(name, async (event, ...args: unknown[]) => {
-      if (!trustedSender(event, window)) throw new Error('ACCESS_DENIED');
+      if (!workspaceSender(event, window)) throw new Error('ACCESS_DENIED');
       if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) throw new Error('INVALID_REQUEST');
       try { return await action(args[0] as Record<string, unknown>); }
       catch (error) {

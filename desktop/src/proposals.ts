@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { Agent } from './agent';
 import type { Contracts } from './contracts';
 import type { Operation } from '../contracts/workspace';
-import { trustedSender } from './ipc';
+import { workspaceSender } from './ipc';
 
 interface Approval {
   project: string; proposal: string; secret: Buffer; expires: number; body: string; payload: Record<string, unknown>;
@@ -21,7 +21,7 @@ export function registerProposals(window: BrowserWindow, agent: Pick<Agent, 'cal
   function handle(channel: string, allowed: string[], action: (value: Record<string, unknown>) => Promise<unknown>): void {
     channels.push(channel);
     ipcMain.handle(channel, async (event, options: unknown) => {
-      if (!trustedSender(event, window)) throw new Error('ACCESS_DENIED');
+      if (!workspaceSender(event, window)) throw new Error('ACCESS_DENIED');
       if (!options || typeof options !== 'object' || Array.isArray(options) || Object.keys(options).some(key => !allowed.includes(key))) throw new Error('INVALID_REQUEST');
       cleanup();
       try { return await action(options as Record<string, unknown>); }

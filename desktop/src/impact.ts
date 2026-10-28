@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Agent } from './agent';
 import type { Contracts } from './contracts';
-import { trustedSender } from './ipc';
+import { workspaceSender } from './ipc';
 import type { Source, Reference } from './impact-worker';
 
 async function parse(files: Source[]): Promise<{ records: Reference[]; limitations: string[] }> {
@@ -33,7 +33,7 @@ async function parse(files: Source[]): Promise<{ records: Reference[]; limitatio
 export function registerImpact(window: BrowserWindow, agent: Pick<Agent, 'call'>, contracts: Contracts): () => void {
   let busy = false;
   ipcMain.handle('workspace:impact-analyze', async (event, options: unknown) => {
-    if (!trustedSender(event, window)) throw new Error('ACCESS_DENIED');
+    if (!workspaceSender(event, window)) throw new Error('ACCESS_DENIED');
     if (!options || typeof options !== 'object' || Array.isArray(options)) throw new Error('INVALID_REQUEST');
     const value = options as Record<string, unknown>;
     const { projectId, ...payload } = value;
@@ -61,7 +61,7 @@ export function registerImpact(window: BrowserWindow, agent: Pick<Agent, 'call'>
     } finally { busy = false; }
   });
   ipcMain.handle('workspace:impact-get', async (event, options: unknown) => {
-    if (!trustedSender(event, window) || !options || typeof options !== 'object' || Array.isArray(options)) throw new Error('INVALID_REQUEST');
+    if (!workspaceSender(event, window) || !options || typeof options !== 'object' || Array.isArray(options)) throw new Error('INVALID_REQUEST');
     const { projectId, ...payload } = options as Record<string, unknown>;
     contracts.request({ protocolVersion: 1, requestId: randomUUID(), operation: 'workspace.impact.get', projectId, payload });
     return await agent.call('workspace.impact.get', payload, { projectId: String(projectId) });

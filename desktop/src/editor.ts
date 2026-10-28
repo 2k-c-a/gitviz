@@ -5,7 +5,7 @@ import { lstat, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { Agent } from './agent';
 import { Contracts } from './contracts';
-import { trustedSender } from './ipc';
+import { workspaceSender } from './ipc';
 
 type EditorId = 'vscode' | 'cursor';
 const binaries = { vscode: 'code.exe', cursor: 'cursor.exe' } as const;
@@ -64,7 +64,7 @@ export function registerEditor(window: BrowserWindow, agent: Pick<Agent, 'call'>
   const channels = ['workspace:configure-editor', 'workspace:open-editor', 'workspace:copy-location'];
   let configuring = false;
   ipcMain.handle(channels[0]!, async (event, value: unknown) => {
-    if (!trustedSender(event, window)) throw new Error('ACCESS_DENIED');
+    if (!workspaceSender(event, window)) throw new Error('ACCESS_DENIED');
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length !== 1 ||
         !('editorId' in value) || !['vscode', 'cursor'].includes(String(value.editorId))) throw new Error('INVALID_REQUEST');
     if (configuring) throw new Error('BUSY');
@@ -90,7 +90,7 @@ export function registerEditor(window: BrowserWindow, agent: Pick<Agent, 'call'>
     } finally { configuring = false; }
   });
   ipcMain.handle(channels[1]!, async (event, value: unknown) => {
-    if (!trustedSender(event, window)) throw new Error('ACCESS_DENIED');
+    if (!workspaceSender(event, window)) throw new Error('ACCESS_DENIED');
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('INVALID_REQUEST');
     const { editorId, projectId, ...payload } = value as Record<string, unknown>;
     if (editorId !== 'vscode' && editorId !== 'cursor') throw new Error('INVALID_REQUEST');
@@ -116,7 +116,7 @@ export function registerEditor(window: BrowserWindow, agent: Pick<Agent, 'call'>
     }
   });
   ipcMain.handle(channels[2]!, async (event, value: unknown) => {
-    if (!trustedSender(event, window)) throw new Error('ACCESS_DENIED');
+    if (!workspaceSender(event, window)) throw new Error('ACCESS_DENIED');
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('INVALID_REQUEST');
     const { projectId, ...payload } = value as Record<string, unknown>;
     const request = { protocolVersion: 1, requestId: randomUUID(), operation: 'workspace.files.locate', projectId, payload };

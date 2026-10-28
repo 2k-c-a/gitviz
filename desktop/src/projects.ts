@@ -2,7 +2,7 @@ import { dialog, ipcMain, type BrowserWindow } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { Agent } from './agent';
 import { Contracts } from './contracts';
-import { trustedSender } from './ipc';
+import { workspaceSender } from './ipc';
 import type { Operation } from '../contracts/workspace';
 
 export interface NativeProjectDialogs {
@@ -19,7 +19,7 @@ export function registerProjects(window: BrowserWindow, agent: Pick<Agent, 'call
   function handle(channel: string, action: (...args: unknown[]) => Promise<unknown>): void {
     channels.push(channel);
     ipcMain.handle(channel, async (event, ...args: unknown[]) => {
-      if (!trustedSender(event, window)) throw new Error('ACCESS_DENIED');
+      if (!workspaceSender(event, window)) throw new Error('ACCESS_DENIED');
       try { return await action(...args); }
       catch (error) {
         // eslint-disable-next-line preserve-caught-error -- IPC errors must not retain native paths or child diagnostics.

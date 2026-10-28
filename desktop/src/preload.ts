@@ -4,7 +4,7 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
   auth: Object.freeze({ start: () => ipcRenderer.invoke('desktop:auth-start'), status: () => ipcRenderer.invoke('desktop:auth-status'), logout: () => ipcRenderer.invoke('desktop:auth-logout') }),
   remote: Object.freeze({ request: (options: unknown) => ipcRenderer.invoke('desktop:remote', options) }),
 }));
-contextBridge.exposeInMainWorld('workspace', Object.freeze({
+if (location.protocol === 'gitviz:' && location.host === 'app' && location.pathname === '/index.html') contextBridge.exposeInMainWorld('workspace', Object.freeze({
   getHealth: () => ipcRenderer.invoke('workspace:health'),
   selectAndRegister: () => ipcRenderer.invoke('workspace:select-project'),
   listProjects: (options: unknown) => ipcRenderer.invoke('workspace:list-projects', options),
