@@ -231,6 +231,38 @@ class DesktopAuthTests(unittest.TestCase):
             row.expires_at = service.now() - timedelta(seconds=1)
         self.assertEqual(self.exchange(flow).status_code, 401)
 
+    def test_disabled_authorization_preserves_public_responses(self):
+        for path in ('/', '/pages/search.html'):
+            self.client.app.add_api_route(path, lambda: {'public': True}, methods=['GET'])
+        with patch.dict(os.environ, DESKTOP_AUTH_ENABLED='0'):
+            for path in ('/', '/pages/search.html', '/api/auth/csrf'):
+                baseline = self.client.get(path)
+                self.assertEqual(baseline.status_code, 200)
+                for header in ('Bearer invalid', 'Basic dXNlcjpwYXNz'):
+                    result = self.client.get(path, headers={'Authorization': header})
+                    self.assertEqual(result.status_code, baseline.status_code)
+                    if path != '/api/auth/csrf':
+                        self.assertEqual(result.content, baseline.content)
+            self.assertEqual(self.client.get('/api/desktop/v1/session',
+                headers={'Authorization': 'Bearer invalid'}).status_code, 404)
+
+    def test_non_bearer_preserves_web_session_and_csrf(self):
+        from app.services.ai.access import AIError
+        self.browser.get('/fixture/login')
+        for header in ('Basic dXNlcjpwYXNz', 'bearer invalid', 'Bearer'):
+            with self.subTest(header=header):
+                with patch('app.desktop_auth_middleware.authenticate') as authenticate:
+                    result = self.browser.get('/fixture/principal', headers={'Authorization': header})
+                    self.assertEqual(result.json()['user'], str(self.user_id))
+                    with self.assertRaises(AIError) as rejected:
+                        self.browser.post('/fixture/mutate', headers={'Authorization': header})
+                    self.assertEqual(rejected.exception.code, 'CSRF_FAILED')
+                    authenticate.assert_not_called()
+
+    def test_duplicate_bearer_is_rejected(self):
+        self.assertEqual(self.client.get('/api/auth/csrf', headers=[
+            ('Authorization', 'Bearer invalid'), ('Authorization', 'Bearer invalid')]).status_code, 401)
+
     def test_issue_rate_limit(self):
         for _ in range(10):
             self.create()

@@ -1,4 +1,6 @@
 """Only this middleware can install a verified desktop principal."""
+import os
+
 from fastapi import HTTPException
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse
@@ -38,7 +40,8 @@ class DesktopAuthMiddleware:
             receive = bounded_receive
         headers = list(scope.get('headers', []))
         authorizations = [v.decode('latin1') for k, v in headers if k.lower() == b'authorization']
-        if not authorizations:
+        if os.getenv('DESKTOP_AUTH_ENABLED', '0') != '1' or not any(
+                value.startswith('Bearer ') for value in authorizations):
             return await self.app(scope, receive, send)
         cookie = ';'.join(v.decode('latin1') for k, v in headers if k.lower() == b'cookie')
         mixed = any(part.strip().split('=', 1)[0] == 'gitviz_session' for part in cookie.split(';'))
