@@ -2,7 +2,7 @@
 import { listPackage, statFile, extractFile } from '@electron/asar';
 import { lstat, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 
 const archive = resolve(process.argv[2]);
 const info = await lstat(archive);
@@ -12,10 +12,12 @@ const packages = [];
 for (const path of paths) {
   if (path.split('/').some(part => ['.git', '.validation', 'userdata'].includes(part.toLowerCase())) ||
     /(?:^|\/)\.env(?:\.|$)|(?:\.dpapi|\.sqlite3?|\.db)$|(?:^|\/)secret-check\.bin$/i.test(path)) throw new Error('PRIVATE_DATA_IN_ASAR');
-  const entry = statFile(archive, path, false);
+  // @electron/asar resolves archive paths with the platform separator.
+  const native = path.split('/').join(sep);
+  const entry = statFile(archive, native, false);
   if ('link' in entry) throw new Error('LINK_IN_ASAR');
   if (/^node_modules\/(?:@[^/]+\/)?[^/]+\/package\.json$/.test(path)) {
-    const metadata = JSON.parse(extractFile(archive, path, false).toString('utf8'));
+    const metadata = JSON.parse(extractFile(archive, native, false).toString('utf8'));
     packages.push({ name: metadata.name, version: metadata.version, license: metadata.license ?? null });
   }
 }

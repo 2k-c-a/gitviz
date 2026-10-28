@@ -70,6 +70,14 @@ def apply_app():
     pulls.GitHubClient = lambda **kw: None
     pulls.list_ai_prs = prs
     pulls.list_pr_files = files
+    # 분석 API(GET /repositories 등)의 GitHub 권한 확인도 외부망 없이 대역으로 둔다. fixture 저장소는 GitHub에
+    # 같은 numeric ID로 존재하지 않으므로, 실제 GitHub가 돌려줄 결과(없음 → 목록에서 제외)와 같은 404를 낸다.
+    from fastapi import HTTPException
+    from app.services import repository_access
+
+    def metadata(url, token=None, *, public_fallback=False):
+        raise HTTPException(404, '저장소를 찾을 수 없거나 접근 권한이 없습니다.')
+    repository_access.github_metadata = metadata
 
 
 if os.environ.get('AI_IT_FIXTURE') and os.environ.get('AI_IT_ROLE') == 'worker':

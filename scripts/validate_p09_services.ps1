@@ -41,6 +41,9 @@ function Test-Step([string]$Script, [string[]]$Arguments = @()) {
     $info.Environment['GITVIZ_TEST_DATABASE_URL'] = "postgresql://gitviz_test:${encoded}@127.0.0.1:${pgPort}/$database"
     $info.Environment['GITVIZ_TEST_REDIS_URL'] = "redis://127.0.0.1:${redisPort}/0"
     $info.Environment['REDIS_URL'] = $info.Environment['GITVIZ_TEST_REDIS_URL']
+    # Server modules build their engine at import time; point them only at the owned fixture database.
+    $info.Environment['DATABASE_URL'] = $info.Environment['GITVIZ_TEST_DATABASE_URL']
+    $info.Environment['DATABASE_URL_ASYNC'] = $info.Environment['GITVIZ_TEST_DATABASE_URL'].Replace('postgresql://', 'postgresql+asyncpg://')
     $info.Environment['PYTHON_DOTENV_DISABLED'] = '1'; $info.Environment['PYTHONUTF8'] = '1'; $info.Environment['PYTHONDONTWRITEBYTECODE'] = '1'
     $info.Environment['HTTP_PROXY'] = 'http://127.0.0.1:9'; $info.Environment['HTTPS_PROXY'] = 'http://127.0.0.1:9'; $info.Environment['NO_PROXY'] = 'localhost,127.0.0.1,::1'
     foreach ($item in @('-X', 'utf8', '-B', "scripts/$Script") + $Arguments) { $info.ArgumentList.Add($item) }

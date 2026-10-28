@@ -24,8 +24,8 @@
 | P05 | 부분 구현 | PC 로컬 경로 완료, D-02로 main 네이티브 동의. cloud BYOK·공개 매핑·실제 모델 품질 미완료 |
 | P06 | 검증 완료(승인 범위) | historical evidence는 원격 매핑 부재로 unavailable |
 | P07 | 부분 구현 | 단위·Electron·패키지 fixture 통과. 에디터 줄·열 화면 인수 연기. 독립 패키지는 HEAD 이전 agent(`113A…`) 기준 |
-| P08 | 부분 구현 | P08a 로컬 inbox 검증 완료(호스트 fixture, [P08a 기록](p08a-2026-10-28.md)). P08b(원격 분석 완료·connectRemote·navbar) 미착수 |
-| P09 | 미착수 | P08·정책 결정 선행 |
+| P08 | 부분 구현 | P08a 로컬 inbox 검증 완료([P08a 기록](p08a-2026-10-28.md)). P08b connectRemote·알려진 job 전환·navbar 구현, 호스트 fixture 23단계 통과([P08b·P09 기록](p08b-p09-2026-10-28.md), 커밋 `c28c05e`). 실제 서버·clean VM 미검증 |
+| P09 | 구현 중 | Windows CI 설정·로컬 23단계 검증기·golden DDL·정적 번들 감사 작성, 개발 호스트 통과. CI 원격 실행·P09 서비스 회귀(승인 대기)·staging·clean VM·실제 provider·SLO 미완료 |
 | P10 | 미착수 | Q01/Q02/Q08/Q10·서명 자격 선행 |
 
 ## 기존 기능 E01~E10
@@ -105,3 +105,5 @@ P09 CI는 설정을 작성했으며 원격 실행·통과를 보고하지 않는
 N06/C06 후속: historical 계약 확장 승인을 받아 pinned server snapshot·target SHA·payload hash·통계 범위·암호화 저장·다음 조회 권한 재검증을 구현했다. 로컬 경로 전송 없이 main에서 비교한다. Python1/main2 fixture 통과, 최종 frozen/Electron 회귀는 후속 기록을 따른다. 실제 서버 이력 인수는 staging 미준비로 미검증이다.
 
 최종 회귀(19:55 KST): 개발 호스트 23/23 통과, frozen cloud 재시작 복구 시험 포함, 전후 git status 동일. agent 정적 감사 통과. 최신 후보 재패키징·ASAR 감사·clean VM·P09 서비스 시험은 미실행이다. 상세는 [후속 구현 기록](p08b-p09-2026-10-28.md) 마지막 절.
+
+P09 서비스 회귀·재패키징(22:15 KST): `validate_p09_services.ps1` 7/7(100개 시험) 통과, 최신 검증·제품 package와 ASAR/agent 정적 감사 통과. E01~E10 서버 회귀는 격리 PG/Redis fixture 범위에서 검증 완료로 본다. 실제 GitHub·운영 데이터·실제 브라우저 DOM은 미검증. 실제 서버(staging)·clean VM·실제 provider 검증은 사용자 지시로 추후 수행한다.
