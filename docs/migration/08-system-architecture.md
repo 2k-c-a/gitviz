@@ -101,3 +101,7 @@ P01은 `desktop/ui/`의 상태 전용 빈 UI와 bundled agent를 사용한다. �
 수명은 예정 `app/workspace/windows.py`의 ctypes 기반 Windows Job Object·부모 process handle 감시로 구현·검증한다. 자식 생성 전에 Job 연결을 확인하고 실패하면 ready를 금지한다. 부모 감시 초기화 실패·부모 소멸도 종료 사유다. 부모 PID 재사용과 초기화 중 parent exit race를 fixture에 포함한다. 실제 kill/잔존 프로세스 시험 전 완전한 종료를 보장한다고 주장하지 않는다. 같은 보장을 위해 native helper가 필요해지면 새 의존성·파일 범위를 별도 검토한다.
 
 SecretStore는 main의 async OS 보호 API, payload 암호화는 agent의 AEAD 어댑터가 담당한다. key bootstrap·실패 동작은 [07](07-api-design.md), P01 schema 최소 범위는 [06](06-data-model.md), 전체 파일/의존성 목록은 [13](13-implementation-plan.md)을 따른다. P01 package는 Python agent를 포함한 Windows 실행 디렉터리까지이며 installer·서명·update feed는 P10 범위다.
+
+## 구현 상태 주석 — 2026-10-28
+
+서두의 "모두 예정"은 설계 시점 표현이다. 위 파일 구성 중 `events.py`, `notifications.py`, inbox UI, `src/update.ts`, `.github/workflows/windows-desktop.yml`만 아직 없다. preload의 workspace 브리지는 `gitviz://app/index.html` 문서에만 노출되고, main의 workspace 핸들러도 같은 문서의 sender만 허용한다(D-03). 다른 앱 문서에는 `window.desktop`(auth·remote)만 남는다.

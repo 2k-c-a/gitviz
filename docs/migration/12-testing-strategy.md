@@ -113,3 +113,19 @@ P00 전체 정책·의존성 검토는 미완료이며 실제 Windows/보안/성
 ## P01 잔여 검증 갱신 — 2026-10-24
 
 [잔여 검증 기록](validation/p01-remaining-2026-10-24.md)에22개 중단 경계·SQLite FULL·실제 Electron 복구·clean VM·실제 NTFS 용량 고갈 인수를 기록했다. Python/Node 없는 P01Tester 표준 계정에서8개 앱 검사군과 EXE/ASAR/agent 해시 일치, 별도64MiB 가상 디스크의 여유0바이트·ENOSPC·WAL 롤백·원본/백업 보존·공간 확보 후 복구를 확인했다. 승인된 P01 기반 범위는 구현·검증 완료다. P02 이후·installer/서명/배포·전체 제품 검증은 포함하지 않는다.
+
+## 테스트 ID와 실제 파일 — 2026-10-28
+
+"예정 테스트 목록"의 대부분은 이제 존재한다. 실제 대응은 다음과 같다.
+
+| ID | 실제 상태 |
+|---|---|
+| T08 | `tests/workspace/test_comparison_metrics.py`, `desktop/tests/metrics.test.ts` (예정 이름 `test_comparison.py`와 다름) |
+| T09 | 미작성. P08a에서 `tests/workspace/test_notifications.py` 작성 예정 |
+| T10 | `bridge-security.test.ts`·foundation e2e는 존재, `workspace.e2e.ts`는 미작성(P09) |
+| T13 | 미작성(P10) |
+| `npm run test:e2e` | 없음. 개별 e2e 9개(`projects`, `changes`, `review-preview`, `review`, `refactor`, `validation`, `auth`, `remote-compat`, `foundation`)를 Electron으로 직접 실행 |
+
+QA 단계 D의 79단계 실행 결과와 로그 대조는 [Stage D 기록](validation/stage-d-2026-10-28.md), 요구사항별 상태는 [통합 추적표](validation/traceability-2026-10-28.md)에 있다.
+
+Windows 검증 경로: 이 저장소의 인수 세션은 Windows 셸을 직접 쓸 수 없다. 2026-10-28 사용자는 Windows 테스트에 Hyper-V를 사용하도록 지시했다. 구체적 실행 방식(기존 clean VM과 개발 도구가 있는 VM의 구분)은 P08a 실행 기록에 남긴다.

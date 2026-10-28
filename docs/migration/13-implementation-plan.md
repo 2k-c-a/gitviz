@@ -198,3 +198,14 @@ P06의 구현·승인 예외·격리 검증 증거와 잔여 패키징 gate는 [
 ## P07 현재 인수 상태 — 2026-10-27
 
 [P07 기록](validation/p07-2026-10-27.md)의 구현·단위97개·host22개·Electron 회귀6종·승인한 독립 패키지 fixture가 통과했다. 사용자 요청으로 실제 VS Code/Cursor 줄·열 화면 인수는 나중으로 연기했다. P03 실제 서버 OAuth/웹·앱 동시 사용과 제품 출시 게이트는 계속 별도다. P08 착수나 installer/서명/배포를 자동 승인한 것으로 해석하지 않는다.
+
+## QA 단계 D 반영과 P08 준비 — 2026-10-28
+
+P07 이후 독립 QA(단계 A~D)가 결함 10건(D-01~D-10)을 수정·재검증했다. 결과와 D-07 사후 승인은 [Stage D 기록](validation/stage-d-2026-10-28.md), 요구사항별 상태는 [통합 추적표](validation/traceability-2026-10-28.md)를 따른다.
+
+P08은 두 부분으로 나눈다. 위 의존성 절의 "event/store 기반은 P04 뒤 준비 가능, 전체 통합은 P03/P07 후"를 따른 분할이다.
+
+- **P08a 로컬 inbox:** review·validation·proposal 사건을 같은 SQLite transaction에서 event/notification으로 기록하고, `workspace.notifications.list/markRead`, `workspace.events.subscribe/unsubscribe`, 앱 내 inbox를 제공한다. schema 7. 선행 P05~P07.
+- **P08b 원격 연결:** `workspace.projects.connectRemote`, 알려진 원격 분석 job의 terminal 전환 감지, navbar·page-context 진입점. 선행 P03 실제 서버 인수 또는 그에 준하는 승인.
+
+작업 브랜치는 `feat/p08-workspace-inbox`다. P08a 착수 자체와 이벤트 발생 모듈 수정 범위는 별도 승인 대상이다.

@@ -78,3 +78,7 @@
 - **UI/동작:** 여러 프로젝트, 유형·심각도·읽음 필터, createdAt+ID cursor pagination, 읽음 CAS, 대상 project→review/file/run으로 이동. 대상 삭제·경로 이동·접근 만료는 안전한 unavailable 안내. 동일 source의 새 generation은 별도 이벤트다.
 - **심각도:** deterministic test/lint failure와 AI 위험 추론의 심각도를 구분하고 cause를 표시한다. 알림은 코드 수정 승인이나 프로세스 실행 트리거가 아니다. 앱 내 inbox 필수, OS toast는 선택(Q09).
 - **완료 C08/T09:** 재전달·재시작·여러 프로젝트 필터/읽음·다른 프로젝트 target 위조·삭제 대상 검증. 네트워크 단절 동안 원격 이벤트 전체를 수집했다고 주장하지 않는다.
+
+## 구현 상태 주석 — 2026-10-28
+
+서두의 "구현된 동작이 아니다"는 2026-10-23 설계 시점의 표현이다. 현재 F01~F07은 P02~P07에서 구현됐고 F08은 미구현이다. F04의 지원 에디터는 Q07 결정에 따라 VS Code·Cursor다. 요구사항별 상태와 증거는 [통합 추적표](validation/traceability-2026-10-28.md)가 권위다. 이 절은 규칙 자체를 바꾸지 않는다.

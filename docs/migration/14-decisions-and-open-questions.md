@@ -105,3 +105,14 @@ P06의 격리 단위·S11·source Electron과 별도 승인한 frozen agent/독�
 ## P07 빌드 승인과 화면 인수 연기
 
 사용자가 P07 freeze·Electron 회귀·검증 패키징을 별도로 승인했고 독립 패키지 인수가 통과했다. 사용자는 에디터 화면 인수를 나중으로 연기했다. 설치·공식 publisher/product/hash 검사와 argv/파일 scope 검증은 완료했으나 실제 GUI 커서 위치는 deferred로 남긴다. 해당 상태와 SHA 증거는 P07 기록이 권위다.
+
+## 사용자 결정 — 2026-10-28
+
+- **D-07 사후 승인:** QA 단계 D의 D-07에서 지시 범위 밖이던 `dispatcher.py`, `scoped_files.py`(`pinned_paths`), `projects.js` 변경과 git status 범주별 2,000개 상한을 승인했다. 상세는 [Stage D 기록](validation/stage-d-2026-10-28.md). 20,000개 pin 상한과 RPC 시간 여유는 Q10 성능 목표로 남는다.
+- **문서·추적표 갱신 허용:** [통합 추적표](validation/traceability-2026-10-28.md)를 신설하고 05/07/08/12/13에 상태 주석을 추가했다.
+- **알림 보존 기본값:** Q08이 정해질 때까지 workspace_event·notification은 자동 삭제하지 않는다. A06의 30일은 제안값으로만 유지한다.
+- **임시 DB schema v7 migration 시험:** 승인. 실제 사용자 DB migration은 포함하지 않는다.
+- **Windows 테스트:** Hyper-V를 사용한다.
+- **작업 브랜치:** 인수 에이전트가 `feat/p08-workspace-inbox`를 만들었다. push는 하지 않는다.
+
+Q08 전체, Q09, D01~D03은 이 결정으로 해결되지 않는다.

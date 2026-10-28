@@ -156,3 +156,13 @@ local schema6과 protocolVersion1을 협상하며 총44개 named operation을 �
 command_plan은 실행파일·argv·cwd·pre/post script·설정 hash·고정 환경·120초·1MiB를 포함하며 plan 자체의 executionAllowed=false는 native 승인 전 권한이 없음을 뜻한다. 기존 environment가 없는 plan은 재탐지/새 계획이 필요하다. main native 취소는 실행하지 않고, trusted=true와 일회 token은 승인 뒤 main에서만 보낸다. project/plan/confirmation hash·5분 만료·단일 소비와 idempotency를 검사한다. stdout/stderr는 순서·원본 bytesBase64와 표시 text를 분리하고 get은 최대10 chunk이다. get/prepare/approve/start와 비교 생성은60초 RPC 상한이며 실제 명령 한도와 다르다.
 
 files.locate는 snapshot/file/line/column을 확인하고 main에만 실제 경로를 반환한다. editor 설정은 native 선택 및 signed publisher/product/hash 확인으로 등록하고 고정 --goto argv로 파일·위치를 연다. renderer에는 범용 파일/프로세스/IPC proxy가 없다. 비교의 TypeScript 기록은 fixed utility worker가 읽은 동일 fileId/facet/path/sourceHash와 묶어 검증한다. 영향 source session은 release로 정리한다. 사용자 실행 도구는 설치된 runtime이며 자동 설치·수정 모드를 생성하지 않는다.
+
+## 실제 계약과의 차이 — 2026-10-28
+
+공통 스키마 `contracts/workspace/v1/*.schema.json`이 local RPC의 권위 원본이다. 현재 operation은 44개다. 위 표와의 차이는 다음과 같다.
+
+- 에디터: `workspace.editors.list/open/configure` 대신 main 프로세스 IPC(`configure-editor`, `open-editor`, `copy-location`)와 agent의 `workspace.files.locate`·`workspace.projects.setEditor`로 구현했다. 실행 파일 경로는 main 전용 설정에만 둔다.
+- 미구현: `workspace.projects.connectRemote`, `workspace.notifications.list/markRead`, `workspace.events.subscribe/unsubscribe`. notifications·events는 P08a, connectRemote는 P08b 범위다.
+- 오류 코드: 위 목록 외에 스키마에 27개가 추가됐다. `AMBIGUOUS_FACETS`, `CHANGESET_TOO_LARGE`, `CLOUD_MAPPING_REQUIRED`, `CONSENT_EXPIRED`, `CONSENT_REQUIRED`, `CONTENT_EXCLUDED`, `DUPLICATE_RISK_CONFIRMATION_REQUIRED`, `EMPTY_INPUT`, `GIT_NOT_FOUND`, `HISTORY_MAPPING_REQUIRED`, `INDEX_UNAVAILABLE`, `METADATA_GRANT_REQUIRED`, `OUTPUT_LIMIT`, `PATCH_ENCODING_UNSUPPORTED`, `PATCH_INVALID`, `PATCH_SCOPE_UNSUPPORTED`, `PATCH_TOO_LARGE`, `PROJECT_MOVED`, `PROJECT_RECONNECT_REQUIRED`, `RECOVERY_CONFLICT`, `REVIEW_DATA_REQUIRES_EXPLICIT_REMOVAL`, `ROOT_GRANT_REQUIRED`, `SELECTION_EXPIRED`, `UNSUPPORTED_FILENAME`, `UNSUPPORTED_KIND`, `UNSUPPORTED_REPOSITORY`, `WINDOWS_REQUIRED`. 모두 추가만 한 변경이다.
+- `CHANGESET_TOO_LARGE`의 details는 `operation`과 `limitBytes/observedBytes` 또는 `limitItems/observedItems`만 담고 경로를 담지 않는다(D-07, [Stage D 기록](validation/stage-d-2026-10-28.md)).
+- `workspace:review-start`는 main이 기억한 preview(projectId·previewHash·manifestHash·maxEstimatedCost 일치)에 대해 네이티브 확인을 받은 뒤에만 agent로 전달한다(D-02).

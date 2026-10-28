@@ -55,3 +55,7 @@
 | 분석 지표 경험적 타당성 | 계획 상태, 정답·미래 구간 실험 필요 |
 
 추정: 출시 판단은 구조·안전·실인증·모델 품질·운영 환경을 각각 보고해야 한다. 현재 문서 정리 완료와 제품 출시 수용 완료는 별개다. [정리 완료 조건](../audit/organization-plan.md)과 [결정 목록](../decisions/index.md)을 함께 읽는다.
+
+## Windows 데스크톱 작업 상태 — 2026-10-28
+
+위 내용은 2026-10-23 문서 정리 시점 기록이다. 이후 Windows 데스크톱 전환(P01~P07)과 QA 단계 D 결함 수정이 진행됐다. 현재 상태는 [통합 추적표](../migration/validation/traceability-2026-10-28.md)와 [Stage D 기록](../migration/validation/stage-d-2026-10-28.md)을 따른다.
