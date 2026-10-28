@@ -6,6 +6,7 @@ import json
 import os
 import platform
 import queue
+import secrets
 import threading
 import time
 import uuid
@@ -213,9 +214,9 @@ class Validation:
             conditions = self.conditions(project, envelope)
             approval = self.db.execute('SELECT confirmation_hash,capability_hash,expires_at,consumed FROM validation_approval WHERE id=? AND project_id=? AND plan_id=?',
                 (payload['approvalId'], project, payload['planId'])).fetchone()
-            if approval is None or approval[3] or approval[2] <= time.time() or approval[1] != fingerprint(payload['capability']):
+            if approval is None or approval[3] or approval[2] <= time.time() or not secrets.compare_digest(approval[1], fingerprint(payload['capability'])):
                 raise ScopeError('APPROVAL_REQUIRED')
-            if approval[0] != fingerprint(conditions):
+            if not secrets.compare_digest(approval[0], fingerprint(conditions)):
                 raise ScopeError('PRECONDITION_FAILED')
             self.db.execute('UPDATE validation_approval SET consumed=1 WHERE id=?', (payload['approvalId'],))
             run = str(uuid.uuid4())
