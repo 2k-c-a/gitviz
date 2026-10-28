@@ -131,7 +131,10 @@ class Endpoints(Api):
         body = r.json()
         self.assertTrue(body['external_transfer_allowed'])
         models = {m['profile_id']: m for m in body['providers'][0]['models']}
-        opus, sonnet = 'claude-opus-5-5-v3', 'claude-sonnet-5-5-v3'                      # 목록에는 확장 profile(v3)만 보인다
+        opus, sonnet = 'claude-opus-5-5-v4', 'claude-sonnet-5-5-v4'                      # 목록에는 현재 cloud profile(v4)만 보인다
+        cloud_profiles = [model['profile_id'] for provider in body['providers']
+                          for model in provider['models'] if model['execution_location'] != 'local']
+        self.assertFalse(any(profile.endswith(('-v1', '-v2', '-v3')) for profile in cloud_profiles))
         self.assertEqual(set(models), {opus, sonnet})
         self.assertTrue(models[opus]['allowed'])
         with S.ai_env(AI_ALLOWED_PROFILES=sonnet):
