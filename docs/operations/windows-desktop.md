@@ -25,7 +25,7 @@ npm --prefix desktop run make      # desktop/out/make/squirrel.windows/x64/
 
 ## 앱 연결 상태
 
-렌더러에는 읽기 전용 `desktop.update.status()`만 노출된다. 릴리스 위치가 설정되기 전에는 항상 `unconfigured`를 반환하며 네트워크 조회·다운로드·설치를 하지 않는다. `.github/workflows/windows-release.yml`은 수동 실행 전용 초안으로, 서명 없는 패키지 zip과 SHA-256만 워크플로 artifact로 올리고 릴리스를 게시하지 않는다.
+렌더러에는 읽기 전용 `desktop.update.status()`만 노출된다. 릴리스 위치가 설정되기 전에는 항상 `unconfigured`를 반환하며 네트워크 조회·다운로드·설치를 하지 않는다. `.github/workflows/windows-release.yml`은 수동 실행 전용 초안으로, 서명 없는 설치기·nupkg·RELEASES·패키지 zip·`manifest.json`·SHA-256을 워크플로 artifact(보관 7일)로만 올리고 릴리스를 게시하지 않는다. 릴리스 게시와 `manifest.json`의 URL 유효화는 수동 작업이다.
 
 ## 업데이트 검증 규칙
 

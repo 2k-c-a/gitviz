@@ -4,10 +4,6 @@ name: Windows desktop release (DRAFT, unsigned, no publishing)
 # intentionally absent until a certificate and release location are decided and approved.
 on:
   workflow_dispatch:
-  # TEMPORARY: lets a PR run this draft before it exists on the default branch. Remove after verification.
-  pull_request:
-    paths:
-      - '.github/workflows/windows-release.yml'
 permissions:
   contents: read
 jobs:
