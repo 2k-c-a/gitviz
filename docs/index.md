@@ -34,6 +34,7 @@
 | 공통 디자인 시스템·데스크톱 셸 Phase 2 | [구현·검증 보고](ux-redesign/phase-2-common-ui.md) |
 | 핵심 화면·기존 기능 통합 Phase 3 | [구현·실행 검증·남은 제약](ux-redesign/phase-3-core-screens.md) |
 | 전체 UX/UI 검증·최종 개선 Phase 4 | [결함·수정·사용자 여정·최종 검증 보고](ux-redesign/phase-4-ux-quality.md) |
+| 로컬 워크스페이스 정보 구조·화면 설계 Phase 5 (설계만, 미구현) | [정보 구조·와이어프레임·시각 방향](ux-redesign/phase-5-workspace-ia.md) |
 
 ## 사실과 결정의 구분
 
