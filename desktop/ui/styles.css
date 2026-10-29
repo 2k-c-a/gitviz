@@ -1,6 +1,7 @@
 @import url("web/css/tokens.css");
 @import url("web/css/components.css");
 @import url("web/css/shell.css");
+@import url("web/css/workspace.css");
 /* Workspace uses the same primitives as the remote renderer, without loading its API or routing modules. */
 body { margin: 0; }
 p { line-height: 1.65; }

@@ -57,6 +57,7 @@ export async function openTarget(item, detail) {
   if (picker.value !== target.projectId || value.projectId !== target.projectId) return '프로젝트 선택이 바뀌어 이동을 중단했습니다.';
   if (target.kind === 'proposal') window.dispatchEvent(new CustomEvent('workspace-proposal-selected', { detail: value }));
   else for (const row of summary(target.kind, value)) detail.append(node('p', row));
+  window.dispatchEvent(new CustomEvent('workspace-open-target', { detail: { kind: target.kind } }));  // layout.js shows the matching project tab.
   document.getElementById(SECTIONS[target.kind])?.scrollIntoView({ block: 'nearest' });
   return '대상으로 이동했습니다.';
 }

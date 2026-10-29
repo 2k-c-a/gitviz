@@ -120,7 +120,7 @@ details{margin:8px 0}summary{cursor:pointer;color:var(--muted)}
 <body data-theme="light">
 <div class="stage">
   <div class="toolbar" id="tb"></div>
-  <div class="hint">목업입니다. 샘플 데이터로 동작을 흉내 낼 뿐 실제 에이전트·서버·파일에 아무것도 하지 않습니다. 단축키: Ctrl+K 명령 팔레트, Ctrl+1~7 탭, Ctrl+O 폴더 등록, F5 새로고침, Esc 닫기.</div>
+  <div class="hint">이 화면은 목업입니다. 샘플 데이터로 동작을 흉내 낼 뿐, 실제 에이전트·서버·파일에는 아무 영향이 없습니다. 단축키: Ctrl+K 명령 팔레트, Ctrl+1~7 탭, Ctrl+O 폴더 등록, F5 새로고침, Esc 닫기.</div>
   <div class="win w900" id="frame" role="application" aria-label="GitViz Workspace 목업"></div>
 </div>
 <script>
@@ -159,8 +159,8 @@ const FINDINGS = [
 ];
 const IMPACT = {
   static: [['src/auth.py', ['src/api.py:34 (import check)', 'src/cli.py:8 (call check)']], ['src/app.py', ['src/main.py:3 (import load)']], ['src/util.py', []]],
-  stat: [['src/auth.py ↔ src/session.py', '12회 함께 변경 · 방향 비율 71%'], ['src/app.py ↔ tests/test_app.py', '9회 함께 변경 · 방향 비율 56%']],
-  ai: [['src/cli.py', '인증 실패 시 종료 코드가 달라질 수 있어 보입니다.']],
+  stat: [['src/auth.py ↔ src/session.py', '12번 함께 바뀜 · 방향 비율 71%'], ['src/app.py ↔ tests/test_app.py', '9번 함께 바뀜 · 방향 비율 56%']],
+  ai: [['src/cli.py', '인증에 실패하면 종료 코드가 달라질 수 있는 것으로 보입니다.']],
 };
 const INBOX0 = [
   { id: 1, proj: 'my-repo', src: 'validation', sev: 'error', title: '테스트 실패 1건', route: 'tests', read: false },
@@ -168,7 +168,7 @@ const INBOX0 = [
   { id: 3, proj: 'my-repo', src: 'proposal', sev: 'info', title: '제안 #2 적용됨', route: 'proposals', read: true },
   { id: 4, proj: 'api-server', src: 'analysis', sev: 'info', title: '서버 분석 완료', route: 'impact', read: false },
 ];
-const SRCN = { review: '로컬 AI 점검', validation: '테스트·린트', proposal: '개선 제안', analysis: '서버 분석' };
+const SRCN = { review: '이 PC의 AI 점검', validation: '테스트·린트', proposal: '개선 제안', analysis: '서버 분석' };
 const SEVN = { error: '오류', warning: '주의', info: '정보' };
 const TABS = [['overview', '개요'], ['changes', '변경'], ['ai', 'AI 점검'], ['proposals', '개선 제안'], ['tests', '테스트·린트'], ['compare', '전후 비교'], ['impact', '영향 범위']];
 const PROJ_TABS = new Set(TABS.map(t => t[0]));
@@ -179,7 +179,7 @@ const S = {
   snaps: [{ id: 3, files: 2, kb: 8, time: '어제', metrics: { pass: 12, fail: 2, lint: 5 } }], capMsg: '',
   ai: { step: 1, snap: null, kind: 'review', model: 'ollama', key: '', purpose: '버그·보안·성능·품질 검토', gen: 1, c1: false, c2: false, state: 'idle', elapsed: 0, sel: 0, verdicts: {}, showBytes: false, history: false },
   props: [
-    { id: 3, state: '검토 대기', files: ['src/auth.py'], note: '토큰 비교를 hmac.compare_digest 로 교체' },
+    { id: 3, state: '검토 대기', files: ['src/auth.py'], note: '토큰 비교를 hmac.compare_digest로 교체' },
     { id: 2, state: '적용됨', files: ['src/app.py'], note: '예외 처리 정리' },
     { id: 1, state: '복구 필요', files: ['README.md'], note: '문서 정리 — 적용 중 중단됨' },
   ], propSel: 3, applying: 0,
@@ -200,27 +200,27 @@ const recovery = () => isP0() && S.props.some(p => p.state === '복구 필요');
 
 /* ---------------- helpers ---------------- */
 const btn = (label, act, o = {}) => `<button class="b${o.p ? ' primary' : ''}${o.sm ? ' sm' : ''}" data-act="${act}"${o.arg !== undefined ? ` data-arg="${esc(o.arg)}"` : ''}${o.dis ? ' disabled' : ''}${o.k ? ` data-k="${o.k}"` : ''}>${label}${o.risk ? `<span class="rk r-${o.risk}">${RISK[o.risk]}</span>` : ''}</button>`;
-const bdg = k => ({ m: '<span class="bdg m">✔ 실측</span>', s: '<span class="bdg">⌘ 정적</span>', t: '<span class="bdg">▥ 통계</span>', ai: '<span class="bdg ai">AI 추론</span>' }[k]);
+const bdg = k => ({ m: '<span class="bdg m">✔ 실측</span>', s: '<span class="bdg">⌘ 정적</span>', t: '<span class="bdg">▥ 통계</span>', ai: '<span class="bdg ai">AI 추정</span>' }[k]);
 const toast = m => { S.toast = m; render(); clearTimeout(toast.t); toast.t = setTimeout(() => { S.toast = ''; render(); }, 2200); };
 const go = r => { S.route = r; S.navOpen = false; S.inspOpen = false; S.menu = null; render(); $('.main')?.scrollTo(0, 0); };
 const ask = (title, body, ok, risk, then) => { S.modal = { type: 'confirm', title, body, ok, risk, then }; render(); };
 
 /* ---------------- screens ---------------- */
-function skeleton() { return '<div class="panel"><div class="skel" style="width:40%"></div><div class="skel"></div><div class="skel" style="width:80%"></div><div class="skel" style="width:60%"></div></div><p class="note" role="status">불러오는 중… 화면 전체를 막지 않고 영역 단위로 표시합니다.</p>'; }
+function skeleton() { return '<div class="panel"><div class="skel" style="width:40%"></div><div class="skel"></div><div class="skel" style="width:80%"></div><div class="skel" style="width:60%"></div></div><p class="note" role="status">불러오는 중입니다… 이 부분만 기다리면 되고, 화면 전체가 멈추지는 않습니다.</p>'; }
 const EMPTY = {
-  projects: ['등록된 프로젝트가 없습니다.', '폴더 등록', 'register'], overview: ['아직 커밋이 없습니다. 변경은 untracked로 표시됩니다.', '변경 보기', 'go:changes'],
+  projects: ['등록된 프로젝트가 없습니다.', '폴더 등록', 'register'], overview: ['아직 커밋이 없습니다. 새로 만든 파일은 \'untracked\'(추적 안 됨)로 표시됩니다.', '변경 보기', 'go:changes'],
   changes: ['변경된 파일이 없습니다. 파일을 수정하면 여기에 나타납니다.', '새로고침', 'refresh'], ai: ['아직 점검한 적이 없습니다. 먼저 변경을 담으세요.', '변경 보기', 'go:changes'],
   proposals: ['제안이 없습니다. AI 점검에서 \'작은 개선 제안\'을 선택해 만들 수 있습니다.', 'AI 점검으로 이동', 'go:ai'],
-  tests: ['실행할 수 있는 테스트·린트 설정을 찾지 못했습니다. 감지하는 파일: package.json, pyproject.toml, pytest.ini …', '다시 감지', 'refresh'],
+  tests: ['실행할 수 있는 테스트·린트 설정을 찾지 못했습니다. 다음 파일을 찾아봅니다: package.json, pyproject.toml, pytest.ini …', '다시 감지', 'refresh'],
   compare: ['비교하려면 점검 대상이 2개 이상 필요합니다.', '변경 보기', 'go:changes'], impact: ['분석할 점검 대상이 없습니다.', '변경 보기', 'go:changes'], inbox: ['알림이 없습니다.', '새로고침', 'refresh'],
 };
 const ERR = {
-  projects: '프로젝트 목록을 읽지 못했습니다.', overview: 'Git 상태를 읽지 못했습니다. 저장소 위치가 바뀌었거나 접근 권한이 없을 수 있습니다.', changes: '변경 목록을 읽지 못했습니다. 변경 파일이 너무 많으면 커밋·stash로 줄인 뒤 다시 시도하세요.',
-  ai: '점검 기록을 불러오지 못했습니다.', proposals: '제안 목록을 불러오지 못했습니다.', tests: '도구를 감지하지 못했습니다. manifest 파일을 읽을 수 없습니다.', compare: '비교 기록을 불러오지 못했습니다.', impact: '영향 범위를 계산하지 못했습니다.', inbox: '알림을 불러오지 못했습니다.',
+  projects: '프로젝트 목록을 읽지 못했습니다.', overview: 'Git 상태를 읽지 못했습니다. 저장소 위치가 바뀌었거나 접근 권한이 없을 수 있습니다.', changes: '변경 목록을 읽지 못했습니다. 변경 파일이 너무 많다면 커밋하거나 stash로 줄인 뒤 다시 시도해 주세요.',
+  ai: '점검 기록을 불러오지 못했습니다.', proposals: '제안 목록을 불러오지 못했습니다.', tests: '테스트 도구를 찾지 못했습니다. package.json 같은 설정 파일을 읽을 수 없습니다.', compare: '비교 기록을 불러오지 못했습니다.', impact: '영향 범위를 계산하지 못했습니다.', inbox: '알림을 불러오지 못했습니다.',
 };
 function simScreen(r) {
   if (S.sim === 'loading') return skeleton();
-  if (S.sim === 'error') return `<div class="banner err" role="alert"><span><b>${esc(ERR[r])}</b><br><span class="note">원인을 확인한 뒤 다시 시도하세요. 오류 코드는 접어 두었습니다.</span></span><span class="sp"></span>${btn('다시 시도', 'simreset')}</div><details><summary>오류 코드</summary><code class="mono">PROJECT_UNAVAILABLE</code></details>`;
+  if (S.sim === 'error') return `<div class="banner err" role="alert"><span><b>${esc(ERR[r])}</b><br><span class="note">원인을 확인한 뒤 다시 시도해 주세요. 오류 코드는 아래에 접어 두었습니다.</span></span><span class="sp"></span>${btn('다시 시도', 'simreset')}</div><details><summary>오류 코드</summary><code class="mono">PROJECT_UNAVAILABLE</code></details>`;
   const [why, label, act] = EMPTY[r];
   return `<div class="empty"><p>${esc(why)}</p>${btn(label, act, { p: 1 })}</div>`;
 }
@@ -228,12 +228,12 @@ function simScreen(r) {
 function sFirst() {
   return `<h1>시작하기</h1><div class="panel"><p style="margin-top:0">GitViz Workspace는 내 PC의 Git 프로젝트를 점검하는 도구입니다. 코드는 기본적으로 내 PC 밖으로 나가지 않습니다.</p>
   <ul class="checklist">
-   <li><span class="n">1</span><b>프로젝트 폴더 등록</b><span class="sp"></span><span class="dropzone">폴더를 여기로 끌어놓기</span>${btn('폴더 선택…', 'register', { p: 1, risk: 'read' })}</li>
-   <li><span class="n">2</span><b>변경 확인</b><span class="note">등록하면 자동으로 표시됩니다</span></li>
-   <li><span class="n">3</span><b>AI 점검</b><span class="chip">선택</span><span class="note">로컬 모델: 확인 안 됨</span><span class="sp"></span>${btn('상태 확인', 'modelcheck', { risk: 'read' })}</li>
-   <li><span class="n">4</span><b>서버 연결</b><span class="chip">선택</span><span class="note">로그인 안 됨</span><span class="sp"></span>${btn('계정·연결', 'go:account')}</li>
-  </ul><p class="note">이것만으로도 됩니다: Git 상태 · 영향 범위 · 테스트·린트 실행</p>
-  <details><summary>내 코드는 어디로 가나요?</summary><p class="note">기본은 전송 없음. 로컬 모델은 이 PC(127.0.0.1)에서만 처리합니다. 클라우드 모델은 전송 내용을 확인하고 동의한 바이트만 보냅니다.</p></details></div>`;
+   <li><span class="n">1</span><b>프로젝트 폴더 등록</b><span class="sp"></span><span class="dropzone">폴더를 여기로 끌어다 놓으세요</span>${btn('폴더 선택…', 'register', { p: 1, risk: 'read' })}</li>
+   <li><span class="n">2</span><b>변경 확인</b><span class="note">등록하면 바로 보여 드립니다</span></li>
+   <li><span class="n">3</span><b>AI 점검</b><span class="chip">선택</span><span class="note">이 PC의 AI 모델을 아직 확인하지 않았습니다</span><span class="sp"></span>${btn('상태 확인', 'modelcheck', { risk: 'read' })}</li>
+   <li><span class="n">4</span><b>서버 연결</b><span class="chip">선택</span><span class="note">로그인하지 않았습니다</span><span class="sp"></span>${btn('계정·연결', 'go:account')}</li>
+  </ul><p class="note">로그인이나 AI 없이도 Git 상태, 영향 범위, 테스트·린트 실행은 쓸 수 있습니다.</p>
+  <details><summary>내 코드는 어디로 가나요?</summary><p class="note">기본적으로 코드를 어디에도 보내지 않습니다. 이 PC의 모델은 PC 안에서만 처리하고, 클라우드 모델은 보낼 내용을 직접 확인하고 동의한 부분만 보냅니다.</p></details></div>`;
 }
 function sProjects() {
   if (S.sim !== 'normal') return `<h1>프로젝트</h1>${simScreen('projects')}`;
@@ -242,8 +242,8 @@ function sProjects() {
   return `<h1>프로젝트 (${PROJECTS.length}) <span class="sp"></span>${btn('폴더 등록', 'register', { p: 1, risk: 'read' })}</h1>
   <input type="search" placeholder="이름·경로 검색" aria-label="프로젝트 검색" data-bind="projQuery" data-k="pq" value="${esc(S.projQuery)}" style="width:260px;margin-bottom:8px">
   <div class="list" style="max-height:none"><table><thead><tr><th>이름</th><th>브랜치</th><th>변경</th><th>마지막 점검</th><th>원격 연결</th><th></th></tr></thead><tbody>
-  ${rows.map(({ p, i }) => p.missing ? `<tr><td>${esc(p.name)}<div class="path">${esc(p.path)}</div></td><td colspan="4"><span class="chip warn">위치를 찾을 수 없음</span> <span class="note">이동·삭제됐거나 접근할 수 없습니다.</span></td><td>${btn('다시 연결', 'reconnect', { sm: 1 })}</td></tr>`
-    : `<tr class="row" data-act="openproj" data-arg="${i}" tabindex="0"><td><b>${esc(p.name)}</b><div class="path" title="${esc(p.path)}">${esc(p.path)}</div></td><td>${esc(p.branch)}</td><td>${i === 0 ? FILES.length : 0}</td><td>${p.last}</td><td>${p.remote ? `연결됨 (${p.remote})` : '연결 없음'}</td><td>${btn('열기', 'openproj', { sm: 1, arg: i })}</td></tr>`).join('')}
+  ${rows.map(({ p, i }) => p.missing ? `<tr><td>${esc(p.name)}<div class="path">${esc(p.path)}</div></td><td colspan="4"><span class="chip warn">폴더를 찾을 수 없음</span> <span class="note">폴더가 옮겨졌거나 삭제됐거나, 접근 권한이 없을 수 있습니다.</span></td><td>${btn('폴더 다시 지정', 'reconnect', { sm: 1 })}</td></tr>`
+    : `<tr class="row" data-act="openproj" data-arg="${i}" tabindex="0"><td><b>${esc(p.name)}</b><div class="path" title="${esc(p.path)}">${esc(p.path)}</div></td><td>${esc(p.branch)}</td><td>${i === 0 ? FILES.length : 0}</td><td>${p.last}</td><td>${p.remote ? `연결됨 (${p.remote})` : '연결 안 됨'}</td><td>${btn('열기', 'openproj', { sm: 1, arg: i })}</td></tr>`).join('')}
   </tbody></table></div>`;
 }
 function sOverview() {
@@ -259,12 +259,12 @@ function sOverview() {
   <div class="todo"><div><div class="note">지금 할 일</div><b>${todo[0]}</b><div>${todo[1]}</div></div><span class="sp"></span>${btn(todo[2] + ' →', todo[3], { p: 1 })}</div>
   <div class="panel"><h2>Git 상태</h2><div class="mono">${esc(PROJECTS[S.proj].branch)} @ a1b2c3d4e5f6</div>
    <p><span class="chip">Staged ${n('Staged')}</span> <span class="chip">Unstaged ${n('Unstaged')}</span> <span class="chip">Untracked ${n('Untracked')}</span> <span class="chip ok">충돌 0</span></p>
-   <p class="note">수치를 누르면 해당 필터가 적용된 변경 화면으로 이동합니다.</p></div>
+   <p class="note">숫자를 누르면 해당 조건으로 걸러진 변경 화면이 열립니다.</p></div>
   <div class="panel"><h2>최근 커밋 (${S.recent})</h2><table><tbody>
    <tr><td class="mono">a1b2c3d4e5f6</td><td>fix: 파일 읽기 오류 처리</td><td>홍길동</td><td class="note">2시간 전</td></tr>
    <tr><td class="mono">9f8e7d6c5b4a</td><td>feat: 설정 화면 추가</td><td>김개발</td><td class="note">어제</td></tr></tbody></table></div>
   <div class="panel"><h2>최근 활동</h2>${S.ai.state === 'done' ? '<p>AI 점검 완료 · 지적 3건</p>' : ''}${S.tests.done ? '<p>테스트 실패 1건 · 린트 3건</p>' : ''}${S.props.map(p => `<p>제안 #${p.id}: ${p.state}</p>`).join('')}</div>
-  <details><summary>제한 사항 (3)</summary><ul class="note"><li>submodule 내부 상태는 펼치지 않습니다.</li><li>링크·junction 항목은 내용을 읽지 않고 미지원 목록으로 표시합니다.</li><li>sparse checkout 메타데이터가 있어 전체 파일이 로컬에 없을 수 있습니다.</li></ul></details>`}`;
+  <details><summary>제한 사항 (3)</summary><ul class="note"><li>서브모듈 안쪽 상태는 보여 주지 않습니다.</li><li>링크·junction 파일은 내용을 읽지 않고 '지원하지 않음' 목록에 따로 표시합니다.</li><li>sparse checkout을 쓰는 저장소라서 일부 파일이 이 PC에 없을 수 있습니다.</li></ul></details>`}`;
 }
 function sChanges() {
   if (S.sim !== 'normal' || !files().length) return `<h1>변경</h1>${S.sim !== 'normal' ? simScreen('changes') : simScreenEmpty('changes')}`;
@@ -285,15 +285,15 @@ function sChanges() {
    <div class="r"><div class="note mono" style="margin-bottom:4px">${esc(S.activeFile)} · 읽기 전용</div>
     ${diff ? `<div class="diff" role="region" aria-label="diff">${diff.map(l => `<div class="${l[0] === '+' ? 'a' : l[0] === '-' ? 'd' : l[0] === '@' ? 'h' : ''}">${esc(l)}</div>`).join('')}</div>` : '<div class="banner warn">바이너리 파일은 점검 대상으로 담을 수 없습니다.</div>'}</div></div>
   ${S.capMsg ? `<div class="banner ok" style="margin-top:12px;background:var(--ok-soft);color:var(--ok)" role="status"><span>${esc(S.capMsg)}</span><span class="sp"></span>${btn('AI 점검 시작', 'go:ai', { sm: 1 })}${btn('테스트·린트', 'go:tests', { sm: 1 })}${btn('영향 범위', 'go:impact', { sm: 1 })}</div>` : ''}
-  <div class="actionbar"><span><b>${picked.length}개</b> 선택 · ${(picked.length * 3.1).toFixed(0)} KB${excluded ? ` · 제외 예정 ${excluded} (바이너리)` : ''}</span><span class="sp"></span>${btn('점검 대상으로 담기', 'capture', { p: 1, risk: 'read', dis: !picked.length })}</div>`;
+  <div class="actionbar"><span><b>${picked.length}개</b> 선택됨 · ${(picked.length * 3.1).toFixed(0)} KB${excluded ? ` · 제외될 파일 ${excluded}개 (바이너리)` : ''}</span><span class="sp"></span>${btn('점검 대상으로 담기', 'capture', { p: 1, risk: 'read', dis: !picked.length })}</div>`;
 }
 function simScreenEmpty(r) { const [why, label, act] = EMPTY[r]; return `<div class="empty"><p>${esc(why)}</p>${btn(label, act, { p: 1 })}</div>`; }
 function sAi() {
   const a = S.ai, sn = snaps();
   if (S.sim !== 'normal' || !isP0()) return `<h1>AI 점검</h1>${S.sim !== 'normal' ? simScreen('ai') : simScreenEmpty('ai')}`;
-  const stepName = ['① 대상', '② 모델·목적', '③ 전송 확인', '④ 결과'];
+  const stepName = ['① 점검 대상', '② 모델과 목적', '③ 보낼 내용 확인', '④ 결과'];
   const head = `<h1>AI 점검 <span class="sp"></span>${btn('새 점검', 'ainew', { sm: 1 })}${btn(a.history ? '현재 점검' : '이력', 'aihist', { sm: 1 })}</h1>`;
-  if (a.history) return head + `<div class="panel"><h2>점검 이력</h2><table><tbody><tr><td>#2</td><td>코드 리뷰 · 로컬</td><td>어제</td><td>완료 · 지적 2건</td></tr><tr><td>#1</td><td>개선 제안 · 로컬</td><td>3일 전</td><td>완료</td></tr>${a.state === 'done' ? '<tr><td>#3</td><td>코드 리뷰 · 로컬</td><td>방금</td><td>완료 · 지적 3건</td></tr>' : ''}</tbody></table></div>`;
+  if (a.history) return head + `<div class="panel"><h2>점검 이력</h2><table><tbody><tr><td>#2</td><td>코드 리뷰 · 이 PC</td><td>어제</td><td>완료 · 지적 2건</td></tr><tr><td>#1</td><td>개선 제안 · 이 PC</td><td>3일 전</td><td>완료</td></tr>${a.state === 'done' ? '<tr><td>#3</td><td>코드 리뷰 · 이 PC</td><td>방금</td><td>완료 · 지적 3건</td></tr>' : ''}</tbody></table></div>`;
   const steps = `<div class="steps" role="tablist" aria-label="점검 단계">${stepName.map((n, i) => `<button class="step" role="tab" data-act="aistep" data-arg="${i + 1}"${a.step === i + 1 ? ' aria-current="step"' : ''}>${n}</button>`).join('')}</div>`;
   const cloud = a.model !== 'ollama';
   let body = '';
@@ -301,28 +301,28 @@ function sAi() {
     : `<div class="empty"><p>점검 대상이 없습니다. 먼저 변경을 담으세요.</p>${btn('변경 보기', 'go:changes', { p: 1 })}</div>`;
   if (a.step === 2) body = `<div class="panel"><h2>모델·목적</h2>
    <label class="f"><span>종류</span><label><input type="radio" name="kind" data-bind="ai.kind" value="review"${a.kind === 'review' ? ' checked' : ''}> 코드 리뷰</label> &nbsp; <label><input type="radio" name="kind" data-bind="ai.kind" value="refactor"${a.kind === 'refactor' ? ' checked' : ''}> 작은 개선 제안</label></label>
-   <label class="f"><span>모델</span><select data-bind="ai.model"><option value="ollama"${!cloud ? ' selected' : ''}>이 PC의 Ollama (로컬)</option><option value="claude"${a.model === 'claude' ? ' selected' : ''}>Claude Sonnet 5.5 (내 API 키)</option><option value="gpt"${a.model === 'gpt' ? ' selected' : ''}>GPT-5.4 (내 API 키)</option></select></label>
-   <p class="note">${cloud ? '선택한 클라우드 제공자로 동의한 바이트만 전송됩니다. 앱 월 USD 20 한도에 미정산 예약도 포함됩니다.' : '이 PC(127.0.0.1)에서만 처리됩니다. 외부로 전송하지 않습니다.'}</p>
-   ${cloud ? `<label class="f"><span>API 키 (이번 동의 동안 메모리에만 보관, 저장하지 않음)</span><input type="password" autocomplete="off" data-bind="ai.key" data-k="key" value="${esc(a.key)}"></label>` : ''}
+   <label class="f"><span>모델</span><select data-bind="ai.model"><option value="ollama"${!cloud ? ' selected' : ''}>이 PC의 Ollama</option><option value="claude"${a.model === 'claude' ? ' selected' : ''}>Claude Sonnet 5.5 (내 API 키)</option><option value="gpt"${a.model === 'gpt' ? ' selected' : ''}>GPT-5.4 (내 API 키)</option></select></label>
+   <p class="note">${cloud ? '동의한 내용만 선택한 클라우드 서비스로 전송됩니다. 앱의 월 사용 한도(USD 20)에는 아직 정산되지 않은 예약분도 포함됩니다.' : '이 PC 안에서만 처리하며 밖으로 보내지 않습니다.'}</p>
+   ${cloud ? `<label class="f"><span>API 키 (이번 점검 동안만 메모리에 두고, 저장하지 않습니다)</span><input type="password" autocomplete="off" data-bind="ai.key" data-k="key" value="${esc(a.key)}"></label>` : ''}
    <label class="f"><span>목적 (최대 1000자)</span><textarea maxlength="1000" data-bind="ai.purpose" data-k="purpose">${esc(a.purpose)}</textarea></label>
-   <details><summary>고급: 다시 실행 번호</summary><label class="f"><span>같은 입력을 다시 실행할 때 올리는 번호</span><input type="text" inputmode="numeric" data-bind="ai.gen" data-k="gen" value="${a.gen}" style="width:80px"></label></details>
+   <details><summary>고급: 다시 실행 번호</summary><label class="f"><span>같은 내용을 다시 점검할 때 올리는 번호</span><input type="text" inputmode="numeric" data-bind="ai.gen" data-k="gen" value="${a.gen}" style="width:80px"></label></details>
    <div class="actionbar" style="position:static;margin:12px 0 0;padding:8px 0 0">${btn('← 이전', 'aistep', { arg: 1 })}${btn('다음: 전송 확인 →', 'aistep', { p: 1, arg: 3, dis: cloud && !a.key })}${cloud && !a.key ? '<span class="note">API 키를 입력하세요.</span>' : ''}</div></div>`;
   const dup = Number(a.gen) > 1;
   if (a.step === 3) body = `<div class="panel"><h2>전송 확인</h2>
-   <p class="note">아래 내용이 ${cloud ? '클라우드 제공자' : '이 PC의 모델'}로 전달됩니다. ${btn(a.showBytes ? '내용 숨기기' : '전송 내용 보기', 'aibytes', { sm: 1, risk: 'read' })}</p>
+   <p class="note">아래 내용이 ${cloud ? '클라우드 서비스' : '이 PC의 모델'}로 전송됩니다. ${btn(a.showBytes ? '내용 숨기기' : '전송 내용 보기', 'aibytes', { sm: 1, risk: 'read' })}</p>
    ${a.showBytes ? `<pre class="log" aria-label="전송 내용 미리보기">목적: ${esc(a.purpose)}\n파일: src/app.py, src/util.py, src/auth.py, tests/test_app.py\n(변경 diff 12 KB)</pre>` : ''}
-   <label style="display:block;margin:8px 0"><input type="checkbox" data-bind="ai.c1"${a.c1 ? ' checked' : ''}> 위 변경 내용·목적·파일명과 표시한 전송 범위를 확인했습니다.</label>
-   ${dup ? `<label style="display:block;margin:8px 0"><input type="checkbox" data-bind="ai.c2"${a.c2 ? ' checked' : ''}> 새 실행 번호는 이전 요청과 별도 호출이며 중복 비용이 들 수 있음을 확인했습니다.</label>` : ''}
+   <label style="display:block;margin:8px 0"><input type="checkbox" data-bind="ai.c1"${a.c1 ? ' checked' : ''}> 보낼 변경 내용, 목적, 파일 이름과 전송 범위를 확인했습니다.</label>
+   ${dup ? `<label style="display:block;margin:8px 0"><input type="checkbox" data-bind="ai.c2"${a.c2 ? ' checked' : ''}> 새 실행 번호로 보내면 이전 요청과 별개로 한 번 더 호출되어 비용이 중복될 수 있다는 점을 확인했습니다.</label>` : ''}
    <div class="actionbar" style="position:static;margin:12px 0 0;padding:8px 0 0">${btn('← 이전', 'aistep', { arg: 2 })}${btn('동의하고 시작', 'aistart', { p: 1, risk: 'send', dis: !a.c1 || (dup && !a.c2) })}</div></div>`;
   if (a.step === 4) {
-    if (a.state === 'running') body = `<div class="panel" role="status"><h2>점검 중…</h2><p>경과 ${a.elapsed}초 · 모델이 응답을 만들고 있습니다.</p><p class="note">진행률을 알 수 없으면 가짜 퍼센트를 표시하지 않습니다.</p>${btn('취소 요청', 'aicancel', { risk: 'read' })}<p class="note">취소해도 이미 전송된 내용은 회수되지 않습니다.</p></div>`;
-    else if (a.state === 'unknown') body = `<div class="banner err" role="alert"><span><b>결과 불명</b><br>응답을 확인하지 못했습니다. 자동으로 다시 보내지 않습니다. 필요하면 새로 시작하세요.</span><span class="sp"></span>${btn('새 점검', 'ainew')}</div><details><summary>오류 코드</summary><code class="mono">RESULT_UNCERTAIN</code></details>`;
-    else if (a.state === 'cancelled') body = `<div class="banner warn" role="status"><span>취소했습니다. 이미 전송된 내용은 회수되지 않습니다.</span><span class="sp"></span>${btn('새 점검', 'ainew')}</div>`;
+    if (a.state === 'running') body = `<div class="panel" role="status"><h2>점검 중…</h2><p>${a.elapsed}초 경과 · 모델이 응답을 만드는 중입니다.</p><p class="note">진행률을 알 수 없어서 퍼센트는 표시하지 않습니다.</p>${btn('취소 요청', 'aicancel', { risk: 'read' })}<p class="note">취소해도 이미 보낸 내용은 되돌릴 수 없습니다.</p></div>`;
+    else if (a.state === 'unknown') body = `<div class="banner err" role="alert"><span><b>결과를 알 수 없습니다</b><br>응답을 받았는지 확인하지 못했습니다. 같은 내용을 자동으로 다시 보내지는 않으니, 필요하면 새로 점검을 시작하세요.</span><span class="sp"></span>${btn('새 점검', 'ainew')}</div><details><summary>오류 코드</summary><code class="mono">RESULT_UNCERTAIN</code></details>`;
+    else if (a.state === 'cancelled') body = `<div class="banner warn" role="status"><span>점검을 취소했습니다. 이미 보낸 내용은 되돌릴 수 없습니다.</span><span class="sp"></span>${btn('새 점검', 'ainew')}</div>`;
     else if (a.state === 'done') {
       const f = FINDINGS[a.sel];
-      body = `<p class="note">모델 결과는 실행으로 검증한 결함이 아닙니다. 지적 0건도 결함 없음을 뜻하지 않습니다.</p><div class="split"><div class="l"><div class="list" role="listbox" aria-label="지적 목록">${FINDINGS.map((x, i) => `<div class="item" role="option" aria-selected="${a.sel === i}" data-act="aifind" data-arg="${i}" tabindex="0"><span class="chip ${x.sev === '오류' ? 'warn' : ''}">${x.sev}</span><span>${esc(x.title)}</span>${a.verdicts[i] ? `<span class="note">· ${a.verdicts[i]}</span>` : ''}</div>`).join('')}</div></div>
+      body = `<p class="note">AI가 짚은 내용은 실제로 실행해서 확인한 결함이 아닙니다. 지적이 없다고 해서 결함이 없다는 뜻도 아닙니다.</p><div class="split"><div class="l"><div class="list" role="listbox" aria-label="지적 목록">${FINDINGS.map((x, i) => `<div class="item" role="option" aria-selected="${a.sel === i}" data-act="aifind" data-arg="${i}" tabindex="0"><span class="chip ${x.sev === '오류' ? 'warn' : ''}">${x.sev}</span><span>${esc(x.title)}</span>${a.verdicts[i] ? `<span class="note">· ${a.verdicts[i]}</span>` : ''}</div>`).join('')}</div></div>
        <div class="r"><div class="panel"><h2>${esc(f.title)} ${bdg('ai')}</h2><p class="mono">${esc(f.file)}:${f.line}</p><p>${esc(f.body)}</p><div class="diff" style="max-height:none"><div>${esc(f.quote).replace(/\n/g, '</div><div>')}</div></div>
-       <p>사람 판정: ${['유효', '오탐', '불확실'].map(v => btn(v, 'aiverdict', { sm: 1, arg: v })).join(' ')} ${btn('편집기에서 열기', 'editor', { sm: 1, arg: f.file + ':' + f.line })}</p>${a.kind === 'refactor' ? `<p>${btn('개선 제안 보기 →', 'go:proposals', { sm: 1 })}</p>` : ''}</div></div></div>`;
+       <p>직접 판정: ${['맞음', '오탐', '보류'].map(v => btn(v, 'aiverdict', { sm: 1, arg: v })).join(' ')} ${btn('편집기에서 열기', 'editor', { sm: 1, arg: f.file + ':' + f.line })}</p>${a.kind === 'refactor' ? `<p>${btn('개선 제안 보기 →', 'go:proposals', { sm: 1 })}</p>` : ''}</div></div></div>`;
     } else body = `<div class="empty"><p>아직 실행하지 않았습니다.</p>${btn('① 대상부터', 'aistep', { arg: 1, p: 1 })}</div>`;
   }
   return head + steps + body;
@@ -332,23 +332,23 @@ function sProposals() {
   const p = S.props.find(x => x.id === S.propSel) || S.props[0];
   const banner = recovery() ? `<div class="banner warn" role="alert"><b>복구가 필요한 제안 1건</b><span>적용 중 중단되어 파일이 일부만 바뀌었을 수 있습니다.</span><span class="sp"></span>${btn('복구…', 'recover', { sm: 1, risk: 'write' })}</div>` : '';
   const actions = p.state === '검토 대기' ? `${btn('거절', 'propreject', { risk: 'read' })}${btn('다시 요청', 'go:ai')}${btn('승인하고 적용…', 'propapply', { p: 1, risk: 'write' })}` : p.state === '복구 필요' ? btn('복구…', 'recover', { p: 1, risk: 'write' }) : '<span class="note">추가 행동이 없습니다.</span>';
-  const progress = S.applying ? `<div class="banner info" role="status">적용 중: ${['백업 만드는 중…', '파일 게시 중…', '결과 확인 중…'][S.applying - 1]} (${S.applying}/3)</div>` : '';
+  const progress = S.applying ? `<div class="banner info" role="status">적용하는 중: ${['백업을 만드는 중…', '파일을 교체하는 중…', '결과를 확인하는 중…'][S.applying - 1]} (${S.applying}/3)</div>` : '';
   return `<h1>개선 제안</h1>${banner}${progress}<div class="split"><div class="l"><div class="list" role="listbox" aria-label="제안 목록">${S.props.map(x => `<div class="item" role="option" aria-selected="${p.id === x.id}" data-act="propsel" data-arg="${x.id}" tabindex="0"><b>#${x.id}</b><span>${x.state}</span></div>`).join('')}</div></div>
   <div class="r"><div class="panel"><h2>제안 #${p.id} · ${p.state} ${bdg('ai')}</h2><p>${esc(p.note)}</p><p class="mono">${p.files.join(', ')}</p>
   <div class="diff"><div class="h">@@ 미리보기 @@</div><div class="d">- return token == stored</div><div class="a">+ return hmac.compare_digest(token, stored)</div></div>
-  <p class="note">적용하면: 파일 ${p.files.length}개를 수정하고 백업을 만듭니다. index·commit·push는 건드리지 않습니다. 생성 동의는 파일 쓰기 승인이 아닙니다.</p>
+  <p class="note">적용하면 파일 ${p.files.length}개를 수정하며, 먼저 백업을 만듭니다. 스테이징·커밋·푸시는 하지 않습니다. 제안을 만드는 데 동의한 것은 파일 수정을 승인한 것이 아닙니다.</p>
   <div class="prow">${actions}</div></div></div></div>`;
 }
 function sTests() {
   if (S.sim !== 'normal') return `<h1>테스트·린트</h1>${simScreen('tests')}`;
   if (!isP0()) return `<h1>테스트·린트</h1>${simScreenEmpty('tests')}`;
   const t = S.tests, plans = [['pytest', '.'], ['ruff check .', '.']];
-  return `<h1>테스트·린트 <span class="sp"></span>${t.trusted ? '<span class="chip ok">프로젝트 신뢰됨</span>' : `<span class="chip warn">아직 신뢰하지 않음</span>${btn('신뢰하기…', 'trust', { sm: 1 })}`}</h1>
-  <div class="panel"><h2>감지된 작업 <span class="note">(pyproject.toml, pytest.ini 기반)</span></h2><table><tbody>${plans.map((p, i) => `<tr><td class="mono">${p[0]}</td><td class="note">작업 폴더 ${p[1]}</td><td style="text-align:right">${btn('실행…', 'runtest', { sm: 1, arg: i, risk: 'exec', dis: t.state === 'running' })}</td></tr>`).join('')}</tbody></table>
+  return `<h1>테스트·린트 <span class="sp"></span>${t.trusted ? '<span class="chip ok">신뢰하는 프로젝트</span>' : `<span class="chip warn">신뢰하지 않은 프로젝트</span>${btn('신뢰하기…', 'trust', { sm: 1 })}`}</h1>
+  <div class="panel"><h2>찾은 작업 <span class="note">(pyproject.toml, pytest.ini 기준)</span></h2><table><tbody>${plans.map((p, i) => `<tr><td class="mono">${p[0]}</td><td class="note">작업 폴더 ${p[1]}</td><td style="text-align:right">${btn('실행…', 'runtest', { sm: 1, arg: i, risk: 'exec', dis: t.state === 'running' })}</td></tr>`).join('')}</tbody></table>
   <details><summary>고급: 작업 폴더 · 패키지 관리자</summary><label class="f"><span>프로젝트 내 작업 폴더</span><input type="text" value="." style="width:200px"></label></details>
-  <p class="note">실행되는 코드는 내 Windows 계정 권한으로 파일·네트워크에 접근합니다. 계획별 확인과 프로젝트 신뢰가 필요합니다.</p>${t.trusted ? '' : '<p class="note">실행하려면 먼저 프로젝트를 신뢰해야 합니다.</p>'}</div>
+  <p class="note">실행하는 코드는 내 Windows 계정 권한으로 파일과 네트워크에 접근할 수 있습니다. 작업마다 확인을 거치고, 프로젝트를 먼저 신뢰해야 합니다.</p>${t.trusted ? '' : '<p class="note">실행하려면 먼저 프로젝트를 신뢰해야 합니다.</p>'}</div>
   <div class="panel"><h2>출력 ${t.state === 'running' ? btn('취소', 'canceltest', { sm: 1 }) : ''}</h2><pre class="log" aria-live="polite">${esc(t.log.join('\n')) || '아직 실행하지 않았습니다.'}</pre>
-  ${t.done ? `<p><b>결과: 실패 (종료 코드 1)</b> · 진단 3건 · 출력 잘림 없음 ${bdg('m')}</p><table><tbody>${t.diag.map(d => `<tr><td class="mono">${d[0]}</td><td>${esc(d[1])}</td><td>${btn('편집기에서 열기', 'editor', { sm: 1, arg: d[0] })}</td></tr>`).join('')}</tbody></table>` : ''}</div>`;
+  ${t.done ? `<p><b>결과: 실패 (종료 코드 1)</b> · 문제 3건 · 출력이 잘리지 않음 ${bdg('m')}</p><table><tbody>${t.diag.map(d => `<tr><td class="mono">${d[0]}</td><td>${esc(d[1])}</td><td>${btn('편집기에서 열기', 'editor', { sm: 1, arg: d[0] })}</td></tr>`).join('')}</tbody></table>` : ''}</div>`;
 }
 function sCompare() {
   const sn = snaps();
@@ -366,22 +366,22 @@ function sCompare() {
       <tr><td>변경 규모</td><td>파일 ${b.files} · ${b.kb} KB</td><td>파일 ${a.files} · ${a.kb} KB</td><td></td></tr>
       <tr><td>테스트 통과</td><td>${b.metrics.pass}</td><td>${a.metrics.pass}</td><td>${bdg('m')}</td></tr>
       <tr><td>테스트 실패</td><td>${b.metrics.fail}</td><td>${a.metrics.fail}</td><td>${bdg('m')}</td></tr>
-      <tr><td>린트 오류</td><td>${b.metrics.lint}</td><td>${a.metrics.lint}</td><td>${bdg('m')}</td></tr></tbody></table><p><b>판정: 개선</b> <span class="note">— 두 기록이 같은 실행 환경에서 측정되었습니다.</span></p>`;
+      <tr><td>린트 오류</td><td>${b.metrics.lint}</td><td>${a.metrics.lint}</td><td>${bdg('m')}</td></tr></tbody></table><p><b>판정: 개선</b> <span class="note">— 두 기록을 같은 실행 환경에서 측정했습니다.</span></p>`;
   }
   return `<h1>전후 비교</h1><div class="panel"><div class="prow">이전 <select data-bind="cmp.before">${opt(0, c.before)}</select> → 이후 <select data-bind="cmp.after"><option value="">선택</option>${opt(0, c.after)}</select>
   <label><input type="checkbox"> 개선 제안과 연결</label></div>
-  <h2>준비 상태</h2><p>${okB ? '✔' : '✖'} 이전 검증 기록 ${okB ? '있음' : '없음'} &nbsp; ${c.after ? (okA ? '✔ 이후 검증 기록 있음' : `✖ 이후 검증 기록 없음 ${btn('테스트·린트로 이동', 'go:tests', { sm: 1 })}`) : '<span class="note">이후 스냅샷을 선택하세요.</span>'}</p>
-  ${btn('실측 비교', 'compare', { p: 1, risk: 'read', dis: !(okB && okA) })}<p class="note">변경 전에 baseline 검증을 실행하세요. 미측정·환경 불일치는 비교 불가로 표시합니다.</p></div>${res}`;
+  <h2>비교 준비</h2><p>${okB ? '✔ 이전 검증 기록이 있습니다' : '✖ 이전 검증 기록이 없습니다'} &nbsp; ${c.after ? (okA ? '✔ 이후 검증 기록이 있습니다' : `✖ 이후 검증 기록이 없습니다 ${btn('테스트·린트로 이동', 'go:tests', { sm: 1 })}`) : '<span class="note">이후 스냅샷을 선택하세요.</span>'}</p>
+  ${btn('실측 비교', 'compare', { p: 1, risk: 'read', dis: !(okB && okA) })}<p class="note">변경하기 전에 기준(baseline) 검증을 먼저 실행해 두세요. 측정하지 않았거나 실행 환경이 다르면 '비교 불가'로 표시합니다.</p></div>${res}`;
 }
 function sImpact() {
   if (S.sim !== 'normal' || !snaps().length) return `<h1>영향 범위</h1>${S.sim !== 'normal' ? simScreen('impact') : simScreenEmpty('impact')}`;
-  const im = S.impact, tabs = [['static', '정적 참조', 25], ['stat', '과거 공동 변경', null], ['ai', 'AI 추론', null]];
+  const im = S.impact, tabs = [['static', '정적 참조', 25], ['stat', '함께 바뀐 이력', null], ['ai', 'AI 추정', null]];
   let body = '';
   if (!im.ran) body = '<div class="empty"><p>아직 분석하지 않았습니다.</p></div>';
-  else if (im.tab === 'static') body = `<p class="note">${bdg('s')} parser가 읽은 구문과 정적 바인딩만 표시합니다. 동적 호출과 외부 모듈은 미해결이며 실행 결과를 뜻하지 않습니다.</p><div class="split"><div class="l"><div class="list">${IMPACT.static.map((x, i) => `<div class="item" role="option" aria-selected="${im.sel === i}" data-act="impsel" data-arg="${i}" tabindex="0"><b class="mono">${x[0]}</b><span class="note">${x[1].length}곳</span></div>`).join('')}</div></div><div class="r"><div class="panel"><h2>${esc(IMPACT.static[im.sel][0])}</h2>${IMPACT.static[im.sel][1].length ? '<ul>' + IMPACT.static[im.sel][1].map(l => `<li class="mono">${l}</li>`).join('') + '</ul>' : '<p class="note">이 파일을 참조하는 곳을 찾지 못했습니다. 동적 호출은 읽지 못합니다.</p>'}</div></div></div>`;
-  else if (im.tab === 'stat') body = remote() ? `<p class="note">${bdg('t')} 원인이 아닌 통계입니다. 서버 스냅샷 #1과 로컬 HEAD가 일치합니다.</p><table><tbody>${IMPACT.stat.map(x => `<tr><td class="mono">${x[0]}</td><td>${x[1]}</td></tr>`).join('')}</tbody></table>`
-    : `<div class="banner warn"><span><b>원격 연결 없음</b> — 과거 이력은 표시할 수 없습니다. 0건이라는 뜻이 아닙니다.</span><span class="sp"></span>${btn('서버 연결하기', 'go:account', { sm: 1 })}</div>`;
-  else body = `<p class="note">${bdg('ai')} 모델의 추론이며 검증되지 않았습니다.</p><table><tbody>${IMPACT.ai.map(x => `<tr><td class="mono">${x[0]}</td><td>${x[1]}</td></tr>`).join('')}</tbody></table>`;
+  else if (im.tab === 'static') body = `<p class="note">${bdg('s')} 파서가 코드에서 읽어 낸 구문과 정적 연결만 보여 줍니다. 동적 호출과 외부 모듈은 알 수 없으며, 실제 실행 결과를 뜻하지도 않습니다.</p><div class="split"><div class="l"><div class="list">${IMPACT.static.map((x, i) => `<div class="item" role="option" aria-selected="${im.sel === i}" data-act="impsel" data-arg="${i}" tabindex="0"><b class="mono">${x[0]}</b><span class="note">${x[1].length}곳</span></div>`).join('')}</div></div><div class="r"><div class="panel"><h2>${esc(IMPACT.static[im.sel][0])}</h2>${IMPACT.static[im.sel][1].length ? '<ul>' + IMPACT.static[im.sel][1].map(l => `<li class="mono">${l}</li>`).join('') + '</ul>' : '<p class="note">이 파일을 가져다 쓰는 곳을 찾지 못했습니다. 동적 호출은 확인할 수 없습니다.</p>'}</div></div></div>`;
+  else if (im.tab === 'stat') body = remote() ? `<p class="note">${bdg('t')} 원인을 뜻하는 것이 아니라 통계입니다. 서버 스냅샷 #1과 이 PC의 HEAD가 같습니다.</p><table><tbody>${IMPACT.stat.map(x => `<tr><td class="mono">${x[0]}</td><td>${x[1]}</td></tr>`).join('')}</tbody></table>`
+    : `<div class="banner warn"><span><b>서버에 연결되어 있지 않아</b> 함께 바뀐 이력을 보여 드릴 수 없습니다. 이력이 0건이라는 뜻은 아닙니다.</span><span class="sp"></span>${btn('서버 연결하기', 'go:account', { sm: 1 })}</div>`;
+  else body = `<p class="note">${bdg('ai')} 모델의 추정이며 검증되지 않았습니다.</p><table><tbody>${IMPACT.ai.map(x => `<tr><td class="mono">${x[0]}</td><td>${x[1]}</td></tr>`).join('')}</tbody></table>`;
   return `<h1>영향 범위 <span class="sp"></span><label class="prow">대상 <select><option>스냅샷 #${snaps()[snaps().length - 1].id}</option></select></label>${btn('분석', 'analyze', { p: 1, risk: 'read' })}</h1>
   <div class="steps" role="tablist" aria-label="근거 종류">${tabs.map(t => `<button class="step" role="tab" data-act="imptab" data-arg="${t[0]}"${im.tab === t[0] ? ' aria-current="step"' : ''}>${t[1]}${t[2] && im.ran ? ` (${t[2]})` : ''}</button>`).join('')}</div>${body}`;
 }
@@ -390,24 +390,24 @@ function sInbox() {
   const F = S.inboxF, list = S.inbox.filter(i => (!F.proj || i.proj === F.proj) && (!F.src || i.src === F.src) && (!F.sev || i.sev === F.sev) && (F.read === 'all' || (F.read === 'unread') === !i.read));
   const sel = S.inbox.find(i => i.id === S.inboxSel);
   const so = (k, opts) => `<select aria-label="${k}" data-bind="inboxF.${k}">${opts.map(o => `<option value="${o[0]}"${F[k] === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}</select>`;
-  return `<h1>알림 (미읽음 ${unread()}) <span class="sp"></span>${btn('모두 읽음', 'readall', { sm: 1 })}</h1>
-  <div class="prow" style="margin-bottom:8px">${so('proj', [['', '모든 프로젝트'], ['my-repo', 'my-repo'], ['api-server', 'api-server']])}${so('src', [['', '모든 종류'], ...Object.entries(SRCN)])}${so('sev', [['', '모든 심각도'], ...Object.entries(SEVN)])}${so('read', [['all', '읽음 전체'], ['unread', '안 읽음'], ['read', '읽음']])}</div>
-  ${list.length ? `<div class="split"><div class="l"><div class="list" role="listbox" aria-label="알림 목록">${list.map(i => `<div class="item" role="option" aria-selected="${S.inboxSel === i.id}" data-act="inboxsel" data-arg="${i.id}" tabindex="0">${i.read ? '' : '<span class="dot" style="background:var(--accent)" title="안 읽음"></span>'}<span class="chip ${i.sev === 'error' ? 'warn' : ''}">${SEVN[i.sev]}</span><span>${esc(i.title)}</span><span class="note">· ${i.proj}</span></div>`).join('')}</div></div>
-  <div class="r">${sel ? `<div class="panel"><h2>${esc(sel.title)}</h2><p class="note">${SRCN[sel.src]} · ${sel.proj}</p>${btn('해당 화면으로 이동', 'inboxgo', { p: 1, arg: sel.id })}<p class="note">이동만 합니다. 코드 수정·명령 실행·전송은 일어나지 않습니다. AI 지적은 추론이고 검증 실패는 실제 명령 결과입니다.</p></div>` : '<p class="note">알림을 선택하면 요약이 표시됩니다.</p>'}</div></div>` : '<div class="empty"><p>조건에 맞는 알림이 없습니다.</p></div>'}`;
+  return `<h1>알림 (읽지 않음 ${unread()}) <span class="sp"></span>${btn('모두 읽음으로 표시', 'readall', { sm: 1 })}</h1>
+  <div class="prow" style="margin-bottom:8px">${so('proj', [['', '모든 프로젝트'], ['my-repo', 'my-repo'], ['api-server', 'api-server']])}${so('src', [['', '모든 종류'], ...Object.entries(SRCN)])}${so('sev', [['', '모든 심각도'], ...Object.entries(SEVN)])}${so('read', [['all', '읽음 여부 전체'], ['unread', '읽지 않음'], ['read', '읽음']])}</div>
+  ${list.length ? `<div class="split"><div class="l"><div class="list" role="listbox" aria-label="알림 목록">${list.map(i => `<div class="item" role="option" aria-selected="${S.inboxSel === i.id}" data-act="inboxsel" data-arg="${i.id}" tabindex="0">${i.read ? '' : '<span class="dot" style="background:var(--accent)" title="읽지 않음"></span>'}<span class="chip ${i.sev === 'error' ? 'warn' : ''}">${SEVN[i.sev]}</span><span>${esc(i.title)}</span><span class="note">· ${i.proj}</span></div>`).join('')}</div></div>
+  <div class="r">${sel ? `<div class="panel"><h2>${esc(sel.title)}</h2><p class="note">${SRCN[sel.src]} · ${sel.proj}</p>${btn('해당 화면으로 이동', 'inboxgo', { p: 1, arg: sel.id })}<p class="note">화면만 이동하며, 코드 수정·명령 실행·전송은 하지 않습니다. AI 지적은 추정이고, 테스트 실패는 실제로 실행한 결과입니다.</p></div>` : '<p class="note">알림을 고르면 요약이 보입니다.</p>'}</div></div>` : '<div class="empty"><p>조건에 맞는 알림이 없습니다.</p></div>'}`;
 }
 function sAccount() {
   const a = S.acct;
   const mm = String(Math.floor(a.secs / 60)).padStart(2, '0') + ':' + String(a.secs % 60).padStart(2, '0');
   const conn = isP0() || true ? `<div class="panel"><h2>프로젝트 연결 <span class="note">(최대 16개)</span></h2>${!loggedIn() ? '<p class="note">연결하려면 먼저 로그인하세요.</p>' : `<table><tbody><tr><td><b>my-repo</b></td><td>${PROJECTS[0].remote ? `연결됨 (${PROJECTS[0].remote}) <span class="chip ok">확인됨</span>` : `<select aria-label="서버 저장소"><option>2k-c-a/20240636 (#1)</option><option>example/api (#2)</option></select>`}</td><td>${PROJECTS[0].remote ? btn('연결 상태 확인', 'checkconn', { sm: 1, risk: 'read' }) : btn('계정·저장소 확인 후 연결', 'connect', { sm: 1 })}</td></tr></tbody></table><details><summary>고급: 저장소 ID 직접 입력</summary><label class="f"><span>서버 저장소 ID</span><input type="text" inputmode="numeric" style="width:100px"></label></details>`}</div>` : '';
   return `<h1>계정·연결</h1>
-  <div class="panel"><h2>계정</h2>${a.state === 'out' ? `<p>로그인 안 됨 <span class="chip">선택 사항</span></p><p class="note">로그인하면 서버 분석과 과거 이력을 쓸 수 있습니다. 로그인하지 않아도 로컬 기능은 모두 쓸 수 있습니다.</p>${btn('브라우저로 로그인', 'login', { p: 1 })}` : a.state === 'pending' ? `<p>브라우저에서 같은 코드를 입력해 승인하세요.</p><div class="big" aria-label="확인 코드">K7-4Q9</div><p class="note" role="status">남은 시간 ${mm} · 5분 안에 승인해야 합니다.</p>${btn('(시연) 브라우저에서 승인함', 'approve', { p: 1 })}${btn('취소', 'logincancel')}` : `<p><span class="chip ok">로그인됨</span> octocat · 세션 8시간</p>${btn('로그아웃 (세션 폐기)', 'logout')}`}</div>${conn}`;
+  <div class="panel"><h2>계정</h2>${a.state === 'out' ? `<p>로그인하지 않음 <span class="chip">선택 사항</span></p><p class="note">로그인하면 서버 분석과 과거 이력을 쓸 수 있습니다. 로그인하지 않아도 로컬 기능은 모두 쓸 수 있습니다.</p>${btn('브라우저로 로그인', 'login', { p: 1 })}` : a.state === 'pending' ? `<p>브라우저에서 같은 코드를 입력해 승인하세요.</p><div class="big" aria-label="확인 코드">K7-4Q9</div><p class="note" role="status">남은 시간 ${mm} · 5분 안에 승인해야 합니다.</p>${btn('(시연) 브라우저에서 승인함', 'approve', { p: 1 })}${btn('취소', 'logincancel')}` : `<p><span class="chip ok">로그인됨</span> octocat · 세션 유효 시간 8시간</p>${btn('로그아웃 (세션 종료)', 'logout')}`}</div>${conn}`;
 }
 function sSettings() {
   const secs = [['editor', '에디터'], ['ai', 'AI'], ['project', '프로젝트 기본값'], ['diag', '진단'], ['look', '모양']];
   const c = { editor: `<h2>에디터</h2><label class="f"><span>기본 에디터</span><select data-bind="editor"><option value="vscode"${S.editor === 'vscode' ? ' selected' : ''}>VS Code</option><option value="cursor"${S.editor === 'cursor' ? ' selected' : ''}>Cursor</option></select></label>${btn('실행 파일 선택·설정', 'pickexe', { risk: 'read' })}`,
-    ai: `<h2>AI</h2><p>로컬 모델(Ollama): <span class="chip warn">확인 안 됨</span> ${btn('상태 확인', 'modelcheck', { sm: 1, risk: 'read' })}</p><p class="note">모델 설치는 자동으로 하지 않습니다. API 키는 점검할 때마다 입력하며 저장하지 않습니다.</p>`,
+    ai: `<h2>AI</h2><p>이 PC의 모델(Ollama): <span class="chip warn">아직 확인하지 않음</span> ${btn('상태 확인', 'modelcheck', { sm: 1, risk: 'read' })}</p><p class="note">모델은 자동으로 설치하지 않습니다. API 키는 점검할 때마다 직접 입력하며, 저장하지 않습니다.</p>`,
     project: `<h2>프로젝트 기본값</h2><label class="f"><span>최근 커밋 수 (1~100)</span><input type="text" inputmode="numeric" data-bind="recent" data-k="recent" value="${S.recent}" style="width:80px"></label>`,
-    diag: `<h2>진단</h2>${btn('최소 진단 정보 저장', 'diag', { risk: 'read' })}<p class="note">업데이트: 설정되지 않음 (읽기 전용 표시, 자동 다운로드 없음)</p>`,
+    diag: `<h2>진단</h2>${btn('최소 진단 정보 저장', 'diag', { risk: 'read' })}<p class="note">업데이트: 아직 설정되지 않았습니다 (상태만 보여 주며, 자동으로 내려받지 않습니다)</p>`,
     look: `<h2>모양</h2><label class="f"><span>테마</span><select data-bind="theme"><option value="light"${S.theme === 'light' ? ' selected' : ''}>라이트</option><option value="dark"${S.theme === 'dark' ? ' selected' : ''}>다크</option></select></label>` };
   return `<h1>설정</h1><div class="split"><div class="l" style="flex-basis:180px"><div class="list">${secs.map(s => `<div class="item" role="option" aria-selected="${S.setSec === s[0]}" data-act="setsec" data-arg="${s[0]}" tabindex="0">${s[1]}</div>`).join('')}</div></div><div class="r"><div class="panel">${c[S.setSec]}</div></div></div>`;
 }
@@ -415,11 +415,11 @@ const SCREENS = { overview: sOverview, changes: sChanges, ai: sAi, proposals: sP
 
 function inspector() {
   const r = S.route, p = PROJECTS[S.proj];
-  if (S.first) return '<h3>내 코드는 어디로 가나요?</h3><p class="note">기본은 전송 없음. 로컬 모델은 이 PC에서만, 클라우드는 동의한 바이트만 전송합니다.</p>';
+  if (S.first) return '<h3>내 코드는 어디로 가나요?</h3><p class="note">기본적으로 코드를 어디에도 보내지 않습니다. 이 PC의 모델은 PC 안에서만 처리하고, 클라우드 모델은 동의한 부분만 보냅니다.</p>';
   if (r === 'overview' || r === 'projects') return `<h3>프로젝트 정보</h3><p class="mono">${esc(p.path)}</p><p>에디터: ${S.editor === 'vscode' ? 'VS Code' : 'Cursor'}</p><p>원격 연결: ${p.remote || '없음'}</p>${btn('편집기에서 열기', 'editor', { sm: 1, arg: p.path })}<h3 style="margin-top:12px">최근 커밋 수</h3><p class="note">설정 > 프로젝트 기본값에서 바꿉니다 (현재 ${S.recent}).</p>`;
-  if (r === 'changes') { const f = FILES.find(x => x.path === S.activeFile); return `<h3>선택한 파일</h3><p class="mono">${esc(f.path)}</p><p>상태: ${f.st} · ${f.grp}</p>${f.binary ? '<p class="note">바이너리는 제외됩니다.</p>' : '<p class="note">큰 파일·비밀 의심 내용도 제외됩니다.</p>'}`; }
+  if (r === 'changes') { const f = FILES.find(x => x.path === S.activeFile); return `<h3>선택한 파일</h3><p class="mono">${esc(f.path)}</p><p>상태: ${f.st} · ${f.grp}</p>${f.binary ? '<p class="note">바이너리는 제외됩니다.</p>' : '<p class="note">크기가 큰 파일과 비밀 값이 들어 있는 것으로 보이는 내용도 제외됩니다.</p>'}`; }
   if (r === 'ai') return `<h3>보낼 내용</h3><p>대상: ${S.ai.snap ? `스냅샷 #${S.ai.snap}` : '선택 안 됨'}</p><p>목적지: ${S.ai.model === 'ollama' ? '127.0.0.1 (이 PC)' : '클라우드 제공자'}</p><p>비용 추정: ${S.ai.model === 'ollama' ? '$0' : '약 $0.02'}</p><p class="note">이 요약은 모든 단계에서 보입니다.</p>`;
-  return '<h3>상세</h3><p class="note">선택한 항목의 상세·근거가 여기에 표시됩니다.</p>';
+  return '<h3>상세</h3><p class="note">선택한 항목의 자세한 내용과 근거가 여기에 나타납니다.</p>';
 }
 
 /* ---------------- shell ---------------- */
@@ -439,32 +439,32 @@ function shell() {
   <div class="menubar" role="menubar">${Object.keys(menus).map(m => `<button role="menuitem" aria-haspopup="true" aria-expanded="${S.menu === m}" data-act="menu" data-arg="${m}">${m}(${m[0] === '파' ? 'F' : m[0] === '보' ? 'V' : m[0] === '프' ? 'P' : 'H'})</button>`).join('')}
    ${S.menu ? `<div class="menu" role="menu" style="left:${Object.keys(menus).indexOf(S.menu) * 64 + 4}px">${menus[S.menu].map(([l, k, a]) => `<button role="menuitem" data-act="${a.split(':')[0]}" ${a.includes(':') ? `data-arg="${a.split(':')[1]}"` : ''}><span>${l}</span><kbd>${k}</kbd></button>`).join('')}</div>` : ''}</div>
   <div class="body"><nav class="rail${S.navOpen ? ' open' : ''}" aria-label="주 메뉴">
-   ${railItem('projects', '프로젝트', 'folder')}<hr>${railItem('inbox', '알림', 'bell', unread() ? `<span class="cnt" aria-label="미읽음 ${unread()}">${unread()}</span>` : '')}${railItem('account', '계정·연결', 'user')}${railItem('settings', '설정', 'gear')}<hr>
+   ${railItem('projects', '프로젝트', 'folder')}<hr>${railItem('inbox', '알림', 'bell', unread() ? `<span class="cnt" aria-label="읽지 않음 ${unread()}">${unread()}</span>` : '')}${railItem('account', '계정·연결', 'user')}${railItem('settings', '설정', 'gear')}<hr>
    <button class="nav" data-act="web" title="웹 분석 열기">${icon('globe')}<span class="lbl">웹 분석 열기</span></button></nav>
    <div class="col"><header class="phead">
     <div class="prow"><button class="b sm" data-act="togglenav" aria-label="메뉴 열기" style="display:${S.size === 600 ? 'inline-flex' : 'none'}">${icon('menu')}</button>
      ${inProj ? `<select aria-label="프로젝트 전환" data-bind="proj">${PROJECTS.filter(x => !x.missing).map(x => `<option value="${PROJECTS.indexOf(x)}"${PROJECTS.indexOf(x) === S.proj ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select><span class="chip">${esc(p.branch)}</span><span class="chip ${nChg ? 'warn' : ''}">변경 ${nChg}</span><span class="chip ok">충돌 0</span><span class="path" title="${esc(p.path)}">${esc(p.path)}</span>`
       : `<b style="font-size:14px">${S.first ? '시작하기' : ({ projects: '프로젝트', inbox: '알림', account: '계정·연결', settings: '설정' }[S.route])}</b>`}
-     <span class="sp"></span><button class="chip" data-act="go:account" title="계정·연결">${icon('user')}<span class="acl"> ${loggedIn() ? 'octocat' : '로그인 안 됨 · 선택'}</span></button>
+     <span class="sp"></span><button class="chip" data-act="go:account" title="계정·연결">${icon('user')}<span class="acl"> ${loggedIn() ? 'octocat' : '로그인하지 않음'}</span></button>
      <button class="b sm" data-act="togglinsp" aria-label="정보 패널" style="display:${S.size === 1280 ? 'none' : 'inline-flex'}">정보 ▸</button></div>
     ${inProj ? `<div class="tabs" role="tablist" aria-label="프로젝트 작업">${tab}</div><select class="tabsel" aria-label="프로젝트 작업" data-bind="route">${TABS.map(([id, n]) => `<option value="${id}"${S.route === id ? ' selected' : ''}>${n}</option>`).join('')}</select>` : '<div style="height:8px"></div>'}</header>
     <div class="content"><main class="main" id="main" tabindex="-1">${main}</main><aside class="insp${S.inspOpen ? ' open' : ''}" aria-label="보조 정보">${inspector()}</aside></div></div></div>
-  <footer class="status" role="status"><span><span class="dot"></span>에이전트 정상</span><span class="opt"><span class="dot${remote() ? '' : ' off'}"></span>${remote() ? '원격 연결됨' : '원격 연결 없음'}</span><span class="opt">실행 중 작업 ${S.tests.state === 'running' || S.ai.state === 'running' ? 1 : 0}</span><span class="sp"></span><span class="opt">v0.8.0 (목업)</span></footer>
+  <footer class="status" role="status"><span><span class="dot"></span>에이전트 정상</span><span class="opt"><span class="dot${remote() ? '' : ' off'}"></span>${remote() ? '서버에 연결됨' : '서버 연결 안 됨'}</span><span class="opt">실행 중인 작업 ${S.tests.state === 'running' || S.ai.state === 'running' ? 1 : 0}</span><span class="sp"></span><span class="opt">v0.8.0 (목업)</span></footer>
   ${S.modal ? modalHtml() : ''}${S.toast ? `<div class="toast" role="status">${esc(S.toast)}</div>` : ''}`;
 }
 function modalHtml() {
   const m = S.modal;
-  if (m.type === 'confirm') return `<div class="scrim" data-act="modalcancel-bg"><div class="dlg" role="alertdialog" aria-modal="true" aria-label="${esc(m.title)}"><div class="hd">Windows 확인 창 (시뮬레이션) — 앱 밖 네이티브 창이 최종 확인합니다</div><div class="bd"><b>${esc(m.title)}</b><p>${esc(m.body)}</p></div><div class="ft">${btn('취소', 'modalcancel')}${btn(esc(m.ok), 'modalok', { p: 1, risk: m.risk })}</div></div></div>`;
+  if (m.type === 'confirm') return `<div class="scrim" data-act="modalcancel-bg"><div class="dlg" role="alertdialog" aria-modal="true" aria-label="${esc(m.title)}"><div class="hd">Windows 확인 창 (시뮬레이션) — 실제로는 앱 밖의 Windows 창이 마지막으로 확인합니다</div><div class="bd"><b>${esc(m.title)}</b><p>${esc(m.body)}</p></div><div class="ft">${btn('취소', 'modalcancel')}${btn(esc(m.ok), 'modalok', { p: 1, risk: m.risk })}</div></div></div>`;
   const items = palItems().filter(i => i[0].toLowerCase().includes(S.pal.q.toLowerCase()));
-  return `<div class="scrim" data-act="modalcancel-bg"><div class="dlg pal" role="dialog" aria-modal="true" aria-label="명령 팔레트"><div class="bd"><input type="text" id="pal" placeholder="동작 검색 (Enter 실행, Esc 닫기)" aria-label="명령 검색" data-bind="pal.q" data-k="pal" value="${esc(S.pal.q)}">${items.map((i, n) => `<div class="item" data-act="palrun" data-arg="${n}" aria-selected="${n === S.pal.i}">${esc(i[0])}</div>`).join('') || '<p class="note">일치하는 동작이 없습니다.</p>'}</div></div></div>`;
+  return `<div class="scrim" data-act="modalcancel-bg"><div class="dlg pal" role="dialog" aria-modal="true" aria-label="명령 팔레트"><div class="bd"><input type="text" id="pal" placeholder="할 일 검색 (Enter: 실행, Esc: 닫기)" aria-label="명령 검색" data-bind="pal.q" data-k="pal" value="${esc(S.pal.q)}">${items.map((i, n) => `<div class="item" data-act="palrun" data-arg="${n}" aria-selected="${n === S.pal.i}">${esc(i[0])}</div>`).join('') || '<p class="note">일치하는 동작이 없습니다.</p>'}</div></div></div>`;
 }
 const palItems = () => [...TABS.map(([id, n]) => ['탭 이동: ' + n, 'go:' + id]), ['프로젝트 목록', 'go:projects'], ['알림', 'go:inbox'], ['계정·연결', 'go:account'], ['설정', 'go:settings'], ['폴더 등록', 'register'], ['테마 전환', 'toggletheme'], ...PROJECTS.filter(p => !p.missing).map((p, i) => ['프로젝트 전환: ' + p.name, 'openproj:' + i])];
 
 function toolbar() {
   const seg = (name, vals, cur) => vals.map(([v, l]) => `<button class="b sm" data-tb="${name}" data-v="${v}" aria-pressed="${String(cur) === String(v)}">${l}</button>`).join('');
   return `<b>창 크기</b><span class="seg">${seg('size', [[600, '600×400 최소'], [900, '900×640 기본'], [1280, '1280×800']], S.size)}</span>
-  <b>상태 시연</b><span class="seg">${seg('sim', [['normal', '정상'], ['loading', '로딩'], ['error', '오류'], ['empty', '빈 상태'], ['unknown', 'AI 결과 불명']], S.sim)}</span>
-  <label><input type="checkbox" data-tb="first"${S.first ? ' checked' : ''}> 첫 실행(프로젝트 0개)</label>
+  <b>상태 보기</b><span class="seg">${seg('sim', [['normal', '정상'], ['loading', '로딩'], ['error', '오류'], ['empty', '빈 상태'], ['unknown', 'AI 결과 알 수 없음']], S.sim)}</span>
+  <label><input type="checkbox" data-tb="first"${S.first ? ' checked' : ''}> 처음 실행 (프로젝트 없음)</label>
   <label>테마 <select data-tb="theme"><option value="light"${S.theme === 'light' ? ' selected' : ''}>라이트</option><option value="dark"${S.theme === 'dark' ? ' selected' : ''}>다크</option></select></label>`;
 }
 
@@ -486,29 +486,29 @@ const timers = {};
 const setPath = (path, v) => { const k = path.split('.'); let o = S; while (k.length > 1) o = o[k.shift()]; o[k[0]] = v; };
 const ACT = {
   go: (r) => { S.first = false; go(r); }, simreset: () => { S.sim = 'normal'; render(); }, refresh: () => toast('새로고침했습니다 (시뮬레이션)'),
-  register: () => ask('프로젝트 폴더 선택', 'C:\\work\\my-repo 를 등록합니다. 읽기만 하며 파일을 바꾸지 않습니다.', '등록', 'read', () => { S.first = false; S.proj = 0; go('overview'); toast('프로젝트를 등록했습니다.'); }),
-  reconnect: () => toast('폴더 선택 창이 열립니다 (시뮬레이션)'), modelcheck: () => toast('Ollama 응답 없음 — 자동 설치는 하지 않습니다 (시뮬레이션)'),
+  register: () => ask('프로젝트 폴더 선택', 'C:\\work\\my-repo 폴더를 프로젝트로 등록합니다. 폴더를 읽기만 하고 파일은 바꾸지 않습니다.', '등록', 'read', () => { S.first = false; S.proj = 0; go('overview'); toast('프로젝트를 등록했습니다.'); }),
+  reconnect: () => toast('폴더 선택 창이 열립니다 (시뮬레이션)'), modelcheck: () => toast('Ollama가 응답하지 않습니다. 자동으로 설치하지는 않습니다 (시뮬레이션)'),
   openproj: (a) => { S.proj = Number(a); S.first = false; go('overview'); }, openfile: (a) => { S.activeFile = a; render(); }, editor: (a) => toast(`${S.editor === 'vscode' ? 'VS Code' : 'Cursor'}로 열기: ${a || ''}`),
   togglefile: (a) => { S.sel.has(a) ? S.sel.delete(a) : S.sel.add(a); render(); },
-  capture: () => { const picked = FILES.filter(f => S.sel.has(f.path) && !f.binary); const id = Math.max(...S.snaps.map(s => s.id)) + 1; S.snaps.push({ id, files: picked.length, kb: Math.round(picked.length * 3.1), time: '방금' }); S.capMsg = `스냅샷 #${id}에 ${picked.length}개 파일을 담았습니다. 다음 행동을 고르세요.`; render(); },
+  capture: () => { const picked = FILES.filter(f => S.sel.has(f.path) && !f.binary); const id = Math.max(...S.snaps.map(s => s.id)) + 1; S.snaps.push({ id, files: picked.length, kb: Math.round(picked.length * 3.1), time: '방금' }); S.capMsg = `스냅샷 #${id}에 ${picked.length}개 파일을 담았습니다. 다음에 할 일을 고르세요.`; render(); },
   ainew: () => { Object.assign(S.ai, { step: 1, snap: null, state: 'idle', c1: false, c2: false, elapsed: 0, history: false, key: '' }); render(); }, aihist: () => { S.ai.history = !S.ai.history; render(); },
   aistep: (a) => { S.ai.step = Number(a); render(); }, aisnap: (a) => { S.ai.snap = Number(a); render(); }, aibytes: () => { S.ai.showBytes = !S.ai.showBytes; render(); },
   aistart: () => { const a = S.ai; a.step = 4; a.state = 'running'; a.elapsed = 0; clearInterval(timers.ai); timers.ai = setInterval(() => { a.elapsed++; if (a.elapsed >= 3) { clearInterval(timers.ai); a.state = S.sim === 'unknown' ? 'unknown' : 'done'; a.sel = 0; } if (S.route === 'ai') render(); }, 1000); render(); },
   aicancel: () => { clearInterval(timers.ai); S.ai.state = 'cancelled'; render(); }, aifind: (a) => { S.ai.sel = Number(a); render(); }, aiverdict: (a) => { S.ai.verdicts[S.ai.sel] = a; render(); },
   propsel: (a) => { S.propSel = Number(a); render(); }, propreject: () => { S.props.find(p => p.id === S.propSel).state = '거절'; render(); },
-  propapply: () => ask('제안 #' + S.propSel + ' 적용', '파일 1개를 수정하고 백업을 만듭니다. index·commit·push는 건드리지 않습니다. 원본이 바뀌었으면 덮어쓰지 않습니다.', '적용', 'write', () => { S.applying = 1; render(); clearInterval(timers.ap); timers.ap = setInterval(() => { S.applying++; if (S.applying > 3) { clearInterval(timers.ap); S.applying = 0; S.props.find(p => p.id === S.propSel).state = '적용됨'; } render(); }, 900); }),
-  recover: () => ask('복구', 'README.md 를 백업에서 복원합니다. 다른 도구가 바꾼 내용은 덮어쓰지 않습니다.', '복구', 'write', () => { S.props.find(p => p.state === '복구 필요').state = '복구됨'; render(); toast('복구했습니다.'); }),
+  propapply: () => ask('제안 #' + S.propSel + ' 적용', '파일 1개를 수정합니다. 먼저 백업을 만들고, 스테이징·커밋·푸시는 하지 않습니다. 그사이 원본이 바뀌었다면 덮어쓰지 않습니다.', '적용', 'write', () => { S.applying = 1; render(); clearInterval(timers.ap); timers.ap = setInterval(() => { S.applying++; if (S.applying > 3) { clearInterval(timers.ap); S.applying = 0; S.props.find(p => p.id === S.propSel).state = '적용됨'; } render(); }, 900); }),
+  recover: () => ask('복구', 'README.md를 백업에서 되돌립니다. 다른 도구가 고친 내용은 덮어쓰지 않습니다.', '복구', 'write', () => { S.props.find(p => p.state === '복구 필요').state = '복구됨'; render(); toast('복구했습니다.'); }),
   trust: () => ask('프로젝트 신뢰', '이 프로젝트의 테스트·린트 명령을 내 Windows 계정 권한으로 실행할 수 있게 허용합니다.', '신뢰', 'exec', () => { S.tests.trusted = true; render(); }),
-  runtest: (a) => { if (!S.tests.trusted) return toast('먼저 프로젝트를 신뢰하세요.'); const cmd = ['pytest', 'ruff check .'][a]; ask(cmd + ' 실행', '내 PC에서 코드를 실행합니다. 출력은 상한까지 기록되고 취소할 수 있습니다.', '실행', 'exec', () => {
+  runtest: (a) => { if (!S.tests.trusted) return toast('먼저 프로젝트를 신뢰하세요.'); const cmd = ['pytest', 'ruff check .'][a]; ask(cmd + ' 실행', '이 PC에서 코드를 실행합니다. 출력은 일정 분량까지만 기록하며, 실행 중에는 취소할 수 있습니다.', '실행', 'exec', () => {
       const t = S.tests; t.state = 'running'; t.done = false; t.log = ['> ' + cmd]; const lines = a == 0 ? ['collected 14 items', 'tests/test_app.py ..F', 'FAILED tests/test_app.py::test_load', '1 failed, 13 passed'] : ['src/app.py:12:80: E501 line too long', 'src/util.py:3:1: F401 unused import', 'Found 3 errors.']; let i = 0; clearInterval(timers.t);
       timers.t = setInterval(() => { if (i < lines.length) t.log.push(lines[i++]); else { clearInterval(timers.t); t.state = 'done'; t.done = true; t.diag = [['src/app.py:12', 'E501 line too long'], ['src/util.py:3', 'F401 unused import'], ['tests/test_app.py:7', 'test_load failed']]; S.snaps[S.snaps.length - 1].metrics ||= { pass: 13, fail: 1, lint: 3 }; } render(); }, 500); render(); }); },
-  canceltest: () => { clearInterval(timers.t); S.tests.state = 'idle'; S.tests.log.push('(취소됨 — 자식 프로세스 트리 종료)'); render(); },
+  canceltest: () => { clearInterval(timers.t); S.tests.state = 'idle'; S.tests.log.push('(취소함 — 실행 중이던 하위 프로세스도 모두 종료)'); render(); },
   compare: () => { S.cmp.result = true; render(); }, analyze: () => { S.impact.ran = true; render(); }, imptab: (a) => { S.impact.tab = a; render(); }, impsel: (a) => { S.impact.sel = Number(a); render(); },
   inboxsel: (a) => { S.inboxSel = Number(a); S.inbox.find(i => i.id === Number(a)).read = true; render(); }, readall: () => { S.inbox.forEach(i => i.read = true); render(); },
-  inboxgo: (a) => { const i = S.inbox.find(x => x.id === Number(a)); S.proj = Math.max(0, PROJECTS.findIndex(p => p.name === i.proj)); go(i.route); toast('이동만 했습니다. 아무 것도 실행하지 않았습니다.'); },
-  login: () => { S.acct.state = 'pending'; S.acct.secs = 300; clearInterval(timers.lg); timers.lg = setInterval(() => { S.acct.secs--; if (S.acct.secs <= 0) { clearInterval(timers.lg); S.acct.state = 'out'; toast('시간이 지났습니다. 다시 로그인하세요.'); } if (S.route === 'account') render(); }, 1000); render(); },
+  inboxgo: (a) => { const i = S.inbox.find(x => x.id === Number(a)); S.proj = Math.max(0, PROJECTS.findIndex(p => p.name === i.proj)); go(i.route); toast('화면만 이동했습니다. 아무것도 실행하지 않았습니다.'); },
+  login: () => { S.acct.state = 'pending'; S.acct.secs = 300; clearInterval(timers.lg); timers.lg = setInterval(() => { S.acct.secs--; if (S.acct.secs <= 0) { clearInterval(timers.lg); S.acct.state = 'out'; toast('승인 시간이 지났습니다. 다시 로그인해 주세요.'); } if (S.route === 'account') render(); }, 1000); render(); },
   approve: () => { clearInterval(timers.lg); S.acct.state = 'in'; render(); }, logincancel: () => { clearInterval(timers.lg); S.acct.state = 'out'; render(); }, logout: () => { S.acct.state = 'out'; PROJECTS[0].remote = null; render(); },
-  connect: () => ask('계정·저장소 확인 후 연결', '로그인한 계정이 이 저장소에 접근할 수 있는지 서버에서 확인합니다. 코드는 전송하지 않습니다.', '연결', 'read', () => { PROJECTS[0].remote = '#1'; render(); }), checkconn: () => toast('연결 정상 (시뮬레이션)'),
+  connect: () => ask('계정·저장소 확인 후 연결', '로그인한 계정이 이 저장소를 볼 수 있는지 서버에서 확인합니다. 코드는 보내지 않습니다.', '연결', 'read', () => { PROJECTS[0].remote = '#1'; render(); }), checkconn: () => toast('연결 정상 (시뮬레이션)'),
   setsec: (a) => { S.setSec = a; render(); }, pickexe: () => toast('실행 파일 선택 창이 열립니다 (시뮬레이션)'), diag: () => toast('최소 진단 정보를 저장했습니다 (시뮬레이션)'), web: () => toast('웹 분석 화면으로 이동합니다 (시뮬레이션)'),
   menu: (a) => { S.menu = S.menu === a ? null : a; render(); }, togglenav: () => { S.navOpen = !S.navOpen; S.menu = null; render(); }, togglinsp: () => { S.inspOpen = !S.inspOpen; S.menu = null; render(); },
   toggletheme: () => { S.theme = S.theme === 'light' ? 'dark' : 'light'; S.menu = null; render(); }, showfirst: () => { S.first = true; S.menu = null; render(); },

@@ -1,0 +1,116 @@
+/* Local workspace views. Tokens only (tokens.css); no remote assets. Layout is decided by layout.js. */
+.workspace-content { padding: 0 24px 24px; }
+.workspace-content [hidden] { display: none !important; }
+.workspace-content h1 { margin: 20px 0 12px; font-size: var(--ui-text-xl); line-height: 1.4; }
+.workspace-content h2 { margin: 0 0 8px; font-size: var(--ui-text-md); }
+.workspace-content p { margin: 8px 0; line-height: 1.6; }
+.ws-grow { flex: 1; min-width: 0; }
+.ws-note { color: var(--ui-muted); font-size: var(--ui-text-sm); }
+.ws-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ws-message:empty, #inbox-unread:empty, #diagnostics-message:empty { display: none; }
+.ws-message { color: var(--ui-muted); }
+.ws-view:focus, .ws-tab-panel:focus { outline: none; }
+
+/* Panels and layout primitives: borders, no shadows, no nesting of cards. */
+.ws-panel { margin: 12px 0; padding: 14px 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); overflow-wrap: anywhere; }
+.ws-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 8px 0; }
+.ws-actionbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--ui-border); }
+.ws-field { display: block; margin: 10px 0; }
+.ws-field > span { display: block; margin-bottom: 2px; color: var(--ui-muted); font-size: var(--ui-text-xs); }
+.ws-field :is(input:not([type='checkbox']), select, textarea) { width: min(100%, 420px); }
+.ws-field textarea { min-height: 72px; width: min(100%, 640px); }
+.ws-inline { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ws-check { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0; }
+.ws-check input { margin-top: 3px; }
+.ws-panel pre { margin: 8px 0; padding: 10px 12px; background: var(--ui-raised); border-radius: var(--ui-radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; font-family: var(--ui-mono); font-size: var(--ui-text-xs); }
+.workspace-content pre:empty { display: none; }
+.ws-list { margin: 8px 0; padding: 0; list-style: none; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); }
+.ws-list:empty { display: none; }
+.ws-list > li { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 8px 12px; border-bottom: 1px solid var(--ui-border); overflow-wrap: anywhere; }
+.ws-list > li:last-child { border-bottom: 0; }
+
+.ws-chip { display: inline-flex; align-items: center; gap: 4px; min-height: 22px; padding: 0 8px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-pill); background: var(--ui-raised); color: var(--ui-text); font-size: var(--ui-text-xs); white-space: nowrap; }
+.ws-chip[data-tone='warn'] { background: var(--ui-warning-soft); color: var(--ui-warning); border-color: transparent; }
+.ws-chip[data-tone='ok'] { background: var(--ui-success-soft); color: var(--ui-success); border-color: transparent; }
+.ws-chip[data-tone='error'] { background: var(--ui-error-soft); color: var(--ui-error); border-color: transparent; }
+.ws-chip-button { cursor: pointer; }
+
+.ws-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 12px 0; padding: 10px 14px; border-radius: var(--ui-radius-md); }
+.ws-banner-warn { background: var(--ui-warning-soft); color: var(--ui-warning); }
+.ws-banner-info { background: var(--ui-info-soft); color: var(--ui-info); }
+.ws-banner button { min-height: 28px; }
+#ws-health { margin-top: 16px; }
+
+.ws-checklist { margin: 12px 0; padding: 0; list-style: none; }
+.ws-checklist > li { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 12px 0; border-bottom: 1px solid var(--ui-border); }
+.ws-num { display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; border: 1px solid var(--ui-border-strong); border-radius: 50%; font-size: var(--ui-text-xs); }
+
+/* Project header: sticky so the project, branch and tabs stay visible while the content scrolls. */
+.ws-project-bar { position: sticky; top: 0; z-index: 5; margin: 0 -24px; padding: 10px 24px 0; background: var(--ui-surface); border-bottom: 1px solid var(--ui-border); }
+.ws-project-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.ws-project-row select { font-weight: var(--ui-semibold); max-width: min(100%, 320px); }
+.ws-tabs { display: flex; gap: 2px; margin-top: 8px; overflow-x: auto; scrollbar-width: thin; }
+.ws-tabs > button { flex: none; min-height: 36px; padding: 6px 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--ui-muted); white-space: nowrap; }
+.ws-tabs > button:hover { color: var(--ui-text); background: none; }
+.ws-tabs > button[aria-selected='true'] { color: var(--ui-accent); border-bottom-color: var(--ui-accent); font-weight: var(--ui-semibold); }
+.ws-tabs > button[data-alert='true'] { color: var(--ui-warning); }
+
+.ws-todo { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin: 12px 0; padding: 12px 16px; border: 1px solid var(--ui-accent); border-radius: var(--ui-radius-md); background: var(--ui-accent-soft); }
+.ws-todo strong { font-size: var(--ui-text-lg); }
+
+/* Guided AI review. */
+.ws-steps { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.ws-steps > button { min-height: 28px; padding: 2px 12px; border-radius: var(--ui-radius-pill); }
+.ws-steps > button[aria-current='step'] { background: var(--ui-primary); border-color: var(--ui-primary); color: var(--ui-on-primary); }
+.ws-cloud-only { display: none; }
+main[data-cloud='true'] .ws-cloud-only { display: block; }
+.ws-dup-only { display: none; }
+main[data-dup='true'] .ws-dup-only { display: flex; }
+main[data-has-snapshot='true'] .ws-need-snapshot { display: none; }
+main[data-snapshot-count='2'] .ws-need-two-snapshots { display: none; }
+
+/* Risk labels: what a button will do. Never colour alone. */
+button[data-risk]::after { margin-left: 6px; padding: 0 5px; border: 1px solid currentColor; border-radius: 3px; font-size: 10px; line-height: 15px; opacity: .85; }
+button[data-risk='read']::after { content: '읽기'; }
+button[data-risk='send']::after { content: '전송'; color: var(--ui-warning); }
+button[data-risk='write']::after { content: '파일 변경'; color: var(--ui-error); }
+button[data-risk='exec']::after { content: '명령 실행'; color: var(--ui-error); }
+.btn-primary[data-risk]::after { color: inherit; }
+
+/* Evidence kinds in the impact view: dashed = inference, not verified. */
+[data-evidence]::before { display: inline-block; margin-right: 8px; padding: 0 6px; border: 1px solid var(--ui-border-strong); border-radius: 4px; background: var(--ui-surface); color: var(--ui-text); font-size: var(--ui-text-xs); }
+[data-evidence='ai']::before { content: 'AI 추정'; border-style: dashed; }
+[data-evidence='history']::before { content: '함께 바뀐 이력'; }
+[data-evidence='static']::before { content: '정적 참조'; }
+#impact-view > p { white-space: pre-wrap; }
+
+.ws-badge { margin-left: auto; min-width: 18px; padding: 0 6px; border-radius: var(--ui-radius-pill); background: var(--ui-error); color: #fff; font-size: 11px; text-align: center; }
+#git-state h3 { margin: 12px 0 4px; font-size: var(--ui-text-sm); }
+#git-state :is(ul, ol) { margin: 4px 0; padding-left: 20px; font-family: var(--ui-mono); font-size: var(--ui-text-xs); overflow-wrap: anywhere; }
+#change-selection label { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-family: var(--ui-mono); font-size: var(--ui-text-xs); overflow-wrap: anywhere; }
+#change-selection br { display: none; }
+#capture-result > p, #inbox-detail > p, #review-result > p { margin: 6px 0; }
+#inbox-list button, #review-history-list button, #detected-tools button, #validation-plans button, #proposal-view button, #proposal-recovery-list button, #review-result button, #validation-view button { margin: 2px 6px 2px 0; }
+#proposal-view textarea, #review-result textarea { display: block; width: min(100%, 560px); margin: 6px 0; }
+
+/* Command palette. */
+.ws-palette-backdrop { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: start center; padding-top: 12vh; background: var(--ui-backdrop); }
+.ws-palette { width: min(520px, 92vw); padding: 10px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-radius-md); background: var(--ui-surface); box-shadow: var(--ui-shadow); }
+.ws-palette input { width: 100%; margin-bottom: 6px; }
+.ws-palette ul { max-height: 50vh; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.ws-palette li { padding: 6px 10px; border-radius: var(--ui-radius-sm); cursor: pointer; }
+.ws-palette li[aria-selected='true'] { background: var(--ui-accent-soft); color: var(--ui-accent); }
+
+/* Narrow windows (600x400 minimum): keep the fixed header short so the content keeps room. */
+@media (width < 720px), (height < 480px) {
+  .workspace-content { padding: 0 12px 16px; }
+  .ws-project-bar { margin: 0 -12px; padding: 6px 12px 0; }
+  .ws-project-row { flex-wrap: nowrap; overflow: hidden; }
+  .ws-project-row select { flex: 0 1 auto; }
+  .ws-tabs > button { min-height: 32px; padding-inline: 10px; }
+  .workspace-content h1 { margin: 12px 0 8px; }
+}
+@media (forced-colors: active) {
+  .ws-chip, .ws-panel, .ws-todo, .ws-banner { border: 1px solid CanvasText; }
+  .ws-tabs > button[aria-selected='true'] { border-bottom-color: Highlight; }
+}

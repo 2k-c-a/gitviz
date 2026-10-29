@@ -18,6 +18,8 @@ export function createIcon(symbol) {
     '◇': 'm12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z',
     '▣': 'M3 6h7l2 2h9v12H3zM3 6V4h7l2 2',
     '⚙': 'M9 3h6l1 4 4 1v8l-4 1-1 4H9l-1-4-4-1V8l4-1zM15 12a3 3 0 1 0-6 0 3 3 0 0 0 6 0',
+    '◔': 'M6 17v-6a6 6 0 0 1 12 0v6l1.5 2h-15zM10 21a2 2 0 0 0 4 0',
+    '◉': 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21c.7-4 4-6 8-6s7.3 2 8 6',
     '·': 'M8 12h8',
   };
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

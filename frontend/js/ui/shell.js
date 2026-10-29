@@ -100,20 +100,13 @@ export function mountShell({ local = false, account = null } = {}) {
   const workspace = local ? new URL('index.html', location.href).href : workspaceEntryUrl(location.href);
   if (workspace) {
     group('워크스페이스');
-    const a = link('로컬 프로젝트·알림', '▣', workspace, local); a.dataset.workspaceEntry = '';
+    if (!local) { const a = link('로컬 프로젝트·알림', '▣', workspace, false); a.dataset.workspaceEntry = ''; }
   }
   if (local) {
-    const sectionLinks = [];
-    for (const section of main.querySelectorAll(':scope > section')) {
-      const title = section.querySelector('h2'); if (!title) continue;
-      section.id ||= `workspace-section-${sectionLinks.length}`;
-      section.classList.add('workspace-panel'); section.tabIndex = -1;
-      const a = link(title.textContent, '·', '#'+section.id);
-      a.addEventListener('click', event => {
-        event.preventDefault(); setNavOpen(false); section.scrollIntoView({ block: 'start' }); section.focus({ preventScroll: true });
-        sectionLinks.forEach(item => item.removeAttribute('aria-current')); a.setAttribute('aria-current', 'location');
-      });
-      sectionLinks.push(a);
+    // Views of the local workspace; layout.js decides what is shown and marks the current one.
+    for (const [view, label, glyph] of [['projects', '프로젝트', '▣'], ['inbox', '알림', '◔'], ['account', '계정·연결', '◉'], ['settings', '설정', '⚙']]) {
+      const a = link(label, glyph, '#', false); a.dataset.wsView = view;
+      a.addEventListener('click', event => { event.preventDefault(); setNavOpen(false); window.dispatchEvent(new CustomEvent('workspace-navigate', { detail: { view } })); });
     }
     const picker = document.getElementById('project-picker');
     const updateProject = () => { repo.textContent = picker?.value ? picker.selectedOptions[0].textContent : '프로젝트를 선택하세요'; };

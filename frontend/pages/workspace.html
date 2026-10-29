@@ -1,46 +1,176 @@
 <!doctype html>
 <html lang="ko">
-<head><script src="web/js/ui/theme.js"></script><script type="module" src="web/js/ui/workspace-shell.js"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitViz Workspace</title><link rel="stylesheet" href="styles.css"><script defer src="status.js"></script><script type="module" src="projects.js"></script><script type="module" src="desktop-auth.js"></script><script type="module" src="changes.js"></script><script type="module" src="review.js"></script><script type="module" src="proposal.js"></script><script type="module" src="impact.js"></script><script type="module" src="validation.js"></script><script type="module" src="comparison.js"></script><script type="module" src="inbox.js"></script></head>
+<head><script src="web/js/ui/theme.js"></script><script type="module" src="web/js/ui/workspace-shell.js"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitViz Workspace</title><link rel="stylesheet" href="styles.css"><script defer src="status.js"></script><script type="module" src="projects.js"></script><script type="module" src="desktop-auth.js"></script><script type="module" src="changes.js"></script><script type="module" src="review.js"></script><script type="module" src="proposal.js"></script><script type="module" src="impact.js"></script><script type="module" src="validation.js"></script><script type="module" src="comparison.js"></script><script type="module" src="inbox.js"></script><script type="module" src="layout.js"></script></head>
 <body><main>
-<p class="eyebrow">GitViz Workspace</p><h1>로컬 프로젝트</h1>
-<p><a href="web/index.html">GitHub 검색·원격 분석·AI 리뷰 열기</a></p>
-<p id="desktop-account" role="status"></p><button id="desktop-login">원격 로그인 화면</button><button id="desktop-logout" disabled>로그아웃·세션 폐기 재시도</button>
-<p id="status" role="status" aria-live="polite">로컬 구성 요소를 확인하고 있습니다.</p><button id="export-diagnostics" type="button">최소 진단 정보 저장</button><span id="diagnostics-message" role="status"></span><button id="refresh" type="button">구성 요소 상태 확인</button>
-<section aria-labelledby="projects-title"><h2 id="projects-title">프로젝트 선택</h2>
-<button id="register-project" type="button">폴더 선택·등록</button><button id="reload-projects" type="button">목록 새로고침</button>
-<label for="project-picker">등록한 프로젝트</label><select id="project-picker"><option value="">프로젝트를 선택하세요</option></select><button id="more-projects" type="button" hidden>더 보기</button>
-<button id="unregister-project" type="button" disabled>등록 해제</button>
-<label for="recent-limit">최근 커밋 수</label><input id="recent-limit" type="number" min="1" max="100" value="20"><button id="save-project-settings" type="button" disabled>설정 저장</button>
-<label for="remote-repository-id">서버 저장소 ID</label><input id="remote-repository-id" type="number" min="1" step="1"><button id="connect-remote" type="button">계정·저장소 확인 후 연결</button><button id="refresh-remote" type="button">연결 상태 확인</button><p>현재 창의 동시 원격 추적은 최대16개입니다. 상한에 도달하면 새 연결을 보류하며 기존 기록은 보존합니다.</p><p id="remote-connection-message" role="status"></p>
-<p id="project-message" role="status" aria-live="polite"></p></section>
-<section aria-labelledby="inbox-title"><h2 id="inbox-title">통합 알림</h2>
-<p>등록한 모든 프로젝트의 리뷰·검증·제안 적용 결과를 모읍니다. 알림을 눌러도 이동만 하며 코드 수정·명령 실행·전송은 일어나지 않습니다. AI 지적은 추론이고, 검증 실패는 실제 명령 결과입니다.</p>
-<label>프로젝트 <select id="inbox-project"><option value="">모든 프로젝트</option></select></label>
-<label>종류 <select id="inbox-source"><option value="">전체</option><option value="review">로컬 AI 리뷰</option><option value="validation">검증 실행</option><option value="proposal">제안 적용</option><option value="analysis">서버 분석</option></select></label>
-<label>심각도 <select id="inbox-severity"><option value="">전체</option><option value="error">오류</option><option value="warning">주의</option><option value="info">정보</option></select></label>
-<label>읽음 <select id="inbox-read"><option value="all">전체</option><option value="unread">안 읽음</option><option value="read">읽음</option></select></label>
-<button id="inbox-refresh" type="button">알림 새로고침</button>
-<p id="inbox-unread" role="status"></p><p id="inbox-message" role="status" aria-live="polite"></p>
-<ul id="inbox-list"></ul><button id="inbox-more" type="button" hidden>더 보기</button><div id="inbox-detail"></div></section>
-<section aria-labelledby="git-title"><h2 id="git-title">Git 상태</h2><button id="reload-git" type="button" disabled>Git 상태 새로고침</button><div id="git-state"></div></section>
-<section><h2>고정 변경 입력</h2><button id="reload-changes">변경 선택 새로고침</button><div id="change-selection"></div><label><input id="include-untracked" type="checkbox">선택한 untracked 포함</label><button id="capture-changes">선택 변경 캡처</button><p id="capture-message" role="status"></p><div id="capture-result"></div><pre id="fixed-preview"></pre></section>
-<section><h2>도구 탐지·명령 계획</h2><label>프로젝트 내 작업 폴더 <input id="detection-cwd" value="."></label><label>패키지 관리자 <select id="package-manager"><option value="">lock 기준</option><option value="npm">npm</option><option value="yarn">yarn</option><option value="pnpm">pnpm</option></select></label><button id="detect-validation">manifest 읽기·탐지</button><div id="detected-tools"></div></section>
-<section><h2>고정 입력 로컬 리뷰</h2>
-<p>PC의 Ollama · qwen2.5-coder:7b · 127.0.0.1:11434로만 전송합니다. 원격 공개 매핑이 검증되지 않은 cloud BYOK는 차단됩니다. 모델 설치·실행은 자동으로 하지 않습니다.</p>
-<label>생성 종류 <select id="review-kind"><option value="review">리뷰</option><option value="refactor">작은 리팩토링 제안</option></select></label>
-<label>모델 <select id="review-profile"><option value="ollama-local-v1">PC Ollama</option><option value="claude-opus-5-5-v1">Anthropic Opus 5.5 (BYOK)</option><option value="claude-sonnet-5-5-v1">Anthropic Sonnet 5.5 (BYOK)</option><option value="gpt-5.4-v1">OpenAI GPT-5.4 (BYOK)</option><option value="gemini-3.5-flash-lite-v1">Gemini 3.5 Flash-Lite (BYOK)</option></select></label>
-<label>이번 미리보기의 API 키 <input id="review-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false"></label><p>cloud는 현재 계정으로 공개 확인된 연결만 허용합니다. 키는 이번 동의 동안 main 메모리에만 유지하며 저장하지 않습니다. 앱 월 USD20 한도에 미정산 예약도 포함됩니다.</p>
-<label>리뷰 목적 <textarea id="review-purpose" maxlength="1000">버그·보안·성능·품질·테스트 누락 검토</textarea></label>
-<label>동일 입력 실행 세대 <input id="review-generation" type="number" min="1" max="1000" value="1"></label>
-<button id="review-preview">전송 내용 미리보기</button><div id="review-preview-meta"></div><pre id="review-preview-bytes"></pre>
-<label><input id="review-consent" type="checkbox">위 고정 입력·목적·문맥·파일명과 표시한 PC 모델 전송 범위를 확인했습니다.</label>
-<label><input id="review-duplicate-risk" type="checkbox">새 실행 세대는 이전 요청과 별도 호출이며 중복 비용·자원 사용 가능성을 확인했습니다.</label>
-<button id="review-start" disabled>동의한 입력으로 리뷰 시작</button><button id="review-cancel" disabled>취소 요청</button><button id="review-history">로컬 리뷰 이력</button>
-<p id="review-message" role="status"></p><div id="review-history-list"></div><div id="review-result"></div>
-<p>모델 결과는 실행으로 검증한 결함이 아닙니다. 지적 0건도 결함 없음을 뜻하지 않습니다. 취소는 이미 전송된 내용을 회수하지 않으며 결과 불명 작업은 자동 재전송하지 않습니다. PC 모델 provider 요금 추정은 USD 0이며 시스템 자원 비용은 별도입니다.</p>
-</section><p>선택 입력·리뷰 결과는 PC의 암호화 저장소에 보관합니다. 명령 실행은 별도 승인 단계입니다.</p>
-<p class="note">조회·캡처는 읽기 전용입니다. 파일 적용과 프로젝트 검증은 별도 승인으로 실행합니다. 외부 Git 메타데이터는 native 확인 후 접근하며 submodule 내부 상태는 확장하지 않습니다.</p>
-<section><h2>리팩토링 제안·승인 적용·복구</h2><p>생성 동의는 파일 쓰기 승인이 아닙니다. 적용은 별도 native 확인과 일회 승인에 묶입니다. 2단계 게시 중 원래 경로가 잠시 없을 수 있으며, 중단 시 복구 상태를 확인하세요. 다른 도구의 변경은 덮어쓰지 않습니다.</p><button id="reload-recovery">복구 필요 목록 확인</button><div id="proposal-recovery-list"></div><p id="proposal-message" role="status"></p><div id="proposal-view"></div></section>
-<section><h2>고정 입력 영향 근거</h2><p>Python·JS/TS parser가 읽은 구문과 정적 바인딩만 표시합니다. 동적 호출과 외부 모듈은 미해결이며 실행 결과를 뜻하지 않습니다. 이력과 AI 예측은 별도로 표시합니다.</p><button id="analyze-impact">고정 snapshot 분석</button><p id="impact-message" role="status"></p><div id="impact-view"></div></section>
-<section><h2>외부 에디터·검증 실행</h2><label>에디터 <select id="editor-id"><option value="vscode">VS Code</option><option value="cursor">Cursor</option></select></label><button id="save-editor">프로젝트 기본 에디터 저장</button><button id="configure-editor">실행 파일 선택·설정</button><p>검증 코드는 현재 사용자 권한으로 파일과 네트워크에 접근합니다. 계획별 native 확인과 프로젝트 신뢰 승인이 필요합니다.</p><div id="validation-plans"></div><button id="validation-cancel" disabled>검증 자식 트리 취소</button><p id="validation-message" role="status"></p><div id="validation-view"></div></section>
-<section><h2>전후 고정 입력·실측 비교</h2><label>이전 <select id="comparison-before"></select></label><label>이후 <select id="comparison-after"></select></label><label><input id="comparison-link-proposal" type="checkbox">선택 제안과 연결</label><button id="compare-snapshots">실측 비교</button><p>변경 전에 baseline 검증을 명시 실행하세요. 미측정·환경 불일치는 not_comparable로 표시합니다.</p><div id="comparison-view"></div></section></main></body></html>
+<!-- Information architecture: views (start / projects / project tabs / inbox / account / settings). Every control keeps its original id; layout.js only decides what is shown. -->
+<div id="ws-health" class="ws-banner ws-banner-warn" role="alert" hidden><span id="ws-health-text"></span><span class="ws-grow"></span><button type="button" id="ws-health-retry">다시 확인</button><button type="button" id="ws-health-diagnostics">진단 정보 저장</button></div>
+
+<section class="ws-view" data-view="start" aria-labelledby="start-title" tabindex="-1">
+<h1 id="start-title">시작하기</h1>
+<div class="ws-panel">
+<p>GitViz Workspace는 내 PC의 Git 프로젝트를 점검하는 도구입니다. 코드는 기본적으로 내 PC 밖으로 나가지 않습니다.</p>
+<ol class="ws-checklist">
+<li><span class="ws-num" aria-hidden="true">1</span><span class="ws-grow"><strong>프로젝트 폴더 등록</strong><br><span class="ws-note">Git 저장소가 있는 폴더를 고르세요. 폴더는 읽기만 하며 파일을 바꾸지 않습니다.</span></span><button type="button" id="ws-start-register" class="btn-primary" data-risk="read">폴더 선택…</button></li>
+<li><span class="ws-num" aria-hidden="true">2</span><span class="ws-grow"><strong>변경 확인</strong><br><span class="ws-note">등록하면 바로 변경된 파일과 최근 커밋을 보여 드립니다.</span></span></li>
+<li><span class="ws-num" aria-hidden="true">3</span><span class="ws-grow"><strong>AI 점검</strong> <span class="ws-chip">선택</span><br><span class="ws-note">이 PC에 설치한 Ollama 모델이나 내 API 키가 있으면 사용할 수 있습니다. 모델은 자동으로 설치하지 않습니다.</span></span></li>
+<li><span class="ws-num" aria-hidden="true">4</span><span class="ws-grow"><strong>서버 연결</strong> <span class="ws-chip">선택</span><br><span class="ws-note">로그인하면 서버 분석과 함께 바뀐 이력을 볼 수 있습니다.</span></span><button type="button" data-go-view="account">계정·연결</button></li>
+</ol>
+<p class="ws-note">로그인이나 AI 없이도 Git 상태, 영향 범위, 테스트·린트 실행은 쓸 수 있습니다.</p>
+<details><summary>내 코드는 어디로 가나요?</summary><p class="ws-note">기본적으로 코드를 어디에도 보내지 않습니다. 이 PC의 모델은 PC 안에서만 처리하고, 클라우드 모델은 보낼 내용을 직접 확인하고 동의한 부분만 보냅니다. 선택한 변경과 점검 결과는 이 PC의 암호화 저장소에 보관합니다.</p></details>
+</div>
+</section>
+
+<section class="ws-view" data-view="projects" aria-labelledby="projects-title" tabindex="-1">
+<h1 id="projects-title">프로젝트</h1>
+<div class="ws-toolbar"><button type="button" id="register-project" class="btn-primary" data-risk="read">폴더 등록</button><button type="button" id="reload-projects" data-risk="read">목록 새로고침</button><span class="ws-grow"></span><button type="button" id="unregister-project" disabled>등록 해제</button></div>
+<p id="project-message" class="ws-message" role="status" aria-live="polite"></p>
+<ul id="ws-project-list" class="ws-list" aria-label="등록한 프로젝트"></ul>
+<p id="ws-project-empty" class="ws-note" hidden>등록한 프로젝트가 없습니다. 폴더 등록을 눌러 시작하세요.</p>
+<button type="button" id="more-projects" hidden>더 보기</button>
+<p class="ws-note">등록 해제는 선택한 프로젝트가 있을 때만 쓸 수 있고, 원본 폴더는 건드리지 않습니다.</p>
+</section>
+
+<section class="ws-view" data-view="project" aria-label="프로젝트 작업" tabindex="-1">
+<div class="ws-project-bar">
+<div class="ws-project-row"><label for="project-picker" class="ws-sr">프로젝트 전환</label><select id="project-picker"><option value="">프로젝트를 선택하세요</option></select>
+<span class="ws-chip" id="ws-chip-branch" hidden></span><span class="ws-chip" id="ws-chip-changes" hidden></span><span class="ws-chip" id="ws-chip-conflicts" hidden></span></div>
+<div class="ws-tabs" role="tablist" aria-label="프로젝트 작업">
+<button type="button" role="tab" id="ws-tab-overview" data-tab="overview" aria-controls="ws-panel-overview">개요</button>
+<button type="button" role="tab" id="ws-tab-changes" data-tab="changes" aria-controls="ws-panel-changes">변경</button>
+<button type="button" role="tab" id="ws-tab-ai" data-tab="ai" aria-controls="ws-panel-ai">AI 점검</button>
+<button type="button" role="tab" id="ws-tab-proposals" data-tab="proposals" aria-controls="ws-panel-proposals">개선 제안</button>
+<button type="button" role="tab" id="ws-tab-tests" data-tab="tests" aria-controls="ws-panel-tests">테스트·린트</button>
+<button type="button" role="tab" id="ws-tab-compare" data-tab="compare" aria-controls="ws-panel-compare">전후 비교</button>
+<button type="button" role="tab" id="ws-tab-impact" data-tab="impact" aria-controls="ws-panel-impact">영향 범위</button>
+</div>
+</div>
+
+<div class="ws-tab-panel" role="tabpanel" id="ws-panel-overview" data-tab-panel="overview" aria-labelledby="ws-tab-overview" tabindex="-1">
+<h1>개요</h1>
+<div class="ws-todo" id="ws-todo"><div><div class="ws-note">지금 할 일</div><strong id="ws-todo-title">프로젝트를 선택하세요.</strong><div id="ws-todo-text"></div></div><span class="ws-grow"></span><button type="button" id="ws-todo-action" class="btn-primary" hidden></button></div>
+<div class="ws-panel"><h2 id="git-title">Git 상태</h2><button type="button" id="reload-git" disabled data-risk="read">새로고침</button><div id="git-state"></div></div>
+</div>
+
+<div class="ws-tab-panel" role="tabpanel" id="ws-panel-changes" data-tab-panel="changes" aria-labelledby="ws-tab-changes" tabindex="-1" hidden>
+<h1>변경</h1>
+<p class="ws-note">점검할 파일을 고른 뒤 &lsquo;점검 대상으로 담기&rsquo;를 누르세요. 담은 변경은 스냅샷(그 시점의 고정된 사본)으로 저장되어, 이후 점검·검증·비교의 기준이 됩니다. 바이너리, 큰 파일, 비밀 값이 들어 있는 것으로 보이는 내용은 제외됩니다.</p>
+<div class="ws-panel"><div class="ws-toolbar"><button type="button" id="reload-changes" data-risk="read">변경 목록 새로고침</button><label class="ws-inline"><input id="include-untracked" type="checkbox"> 선택한 untracked 파일 포함</label></div>
+<div id="change-selection"></div>
+<div class="ws-actionbar"><button type="button" id="capture-changes" class="btn-primary" data-risk="read">점검 대상으로 담기</button><span id="capture-message" class="ws-message" role="status"></span></div>
+<div id="capture-result"></div><pre id="fixed-preview"></pre></div>
+<p class="ws-note">조회와 담기는 읽기 전용입니다. 파일 적용과 프로젝트 검증은 별도 승인 후에만 실행됩니다. 외부 Git 메타데이터는 확인 후에만 읽으며, 서브모듈 안쪽 상태는 보여 주지 않습니다.</p>
+</div>
+
+<div class="ws-tab-panel" role="tabpanel" id="ws-panel-ai" data-tab-panel="ai" aria-labelledby="ws-tab-ai" tabindex="-1" hidden>
+<h1>AI 점검</h1>
+<p class="ws-need ws-need-snapshot ws-banner ws-banner-info">점검할 대상이 없습니다. 먼저 <button type="button" data-go-tab="changes">변경 탭</button>에서 변경을 담으세요.</p>
+<div class="ws-steps" role="group" aria-label="점검 단계">
+<button type="button" data-step-button="1">① 점검 대상</button><button type="button" data-step-button="2">② 모델과 목적</button><button type="button" data-step-button="3">③ 보낼 내용 확인</button><button type="button" data-step-button="4">④ 결과</button>
+</div>
+<p id="review-message" class="ws-message" role="status"></p>
+<div class="ws-panel ws-step" data-step="1"><h2>① 점검 대상</h2><p id="ws-ai-target">담은 변경이 없습니다.</p><button type="button" id="ws-ai-next-1" class="btn-primary" data-step-go="2" disabled>다음: 모델과 목적 →</button></div>
+<div class="ws-panel ws-step" data-step="2" hidden><h2>② 모델과 목적</h2>
+<p>이 PC의 Ollama 모델(qwen2.5-coder:7b, 127.0.0.1:11434)로만 보내거나, 내 API 키를 써서 클라우드 모델에 보낼 수 있습니다. 모델은 자동으로 설치하거나 실행하지 않습니다.</p>
+<label class="ws-field"><span>종류</span><select id="review-kind"><option value="review">코드 리뷰</option><option value="refactor">작은 개선 제안</option></select></label>
+<label class="ws-field"><span>모델</span><select id="review-profile"><option value="ollama-local-v1">이 PC의 Ollama</option><option value="claude-opus-5-5-v1">Anthropic Opus 5.5 (내 API 키)</option><option value="claude-sonnet-5-5-v1">Anthropic Sonnet 5.5 (내 API 키)</option><option value="gpt-5.4-v1">OpenAI GPT-5.4 (내 API 키)</option><option value="gemini-3.5-flash-lite-v1">Gemini 3.5 Flash-Lite (내 API 키)</option></select></label>
+<label class="ws-field ws-cloud-only"><span>API 키 (이번 점검 동안만 메모리에 두고 저장하지 않습니다)</span><input id="review-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false"></label>
+<p class="ws-note ws-cloud-only">클라우드 모델은 현재 계정으로 공개 저장소임을 확인한 연결에서만 쓸 수 있습니다. 앱의 월 사용 한도(USD 20)에는 아직 정산되지 않은 예약분도 포함됩니다.</p>
+<label class="ws-field"><span>점검 목적</span><textarea id="review-purpose" maxlength="1000">버그·보안·성능·품질·테스트 누락 검토</textarea></label>
+<details><summary>고급: 다시 실행 번호</summary><label class="ws-field"><span>같은 내용을 다시 점검할 때 올리는 번호</span><input id="review-generation" type="number" min="1" max="1000" value="1"></label></details>
+<div class="ws-actionbar"><button type="button" data-step-go="1">← 이전</button><button type="button" id="review-preview" class="btn-primary" data-risk="read">보낼 내용 미리보기 →</button></div></div>
+<div class="ws-panel ws-step" data-step="3" hidden><h2>③ 보낼 내용 확인</h2>
+<div id="review-preview-meta"></div><pre id="review-preview-bytes"></pre>
+<label class="ws-check"><input id="review-consent" type="checkbox"> 보낼 변경 내용, 목적, 파일 이름과 전송 범위를 확인했습니다.</label>
+<label class="ws-check ws-dup-only"><input id="review-duplicate-risk" type="checkbox"> 새 실행 번호로 보내면 이전 요청과 별개로 한 번 더 호출되어 비용이 중복될 수 있다는 점을 확인했습니다.</label>
+<div class="ws-actionbar"><button type="button" data-step-go="2">← 이전</button><button id="review-start" type="button" class="btn-primary" data-risk="send" disabled>동의하고 시작</button></div></div>
+<div class="ws-panel ws-step" data-step="4" hidden><h2>④ 결과</h2>
+<div class="ws-toolbar"><button id="review-cancel" type="button" disabled>취소 요청</button><button id="review-history" type="button" data-risk="read">점검 이력</button><button type="button" data-step-go="1">새 점검</button></div>
+<div id="review-history-list"></div><div id="review-result"></div>
+<p class="ws-note">AI가 짚은 내용은 실제로 실행해서 확인한 결함이 아닙니다. 지적이 없다고 해서 결함이 없다는 뜻도 아닙니다. 취소해도 이미 보낸 내용은 되돌릴 수 없고, 결과를 알 수 없는 작업은 자동으로 다시 보내지 않습니다.</p></div>
+</div>
+
+<div class="ws-tab-panel" role="tabpanel" id="ws-panel-proposals" data-tab-panel="proposals" aria-labelledby="ws-tab-proposals" tabindex="-1" hidden>
+<h1>개선 제안</h1>
+<p>제안을 만드는 데 동의한 것은 파일 수정을 승인한 것이 아닙니다. 적용은 별도의 확인과 일회 승인을 거치며, 다른 도구가 고친 내용은 덮어쓰지 않습니다. 적용 중에는 원래 경로가 잠시 없을 수 있으니, 중단되면 복구 상태를 확인하세요. 스테이징·커밋·푸시는 하지 않습니다.</p>
+<div class="ws-panel"><h2>복구가 필요한 제안</h2><button type="button" id="reload-recovery" data-risk="read">복구 필요 목록 확인</button><div id="proposal-recovery-list"></div></div>
+<p id="proposal-message" class="ws-message" role="status"></p><div id="proposal-view"></div>
+<p class="ws-note" id="ws-proposal-empty">제안이 없습니다. AI 점검에서 &lsquo;작은 개선 제안&rsquo;을 선택해 만들 수 있습니다. <button type="button" data-go-tab="ai">AI 점검으로 이동</button></p>
+</div>
+
+<div class="ws-tab-panel" role="tabpanel" id="ws-panel-tests" data-tab-panel="tests" aria-labelledby="ws-tab-tests" tabindex="-1" hidden>
+<h1>테스트·린트</h1>
+<p class="ws-need ws-need-snapshot ws-banner ws-banner-info">실행 계획을 만들려면 먼저 <button type="button" data-go-tab="changes">변경 탭</button>에서 변경을 담아야 합니다. 도구 찾기는 지금도 할 수 있습니다.</p>
+<div class="ws-panel"><h2>도구 찾기</h2>
+<p class="ws-note">package.json, pyproject.toml 같은 설정 파일을 읽어 테스트·린트 도구를 찾습니다. 아무 명령도 실행하지 않습니다.</p>
+<details><summary>고급: 작업 폴더 · 패키지 관리자</summary>
+<label class="ws-field"><span>프로젝트 안의 작업 폴더</span><input id="detection-cwd" value="."></label>
+<label class="ws-field"><span>패키지 관리자</span><select id="package-manager"><option value="">lock 파일 기준</option><option value="npm">npm</option><option value="yarn">yarn</option><option value="pnpm">pnpm</option></select></label></details>
+<button type="button" id="detect-validation" class="btn-primary" data-risk="read">설정 파일 읽고 도구 찾기</button><div id="detected-tools"></div></div>
+<div class="ws-panel"><h2>실행</h2>
+<p>실행하는 코드는 내 Windows 계정 권한으로 파일과 네트워크에 접근할 수 있습니다. 작업마다 확인을 거치고, 프로젝트를 먼저 신뢰해야 합니다.</p>
+<div id="validation-plans"></div><button type="button" id="validation-cancel" disabled>실행 취소 (하위 프로세스 포함)</button>
+<p id="validation-message" class="ws-message" role="status"></p><div id="validation-view"></div></div>
+</div>
+
+<div class="ws-tab-panel" role="tabpanel" id="ws-panel-compare" data-tab-panel="compare" aria-labelledby="ws-tab-compare" tabindex="-1" hidden>
+<h1>전후 비교</h1>
+<p class="ws-need ws-need-two-snapshots ws-banner ws-banner-info">비교하려면 점검 대상이 2개 이상 필요합니다. <button type="button" data-go-tab="changes">변경 탭</button>에서 변경을 다시 담으세요.</p>
+<div class="ws-panel"><label class="ws-field"><span>이전</span><select id="comparison-before"></select></label><label class="ws-field"><span>이후</span><select id="comparison-after"></select></label>
+<label class="ws-check"><input id="comparison-link-proposal" type="checkbox"> 선택한 개선 제안과 연결</label>
+<button type="button" id="compare-snapshots" class="btn-primary" data-risk="read">실측 비교</button>
+<p class="ws-note">변경하기 전에 기준(baseline) 검증을 먼저 실행해 두세요. 측정하지 않았거나 실행 환경이 다르면 &lsquo;비교 불가&rsquo;로 표시합니다.</p></div>
+<div id="comparison-view"></div>
+</div>
+
+<div class="ws-tab-panel" role="tabpanel" id="ws-panel-impact" data-tab-panel="impact" aria-labelledby="ws-tab-impact" tabindex="-1" hidden>
+<h1>영향 범위</h1>
+<p class="ws-need ws-need-snapshot ws-banner ws-banner-info">분석할 점검 대상이 없습니다. 먼저 <button type="button" data-go-tab="changes">변경 탭</button>에서 변경을 담으세요.</p>
+<p>Python·JS/TS 파서가 코드에서 읽어 낸 구문과 정적 연결만 보여 줍니다. 동적 호출과 외부 모듈은 알 수 없으며 실제 실행 결과를 뜻하지도 않습니다. 함께 바뀐 이력과 AI 추정은 따로 표시합니다.</p>
+<div class="ws-toolbar"><button type="button" id="analyze-impact" class="btn-primary" data-risk="read">담은 변경의 영향 분석</button></div>
+<p id="impact-message" class="ws-message" role="status"></p><div id="impact-view" class="ws-evidence"></div>
+</div>
+</section>
+
+<section class="ws-view" data-view="inbox" aria-labelledby="inbox-title" tabindex="-1">
+<h1 id="inbox-title">알림</h1>
+<p>등록한 모든 프로젝트의 AI 점검, 테스트·린트, 개선 제안 적용 결과를 모아 보여 줍니다. 알림을 눌러도 화면만 이동하며, 코드 수정·명령 실행·전송은 하지 않습니다. AI 지적은 추정이고, 검증 실패는 실제로 실행한 결과입니다.</p>
+<div class="ws-toolbar">
+<label class="ws-inline">프로젝트 <select id="inbox-project"><option value="">모든 프로젝트</option></select></label>
+<label class="ws-inline">종류 <select id="inbox-source"><option value="">전체</option><option value="review">이 PC의 AI 점검</option><option value="validation">테스트·린트</option><option value="proposal">개선 제안</option><option value="analysis">서버 분석</option></select></label>
+<label class="ws-inline">심각도 <select id="inbox-severity"><option value="">전체</option><option value="error">오류</option><option value="warning">주의</option><option value="info">정보</option></select></label>
+<label class="ws-inline">읽음 <select id="inbox-read"><option value="all">전체</option><option value="unread">읽지 않음</option><option value="read">읽음</option></select></label>
+<button type="button" id="inbox-refresh" data-risk="read">알림 새로고침</button></div>
+<p id="inbox-unread" role="status"></p><p id="inbox-message" class="ws-message" role="status" aria-live="polite"></p>
+<ul id="inbox-list" class="ws-list"></ul><button type="button" id="inbox-more" hidden>더 보기</button><div id="inbox-detail"></div>
+</section>
+
+<section class="ws-view" data-view="account" aria-labelledby="account-title" tabindex="-1">
+<h1 id="account-title">계정·연결</h1>
+<div class="ws-panel"><h2>계정</h2>
+<p id="desktop-account" role="status"></p>
+<p class="ws-note">로그인은 선택 사항입니다. 로그인하면 서버 분석과 함께 바뀐 이력을 쓸 수 있고, 로그인하지 않아도 로컬 기능은 모두 쓸 수 있습니다.</p>
+<button type="button" id="desktop-login" class="btn-primary">원격 로그인 화면 열기</button><button type="button" id="desktop-logout" disabled>로그아웃 (서버 세션 종료 재시도)</button></div>
+<div class="ws-panel"><h2>프로젝트 연결</h2>
+<p>선택한 로컬 프로젝트(<strong id="ws-connect-project">선택 안 됨</strong>)를 서버에 분석해 둔 저장소와 연결합니다. 코드는 보내지 않고, 로그인한 계정이 그 저장소를 볼 수 있는지 서버에서 확인합니다.</p>
+<label class="ws-field"><span>서버 저장소 번호</span><input id="remote-repository-id" type="number" min="1" step="1"></label>
+<div class="ws-toolbar"><button type="button" id="connect-remote" class="btn-primary">계정·저장소 확인 후 연결</button><button type="button" id="refresh-remote" data-risk="read">연결 상태 확인</button></div>
+<p class="ws-note">현재 창에서 동시에 추적할 수 있는 연결은 최대 16개입니다. 한도에 닿으면 새 연결을 보류하며 기존 기록은 그대로 보존됩니다. 목록에서 저장소를 고르는 방식은 아직 지원하지 않아 번호를 직접 입력해야 합니다.</p>
+<p id="remote-connection-message" class="ws-message" role="status"></p></div>
+</section>
+
+<section class="ws-view" data-view="settings" aria-labelledby="settings-title" tabindex="-1">
+<h1 id="settings-title">설정</h1>
+<div class="ws-panel"><h2>외부 에디터</h2>
+<label class="ws-field"><span>에디터</span><select id="editor-id"><option value="vscode">VS Code</option><option value="cursor">Cursor</option></select></label>
+<div class="ws-toolbar"><button type="button" id="save-editor">선택한 프로젝트의 기본 에디터로 저장</button><button type="button" id="configure-editor">실행 파일 선택·설정</button></div></div>
+<div class="ws-panel"><h2>프로젝트 기본값</h2><p class="ws-note">선택한 프로젝트에만 적용됩니다. 프로젝트를 고른 뒤 바꾸세요.</p>
+<label class="ws-field"><span>개요에 보여 줄 최근 커밋 수 (1~100)</span><input id="recent-limit" type="number" min="1" max="100" value="20"></label><button type="button" id="save-project-settings" disabled>설정 저장</button></div>
+<div class="ws-panel"><h2>구성 요소와 진단</h2>
+<p id="status" role="status" aria-live="polite">로컬 구성 요소를 확인하고 있습니다.</p>
+<div class="ws-toolbar"><button id="refresh" type="button" data-risk="read">구성 요소 상태 확인</button><button id="export-diagnostics" type="button" data-risk="read">진단 정보 저장 (최소한의 정보만)</button></div>
+<span id="diagnostics-message" role="status"></span>
+<p class="ws-note">업데이트 상태는 읽기 전용으로만 확인하며, 자동으로 내려받거나 설치하지 않습니다.</p></div>
+<div class="ws-panel"><h2>화면 테마</h2><p class="ws-note">화면 위쪽의 테마 선택에서 시스템 설정, 라이트, 다크를 고를 수 있습니다.</p></div>
+</section>
+</main></body>
+</html>

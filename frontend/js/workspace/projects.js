@@ -25,7 +25,7 @@ async function selected() {
     project = value; recent.value = String(value.settings.recentLimit.value); controls(true);
     if (value.accessState !== 'available') { note('PROJECT_UNAVAILABLE: 폴더 위치와 접근 권한을 확인하세요.'); return; }
     const state = await api.getGitStatus({ projectId, recentLimit: value.settings.recentLimit.value });
-    if (turn === generation && picker.value === projectId) renderStatus(target, state);
+    if (turn === generation && picker.value === projectId) { renderStatus(target, state); window.dispatchEvent(new CustomEvent('workspace-git-status', { detail: { projectId, state } })); }
   } catch (error) { if (turn === generation) note(error); }
 }
 async function load(append = false) {
