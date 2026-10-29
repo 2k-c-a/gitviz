@@ -231,6 +231,22 @@ class DesktopAuthTests(unittest.TestCase):
             row.expires_at = service.now() - timedelta(seconds=1)
         self.assertEqual(self.exchange(flow).status_code, 401)
 
+    def test_approval_page_lets_browsers_send_a_real_origin_and_null_is_rejected(self):
+        flow = self.create()
+        self.browser.get("/fixture/login")
+        page = self.browser.get("/api/desktop/v1/auth/authorize", params={"flow": flow["flowId"]})
+        # With no-referrer, browsers send `Origin: null` on the form's same-origin POST and approval always failed.
+        self.assertEqual(page.headers["referrer-policy"], "same-origin")
+        import re
+
+        csrf = re.search('name="csrf" value="([^"]+)"', page.text)[1]
+        denied = self.browser.post(
+            "/api/desktop/v1/auth/authorize",
+            headers={"Origin": "null"},
+            data={"flowId": flow["flowId"], "displayCode": flow["displayCode"], "approve": "true", "csrf": csrf},
+        )
+        self.assertEqual(denied.status_code, 401)
+
     def test_disabled_authorization_preserves_public_responses(self):
         for path in ('/', '/pages/search.html'):
             self.client.app.add_api_route(path, lambda: {'public': True}, methods=['GET'])

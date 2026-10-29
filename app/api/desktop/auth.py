@@ -71,7 +71,8 @@ def authorize_page(flow: UUID, request: Request, db=Depends(get_db)):
         f'<form method="post"><input type="hidden" name="flowId" value="{flow}">'
         f'<input type="hidden" name="csrf" value="{csrf}"><label>앱 확인 코드 <input name="displayCode" required maxlength="12"></label>'
         '<button name="approve" value="true">승인</button><button name="approve" value="false">거절</button></form></html>')
-    return HTMLResponse(page, headers={**NO_STORE, 'Content-Security-Policy':
+    # Under no-referrer, browsers send `Origin: null` on this form's same-origin POST, which the Origin check rejects.
+    return HTMLResponse(page, headers={**NO_STORE, 'Referrer-Policy': 'same-origin', 'Content-Security-Policy':
         "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"})
 
 
