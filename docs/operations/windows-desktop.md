@@ -6,7 +6,9 @@
 
 - 대상은 Windows 11 x64, 사용자별 설치(`%LocalAppData%`, 관리자 권한 불필요)다. 업데이트는 서명 확인 후 **수동**이며 자동 다운로드·설치·삭제는 하지 않는다. Squirrel의 자동 업데이트(`Update.exe`)는 사용하지 않는다.
 - 공개 신뢰 서명 인증서와 publisher는 없다. 배포용 설치 파일은 아직 제공하지 않는다.
-- maker-squirrel `8.0.1`을 설치했고(`npm run make`), 서명 없는 설치기와 자체 서명 개발 설치기를 로컬에서 빌드했다. 어느 PC에서도 설치 실행은 하지 않았다(clean VM 인수 전).
+- maker-squirrel `8.0.1`을 설치했고(`npm run make`), 서명 없는 설치기와 자체 서명 개발 설치기를 로컬에서 빌드했다.
+- 서명 없는 설치기의 설치·실행·0.7.0→0.7.1 업그레이드·제거는 clean VM(표준 사용자)에서 확인했다(`scripts/test_installer_vm.ps1`, [기록](../migration/validation/p10-partial-2026-10-28.md)). 개발 PC에는 설치하지 않았다.
+- 알려진 한계: 제거 뒤 `%LocalAppData%\GitVizWorkspace`에 `Update.exe` 등 파일 4~5개가 남는다. 사용자 데이터(`%APPDATA%\gitviz-workspace`)는 제거 후에도 보존된다. Windows Smart App Control이 강제 모드이면 서명 없는 설치기가 차단될 수 있다(미시험).
 
 ## 설치기 빌드
 
@@ -42,7 +44,7 @@ npm --prefix desktop run make      # desktop/out/make/squirrel.windows/x64/
 | publisher | 공개 신뢰 인증서를 확보할 때까지 비움 |
 | 배포 위치 | GitHub Releases로 가정. 실제 `<owner>/<repo>` 미설정 |
 | maker-squirrel | 8.0.1 설치 완료(사용자 승인). 의존성 32개 추가, 모두 dev·optional |
-| 설치 실행 검증 | clean VM 미실행 |
+| 설치 실행 검증 | clean VM에서 서명 없는 설치기 통과. 서명된 설치기·창 표시·Smart App Control 강제 모드는 미시험 |
 
 ## 배포 방침 (졸업작품·소규모 팀)
 
