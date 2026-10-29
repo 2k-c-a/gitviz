@@ -7,6 +7,9 @@ const assert = require('node:assert/strict');
 const stub = (name, value) => Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
 const store = () => ({ getItem: () => null, setItem() {}, removeItem() {} });
 stub('window', globalThis);
+const fixtureEvents = new EventTarget();
+stub('addEventListener', fixtureEvents.addEventListener.bind(fixtureEvents));
+stub('dispatchEvent', fixtureEvents.dispatchEvent.bind(fixtureEvents));
 stub('document', { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], addEventListener() {} });
 stub('localStorage', store());
 stub('sessionStorage', {});
@@ -82,10 +85,11 @@ async function main() {
   /* ── 파일 상세 렌더링: 가짜 fetch로 실제 drilldown.js를 끝까지 실행한다 ── */
   const els = {};
   for (const id of ['drilldown-modal', 'dd-title', 'dd-subtitle', 'dd-body', 'dd-back-btn', 'dd-code-btn']) {
-    els[id] = { style: {}, classList: { add() {}, remove() {} }, textContent: '', innerHTML: '', title: '' };
+    els[id] = { style: {}, classList: { add() {}, remove() {} }, textContent: '', innerHTML: '', title: '',
+      replaceChildren() { this.innerHTML = '불러오는 중...'; } };
   }
   document.getElementById = (id) => els[id] || null;
-  document.createElement = () => ({});   // 결과 안내 배너는 붙일 컨테이너가 없어 그리지 않고 건너뛴다
+  document.createElement = () => ({ setAttribute() {}, append() {}, addEventListener() {} });
   stub('history', { replaceState() {} });
 
   const V3 = 'gitviz-2026.10-priority-v3';
@@ -102,6 +106,8 @@ async function main() {
     return { ok: true, status: 200, headers: { get: () => null }, json: async () => body };
   });
   const render = async (fileId, extra) => {
+    // Each case substitutes a different server snapshot payload: start a fresh account/cache context.
+    dispatchEvent(new Event('gitviz-account-changed'));
     els['dd-body'].innerHTML = '불러오는 중...';
     dd.openFileDrilldown(fileId, extra);
     for (let i = 0; i < 100 && els['dd-body'].innerHTML.includes('불러오는 중'); i++) await new Promise((r) => setImmediate(r));

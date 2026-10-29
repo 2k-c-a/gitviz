@@ -1,0 +1,49 @@
+/* Shared by the web renderer and the sandboxed workspace. No remote assets. */
+:root {
+  color-scheme: light;
+  --ui-canvas: #f5f7fa; --ui-surface: #fff; --ui-raised: #edf2f7;
+  --ui-text: #172033; --ui-muted: #4b5b70; --ui-border: #ccd5e0; --ui-border-strong: #8a9bb0;
+  --ui-accent: #1d4ed8; --ui-accent-soft: #e8efff; --ui-primary: #1d4ed8; --ui-on-primary: #fff;
+  --ui-success: #166534; --ui-success-soft: #e9f7ee; --ui-warning: #854d0e; --ui-warning-soft: #fff5d6;
+  --ui-error: #b91c1c; --ui-error-soft: #ffeded; --ui-info: #1e40af; --ui-info-soft: #e8efff;
+  --ui-focus: #1d4ed8; --ui-backdrop: rgb(17 24 39 / 45%);
+  /* Categorical data series, separate from status semantics. Use labels/patterns too. */
+  --chart-1: #2563eb; --chart-2: #0f766e; --chart-3: #7c3aed; --chart-4: #b45309;
+  --chart-5: #be185d; --chart-6: #475569;
+  --chart-7: #0369a1; --chart-8: #9f1239; --chart-9: #6d28d9; --chart-10: #3f6212;
+  --chart-heat-0: var(--ui-raised); --chart-heat-1: #dbeafe; --chart-heat-2: #93c5fd; --chart-heat-3: #3b82f6; --chart-heat-4: #1d4ed8;
+  --ui-font: 'Segoe UI', 'Malgun Gothic', system-ui, sans-serif;
+  --ui-mono: 'Cascadia Mono', Consolas, monospace;
+  --ui-text-xs: 12px; --ui-text-sm: 13px; --ui-text-md: 14px; --ui-text-lg: 16px; --ui-text-xl: 20px; --ui-text-metric: 28px;
+  --ui-regular: 400; --ui-medium: 500; --ui-semibold: 600; --ui-bold: 700;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px; --space-8: 32px;
+  --ui-radius-sm: 6px; --ui-radius-md: 8px; --ui-radius-pill: 999px;
+  --ui-shadow: 0 8px 28px rgb(17 24 39 / 14%); /* Overlays only; content panels use a border. */
+  --ui-fast: 120ms; --ui-normal: 180ms; --ui-ease: ease-out;
+  /* Compatibility aliases keep existing analytics components and metric meanings intact. */
+  --bg: var(--ui-surface); --bg2: var(--ui-raised); --bg3: var(--ui-canvas);
+  --text: var(--ui-text); --text2: var(--ui-muted); --text3: var(--ui-muted);
+  --border: var(--ui-border); --border2: var(--ui-border-strong);
+  --blue: var(--ui-accent); --blue-light: var(--ui-accent-soft); --blue-mid: #b5d4f4; --blue-dark: var(--ui-info); --blue-xdark: var(--ui-info);
+  --teal: var(--chart-2); --teal-light: #e1f5ee; --teal-mid: #9fe1cb; --teal-dark: #0f6e56;
+  --red: var(--ui-error); --red-light: var(--ui-error-soft); --red-mid: #f09595; --red-dark: var(--ui-error);
+  --amber: var(--chart-4); --amber-light: var(--ui-warning-soft); --amber-dark: var(--ui-warning);
+  --coral-light: var(--ui-warning-soft); --coral-mid: #f0997b; --coral-dark: var(--ui-warning);
+  --green: var(--ui-success); --green-light: var(--ui-success-soft); --green-dark: var(--ui-success);
+  --purple: var(--chart-3); --purple-light: #eeedfe; --gray: var(--ui-muted); --gray-light: var(--ui-raised);
+  --r-md: var(--ui-radius-sm); --r-lg: var(--ui-radius-md);
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --ui-canvas: #11161d; --ui-surface: #1a222d; --ui-raised: #253142;
+  --ui-text: #e6edf5; --ui-muted: #b0bed0; --ui-border: #425269; --ui-border-strong: #637893;
+  --ui-accent: #8cb7ff; --ui-accent-soft: #20365b; --ui-primary: #2563eb;
+  --ui-success: #86efac; --ui-success-soft: #123327; --ui-warning: #fde047; --ui-warning-soft: #3b3016;
+  --ui-error: #fda4af; --ui-error-soft: #40222b; --ui-info: #a7c6ff; --ui-info-soft: #20365b;
+  --ui-focus: #93c5fd; --ui-backdrop: rgb(0 0 0 / 60%);
+  --chart-1: #8cb7ff; --chart-2: #5eead4; --chart-3: #c4b5fd; --chart-4: #fdba74; --chart-5: #f9a8d4; --chart-6: #b0bed0;
+  --chart-7: #7dd3fc; --chart-8: #fda4af; --chart-9: #d8b4fe; --chart-10: #bef264;
+  --chart-heat-1: #20365b; --chart-heat-2: #315b9a; --chart-heat-3: #548de0; --chart-heat-4: #8cb7ff;
+  --teal-light: #123a34; --teal-dark: #9fe1cb; --purple-light: #30264d;
+}
+@media (prefers-reduced-motion: reduce) { :root { --ui-fast: 0ms; --ui-normal: 0ms; } }

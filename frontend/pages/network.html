@@ -1,6 +1,7 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
+    <script src="../js/ui/theme.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="../vendor/chart-4.4.1/chart.umd.min.js"></script>
@@ -41,18 +42,18 @@
     <div class="panel" style="margin-bottom:14px;">
       <div class="p-head" style="margin-bottom:6px;">
         <div class="p-title">협업 네트워크</div>
-        <div style="font-size:11px;color:var(--text2);">노드 크기 = 관측 구간 커밋 수 · 색 = 클러스터 · 굵은 테두리 = 허브(betweenness 상위)</div>
+        <div style="font-size:var(--ui-text-xs);color:var(--text2);">선 굵기 = 관측 강도 · 노드 크기 = 커밋 수 · 색 = 클러스터 · 굵은 테두리 = 허브(betweenness 상위)</div>
       </div>
       <div id="net-empty-note"></div>
       <svg class="network-svg" id="net-graph-svg"></svg>
-      <div class="p-note">공동 수정은 같은 PR에서 실제로 같은 파일을 수정한 기록으로 계산합니다. 리뷰는 리뷰어 → 작성자 방향입니다. 허브는 협업 강도의 역수를 거리로 사용한 매개 중심성 기준이며, 수집된 이력의 관계를 나타냅니다. PR·커밋 연결 기록이 부족하면 공동 수정 관계가 누락될 수 있습니다.</div>
+      <div class="p-note">화살표는 리뷰어 → 작성자 방향을 포함한 관측 관계입니다. 강도 = (공동 수정 가중치 / 2) × 0.6 + 방향별 리뷰 가중치 × 0.4이며 단순 공동 변경 횟수가 아닙니다. 그래프는 휠로 확대·축소하고 빈 영역을 끌어 이동할 수 있습니다. 공동 수정은 같은 PR에서 실제로 같은 파일을 수정한 기록으로 계산합니다. 리뷰는 리뷰어 → 작성자 방향입니다. 허브는 협업 강도의 역수를 거리로 사용한 매개 중심성 기준이며, 수집된 이력의 관계를 나타냅니다. PR·커밋 연결 기록이 부족하면 공동 수정 관계가 누락될 수 있습니다.</div>
     </div>
 
     <!-- 상위 협업 쌍 -->
     <div class="panel">
       <div class="p-head" style="margin-bottom:14px;">
         <div class="p-title">상위 협업 쌍</div>
-        <div style="font-size:11px;color:var(--text2);">협업 강도(edge weight) 기준</div>
+        <div style="font-size:var(--ui-text-xs);color:var(--text2);">협업 강도(edge weight) 기준</div>
       </div>
       <div id="net-top-pairs"></div>
     </div>

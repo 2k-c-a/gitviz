@@ -98,7 +98,7 @@ function statusCallout(repo) {
 function actionButtons(repo, repoName, cardId) {
   if (repo.status === 'done') {
     return `
-      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-action="goPage" data-args="${encodeURIComponent(JSON.stringify(['code-analysis', repo.id]))}">결과 보기</button>
+      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-action="goPage" data-args="${encodeURIComponent(JSON.stringify(['overview', repo.id]))}">결과 보기</button>
       <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" data-action="openReanalyzeToast" data-args="${encodeURIComponent(JSON.stringify([repo.id]))}">재분석</button>
       <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId]))}">제거</button>`;
   }
@@ -110,7 +110,7 @@ function actionButtons(repo, repoName, cardId) {
   }
   if (repo.status === 'failed') {
     const last = repo.last_analyzed_at
-      ? `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-action="goPage" data-args="${encodeURIComponent(JSON.stringify(['code-analysis', repo.id]))}">마지막 성공 결과</button>` : '';
+      ? `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-action="goPage" data-args="${encodeURIComponent(JSON.stringify(['overview', repo.id]))}">마지막 성공 결과</button>` : '';
     return `
       ${last}
       <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" data-action="openReanalyzeToast" data-args="${encodeURIComponent(JSON.stringify([repo.id]))}">재시도</button>
@@ -142,7 +142,7 @@ function buildCard(repo) {
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;flex-shrink:0;">
           ${statusBadge(repo)}
-          <div style="font-size:11px;color:var(--text3);white-space:nowrap;">${lastAt ? `${lastLabel} ${fmtRelative(lastAt)}` : ''}</div>
+          <div style="font-size:var(--ui-text-xs);color:var(--text3);white-space:nowrap;">${lastAt ? `${lastLabel} ${fmtRelative(lastAt)}` : ''}</div>
           <div style="display:flex;gap:6px;">${actionButtons(repo, repoName, cardId)}</div>
         </div>
       </div>

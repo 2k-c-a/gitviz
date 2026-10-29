@@ -251,7 +251,7 @@ function renderCompare() {
       <li>${esc(interp.risk_delta || '')}</li>
     </ul>
     <div class="range-btns" id="cmp-filters" style="margin:10px 0;flex-wrap:wrap;">${filterBar}</div>
-    <div style="font-size:11px;color:var(--text2);margin-bottom:6px;">변경 파일 ${num(pg.total_changes)}개 중 ${num(shown)}개 불러옴${more ? ' · 필터와 개수는 불러온 파일 안에서만 적용됩니다' : ''}</div>
+    <div style="font-size:var(--ui-text-xs);color:var(--text2);margin-bottom:6px;">변경 파일 ${num(pg.total_changes)}개 중 ${num(shown)}개 불러옴${more ? ' · 필터와 개수는 불러온 파일 안에서만 적용됩니다' : ''}</div>
     <div class="hm-wrap"><table class="hm-table">
       <thead><tr><th class="hm-th left">파일</th><th class="hm-th">상태</th><th class="hm-th">${esc(policy.scoreShort)} (시작 → 종료)</th><th class="hm-th">주요 수정자 수</th><th class="hm-th">함께 수정 정도</th></tr></thead>
       <tbody>${rows || `<tr><td class="hm-td" colspan="5" style="text-align:center;color:var(--text3);padding:20px;">${pg.total_changes ? '이 필터에 해당하는 파일이 없습니다.' : '변경된 파일이 없습니다. 두 결과의 파일 집합과 지표가 같습니다.'}</td></tr>`}</tbody>

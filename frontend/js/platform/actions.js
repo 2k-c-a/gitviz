@@ -8,6 +8,11 @@ const actions = Object.fromEntries(names.map(name => [name, (...args) => { if (t
 actions.reloadPage = () => location.reload();
 actions.latestResult = query => { if (typeof query === 'string' && /^\?repo=\d+$/.test(query)) location.href = location.pathname + query; };
 actions.stop = () => {};
+document.addEventListener('keydown', event => {
+  const target = event.target.closest?.('[data-action][role="button"]');
+  if (!target || event.target !== target || target.matches('button, input, select, textarea, a[href]')) return;
+  if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); target.click(); }
+});
 document.addEventListener('click', event => {
   const target = event.target.closest?.('[data-action]');
   if (!target || !Object.hasOwn(actions, target.dataset.action)) return;

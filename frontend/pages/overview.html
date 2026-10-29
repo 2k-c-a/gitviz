@@ -1,0 +1,10 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitViz · 개요</title><script src="../js/ui/theme.js"></script><script src="../vendor/chart-4.4.1/chart.umd.min.js"></script><link rel="stylesheet" href="../css/index.css"></head><body>
+<div id="navbar-container"></div><div id="modal-container"></div>
+<div class="page active" id="page-overview"><div class="dash-head"><div><div class="dash-title js-repo-title">—</div><div class="dash-sub">저장된 분석 결과 개요</div></div><button class="btn-secondary" data-auth="1" data-action="openReanalyzeToast">재분석</button></div>
+<div class="body"><div id="overview-kpis" class="metrics-4"></div>
+<div class="overview-grid"><section class="panel overview-trend"><div class="p-head"><h2 class="p-title">개발 활동 추이</h2><a id="overview-activity-link">개발 활동 열기</a></div><p class="p-note">월별 관측 커밋 수 · 저장 결과의 고정 기간 기준</p><div id="overview-trend"></div></section>
+<section class="panel"><h2 class="p-title">주요 기여자</h2><div id="overview-contributors"></div></section>
+<section class="panel"><h2 class="p-title">관측 구간 변경이 많은 파일</h2><p class="p-note">파일 변경 횟수순입니다. API는 마지막 변경 시각을 제공하지 않습니다.</p><div id="overview-files"></div></section>
+<section class="panel"><h2 class="p-title">커밋 유형 분포</h2><p class="p-note">커밋 메시지 분류이며 결함 발생률이 아닙니다.</p><div id="overview-types"></div></section>
+<section class="panel"><h2 class="p-title">협업 요약</h2><div id="overview-collaboration"></div></section></div></div></div>
+<script type="module" src="../js/main.js"></script></body></html>

@@ -78,11 +78,13 @@ export function requireLogin() {
 export function toggleUserMenu() {
   const dd = document.getElementById('user-dropdown');
   dd.style.display = dd.style.display === 'block' ? 'none' : 'block';
+  document.getElementById('nav-account-trigger')?.setAttribute('aria-expanded', String(dd.style.display === 'block'));
 }
 
 export function closeUserMenu() {
   const dd = document.getElementById('user-dropdown');
   if (dd) dd.style.display = 'none';
+  document.getElementById('nav-account-trigger')?.setAttribute('aria-expanded', 'false');
 }
 
 export function updateAuthUI() {
@@ -115,6 +117,8 @@ export function updateAuthUI() {
 
   /* 인증 필요 요소: 로그아웃 상태에서 흐리게 + 클릭 차단 */
   document.querySelectorAll('[data-auth]').forEach(el => {
+    el.setAttribute('aria-disabled', String(!isLoggedIn));
+    if ('disabled' in el) el.disabled = !isLoggedIn;
     el.style.opacity       = isLoggedIn ? '' : '0.4';
     el.style.pointerEvents = isLoggedIn ? '' : 'none';
     el.title               = isLoggedIn ? '' : '로그인이 필요합니다';
@@ -125,6 +129,11 @@ export function updateAuthUI() {
 document.addEventListener('click', e => {
   const menu = document.getElementById('nav-user-menu');
   if (menu && !menu.contains(e.target)) closeUserMenu();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && document.getElementById('user-dropdown')?.style.display === 'block') {
+    closeUserMenu(); document.getElementById('nav-account-trigger')?.focus();
+  }
 });
 
 window.openLoginModal  = openLoginModal;

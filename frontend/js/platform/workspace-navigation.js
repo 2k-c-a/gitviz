@@ -1,5 +1,5 @@
 /* Navigation hints never authorize a local project connection or a remote request. */
-const pages = new Set(['/web/index.html', ...['timeline', 'network', 'code-analysis', 'search', 'myprojects', 'history', 'ai-review'].map(name => `/web/pages/${name}.html`)]);
+const pages = new Set(['/web/index.html', ...['overview', 'timeline', 'network', 'code-analysis', 'search', 'myprojects', 'history', 'ai-review', 'settings'].map(name => `/web/pages/${name}.html`)]);
 function appUrl(raw) {
   try {
     const url = new URL(raw);

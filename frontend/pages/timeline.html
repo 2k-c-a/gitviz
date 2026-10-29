@@ -1,6 +1,7 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
+    <script src="../js/ui/theme.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="../vendor/chart-4.4.1/chart.umd.min.js"></script>
@@ -34,9 +35,9 @@
   <div class="body">
     <div class="metrics-4">
       <div class="metric-card"><div class="m-label">관측 구간 커밋</div><div class="m-val" id="tl-m-commits">—</div><div class="m-sub m-up" id="tl-m-commits-sub">&nbsp;</div></div>
-      <div class="metric-card"><div class="m-label">활성 기여자</div><div class="m-val" id="tl-m-contributors">—</div><div class="m-sub">분석 종료 시점 이전 90일 기준</div></div>
+      <div class="metric-card"><div class="m-label">활성 기여자</div><div class="m-val" id="tl-m-contributors">—</div><div class="m-sub">종료 기준 최근 90일</div></div>
       <div class="metric-card"><div class="m-label">관측 구간 릴리즈</div><div class="m-val" id="tl-m-releases">—</div><div class="m-sub" id="tl-m-releases-sub">&nbsp;</div></div>
-      <div class="metric-card"><div class="m-label">버그 픽스 비율</div><div class="m-val m-dn" id="tl-m-bugfix">—</div><div class="m-sub">관측 구간 커밋 기준</div></div>
+      <div class="metric-card"><div class="m-label">버그 수정 분류 비율</div><div class="m-val" id="tl-m-bugfix">—</div><div class="m-sub">관측 구간 커밋 기준</div></div>
     </div>
 
     <!-- 커밋 타임라인 차트 -->
@@ -45,13 +46,13 @@
         <div class="p-title">커밋 활동량 타임라인</div>
       </div>
       <div class="p-note" id="tl-window-note">월별 커밋 수 · 활성 기여자 수 · 버그 픽스 비율. 관측 구간 안의 기록만 보여주며 전체 누적 수가 아닙니다.</div>
-      <div style="position:relative;height:180px;">
+      <div class="activity-chart">
         <canvas id="chart-timeline"></canvas>
       </div>
       <div class="legend">
-        <div class="leg-item"><div class="leg-line" style="background:var(--blue);"></div>커밋 수</div>
-        <div class="leg-item"><div class="leg-line" style="background:var(--teal);"></div>활성 기여자 수</div>
-        <div class="leg-item"><div class="leg-line" style="background:var(--amber);border-top:2px dashed var(--amber);height:0;"></div>버그 픽스 비율</div>
+        <div class="leg-item"><div class="leg-line" style="background:var(--chart-1);"></div>커밋 수</div>
+        <div class="leg-item"><div class="leg-line" style="background:var(--chart-2);"></div>활성 기여자 수</div>
+        <div class="leg-item"><div class="leg-line" style="background:var(--chart-4);border-top:2px dashed var(--chart-4);height:0;"></div>버그 픽스 비율</div>
         <div class="leg-item"><div class="leg-dot" style="background:var(--red);"></div>릴리즈</div>
       </div>
     </div>
@@ -62,7 +63,7 @@
         <div class="panel">
           <div class="p-head" style="margin-bottom:10px;">
             <div class="p-title">기여자별 활동 히트맵</div>
-            <div style="font-size:11px;color:var(--text2);">분석 종료 시점 기준 최근 16주</div>
+            <div style="font-size:var(--ui-text-xs);color:var(--text2);">분석 종료 시점 기준 최근 16주</div>
           </div>
           <div class="act-hm" id="act-heatmap">
             <div style="font-size:12px;color:var(--text3);text-align:center;padding:24px 8px;">불러오는 중…</div>
@@ -72,7 +73,7 @@
         <div class="panel">
           <div class="p-head" style="margin-bottom:14px;">
             <div class="p-title">상위 기여자</div>
-            <div style="font-size:11px;color:var(--text2);">관측 구간 커밋 수 기준</div>
+            <div style="font-size:var(--ui-text-xs);color:var(--text2);">관측 구간 커밋 수 기준</div>
           </div>
           <div class="contrib-list" id="tl-contrib-list"></div>
         </div>

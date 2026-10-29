@@ -1,3 +1,5 @@
+import { bindPanel, action } from './ui/analytics-view.js';
+import { element } from './ui/components.js';
 /* ── 협업 네트워크 페이지: Network API → DOM/force-directed 그래프 연동 ──
    net-graph-svg가 있을 때(=Network 페이지)만 동작한다. */
 import { getRepoId, fetchNetwork, fetchNetworkTopPairs } from './api.js';
@@ -6,35 +8,49 @@ import { assessDataQuality } from './policy.js';
 
 const svgEl = document.getElementById('net-graph-svg');
 
-if (svgEl && typeof d3 !== 'undefined') {
-  initNetworkPage().catch(err => {
-    setText('net-status', '결과 조회 실패');
-    console.error('[network] 로드 실패:', err);
-    renderLoadError(err);
-  });
-}
 
-const num = (n) => (n ?? 0).toLocaleString('en-US');
+const num = (n) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const fmt3 = (n) => (n ?? 0).toFixed(3);
+const fmt3 = (n) => n == null ? '—' : Number(n).toFixed(3);
 const avatarLetter = (name) => esc((name || '?')[0].toUpperCase());
 
-const CLUSTER_COLORS = ['#378ADD', '#1D9E75', '#EF9F27', '#E24B4A', '#534AB7', '#639922', '#F0997B', '#185FA5', '#9FE1CB', '#F09595'];
-const clusterColor = (c) => c == null ? '#B4B2A9' : CLUSTER_COLORS[c % CLUSTER_COLORS.length];
+const CLUSTER_COLORS = Array.from({ length: 10 }, (_, i) => `var(--chart-${i + 1})`);
+const clusterColor = (c) => c == null ? 'var(--ui-muted)' : CLUSTER_COLORS[c % CLUSTER_COLORS.length];
 
+let activeSimulation = null;
+let graphZoom = null;
+let selectGraphNode = () => {};
+let networkGeneration = 0;
 async function initNetworkPage() {
   const id = getRepoId();
-  const [network, topPairs] = await Promise.all([
-    fetchNetwork(id, 50, 0),
-    fetchNetworkTopPairs(id, 8),
-  ]);
-  renderMetrics(network.metrics || {});
-  renderGraph(network.nodes || [], network.edges || []);
-  renderTopPairs(Array.isArray(topPairs) ? topPairs : [], network.data_quality);
-  renderEmptyEdgeNote(network.metrics || {}, network.data_quality);
-  setText('net-status', '결과 조회 완료');
-  const statusDot = document.getElementById('net-status-dot');
-  if (statusDot) statusDot.style.background = '#639922';
+  const panel = svgEl.closest('.panel');
+  const controls = element('div', 'analysis-toolbar');
+  const limit = element('select'); limit.id = 'net-limit'; limit.setAttribute('aria-label', '표시 노드 상한');
+  [25, 50, 100, 200].forEach(n => { const option = element('option', '', `상위 ${n}명`); option.value = n; option.selected = n === 50; limit.append(option); });
+  const weight = element('input'); weight.type = 'number'; weight.min = 0; weight.step = 0.1; weight.value = 0; weight.setAttribute('aria-label', '최소 연결 강도');
+  const search = element('input'); search.type = 'search'; search.id = 'net-search'; search.placeholder = '표시된 기여자 이름 검색'; search.setAttribute('aria-label', '표시된 기여자 이름 검색');
+  const count = element('p', 'p-note'); count.id = 'net-visible-count'; count.setAttribute('role', 'status');
+  const list = element('div', 'analysis-list'); list.id = 'net-node-list';
+  let rows = [];
+  const drawList = () => { const q = search.value.trim().toLowerCase(); list.replaceChildren(...rows.filter(n => String(n.name || '익명').toLowerCase().includes(q)).map(n => { const b = action(n.name, () => selectGraphNode(n.id)); b.title = `${n.name} · 클러스터 ${n.cluster ?? '확인 불가'} · 커밋 ${num(n.commit_count)}개`; b.setAttribute('aria-label', `${b.title} · 상세 열기`); return b; })); if (!list.children.length) list.append(element('span', 'p-note', '일치하는 표시 노드가 없습니다.')); };
+  search.addEventListener('input', drawList);
+  const load = () => {
+    if (!weight.checkValidity()) { weight.reportValidity(); return; }
+    const generation = ++networkGeneration;
+    return bindPanel(panel, () => fetchNetwork(id, Number(limit.value), Number(weight.value)), network => {
+      if (generation !== networkGeneration) return;
+      rows = (network.nodes || []).map(n => ({ ...n }));
+      renderMetrics(network.metrics || {}); renderGraph(rows, network.edges || []); renderEmptyEdgeNote(network.metrics || {}, network.data_quality); drawList();
+      count.textContent = `표시 ${rows.length}명 · 연결 ${(network.edges || []).length}개. 위 지표와 아래 상위 협업 쌍은 전체 스냅샷 기준입니다.`;
+      setText('net-status', '결과 조회 완료');
+    });
+  };
+  let paused = false;
+  const pause = action('배치 일시정지', () => { paused = !paused; if (paused) activeSimulation?.stop(); else activeSimulation?.alpha(0.3).restart(); pause.textContent = paused ? '배치 재개' : '배치 일시정지'; pause.setAttribute('aria-pressed', String(paused)); });
+  controls.append(limit, element('label', '', '최소 연결 강도'), weight, action('필터 적용', () => { paused = false; pause.textContent = '배치 일시정지'; pause.setAttribute('aria-pressed', 'false'); void load(); }),
+    action('확대', () => graphZoom && d3.select(svgEl).call(graphZoom.scaleBy, 1.3)), action('축소', () => graphZoom && d3.select(svgEl).call(graphZoom.scaleBy, 1 / 1.3)), action('보기 초기화', () => graphZoom && d3.select(svgEl).call(graphZoom.transform, d3.zoomIdentity)), pause);
+  svgEl.before(controls, count); svgEl.after(search, list);
+  await Promise.all([load(), bindPanel(document.getElementById('net-top-pairs'), () => fetchNetworkTopPairs(id, 20), pairs => renderTopPairs(Array.isArray(pairs) ? pairs : [], {}))]);
 }
 
 function renderMetrics(m) {
@@ -52,8 +68,14 @@ function renderGraph(nodes, edges) {
      브라우저 창 크기와 무관하게 항상 동일한 상대 배치를 유지한다. */
   const width = 700;
   const height = 420;
+  activeSimulation?.stop();
   const svg = d3.select(svgEl).attr('viewBox', `0 0 ${width} ${height}`).attr('preserveAspectRatio', 'xMidYMid meet');
   svg.selectAll('*').remove();
+  const scene = svg.append('g');
+  graphZoom = d3.zoom().scaleExtent([0.25, 5]).on('zoom', event => scene.attr('transform', event.transform));
+  svg.call(graphZoom).call(graphZoom.transform, d3.zoomIdentity);
+  svg.append('defs').append('marker').attr('id', 'net-arrow').attr('viewBox', '0 -5 10 10').attr('markerUnits', 'userSpaceOnUse').attr('refX', 18).attr('markerWidth', 6).attr('markerHeight', 6).attr('orient', 'auto').append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', 'var(--chart-1)');
+
 
   if (!nodes.length) {
     svg.append('text').attr('x', width / 2).attr('y', height / 2).attr('text-anchor', 'middle')
@@ -102,15 +124,26 @@ function renderGraph(nodes, edges) {
     .force('y', d3.forceY(cy).strength(d => d.__isolated ? 0.05 : 0.12))
     .force('collide', d3.forceCollide(d => radius(d) + 5));
 
-  const linkSel = svg.append('g').selectAll('line').data(links).join('line')
-    .style('stroke', '#378ADD')
-    .style('stroke-width', d => 0.5 + 3 * (d.edge_weight / maxWeight))
-    .style('stroke-opacity', 0.35);
+  activeSimulation = sim;
+  const linkSel = scene.append('g').selectAll('line').data(links).join('line')
+    .style('stroke', 'var(--chart-1)')
+    .style('stroke-width', d => 0.5 + 1.5 * (d.edge_weight / maxWeight))
+    .style('stroke-opacity', nodes.length > 100 ? 0.18 : 0.35).attr('marker-end', 'url(#net-arrow)');
 
-  const nodeSel = svg.append('g').selectAll('g').data(nodes).join('g')
+  const nodeSel = scene.append('g').selectAll('g').data(nodes).join('g')
     .style('cursor', 'pointer')
     .call(drag(sim))
-    .on('click', (_, d) => window.openContributorDrilldown && window.openContributorDrilldown(d.id));
+    .attr('tabindex', 0).attr('role', 'button').attr('aria-label', d => `${d.name} · 클러스터 ${d.cluster ?? '확인 불가'} · 커밋 ${num(d.commit_count)}개 · 상세 열기`)
+    .on('click', (_, d) => selectGraphNode(d.id))
+    .on('keydown', (event, d) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectGraphNode(d.id); } });
+  selectGraphNode = id => {
+    const adjacent = new Set([id]); links.forEach(l => { const a = l.source.id ?? l.source, b = l.target.id ?? l.target; if (a === id) adjacent.add(b); if (b === id) adjacent.add(a); });
+    nodeSel.style('opacity', n => adjacent.has(n.id) ? 1 : 0.2).attr('aria-pressed', n => String(n.id === id));
+    nodeSel.selectAll('circle').style('stroke-width', n => n.id === id ? 4 : 1);
+    linkSel.style('stroke-opacity', l => (l.source.id ?? l.source) === id || (l.target.id ?? l.target) === id ? 0.9 : 0.08);
+    window.openContributorDrilldown?.(id);
+  };
+
 
   nodeSel.append('circle')
     .attr('r', d => radius(d))
@@ -118,7 +151,7 @@ function renderGraph(nodes, edges) {
     .style('stroke', d => (d.betweenness_centrality || 0) >= hubThreshold && hubThreshold > 0 ? 'var(--text)' : 'var(--bg)')
     .style('stroke-width', d => (d.betweenness_centrality || 0) >= hubThreshold && hubThreshold > 0 ? 2.5 : 1);
 
-  nodeSel.append('title').text(d => `${d.name} · 커밋 ${num(d.commit_count)}개${(d.betweenness_centrality || 0) >= hubThreshold ? ' · 허브' : ''}`);
+  nodeSel.append('title').text(d => `${d.name} · 클러스터 ${d.cluster ?? '확인 불가'} · 커밋 ${num(d.commit_count)}개${(d.betweenness_centrality || 0) >= hubThreshold ? ' · 허브' : ''}`);
 
   const pad = 8;
   const hubMaxRadius = ringRadius - 25; /* 연결된(허브) 노드가 반발력으로 링 쪽까지 밀려나지 않도록 상한을 둔다 */
@@ -199,11 +232,11 @@ function renderTopPairs(pairs, dq) {
   wrap.innerHTML = pairs.map(p => {
     const a = p.contributor_a, b = p.contributor_b;
     return `<div class="c-row" style="margin-bottom:10px;">
-      <div class="avatar" style="cursor:pointer;background:#E6F1FB;color:#185FA5;" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([a.id]))}">${avatarLetter(a.name)}</div>
-      <div class="c-info"><div class="c-name" style="cursor:pointer;" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([a.id]))}">${esc(a.name)}</div></div>
+      <div class="avatar" style="cursor:pointer;background:var(--ui-accent-soft);color:var(--ui-accent);" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([a.id]))}">${avatarLetter(a.name)}</div>
+      <div class="c-info"><button type="button" class="ui-list-link" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([a.id]))}">${esc(a.name)}</button></div>
       <div style="color:var(--text3);font-size:12px;flex-shrink:0;">↔</div>
-      <div class="avatar" style="cursor:pointer;background:#E6F1FB;color:#185FA5;" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([b.id]))}">${avatarLetter(b.name)}</div>
-      <div class="c-info"><div class="c-name" style="cursor:pointer;" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([b.id]))}">${esc(b.name)}</div></div>
+      <div class="avatar" style="cursor:pointer;background:var(--ui-accent-soft);color:var(--ui-accent);" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([b.id]))}">${avatarLetter(b.name)}</div>
+      <div class="c-info"><button type="button" class="ui-list-link" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([b.id]))}">${esc(b.name)}</button></div>
       <div class="c-count">${fmt3(p.edge_weight)}</div>
     </div>`;
   }).join('');
@@ -212,4 +245,12 @@ function renderTopPairs(pairs, dq) {
 function setText(id, text) {
   const el = document.getElementById(id);
   if (el) el.textContent = text;
+}
+
+if (svgEl && typeof d3 !== 'undefined') {
+  initNetworkPage().catch(err => {
+    setText('net-status', '결과 조회 실패');
+    console.error('[network] 로드 실패:', err);
+    renderLoadError(err);
+  });
 }

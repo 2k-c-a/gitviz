@@ -9,6 +9,7 @@ import { createAiPoller } from './ai-poll.js';
 import * as S from './ai-state.js';
 import { createProjectPicker } from './ai-project-picker.js';
 
+const settingsMode = !!document.getElementById('page-settings');
 const api = createAiClient();
 const guard = S.createGuard();
 const intents = {
@@ -107,7 +108,7 @@ async function load() {
   mount($('ai-main'));
   mount($('ai-keys'));
   renderHeader();
-  if (route.view === S.VIEWS.NO_REPO) return renderNoRepo();
+  if (!settingsMode && route.view === S.VIEWS.NO_REPO) return renderNoRepo();
   if (route.invalid.length) banner('warn', '주소의 일부 값을 무시했습니다', `올바르지 않은 값: ${route.invalid.join(', ')}`);
   try {
     shared.me = await api.me(token.signal);
@@ -118,13 +119,19 @@ async function load() {
   if (!token.current()) return;
   if (!shared.me) return renderLogin();
   ctx.repoInfo = null;
-  api.repository(route.repo, token.signal).then((r) => {
+  if (route.repo) api.repository(route.repo, token.signal).then((r) => {
     if (!token.current()) return;
     ctx.repoInfo = r;
     renderHeader();
   }).catch(() => { /* 이름을 못 읽어도 화면은 계속된다 */ });
   await loadKeys(token);
   if (!token.current() || shared.aiDisabled) return;
+  if (settingsMode) {
+    const returnState = S.parseRoute(new URLSearchParams(location.search).get('return') || S.buildRoute({ repo: route.repo }));
+    const back = new URL('./ai-review.html', location.href); back.search = S.buildRoute(returnState);
+    mount($('ai-main'), h('section', { class: 'ai-card' }, h('h2', { text: '저장 위치와 적용 범위' }), h('p', { text: '이 화면에서 등록한 키는 연결된 GitViz 서버에 암호화해 저장됩니다. 원문은 다시 조회하지 않고 마스킹된 힌트만 표시합니다. 로컬 워크스페이스의 일회성 BYOK 키와는 별도입니다.' }), h('p', { class: 'ai-muted', text: '라이트·다크·시스템 테마는 상단의 화면 테마에서 변경할 수 있습니다.' }), h('a', { href: back.href, class: 'btn-secondary ai-btn', text: 'AI 리뷰로 돌아가기' })));
+    return;
+  }
   const views = {
     [S.VIEWS.HOME]: renderHome, [S.VIEWS.FILES]: renderFiles, [S.VIEWS.PREVIEW]: renderPreview, [S.VIEWS.JOB]: renderJob, [S.VIEWS.SHARED]: renderShared,
   };
@@ -143,6 +150,8 @@ function repoLabel() {
 
 function renderHeader() {
   const title = $('ai-title');
+  title.dataset.repositoryLabel = repoLabel();
+  if (settingsMode) { title.textContent = '설정 · API key 관리'; $('ai-steps').hidden = true; return; }
   title.textContent = route.repo ? `AI 리뷰 · ${repoLabel()}` : 'AI 리뷰';
   const steps = [['home', 'PR·커밋 선택'], ['files', '파일 선택'], ['preview', '미리보기·동의'], ['job', '실행·결과']];
   const at = { [S.VIEWS.HOME]: 0, [S.VIEWS.FILES]: 1, [S.VIEWS.PREVIEW]: 2, [S.VIEWS.JOB]: 3 }[route.view];
@@ -168,6 +177,11 @@ function renderLogin() {
 
 /* ───────────────────────── A. 키·모델 ───────────────────────── */
 function openKeys() {
+  if (!settingsMode) {
+    const url = new URL('./settings.html', location.href);
+    if (route.repo) url.searchParams.set('repo', route.repo);
+    url.searchParams.set('return', S.buildRoute(route)); location.href = url.href; return;
+  }
   shared.keysOpen = true;
   const panel = $('ai-keys');
   const d = panel.querySelector('details');
@@ -190,8 +204,14 @@ async function loadKeys(token) {
     return showError(e, { onRetry: load });
   }
   shared.aiDisabled = false;
-  api.usage(token.signal).then((u) => { if (token.current()) { shared.usage = u; renderKeys(); } }).catch(() => {});
+  api.usage(token.signal).then((u) => { if (token.current()) { shared.usage = u; renderUsage(); } }).catch(() => {});
   renderKeys();
+}
+
+function renderUsage() {
+  const target = $('ai-usage');
+  if (!target) return;
+  target.textContent = shared.usage ? S.usageStatement(shared.usage) + (shared.usage.uncertain_reservations ? ` · 결과를 알 수 없는 호출 ${shared.usage.uncertain_reservations}건(비용이 발생했을 수 있음)` : '') : '';
 }
 
 function selectableProviders() {
@@ -206,7 +226,7 @@ function currentCredential() { return (shared.creds || []).find((c) => c.provide
 function renderKeys() {
   const root = $('ai-keys');
   const provider = currentProvider();
-  if (!provider) return mount(root);
+  if (!provider) return mount(root, h('div', { class: 'ai-card' }, h('h2', { text: '사용할 수 있는 AI 제공자가 없습니다' }), h('p', { class: 'ai-muted', text: '서버의 허용 모델 설정을 확인한 뒤 새로고침하세요.' })));
   const cred = currentCredential();
   const local = provider.models.every((m) => m.execution_location === 'local');
   const transferOk = local || shared.providers.external_transfer_allowed;
@@ -254,7 +274,11 @@ function renderKeys() {
       cred.in_flight_jobs ? chip(`진행 중 작업 ${cred.in_flight_jobs}개`, 'info') : null]
     : [chip('key 없음', 'warn'), ' 코드를 보내기 전에 본인의 API key를 등록해야 합니다.'];
   const usage = shared.usage;
-  mount(root, h('details', { class: 'ai-card ai-keys', open: shared.keysOpen || !cred, ontoggle: (ev) => { shared.keysOpen = ev.target.open; } },
+  if (!settingsMode) {
+    const modelSelect = h('select', { 'aria-label': '이번 리뷰 모델', onchange: ev => { shared.profileId = ev.target.value; ctx?.onCredentialsChanged?.(); } }, provider.models.filter(m => m.allowed).map(m => h('option', { value: m.profile_id, selected: m.profile_id === selected, text: m.display_name || m.model })));
+    return mount(root, h('section', { class: 'ai-card' }, h('div', { class: 'ai-row between' }, h('h2', { text: '리뷰 모델' }), button('API key·설정', openKeys)), h('div', { class: 'ai-row' }, providerSelect, modelSelect), h('p', { class: 'ai-muted' }, ...status), h('p', { class: 'ai-muted', id: 'ai-usage', text: usage ? S.usageStatement(usage) : '' })));
+  }
+  mount(root, h('details', { class: 'ai-card ai-keys', open: settingsMode || shared.keysOpen || !cred, ontoggle: (ev) => { shared.keysOpen = ev.target.open; } },
     h('summary', {}, h('b', { text: 'API key·제공자·모델' }), ' ', ...status),
     h('div', { class: 'ai-keys-body' },
       !transferOk ? h('div', { class: 'ai-banner warn' }, h('div', { class: 'ai-banner-title', text: '이 서버는 코드의 외부 전송을 허용하지 않습니다' }),
@@ -267,9 +291,9 @@ function renderKeys() {
       local ? null : h('label', { class: 'ai-field' }, h('span', { text: cred ? '새 API key(교체할 때만)' : 'API key' }), keyInput),
       local ? null : h('div', { class: 'ai-row' }, save, cred ? setModel : null, cred ? del : null),
       msg,
-      usage ? h('div', { class: 'ai-usage', id: 'ai-usage' },
-        S.usageStatement(usage)
-        + (usage.uncertain_reservations ? ` · 결과를 알 수 없는 호출 ${usage.uncertain_reservations}건(비용이 발생했을 수 있음)` : '')) : null)));
+      h('div', { class: 'ai-usage', id: 'ai-usage', role: 'status' },
+        (usage ? S.usageStatement(usage) : '')
+        + (usage?.uncertain_reservations ? ` · 결과를 알 수 없는 호출 ${usage.uncertain_reservations}건(비용이 발생했을 수 있음)` : '')))));
 }
 
 async function refreshCreds() {
@@ -328,13 +352,13 @@ async function renderHome(token) {
       if (!/^[0-9a-f]{40}$/.test(sha)) { commitMessage.textContent = '40자리 커밋 SHA를 입력하세요.'; return; }
       navigate({ repo: route.repo, commit: sha });
     })), commitMessage, commits, commitMore);
-  const list = h('div', { class: 'ai-prs', 'aria-live': 'polite' });
+  const list = h('div', { class: 'ai-prs', id: 'ai-pr-list', role: 'tabpanel', 'aria-labelledby': 'ai-pr-tab-open', 'aria-live': 'polite', tabindex: 0 });
   const more = button('더 보기', () => loadPage(false));
   more.hidden = true;
   let state = 'open', cursor = null, gen = 0;
-  const tabs = h('div', { class: 'ai-tabs', role: 'tablist' }, [['open', '열림'], ['closed', '닫힘'], ['merged', '병합']].map(([v, label]) =>
-    h('button', { type: 'button', role: 'tab', class: `ai-tab${v === state ? ' active' : ''}`, 'data-state': v, 'aria-selected': v === state,
-      onclick: () => { state = v; cursor = null; tabs.querySelectorAll('.ai-tab').forEach((t) => { const on = t.dataset.state === v; t.classList.toggle('active', on); t.setAttribute('aria-selected', String(on)); }); loadPage(true); } }, label)));
+  const tabs = h('div', { class: 'ai-tabs ui-tabs', role: 'tablist', 'aria-label': 'PR 상태' }, [['open', '열림'], ['closed', '닫힘'], ['merged', '병합']].map(([v, label]) =>
+    h('button', { type: 'button', role: 'tab', id: `ai-pr-tab-${v}`, 'aria-controls': 'ai-pr-list', tabindex: v === state ? 0 : -1, class: `ai-tab${v === state ? ' active' : ''}`, 'data-state': v, 'aria-selected': v === state,
+      onclick: () => { state = v; cursor = null; tabs.querySelectorAll('.ai-tab').forEach((t) => { const on = t.dataset.state === v; t.classList.toggle('active', on); t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; }); list.setAttribute('aria-labelledby', `ai-pr-tab-${v}`); loadPage(true); } }, label)));
   async function loadPage(reset) {
     const my = ++gen;
     if (reset) { cursor = null; mount(list, h('div', { class: 'ai-muted', text: '불러오는 중…' })); more.hidden = true; }
@@ -363,12 +387,14 @@ async function renderHome(token) {
   }
   const prCard = h('section', { class: 'ai-card' }, h('h2', { text: 'PR 선택' }),
       h('p', { class: 'ai-muted', text: 'GitHub의 현재 PR 목록입니다. 선택하면 그 시점의 SHA를 기준으로 파일을 고릅니다.' }), tabs, list, h('div', { class: 'ai-center' }, more)),
-    sourceTabs = h('div', { class: 'ai-tabs' }, [['pr', 'PR'], ['commit', '커밋']].map(([value, label]) =>
+    sourceTabs = h('div', { class: 'ai-tabs ui-tabs', role: 'group', 'aria-label': '리뷰 대상 종류' }, [['pr', 'PR'], ['commit', '커밋']].map(([value, label]) =>
       button(label, (ev) => {
         prCard.hidden = value !== 'pr'; commitCard.hidden = value !== 'commit';
-        sourceTabs.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === ev.currentTarget));
+        sourceTabs.querySelectorAll('button').forEach((b) => { b.classList.toggle('active', b === ev.currentTarget); b.setAttribute('aria-pressed', String(b === ev.currentTarget)); });
         if (value === 'commit' && !commitsLoaded) loadCommits();
       }, { cls: value === 'pr' ? 'ai-tab active' : 'ai-tab' })));
+  sourceTabs.querySelectorAll('button').forEach((b, i) => b.setAttribute('aria-pressed', String(i === 0)));
+  tabs.addEventListener('keydown', event => { const items = [...tabs.querySelectorAll('button')]; const at = items.indexOf(document.activeElement); const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowRight' ? (at + 1) % items.length : event.key === 'ArrowLeft' ? (at + items.length - 1) % items.length : null; if (next !== null) { event.preventDefault(); items[next].focus(); items[next].click(); } });
   mount($('ai-main'), sourceTabs, prCard, commitCard,
     h('section', { class: 'ai-card', id: 'ai-jobs-card' }, h('h2', { text: '이 저장소의 최근 AI 작업' })),
     h('section', { class: 'ai-card', id: 'ai-shared-card' }, h('h2', { text: '팀원이 만든 AI 결과' })));
@@ -423,8 +449,11 @@ async function renderShared(token) {
   const result = view.result;
   const listBox = h('div', { class: 'ai-findings' });
   const moreBtn = button('지적 더 보기', async () => {
+    if (moreBtn.disabled || !cursor) return;
+    moreBtn.disabled = true;
     try { const next = await api.sharedFindings(route.shared, { cursor }, token.signal); if (!token.current()) return; findings = findings.concat(next.findings); cursor = next.next_cursor; drawFindings(); }
     catch (e) { if (e?.name !== 'AbortError' && token.current()) showError(e); }
+    finally { moreBtn.disabled = false; }
   });
   function feedbackList(f) {
     if (!f.feedbacks.length) return h('p', { class: 'ai-muted', text: '아직 남긴 판단이 없습니다.' });
@@ -838,9 +867,23 @@ async function renderResult(token, holder, job) {
   }
   const summaryBox = h('div', { class: 'ai-valid' });
   const listBox = h('div', { class: 'ai-findings' });
+  const filterQuery = h('input', { type: 'search', class: 'ai-input', 'aria-label': '불러온 지적의 파일 또는 제목 검색', placeholder: '불러온 지적에서 파일·제목 검색', oninput: () => drawFindings() });
+  const filterPriority = h('select', { 'aria-label': '검토 순서 필터', onchange: () => drawFindings() });
+  const filterVerdict = h('select', { 'aria-label': '사람 검증 상태 필터', onchange: () => drawFindings() });
+  const filters = h('div', { class: 'analysis-toolbar' }, filterQuery, filterPriority, filterVerdict);
+  const feedbackDrafts = new Map();
+  function updateChoices(select, values, label, format = x => x) {
+    const value = select.value;
+    mount(select, h('option', { value: '', text: label }), [...new Set(values.filter(v => v != null))].sort().map(v => h('option', { value: v, text: format(v) })));
+    select.value = [...select.options].some(option => option.value === value) ? value : '';
+  }
+
   const moreBtn = button('지적 더 보기', async () => {
+    if (moreBtn.disabled || !cursor) return;
+    moreBtn.disabled = true;
     try { const page = await api.findings(result.result_id, { cursor }, token.signal); if (!token.current()) return; findings = findings.concat(page.findings); cursor = page.next_cursor; drawFindings(); }
     catch (e) { if (e?.name !== 'AbortError' && token.current()) showError(e); }
+    finally { moreBtn.disabled = false; }
   });
   function drawSummaryBox() {
     const sum = S.findingsSummary(findings);
@@ -896,9 +939,15 @@ async function renderResult(token, holder, job) {
   }
   function drawFindings() {
     drawSummaryBox();
+    filters.hidden = !findings.length;
     if (result.kind !== 'review') return mount(listBox);
     if (!findings.length) return mount(listBox, h('div', { class: 'ai-empty' }, h('b', { text: '지적 0건' }), h('p', { text: S.emptyFindingsText(result.coverage) })));
-    mount(listBox, findings.map((f) => findingCard(f)), cursor ? h('div', { class: 'ai-center' }, moreBtn) : null);
+    updateChoices(filterPriority, findings.map(f => f.finding.priority), '전체 검토 순서', v => `검토 순서 ${v}`);
+    updateChoices(filterVerdict, findings.map(f => f.finding.human_validation), '전체 검증 상태', v => S.VERDICT_LABEL[v] || v);
+    const q = filterQuery.value.trim().toLowerCase();
+    const visible = findings.filter(f => (!q || `${f.finding.location?.path || ''} ${f.finding.title}`.toLowerCase().includes(q)) && (!filterPriority.value || String(f.finding.priority) === filterPriority.value) && (!filterVerdict.value || f.finding.human_validation === filterVerdict.value));
+    mount(listBox, h('p', { class: 'ai-muted', role: 'status', text: `불러온 ${findings.length}건 중 ${visible.length}건 표시${cursor ? ' · 아직 불러오지 않은 지적이 있습니다. 필터는 불러온 지적에만 적용됩니다.' : ''}` }), visible.length ? visible.map(f => findingCard(f)) : h('p', { class: 'ai-empty', text: '조건에 맞는 지적이 없습니다.' }), cursor ? h('div', { class: 'ai-center' }, moreBtn) : null);
+
   }
   function codeButton(fileId, loc) {
     const out = h('div', { class: 'ai-code' });
@@ -922,12 +971,16 @@ async function renderResult(token, holder, job) {
   }
   function findingCard(f) {
     const x = f.finding;
-    let verdict = f.feedback?.verdict || null;
+    const draftId = f.finding_id || f.finding.finding_id;
+    const draft = feedbackDrafts.get(draftId);
+    let verdict = draft?.verdict || f.feedback?.verdict || null;
     const note = h('textarea', { class: 'ai-input', rows: 2, maxlength: 2000, placeholder: '메모(선택, 2000자까지)', 'aria-label': '피드백 메모' });
-    note.value = f.feedback?.note || '';
+    note.value = draft?.note ?? f.feedback?.note ?? '';
+    const saveDraft = () => feedbackDrafts.set(draftId, { verdict, note: note.value });
+    note.addEventListener('input', saveDraft);
     const status = h('div', { class: 'ai-inline', role: 'status' });
     const buttons = ['valid', 'false_positive', 'uncertain'].map((v) => h('button', { type: 'button', class: `ai-verdict${verdict === v ? ' on' : ''}`, 'data-verdict': v, 'aria-pressed': String(verdict === v),
-      onclick: () => { verdict = v; buttons.forEach((b) => { const on = b.dataset.verdict === v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); } }, S.VERDICT_LABEL[v]));
+      onclick: () => { verdict = v; saveDraft(); buttons.forEach((b) => { const on = b.dataset.verdict === v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); } }, S.VERDICT_LABEL[v]));
     const verdictChip = chip(S.VERDICT_LABEL[x.human_validation] || x.human_validation, x.human_validation === 'unverified' ? 'warn' : 'ok');
     const mine = h('span', { class: 'ai-muted', text: f.feedback ? `내 검증: ${S.VERDICT_LABEL[f.feedback.verdict]} (v${f.feedback.version})` : '내 검증: 미검증' });
     const save = button('피드백 저장', async () => {
@@ -935,7 +988,7 @@ async function renderResult(token, holder, job) {
       await run(save, status, async () => {
         try {
           const out = await api.putFeedback(x.finding_id || f.finding_id, { verdict, note: note.value, expectedVersion: f.feedback?.version || 0 }, token.signal);
-          f.feedback = out; f.finding.human_validation = out.verdict;
+          f.feedback = out; f.finding.human_validation = out.verdict; feedbackDrafts.delete(draftId);
           status.textContent = `저장했습니다 (v${out.version}).`; drawSummaryBox();
           verdictChip.textContent = S.VERDICT_LABEL[out.verdict]; verdictChip.className = 'ai-chip ok';
           mine.textContent = `내 검증: ${S.VERDICT_LABEL[out.verdict]} (v${out.version})`;
@@ -976,7 +1029,7 @@ async function renderResult(token, holder, job) {
         S.coverageLimitations(cov).length ? ['제외·누락 사유', S.coverageLimitations(cov).join(' · ')] : null,
         ['결과 보관', `${fmtTime(result.expires_at)}까지`]]),
       summaryBox),
-    result.kind === 'review' ? h('section', { class: 'ai-card' }, h('h2', { text: `지적 ${result.finding_count}건` }), listBox) : h('section', { class: 'ai-card' }, summaryBody()),
+    result.kind === 'review' ? h('section', { class: 'ai-card' }, h('h2', { text: `지적 ${result.finding_count}건` }), filters, listBox) : h('section', { class: 'ai-card' }, summaryBody()),
     result.kind === 'review' ? h('section', { class: 'ai-card' }, h('h2', { text: '추가 검토 후보' }), historyBox) : null,
     h('section', { class: 'ai-card' }, h('div', { class: 'ai-row' },
       link('같은 입력으로 새로 실행', { repo: route.repo, input: result.input_id, force: true }, 'btn-secondary ai-btn'), link('PR·커밋 선택으로', { repo: route.repo }, 'btn-secondary ai-btn'),

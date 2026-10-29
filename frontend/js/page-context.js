@@ -72,11 +72,12 @@ export function renderContextBanner(data) {
       <span class="ctx-chip ok" title="저장된 결과를 불러왔습니다. 수집이 끝났거나 분석 근거가 충분하다는 뜻이 아닙니다.">결과 조회 성공</span>
       <span class="ctx-chip ${STATUS_TONE[a.collection]}" title="${esc(collectionTip)}">${COLLECTION_TEXT[a.collection]}</span>
       <span class="ctx-chip ${STATUS_TONE[a.evidence]}" title="${esc(a.evidenceReasons.join(' / ') || evidenceNote(a.threshold))}">${EVIDENCE_TEXT[a.evidence]}</span>
-      ${a.notes.length ? `<span class="ctx-note">${esc(a.notes.join(' · '))}</span>` : ''}
+      <span class="ctx-note">${esc(policy.versionLabel)}</span>
     </div>
-    ${reasons.length ? `<ul class="ctx-reasons">${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
     ${legacy}
-    <details class="ctx-details"><summary>수집 범위 · 기술 정보</summary>
+    <details class="ctx-details"><summary>수집 범위·분석 기준${reasons.length ? ` · 확인할 항목 ${reasons.length}개` : ''}</summary>
+      ${reasons.length ? `<ul class="ctx-reasons">${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
+      ${a.notes.length ? `<p class="ctx-note">${esc(a.notes.join(' · '))}</p>` : ''}
       <table class="info-table">${techRows(snap, dq)}</table>
     </details>`;
   const entry = workspaceEntryUrl(location.href);
@@ -113,7 +114,8 @@ export function renderLoadError(err) {
   if (old) old.remove();
   const box = document.createElement('div');
   box.id = 'load-error';
-  box.className = 'ctx-error';
+  box.className = 'ctx-error ui-state ui-state-error';
+  box.setAttribute('role', 'alert');
   box.innerHTML = `<div class="ctx-error-title">${esc(title)}</div>
     <div class="ctx-error-body">${esc(body)}</div>
     <div class="ctx-error-actions">${actions}

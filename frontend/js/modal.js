@@ -467,7 +467,7 @@ function reloginFromJob() {
 function viewLastSuccess(snapshotId) {
   const repoId = _failedFor ?? _currentRepoId;
   closeJobModal();
-  window.goPage('timeline', repoId || undefined, snapshotId);
+  window.goPage('overview', repoId || undefined, snapshotId);
 }
 // 가려져 있던 탭이 다시 보이면 느린 간격을 기다리지 않고 바로 상태를 확인한다
 document.addEventListener('visibilitychange', () => { if (!document.hidden && _poller) _poller.nudge(); });
@@ -481,12 +481,12 @@ window.resumePolling = resumePolling;
 function _attachSimButtons() {
   const sim = document.createElement('div');
   sim.dataset.sim = '1';
-  sim.style.cssText = 'margin-top:12px;padding-top:10px;border-top:0.5px solid var(--border);font-size:10px;color:var(--text3);';
+  sim.style.cssText = 'margin-top:12px;padding-top:10px;border-top:0.5px solid var(--border);font-size:var(--ui-text-xs);color:var(--text3);';
   sim.innerHTML = `<span style="display:block;margin-bottom:4px;">— 와이어프레임 시뮬레이션 —</span>
-    <button class="btn-secondary" style="font-size:10px;padding:3px 8px;margin-right:4px;" data-action="simulateJobState" data-args="%5B%22done%22%5D">완료</button>
-    <button class="btn-secondary" style="font-size:10px;padding:3px 8px;margin-right:4px;" data-action="simulateJobState" data-args="%5B%22error-rate-limit%22%5D">Rate Limit</button>
-    <button class="btn-secondary" style="font-size:10px;padding:3px 8px;margin-right:4px;" data-action="simulateJobState" data-args="%5B%22error-not-found%22%5D">404</button>
-    <button class="btn-secondary" style="font-size:10px;padding:3px 8px;" data-action="simulateJobState" data-args="%5B%22error-unreachable%22%5D">502</button>`;
+    <button class="btn-secondary" style="font-size:var(--ui-text-xs);padding:3px 8px;margin-right:4px;" data-action="simulateJobState" data-args="%5B%22done%22%5D">완료</button>
+    <button class="btn-secondary" style="font-size:var(--ui-text-xs);padding:3px 8px;margin-right:4px;" data-action="simulateJobState" data-args="%5B%22error-rate-limit%22%5D">Rate Limit</button>
+    <button class="btn-secondary" style="font-size:var(--ui-text-xs);padding:3px 8px;margin-right:4px;" data-action="simulateJobState" data-args="%5B%22error-not-found%22%5D">404</button>
+    <button class="btn-secondary" style="font-size:var(--ui-text-xs);padding:3px 8px;" data-action="simulateJobState" data-args="%5B%22error-unreachable%22%5D">502</button>`;
   document.querySelector('#job-modal .modal').appendChild(sim);
 }
 
@@ -516,13 +516,13 @@ export function simulateJobState(state) {
     (cfg.retry ? `<button class="btn-primary" data-action="retryJob">재시도</button>` : '');
 }
 
-/* 분석 완료 → 방금 분석한 repo의 타임라인 결과로 이동.
+/* 분석 완료 → 방금 분석한 repo의 분석 개요로 이동.
    완료된 job의 snapshot_id를 명시해, 이전에 열어 둔 오래된 결과가 선택되지 않게 한다. */
 export function viewResult() {
   const repoId = _currentRepoId || undefined;
   const snapshotId = _currentSnapshotId || undefined;
   closeJobModal();
-  window.goPage('timeline', repoId, snapshotId);
+  window.goPage('overview', repoId, snapshotId);
 }
 
 export function closeJobModal() {

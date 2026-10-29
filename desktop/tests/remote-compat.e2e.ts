@@ -2,7 +2,7 @@ import './profile';
 /** Actual sandbox pages with an in-process server transport fixture. No external OAuth/API. */
 import assert from 'node:assert/strict';
 import { app } from 'electron';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DesktopAuth } from '../src/auth';
 import { Remote, type Http } from '../src/remote';
@@ -10,6 +10,8 @@ import { RemoteContracts } from '../src/remote-contracts';
 import { registerDesktop } from '../src/desktop-ipc';
 import { registerScheme, serveAssets } from '../src/app-protocol';
 import { createWindow } from '../src/window';
+import { registerHealth } from '../src/ipc';
+import { unavailable } from '../contracts/workspace';
 
 registerScheme(); app.on('window-all-closed', () => {});
 let phase = 'startup';
@@ -21,9 +23,11 @@ const issued = { sessionToken: token, sessionId: uid, user, expiresAt: new Date(
 const snapshot = { id: 7, repository_id: 2, target_sha: 'a'.repeat(40), payload_sha256: 'b'.repeat(64), formula_version: 'v1', window_start: '2026-01-01T00:00:00Z', window_end: '2026-06-01T00:00:00Z', analyzed_at: '2026-06-01T00:00:00Z' };
 const repo = { id: 2, url: 'https://github.com/fixture/p03', name: 'P03 Fixture', status: 'done', default_branch: 'main', last_analyzed_at: snapshot.analyzed_at, latest_snapshot_id: 7 };
 const requests: string[] = [];
+const requestMethods: string[] = [];
 let unauthorized = false;
 const http: Http = async (path, method, _body, givenToken) => {
   requests.push(path); assert.equal(givenToken, token);
+  requestMethods.push(method);
   if (unauthorized) return { status: 401, body: { detail: 'fixture signed out' }, headers: {} };
   const url = new URL(path, 'https://fixture.test'); const p = url.pathname;
   let body: unknown = {};
@@ -41,12 +45,16 @@ const http: Http = async (path, method, _body, givenToken) => {
   else if (p.endsWith('/network')) body = { nodes: [{ id: 1, name: 'Fixture', commit_count: 1 }], edges: [], metrics: { total_contributor_count: 1, total_edge_count: 0 }, data_quality: {} };
   else if (p.endsWith('/top-pairs')) body = [];
   else if (p.endsWith('/tree')) body = { tree: { name: 'root', children: [] }, files: [], data_quality: { commit_count: 1 } };
+  else if (/\/files\/(998|999)\/detail$/.test(p)) {
+    const slow = p.includes('/998/'); if (slow) await new Promise(resolve => setTimeout(resolve, 200));
+    body = { file: { id: slow ? 998 : 999, path: slow ? 'src/older.ts' : 'src/fixture.ts' }, editors: [], coupled_files: [], co_change_unit: 'pr', maintenance_priority: 0.5, evidence_status: 'observed', change_freq: 10, churn: 80, bugfix_count: 1, observation_count: 10 };
+  }
   else if (p.endsWith('/risk-scores') || p.endsWith('/bus-factor') || p.endsWith('/coupling')) body = [];
   else if (p.endsWith('/snapshots')) body = { repository_id: 2, snapshots: [snapshot], next_before_id: null };
   else if (p === '/api/ai/v1/providers') body = { providers: [], external_transfer_allowed: false };
   else if (p === '/api/ai/v1/credentials') body = { credentials: [] };
-  else if (p === '/api/ai/v1/usage') body = { currency: 'USD', used: '0', reserved: '0', limit: '20' };
-  else if (p === '/search/github-repositories') body = { query: 'fixture', total_count: 0, results: [] };
+  else if (p === '/api/ai/v1/usage') body = { period_start: '2026-10-01', currency: 'USD', user_spent: '0', user_reserved: '0', user_limit: '20', user_remaining: '20', server_budget_enabled: true, uncertain_reservations: 0, daily_jobs_used: 0, daily_job_limit: 30 };
+  else if (p === '/search/github-repositories') body = { query: 'fixture', total_count: 1, results: [{ owner: 'fixture', repo_name: 'p03', url: repo.url, description: 'Search fixture', stars: 1, forks: 0, is_registered: true }] };
   return { status: method === 'DELETE' ? 204 : 200, body, headers: {} };
 };
 
@@ -57,6 +65,8 @@ void app.whenReady().then(async () => {
   await auth.restore();
   const remote = new Remote(contracts, http, auth.identity, auth.invalidate);
   const window = createWindow(false); const unregister = registerDesktop(window, auth, remote);
+  window.webContents.setBackgroundThrottling(false);
+  const unregisterHealth = registerHealth(window, unavailable);
   const errors: string[] = [];
   window.webContents.on('console-message', details => { if (details.level === 'error') errors.push(details.message.replace(/[A-Za-z]:[^\n]*/g, '[path]')); });
   async function wait(expression: string): Promise<void> {
@@ -64,10 +74,12 @@ void app.whenReady().then(async () => {
       if (await window.webContents.executeJavaScript(expression)) return;
       await new Promise(resolve => setTimeout(resolve, 30));
     }
-    throw new Error(`ASSERTION:${phase}`);
+    throw new Error(`ASSERTION:${phase}:${expression.slice(0, 130)}`);
   }
   try {
     for (const [page, ready] of [
+      ['settings', `document.getElementById('ai-title')?.textContent.includes('설정') && document.getElementById('ai-main')?.textContent.includes('저장 위치')`],
+      ['overview', `document.getElementById('overview-kpis')?.textContent.includes('관측 구간 커밋') && !!document.querySelector('#overview-trend canvas')`],
       ['timeline', `document.getElementById('tl-m-commits')?.textContent==='1' && typeof Chart==='function'`],
       ['network', `document.getElementById('net-status')?.textContent==='결과 조회 완료' && !!document.querySelector('#net-graph-svg circle')`],
       ['code-analysis', `document.getElementById('cx-status')?.textContent.includes('#7')`],
@@ -79,14 +91,87 @@ void app.whenReady().then(async () => {
       phase = page!; const before = errors.length;
       await window.loadURL(`gitviz://app/web/pages/${page}.html?repo=2&snapshot=7`);
       await wait(ready!);
+      await wait(`!!document.querySelector('.app-shell') && !!document.querySelector('.app-detail')`);
+      assert.equal(await window.webContents.executeJavaScript(`getComputedStyle(document.querySelector('.app-shell')).display`), 'grid');
+      assert.equal(await window.webContents.executeJavaScript(`document.documentElement.lang`), 'ko');
+      assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('#app-main').length`), 1);
+      assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('.sub-tabs').length`), 0, 'single repository navigation');
+      assert.equal(await window.webContents.executeJavaScript(`typeof workspace`), 'undefined', 'remote pages must not gain the local bridge');
       assert.equal(await window.webContents.executeJavaScript(`typeof require`), 'undefined');
       assert.equal(errors.length, before, `renderer error in ${page}`);
     }
+    phase = 'search-selection';
+    await window.loadURL('gitviz://app/web/pages/search.html');
+    await wait(`!!document.querySelector('.app-shell') && document.getElementById('nav-username')?.textContent==='fixture'`);
+    const beforeSelect = requestMethods.length;
+    await window.webContents.executeJavaScript(`document.getElementById('search-input').value='fixture'; document.getElementById('search-btn').click()`);
+    await wait(`!!document.querySelector('.search-select-btn')`);
+    await window.webContents.executeJavaScript(`document.querySelector('.search-select-btn').click()`);
+    await wait(`!document.getElementById('search-selection').hidden && document.getElementById('search-selection').textContent.includes('fixture/p03')`);
+    assert.equal(requestMethods.slice(beforeSelect).some(method => method !== 'GET'), false, 'selection is read-only');
     phase = 'delegated-navigation';
     await window.loadURL('gitviz://app/web/pages/timeline.html?repo=2&snapshot=7');
     await wait(`document.getElementById('tl-m-commits')?.textContent==='1'`);
-    await window.webContents.executeJavaScript(`document.querySelector('[data-action="goPage"][data-args="%5B%22network%22%5D"]').click()`);
+    await window.webContents.executeJavaScript(`document.querySelector('[data-shell-page="network"]').click()`);
     await wait(`location.pathname.endsWith('/network.html') && location.search.includes('snapshot=7') && document.getElementById('net-status')?.textContent==='결과 조회 완료'`);
+    phase = 'shell-interactions';
+    await wait(`document.querySelector('.app-nav-link[aria-current="page"]')?.textContent.includes('협업')`);
+    assert.match(await window.webContents.executeJavaScript(`document.querySelector('[data-shell-page="timeline"]').href`), /repo=2&snapshot=7/);
+    assert.match(await window.webContents.executeJavaScript(`document.getElementById('shell-context').textContent`), /#7/);
+    await window.webContents.executeJavaScript(`document.getElementById('shell-theme').value='dark'; document.getElementById('shell-theme').dispatchEvent(new Event('change'))`);
+    assert.equal(await window.webContents.executeJavaScript(`document.documentElement.dataset.theme`), 'dark');
+    assert.equal(await window.webContents.executeJavaScript(`getComputedStyle(document.body).backgroundColor`), 'rgb(17, 22, 29)');
+    await window.webContents.executeJavaScript(`document.querySelector('[data-shell-page="timeline"]').click()`);
+    await wait(`location.pathname.endsWith('/timeline.html') && !!document.querySelector('.app-detail') && document.getElementById('tl-m-commits')?.textContent==='1'`);
+    assert.equal(await window.webContents.executeJavaScript(`document.documentElement.dataset.theme`), 'dark', 'theme persists across documents');
+    await window.webContents.executeJavaScript(`document.getElementById('shell-theme').value='light'; document.getElementById('shell-theme').dispatchEvent(new Event('change'))`);
+    assert.equal(await window.webContents.executeJavaScript(`Chart.getChart('chart-timeline').data.datasets[0].backgroundColor`), '#2563eb');
+    for (const [width, height] of [[600, 400], [900, 640], [1280, 800], [1920, 1080]]) {
+      phase = `layout-${width}`;
+      window.setContentSize(width!, height!);
+      await wait(`Math.abs(innerWidth - ${width}) <= 1`);
+      const dimensions = await window.webContents.executeJavaScript(`({body:document.body.scrollWidth, width:innerWidth, main:document.getElementById('app-main').getBoundingClientRect().width})`) as { body: number; width: number; main: number };
+      assert.ok(dimensions.body <= dimensions.width + 1, `shell overflow ${width}`);
+      assert.ok(dimensions.main > 0, `content hidden ${width}`);
+      if (width === 900) assert.equal(await window.webContents.executeJavaScript(`Math.round(document.querySelector('.app-sidebar').getBoundingClientRect().width)`), 56, 'default window keeps a navigation rail');
+      await window.webContents.executeJavaScript(`window.openFileDrilldown(999)`);
+      await wait(`document.querySelector('.app-shell').classList.contains('has-detail')`);
+      await wait(`document.getElementById('dd-title').textContent==='fixture.ts'`);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const narrowDetail = await window.webContents.executeJavaScript(`matchMedia('(width < 1280px)').matches`) as boolean;
+      assert.equal(await window.webContents.executeJavaScript(`getComputedStyle(document.getElementById('app-main')).display==='none'`), narrowDetail, `detail mode at viewport ${dimensions.width}`);
+      assert.ok(await window.webContents.executeJavaScript(`document.getElementById('drilldown-modal').getBoundingClientRect().width >= 300`), 'detail must occupy visible space');
+      // Escape must close the panel, not trigger any mutation API.
+      window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+      window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+      await wait(`!document.getElementById('drilldown-modal').classList.contains('open')`);
+    }
+    window.setContentSize(900, 640);
+    await wait(`Math.abs(innerWidth - 900) <= 1`);
+    phase = 'detail-request-race';
+    await window.webContents.executeJavaScript(`window.openFileDrilldown(998); window.openFileDrilldown(999)`);
+    await new Promise(resolve => setTimeout(resolve, 350));
+    assert.equal(await window.webContents.executeJavaScript(`document.getElementById('dd-title').textContent`), 'fixture.ts', 'old response must not overwrite new selection');
+    await window.webContents.executeJavaScript(`window.closeDrilldown()`);
+    phase = 'sidebar-keyboard';
+    await window.webContents.executeJavaScript(`document.querySelector('.app-menu').click()`);
+    await wait(`document.activeElement.matches('.app-nav a')`);
+    window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+    await wait(`!document.querySelector('.app-shell').classList.contains('nav-open') && document.activeElement.matches('.app-menu')`);
+    phase = 'modal-keyboard';
+    await window.webContents.executeJavaScript(`document.querySelector('[data-action="openReanalyzeToast"]').focus(); window.openLoginModal()`);
+    await wait(`document.getElementById('login-modal').contains(document.activeElement)`);
+    window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Tab' });
+    window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Tab' });
+    await wait(`document.activeElement.matches('#login-modal button')`);
+    window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+    await wait(`!document.getElementById('login-modal').classList.contains('open') && document.activeElement.matches('[data-action="openReanalyzeToast"]')`);
+    phase = 'tooltip-keyboard';
+    // Hidden fixture windows may update activeElement without dispatching native focusin.
+    await window.webContents.executeJavaScript(`document.getElementById('shell-theme').focus(); document.getElementById('shell-theme').dispatchEvent(new FocusEvent('focusin', {bubbles:true}))`);
+    await wait(`document.querySelector('[role="tooltip"]')?.textContent.includes('시스템')`);
     phase = 'boundaries';
     const state = await window.webContents.executeJavaScript(`desktop.auth.status()`);
     assert.equal(state.state, 'authenticated'); assert.equal('sessionToken' in state, false);
@@ -103,8 +188,14 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`void import('/web/js/platform/transport.js').then(m=>m.request('/api/auth/me')).catch(()=>{})`);
     await wait(`location.pathname==='/index.html'`);
     assert.equal(auth.identity(), null);
-    process.stdout.write('PASS P03 actual sandbox renderer E01-E10 page fixture, snapshot URL, local Chart/D3, auth bridge/allowlist/CSP, no default repo, 401 invalidation\n');
-  } finally { unregister(); window.destroy(); clearTimeout(deadline); }
+    await wait(`!!document.querySelector('.workspace-content') && !!document.querySelector('.app-shell')`);
+    assert.equal(await window.webContents.executeJavaScript(`document.getElementById('shell-theme').value`), 'light');
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('#project-picker').length`), 1);
+    assert.equal(await window.webContents.executeJavaScript(`getComputedStyle(document.querySelector('.app-shell')).display`), 'grid');
+    if (process.env.GITVIZ_UI_REPORT) writeFileSync(process.env.GITVIZ_UI_REPORT, JSON.stringify({ status: 'passed', pages: 8, sizes: ['600x400', '900x640', '1280x800', '1920x1080'], fixtureOnly: true, checks: ['navigation-context', 'theme-chart-update', 'detail-responsive', 'modal-focus-escape-return', 'CSP-bridge', 'workspace-preserved'] }));
+    process.stdout.write('PASS sandbox renderer: existing pages, shell navigation/context, responsive detail, theme/chart, modal keyboard, bridge/CSP, no default repo, 401 invalidation\n');
+  } finally { unregisterHealth(); unregister(); window.destroy(); clearTimeout(deadline); }
 }).then(() => app.exit(0)).catch(error => {
+  if (process.env.GITVIZ_UI_REPORT) writeFileSync(process.env.GITVIZ_UI_REPORT, JSON.stringify({ status: 'failed', phase, message: error instanceof Error ? error.message : 'assertion' }));
   process.stderr.write(`FAIL P03 renderer (${phase}): ${error instanceof Error ? error.message.slice(0, 160) : 'assertion'}\n`); app.exit(1);
 });

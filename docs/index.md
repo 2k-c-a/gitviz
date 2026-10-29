@@ -30,6 +30,10 @@
 | 과거 원문과 현재 문서의 대응 | [보관소](archive/index.md) · [이동 경로표](audit/relocation-map.json) |
 | 미래 기능·실험 | [후속 계획](product/roadmap.md) |
 | Windows 전환 설계·기능 추적·구현 계획 | [구현 전 설계 문서](migration/00-overview.md) |
+| c459f29 기준 UX/UI 진단·재설계 Phase 1 | [프로젝트 진단과 설계 문서 5종](ux-redesign/phase-1-c459f29/project-audit.md) |
+| 공통 디자인 시스템·데스크톱 셸 Phase 2 | [구현·검증 보고](ux-redesign/phase-2-common-ui.md) |
+| 핵심 화면·기존 기능 통합 Phase 3 | [구현·실행 검증·남은 제약](ux-redesign/phase-3-core-screens.md) |
+| 전체 UX/UI 검증·최종 개선 Phase 4 | [결함·수정·사용자 여정·최종 검증 보고](ux-redesign/phase-4-ux-quality.md) |
 
 ## 사실과 결정의 구분
 
