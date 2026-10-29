@@ -1,9 +1,13 @@
 name: Windows desktop release (DRAFT, unsigned, no publishing)
-# Draft: manual trigger only. It packages an unsigned build and uploads it as a workflow artifact.
-# It never creates a GitHub Release, signs, or calls an external service. Installer (maker-squirrel),
-# signing and release publishing are intentionally absent until they are decided and approved.
+# Draft: manual trigger only. It builds an unsigned Squirrel installer and package and uploads them as a workflow artifact.
+# It never creates a GitHub Release, signs, or calls an external service. Signing and release publishing are
+# intentionally absent until a certificate and release location are decided and approved.
 on:
   workflow_dispatch:
+  # TEMPORARY: lets a PR run this draft before it exists on the default branch. Remove after verification.
+  pull_request:
+    paths:
+      - '.github/workflows/windows-release.yml'
 permissions:
   contents: read
 jobs:
@@ -36,22 +40,32 @@ jobs:
         env:
           GITVIZ_CI_GOLDEN_SCHEMA: '1'
         run: ./scripts/validate_workspace_windows.ps1 -Node (Get-Command node.exe).Source -EvidenceDirectory "$env:RUNNER_TEMP/gitviz-evidence"
-      - name: Package (unsigned)
+      - name: Make installer and package (unsigned)
         shell: pwsh
         run: |
-          npm --prefix desktop run package
+          # npm ci --ignore-scripts skips electron-winstaller's install script, which selects the 7-Zip binary for this arch.
+          $vendor = 'desktop/node_modules/electron-winstaller/vendor'
+          Copy-Item "$vendor/7z-x64.exe" "$vendor/7z.exe"
+          Copy-Item "$vendor/7z-x64.dll" "$vendor/7z.dll"
+          npm --prefix desktop run make
           exit $LASTEXITCODE
-      - name: Archive and hash
+      - name: Archive, hash and write update manifest
         shell: pwsh
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'gitviz-release'
           New-Item -ItemType Directory -Path $out | Out-Null
           $package = Get-ChildItem desktop/out -Directory | Where-Object Name -like 'GitVizWorkspace-win32-x64' | Select-Object -First 1
           if (-not $package) { throw 'Packaged directory not found.' }
-          $zip = Join-Path $out 'GitVizWorkspace-win32-x64-unsigned.zip'
-          Compress-Archive -Path "$($package.FullName)/*" -DestinationPath $zip
-          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  $(Split-Path $zip -Leaf)" | Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii
+          Compress-Archive -Path "$($package.FullName)/*" -DestinationPath (Join-Path $out 'GitVizWorkspace-win32-x64-unsigned.zip')
+          $make = 'desktop/out/make/squirrel.windows/x64'
+          $setup = Join-Path $make 'GitVizWorkspaceSetup.exe'
+          if (-not (Test-Path $setup)) { throw 'Installer not found.' }
+          Copy-Item "$make/*" $out
+          $version = (Get-Content desktop/package.json -Raw | ConvertFrom-Json).version
+          $setupItem = Get-Item (Join-Path $out 'GitVizWorkspaceSetup.exe')
+          # Same shape desktop/src/update.ts parses; the URL is only valid once a release with this tag is published manually.
+          [ordered]@{ version = $version; assetName = $setupItem.Name; sha256 = (Get-FileHash $setupItem.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); size = $setupItem.Length; url = "https://github.com/${{ github.repository }}/releases/download/v$version/$($setupItem.Name)" } | ConvertTo-Json | Set-Content (Join-Path $out 'manifest.json') -Encoding utf8
+          Get-ChildItem $out -File | Where-Object Name -ne 'manifest.json' | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" } | Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii
       - name: Upload unsigned package artifact
         uses: actions/upload-artifact@v4
         with:
