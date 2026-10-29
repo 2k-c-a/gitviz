@@ -193,6 +193,30 @@ class ValidationTests(WorkspaceFixture):
         with self.assertRaisesRegex(ScopeError, 'INVALID_REQUEST'):
             self.validation.locate(self.project_id, {**payload, 'column': 4})
 
+    def explain_precondition(self, plan: dict[str, Any]) -> str:
+        """Diagnostic only: re-evaluate each Validation.conditions() precondition so a CI-only PRECONDITION_FAILED names its cause."""
+        from pathlib import Path
+
+        from app.workspace.git_service import LocalGit
+        from app.workspace.scoped_files import identity, pinned, read_scoped
+        from app.workspace.snapshots import image_hash, index_hash
+        try:
+            envelope = self.validation.plan(self.project_id, plan['planId'])
+            reviewed = envelope['plan']
+            grant = self.validation.projects.grant(self.project_id)
+            snapshot = self.snapshots.get(self.project_id, reviewed['snapshotId'])
+            report: dict[str, Any] = {}
+            with pinned(grant):
+                report['configHashesMatch'] = self.validation.detection.configs(grant, reviewed['cwdRelative'])[1] == envelope['configHashes']
+                report['indexHashMatch'] = index_hash(grant) == snapshot['indexHash']
+                report['headMatch'] = (self.validation.projects.git or LocalGit()).status(grant, 1)['head'] == snapshot['head']
+                report['filesMatch'] = {item['path']: image_hash(read_scoped(grant, item['path'])) == item['afterHash'] for item in snapshot['files']}
+                executable = Path(reviewed['executable'])
+                report['executableIdentity'] = {'now': identity(executable), 'planned': reviewed['executableIdentity'], 'path': str(executable)}
+            return json.dumps(report, sort_keys=True)
+        except Exception as error:  # diagnostics must never hide the original failure
+            return f'diagnostic unavailable: {type(error).__name__}: {error}'
+
     def test_actual_npm_pre_test_post_hooks_match_reviewed_plan(self) -> None:
         (self.repo / 'package.json').write_text(json.dumps({'scripts': {
             'pretest': 'node hook.cjs pre', 'test': 'node hook.cjs test', 'posttest': 'node hook.cjs post'}}), encoding='utf-8')
@@ -205,7 +229,12 @@ class ValidationTests(WorkspaceFixture):
         plan = detection.plan(self.project_id, {'snapshotId': snapshot['snapshotId'], 'candidateId': candidate['candidateId']}, uid())
         self.assertEqual(set(plan['scripts']), {'pretest', 'test', 'posttest'})
         self.validation = ObservedValidation(detection)
-        result = self.finish(self.validation.start(self.project_id, self.accepted(plan), uid()))
+        accepted = self.accepted(plan)
+        try:
+            started = self.validation.start(self.project_id, accepted, uid())
+        except ScopeError as error:
+            self.fail(f'{error}: {self.explain_precondition(plan)}')
+        result = self.finish(started)
         self.assertEqual(result['status'], 'succeeded', ''.join(item['text'] for item in result['output'] if item['stream'] == 'stderr')[:2000])
         output = ''.join(item['text'] for item in result['output'] if item['stream'] == 'stdout')
         self.assertLess(output.index('P07_PHASE_pre'), output.index('P07_PHASE_test'))

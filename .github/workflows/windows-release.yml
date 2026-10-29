@@ -35,6 +35,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node desktop/node_modules/electron/install.js
           exit $LASTEXITCODE
+      # The gate includes workspace-unit; its npm hook test reports which precondition differed if it fails.
       - name: Gate on the full fixture validation
         shell: pwsh
         env:
