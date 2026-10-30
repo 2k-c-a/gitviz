@@ -1,3 +1,5 @@
+import { createState, element } from './ui/components.js';
+import { action, loadPanel } from './ui/analytics-view.js';
 /* ── 코드분석 페이지: /tree API → 트리 다이어그램 + 종합 리스트 + 기여 분포 + 함께 수정 ──
    cx-svg가 있을 때(=코드분석 페이지)만 동작한다.
    화면의 지표 이름·설명은 지금 열려 있는 스냅샷의 계산 버전(policy.js)을 따른다:
@@ -75,7 +77,10 @@ let POLICY = policyOf(null);
 let SNAP = null;          // 지금 열려 있는 저장 결과의 메타 (id, window_*, formula_version …)
 let DQ = {};              // data_quality — 수집 범위·표본 정보
 let REPO_ID = null;
-let searchText = '';
+let searchText = new URLSearchParams(location.search).get('file_q') || '';
+let listOrder = new URLSearchParams(location.search).get('file_order') || 'changes';
+if (!['changes', 'risk', 'coupling', 'bf'].includes(listOrder)) listOrder = 'changes';
+let listPage = Math.max(0, Number(new URLSearchParams(location.search).get('file_page')) || 0);
 
 /* 폴더명/파일명 클릭 → GitHub 이동에 필요한 레포 정보 (summary에서 가져옴) */
 let GH_INFO = null;
@@ -103,6 +108,7 @@ async function initCodeAnalysisPage() {
   renderLegend();
   renderList();
   setupSearch();
+  setupFileViews();
   loadContributionPanel(id);
   loadCouplingPanel(id);
 
@@ -217,7 +223,7 @@ function renderSortToggle() {
   const wrap = document.getElementById('cx-sort-toggle');
   if (!wrap) return;
   wrap.innerHTML = Object.entries(METRICS).map(([key, m]) =>
-    `<div class="rbtn${key === currentMetric ? ' active' : ''}" data-metric="${key}">${m.label}</div>`
+    `<button type="button" class="rbtn${key === currentMetric ? ' active' : ''}" aria-pressed="${key === currentMetric}" data-metric="${key}">${m.label}</button>`
   ).join('');
   wrap.querySelectorAll('[data-metric]').forEach(el => {
     el.addEventListener('click', () => {
@@ -666,30 +672,33 @@ function fileNotes(f) {
   return notes.join('');
 }
 
-const LIST_LIMIT = 20, SEARCH_LIMIT = 50;
+const LIST_LIMIT = 50;
 
 function renderList() {
   const tbody = document.getElementById('cx-list-tbody');
   const note = document.getElementById('cx-list-note');
   if (!tbody) return;
 
-  const metric = METRICS[currentMetric];
+  const metric = listOrder === 'changes' ? { label: '관측 구간 변경 횟수순', compare: nullsLast(f => f.observation_count, 'desc') } : METRICS[listOrder] || METRICS.risk;
   const q = searchText.trim().toLowerCase();
   const matched = q ? FILES.filter(f => f.path.toLowerCase().includes(q)) : FILES;
-  const limit = q ? SEARCH_LIMIT : LIST_LIMIT;
-  const sorted = [...matched].sort(metric.compare).slice(0, limit);
+  const limit = LIST_LIMIT;
+  listPage = Math.floor(Math.min(listPage, Math.max(0, Math.ceil(matched.length / limit) - 1)));
+  const sorted = [...matched].sort(metric.compare).slice(listPage * limit, (listPage + 1) * limit);
+  document.getElementById('cx-list-prev')?.toggleAttribute('disabled', listPage === 0);
+  document.getElementById('cx-list-next')?.toggleAttribute('disabled', (listPage + 1) * limit >= matched.length);
+  if (document.getElementById('cx-list-page')) document.getElementById('cx-list-page').textContent = `${matched.length}개 · ${listPage + 1} / ${Math.max(1, Math.ceil(matched.length / limit))}페이지`;
+  saveFileListContext();
   if (note) {
-    note.textContent = q
-      ? `${metric.label} · 검색 결과 ${num(matched.length)}개 중 ${num(sorted.length)}개 표시`
-      : `${metric.label} · 상위 ${num(Math.min(limit, matched.length))}개 · 동률은 변경 횟수 많은 순 → 경로순 · 값 없는 파일은 항상 뒤`;
+    note.textContent = `${metric.label} · ${num(matched.length)}개 중 ${num(sorted.length)}개 표시 · 변경 횟수는 스냅샷 관측 기간 기준`;
   }
 
   if (!FILES.length) {
-    tbody.innerHTML = '<tr><td class="hm-td" colspan="5" style="text-align:center;color:var(--text3);padding:24px;">파일 데이터가 없습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td class="hm-td" colspan="6" style="text-align:center;color:var(--text3);padding:24px;">파일 데이터가 없습니다.</td></tr>';
     return;
   }
   if (!sorted.length) {
-    tbody.innerHTML = `<tr><td class="hm-td" colspan="5" style="text-align:center;color:var(--text3);padding:24px;">'${esc(searchText.trim())}'와 일치하는 파일이 없습니다.</td></tr>`;
+    tbody.innerHTML = `<tr><td class="hm-td" colspan="6" style="text-align:center;color:var(--text3);padding:24px;">'${esc(searchText.trim())}'와 일치하는 파일이 없습니다.</td></tr>`;
     return;
   }
 
@@ -703,11 +712,10 @@ function renderList() {
     const couplingBadge = cp != null && cp >= STRONG_COUPLING
       ? '<span class="badge badge-amber" style="margin-left:4px;" title="함께 수정 정도가 높은 파일 — 실제 의존성을 뜻하지 않습니다">자주 함께 수정</span>' : '';
     const fileUrl = githubFileUrl(f.path);
-    const pathHtml = fileUrl
-      ? `<a href="${esc(fileUrl)}" target="_blank" rel="noopener" class="cx-file-link" title="GitHub에서 열기">${esc(f.path)}</a>`
-      : esc(f.path);
+    const pathHtml = `<button type="button" class="ui-list-link cx-file-detail">${esc(f.path)}</button>${fileUrl ? ` <a href="${esc(fileUrl)}" target="_blank" rel="noopener" class="cx-file-link" aria-label="${esc(f.path)} GitHub에서 열기">GitHub ↗</a>` : ''}`;
     return `<tr style="cursor:pointer;" data-file-id="${f.file_id}" title="수정한 사람·함께 변경된 파일 보기">
       <td class="hm-td file" title="${esc(f.path)}">${pathHtml}${bfBadge}${couplingBadge}<div class="cx-notes">${fileNotes(f)}</div></td>
+      <td class="hm-td">${f.observation_count == null ? DASH : num(f.observation_count)}회</td>
       <td class="hm-td">${sc != null ? `<span class="hm-val" style="background:${riskColor(sc)}22;color:${riskColor(sc)};font-weight:600;">${fmt2(sc)}</span>` : na(scoreNaReason(f))}</td>
       <td class="hm-td" style="text-align:center;">${f.bus_factor != null ? f.bus_factor : na(BF_NA)}</td>
       <td class="hm-td">${cp != null ? `<span class="hm-val" style="background:${couplingColor(cp)}22;color:${couplingColor(cp)};">${fmt2(cp)}</span>` : na('함께 수정 2건 이상인 함께 수정된 후보가 없습니다')}</td>
@@ -730,7 +738,16 @@ function renderList() {
 function setupSearch() {
   const input = document.getElementById('cx-search');
   if (!input) return;
-  input.addEventListener('input', () => { searchText = input.value; renderList(); });
+  input.value = searchText;
+  input.addEventListener('input', () => { searchText = input.value; listPage = 0; renderList(); });
+  const controls = element('div', 'analysis-toolbar');
+  const order = element('select'); order.id = 'cx-list-order'; order.setAttribute('aria-label', '파일 목록 정렬');
+  [['changes', '관측 구간 변경 횟수순'], ...Object.entries(METRICS).map(([key, m]) => [key, m.label])].forEach(([key, label]) => { const option = element('option', '', label); option.value = key; order.append(option); });
+  order.value = listOrder; order.addEventListener('change', () => { listOrder = order.value; listPage = 0; renderList(); });
+  const prev = action('이전', () => { listPage--; renderList(); }); prev.id = 'cx-list-prev';
+  const next = action('다음', () => { listPage++; renderList(); }); next.id = 'cx-list-next';
+  const page = element('span'); page.id = 'cx-list-page'; page.setAttribute('role', 'status');
+  controls.append(order, prev, page, next); input.after(controls); renderList();
 }
 
 /* ── 기여 분포 (주요 수정자 수) ──
@@ -741,11 +758,7 @@ const bfNum = (v) => (v == null ? DASH : Number.isInteger(v) ? String(v) : v.toF
 async function loadContributionPanel(id) {
   const box = document.getElementById('cx-bf-body');
   if (!box) return;
-  try {
-    renderContribution(await fetchBusFactor(id, 20), box);
-  } catch (err) {
-    box.innerHTML = `<div class="cx-panel-error">기여 분포를 불러오지 못했습니다: ${esc(err.message)}</div>`;
-  }
+  return loadPanel(box, () => fetchBusFactor(id, 20), data => renderContribution(data, box));
 }
 
 function renderContribution(bf, box) {
@@ -771,7 +784,7 @@ function renderContribution(bf, box) {
   }).join('');
 
   const owners = (bf.top_owners || []).slice(0, 5).map(o =>
-    `<div class="c-row" style="cursor:pointer;" onclick="window.openContributorDrilldown(${Number(o.contributor_id)})">
+    `<div class="c-row" style="cursor:pointer;" data-action="openContributorDrilldown" data-args="${encodeURIComponent(JSON.stringify([Number(o.contributor_id)]))}">
       <div class="c-info"><div class="c-name">${esc(o.name)}</div><div class="c-meta">한 명에게 집중된 파일 ${num(o.exclusive_file_count)}개</div></div></div>`).join('')
     || '<div class="c-meta">한 명 집중 파일이 없습니다.</div>';
   const modules = (bf.risky_modules || []).filter(m => m.bf1_count > 0).slice(0, 5).map(m =>
@@ -780,7 +793,7 @@ function renderContribution(bf, box) {
     || '<div class="c-meta">한 명 집중 파일이 있는 모듈이 없습니다.</div>';
 
   const rows = files.map(f => `<tr style="cursor:pointer;" data-file-id="${f.file_id}">
-      <td class="hm-td file" title="${esc(f.path)}">${esc(f.path)}${f.low_support ? ` ${tag('amber', '표본 부족', `식별된 변경 ${num(f.observation_count)}건 (5건 미만)`)}` : ''}</td>
+      <td class="hm-td file" title="${esc(f.path)}"><button type="button" class="ui-list-link">${esc(f.path)}</button>${f.low_support ? ` ${tag('amber', '표본 부족', `식별된 변경 ${num(f.observation_count)}건 (5건 미만)`)}` : ''}</td>
       <td class="hm-td" style="text-align:center;">${chip(f.bf80 ?? f.bus_factor, bfColor(f.bf80 ?? f.bus_factor))}</td>
       <td class="hm-td" style="text-align:center;">${f.top_owner_share != null ? fmtPct(f.top_owner_share) : DASH}</td>
       <td class="hm-td" style="text-align:center;">${num(f.contributor_count)}명</td>
@@ -825,7 +838,7 @@ function renderCouplingToggle() {
   if (!wrap) return;
   const current = getSortPolicy();
   wrap.innerHTML = Object.entries(SORT_LABELS).map(([key, label]) =>
-    `<div class="rbtn${key === current ? ' active' : ''}" data-sort="${key}">${label}</div>`).join('');
+    `<button type="button" class="rbtn${key === current ? ' active' : ''}" aria-pressed="${key === current}" data-sort="${key}">${label}</button>`).join('');
   wrap.querySelectorAll('[data-sort]').forEach(el => {
     el.addEventListener('click', () => {
       if (el.dataset.sort === getSortPolicy()) return;
@@ -846,7 +859,8 @@ async function loadCouplingPanel(id) {
     if (policy !== getSortPolicy()) return;   // 그 사이 정책을 또 바꿨다면 오래된 응답은 버린다
     renderCoupling(data, body);
   } catch (err) {
-    body.innerHTML = `<div class="cx-panel-error">함께 수정을 불러오지 못했습니다: ${esc(err.message)}</div>`;
+    if (policy !== getSortPolicy()) return;
+    body.replaceChildren(createState({ kind: 'error', title: '공동 변경 결과를 불러오지 못했습니다', message: err.message, retry: () => loadCouplingPanel(id) }));
   }
 }
 
@@ -873,7 +887,7 @@ function renderCoupling(data, body) {
     return;
   }
 
-  const file = (id, path) => `<div><span class="cx-pair-file" data-file-id="${id}" title="${esc(path)}">${esc(path)}</span></div>`;
+  const file = (id, path) => `<div><button type="button" class="cx-pair-file ui-list-link" data-file-id="${id}" title="${esc(path)}">${esc(path)}</button></div>`;
   const rows = pairs.map((p, i) => `<tr>
       <td class="hm-td" style="text-align:center;">${i + 1}</td>
       <td class="hm-td file" style="max-width:340px;">${file(p.file_a_id, p.file_a_path)}${file(p.file_b_id, p.file_b_path)}</td>
@@ -906,4 +920,21 @@ if (svgEl && typeof d3 !== 'undefined') {
     console.error('[code-analysis] 로드 실패:', err);
     renderLoadError(err);
   });
+}
+
+function saveFileListContext() {
+  const url = new URL(location.href); url.searchParams.set('file_q', searchText); url.searchParams.set('file_order', listOrder); url.searchParams.set('file_page', listPage); history.replaceState(null, '', url);
+}
+function setupFileViews() {
+  const list = document.getElementById('cx-list-tbody').closest('.panel');
+  const tree = svgEl.closest('.panel');
+  const pairs = document.getElementById('cx-cp-body').closest('.panel');
+  const owners = document.getElementById('cx-bf-body').closest('.panel');
+  tree.before(list);
+  const controls = element('nav', 'analysis-toolbar'); controls.setAttribute('aria-label', '파일 분석 보기');
+  const views = [['files', '파일 목록', list], ['tree', '디렉토리 트리', tree], ['coupling', '공동 변경', pairs], ['ownership', '기여 집중도', owners]];
+  const select = key => { views.forEach(([value, , panel]) => { panel.hidden = value !== key; }); controls.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === key))); const url = new URL(location.href); url.searchParams.set('file_view', key); history.replaceState(null, '', url); };
+  views.forEach(([key, label]) => { const button = action(label, () => select(key)); button.dataset.view = key; controls.append(button); });
+  list.before(controls);
+  const requested = new URLSearchParams(location.search).get('file_view'); select(views.some(v => v[0] === requested) ? requested : 'files');
 }

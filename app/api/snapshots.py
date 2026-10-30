@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.orm import Session, load_only
 from app.core.database import get_db
 from app.models.analysis_snapshot import AnalysisSnapshot
-from app.routers.auth import _get_session_user_id
+from app.api.auth import _get_session_user_id
 from app.services.repository_access import verify_repository_access
 from app.services.analysis_snapshots import load_snapshot, snapshot_metadata
 from app.services.snapshot_comparison import compare_snapshots

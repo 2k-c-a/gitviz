@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
+    <script src="../js/ui/theme.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script src="../vendor/chart-4.4.1/chart.umd.min.js"></script>
     <link rel="stylesheet" href="../css/index.css">
     <title>GitViz</title>
 </head>
@@ -20,7 +21,7 @@
         <div class="dash-sub">GitHub 계정에 연결된 레포지토리 분석 목록</div>
       </div>
     </div>
-    <button class="btn-primary" style="display:flex;align-items:center;gap:7px;"   onclick="goHome()">
+    <button class="btn-primary" style="display:flex;align-items:center;gap:7px;"   data-action="goHome">
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 1v10M1 6h10"/></svg>
       새 레포지토리 분석
     </button>

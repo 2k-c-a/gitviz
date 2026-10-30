@@ -1,0 +1,217 @@
+{
+  "authorization_mode": "test_fixture",
+  "checks": [
+    {
+      "check": "migration",
+      "passed": true
+    },
+    {
+      "check": "immutable trigger installed",
+      "passed": true
+    },
+    {
+      "check": "latest payload hash repo 11",
+      "passed": true
+    },
+    {
+      "check": "latest payload hash repo 9",
+      "passed": true
+    },
+    {
+      "check": "latest payload hash repo 5",
+      "passed": true
+    },
+    {
+      "check": "latest payload hash repo 10",
+      "passed": true
+    },
+    {
+      "check": "latest payload hash repo 6",
+      "passed": true
+    },
+    {
+      "check": "latest payload hash repo 2",
+      "passed": true
+    },
+    {
+      "check": "latest payload hash repo 7",
+      "passed": true
+    },
+    {
+      "check": "latest payload hash repo 1",
+      "passed": true
+    },
+    {
+      "check": "latest payload hash repo 8",
+      "passed": true
+    },
+    {
+      "check": "saved snapshot exists",
+      "passed": true
+    },
+    {
+      "check": "persisted payload hash",
+      "passed": true
+    },
+    {
+      "check": "window and target ancestry",
+      "passed": true
+    },
+    {
+      "check": "HTTP snapshot",
+      "passed": true
+    },
+    {
+      "check": "pinned snapshot",
+      "passed": true
+    },
+    {
+      "check": "HTTP summary",
+      "passed": true
+    },
+    {
+      "check": "pinned summary",
+      "passed": true
+    },
+    {
+      "check": "HTTP timeline",
+      "passed": true
+    },
+    {
+      "check": "pinned timeline",
+      "passed": true
+    },
+    {
+      "check": "HTTP commit-types",
+      "passed": true
+    },
+    {
+      "check": "pinned commit-types",
+      "passed": true
+    },
+    {
+      "check": "HTTP releases",
+      "passed": true
+    },
+    {
+      "check": "pinned releases",
+      "passed": true
+    },
+    {
+      "check": "HTTP top-contributors",
+      "passed": true
+    },
+    {
+      "check": "pinned top-contributors",
+      "passed": true
+    },
+    {
+      "check": "HTTP risk-scores",
+      "passed": true
+    },
+    {
+      "check": "pinned risk-scores",
+      "passed": true
+    },
+    {
+      "check": "HTTP bus-factor",
+      "passed": true
+    },
+    {
+      "check": "pinned bus-factor",
+      "passed": true
+    },
+    {
+      "check": "HTTP coupling",
+      "passed": true
+    },
+    {
+      "check": "pinned coupling",
+      "passed": true
+    },
+    {
+      "check": "HTTP network",
+      "passed": true
+    },
+    {
+      "check": "pinned network",
+      "passed": true
+    },
+    {
+      "check": "HTTP network/top-pairs",
+      "passed": true
+    },
+    {
+      "check": "HTTP tree",
+      "passed": true
+    },
+    {
+      "check": "pinned tree",
+      "passed": true
+    },
+    {
+      "check": "HTTP contributor-heatmap",
+      "passed": true
+    },
+    {
+      "check": "pinned contributor-heatmap",
+      "passed": true
+    },
+    {
+      "check": "HTTP files/30917/detail",
+      "passed": true
+    },
+    {
+      "check": "pinned files/30917/detail",
+      "passed": true
+    },
+    {
+      "check": "HTTP coupling/30917",
+      "passed": true
+    },
+    {
+      "check": "pinned coupling/30917",
+      "passed": true
+    },
+    {
+      "check": "HTTP contributors/4421/owned-files",
+      "passed": true
+    },
+    {
+      "check": "pinned contributors/4421/owned-files",
+      "passed": true
+    },
+    {
+      "check": "HTTP contributors/4421/collaborators",
+      "passed": true
+    },
+    {
+      "check": "pinned contributors/4421/collaborators",
+      "passed": true
+    },
+    {
+      "check": "repeat identical response",
+      "passed": true
+    },
+    {
+      "check": "cross-repository replay denied",
+      "passed": true
+    },
+    {
+      "check": "unknown repository has no snapshot",
+      "passed": true
+    },
+    {
+      "check": "small evidence labelled",
+      "passed": true
+    },
+    {
+      "check": "empty data explicitly reported",
+      "passed": true
+    },
+    {
+      "check": "directional ratios/support",
+      "passed": true
+    }
+  ]
+}

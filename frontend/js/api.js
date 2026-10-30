@@ -1,3 +1,4 @@
+import { request, isDesktop } from './platform/transport.js';
 /* ── 결과 Analytics API 클라이언트 ──
    프론트는 FastAPI가 같은 오리진(/)에서 서빙하므로 상대경로로 호출한다.
 
@@ -26,6 +27,7 @@ export function getRepoId() {
     setRepoId(fromQuery);
     return fromQuery;
   }
+  if (isDesktop()) return null;
   const stored = parseInt(localStorage.getItem(REPO_KEY), 10);
   if (Number.isInteger(stored)) return stored;
   return 1;
@@ -49,18 +51,20 @@ export function setSortPolicy(policy) {
 
 /* API 오류 — status로 화면별 안내를 나눈다 */
 export class ApiError extends Error {
-  constructor(message, status, detail) {
+  constructor(message, status, detail, requestId = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.detail = detail;
+    this.requestId = requestId;
   }
 }
 
 async function readJSON(url) {
+  if (isDesktop() && /\/repositories\/(?:null|undefined)\//.test(url)) throw new ApiError('원격 분석 저장소를 먼저 선택하세요.', 409, null);
   let res;
   try {
-    res = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+    res = await request(url, { credentials: 'same-origin', cache: 'no-store' });
   } catch {
     throw new ApiError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.', 0, null);
   }
@@ -68,7 +72,10 @@ async function readJSON(url) {
   try { body = await res.json(); } catch { /* JSON이 아닌 응답 */ }
   if (!res.ok) {
     const detail = typeof body?.detail === 'string' ? body.detail : null;
-    throw new ApiError(detail || `분석 결과 조회 실패 (${res.status})`, res.status, detail);
+    const messages = { 401: '로그인 상태를 확인한 뒤 다시 시도하세요.', 403: '이 분석 결과를 열 권한이 없습니다. 계정을 확인하세요.', 404: '분석 결과를 찾을 수 없거나 접근할 수 없습니다.', 429: '조회 요청 한도에 도달했습니다. 잠시 후 다시 시도하세요.' };
+    const message = res.status >= 500 ? `분석 서버가 요청을 처리하지 못했습니다 (HTTP ${res.status}). 잠시 후 다시 시도하세요.` : messages[res.status] || detail || `분석 결과 조회 실패 (${res.status})`;
+    const requestId = res.headers?.get?.('X-Request-ID');
+    throw new ApiError(message, res.status, res.status >= 500 ? null : detail, /^[A-Za-z0-9_-]{1,128}$/.test(requestId || '') ? requestId : null);
   }
   return body;
 }
@@ -76,18 +83,21 @@ async function readJSON(url) {
 /* 저장소별 결과 메타 — 한 번만 조회한다. 주소에 snapshot이 있으면 그 결과를, 없으면 최신 결과를 연다.
    조회가 끝나면 주소에 repo/snapshot을 확정해 넣어, 이후 탭 이동·새로고침·뒤로 가기에서도 같은 결과를 본다. */
 const snapshotMetas = new Map();
+const analyticsCache = new Map();
+globalThis.addEventListener?.('gitviz-account-changed', () => { snapshotMetas.clear(); analyticsCache.clear(); });
 export function fetchSnapshotMeta(id) {
   if (!snapshotMetas.has(id)) {
     const requested = getSnapshotId(id);
     const query = requested != null ? `?snapshot_id=${requested}` : '';
-    snapshotMetas.set(id, readJSON(`/repositories/${id}/analytics/snapshot${query}`).then(data => {
+    const pending = readJSON(`/repositories/${id}/analytics/snapshot${query}`).then(data => {
       const url = new URL(location.href);
       url.searchParams.set('repo', String(id));
       url.searchParams.set('snapshot', String(data.snapshot.id));
       history.replaceState(null, '', url);
       renderContextBanner(data);
       return data;
-    }));
+    }).catch(error => { snapshotMetas.delete(id); throw error; });
+    snapshotMetas.set(id, pending);
   }
   return snapshotMetas.get(id);
 }
@@ -97,7 +107,12 @@ async function getJSON(url) {
   if (!match) return readJSON(url);
   const id = Number(match[1]);
   const meta = await fetchSnapshotMeta(id);
-  return readJSON(`${url}${url.includes('?') ? '&' : '?'}snapshot_id=${meta.snapshot.id}`);
+  const key = `${url}${url.includes('?') ? '&' : '?'}snapshot_id=${meta.snapshot.id}`;
+  if (!analyticsCache.has(key)) {
+    if (analyticsCache.size >= 100) analyticsCache.delete(analyticsCache.keys().next().value);
+    analyticsCache.set(key, readJSON(key).catch(error => { analyticsCache.delete(key); throw error; }));
+  }
+  return analyticsCache.get(key);
 }
 
 const base = (id) => `/repositories/${id}/analytics`;

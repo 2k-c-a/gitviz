@@ -120,7 +120,7 @@ def _r(value, digits=4):
 
 
 def _path_evidence(path: str, entry: dict | None, payload: dict, by_path: dict, pr_paths: set[str]) -> dict:
-    from app.api.analytics import _coupled_files_for
+    from app.services.coupled_files import _coupled_files_for
     from app.services.analysis_snapshots import file_metric_fields
     old_path = (entry or {}).get('old_path')
     fid, match, limits = by_path.get(path), 'path', []

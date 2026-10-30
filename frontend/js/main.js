@@ -1,5 +1,9 @@
+import './platform/actions.js';
+import { esc } from './fmt.js';
+import { request } from './platform/transport.js';
 import { loadNavbar } from './navbar-loader.js';
 import { loadModal } from './modal-loader.js';
+import { createState } from './ui/components.js';
 
 import {
   openLoginModal,
@@ -33,6 +37,7 @@ import {
 } from './modal.js';
 
 import './timeline.js';
+import './overview.js';
 import './repoHeader.js';
 import './drilldown.js';
 import './network.js';
@@ -77,19 +82,20 @@ await loadRecentRepos();
 async function loadRecentRepos() {
   const container = document.getElementById('recent-repo-list');
   if (!container) return;
+  container.replaceChildren(createState({ kind: 'loading', title: '최근 분석 목록을 불러오는 중' }));
 
   let repos;
   try {
-    const res = await fetch('/repositories');
+    const res = await request('/repositories');
     if (!res.ok) throw new Error(res.status);
     repos = await res.json();
   } catch {
-    container.innerHTML = '<div class="repo-meta" style="padding:16px 0;">목록을 불러올 수 없습니다.</div>';
+    container.replaceChildren(createState({ kind: 'error', title: '목록을 불러올 수 없습니다', message: '로그인 상태 또는 서버 연결을 확인하고 다시 시도하세요.', retry: loadRecentRepos }));
     return;
   }
 
   if (!repos.length) {
-    container.innerHTML = '<div class="repo-meta" style="padding:16px 0;">아직 분석 요청된 레포지토리가 없습니다.</div>';
+    container.replaceChildren(createState({ kind: 'empty', title: '아직 분석 요청된 저장소가 없습니다', message: '위에서 GitHub URL을 입력하거나 저장소 탐색에서 시작하세요.' }));
     return;
   }
 
@@ -104,15 +110,15 @@ async function loadRecentRepos() {
       : hasCountdown ? `${fmtDuration(repo.remaining_seconds)} 후 재개` : '진행 상황 보기';
     const countdownAttr = hasCountdown ? ` data-countdown-id="${repo.id}" data-remaining="${repo.remaining_seconds}"` : '';
     const progressLink = isActive
-      ? `<span class="pending-link"${countdownAttr} onclick="openJobModal('poll', ${repo.id})">${linkText}</span>`
+      ? `<span class="pending-link"${countdownAttr} data-action="openJobModal" data-args="${encodeURIComponent(JSON.stringify(['poll', repo.id]))}">${linkText}</span>`
       : '';
     const clickAttr = repo.status === 'done'
-      ? `onclick="window.goPage && window.goPage('timeline', ${repo.id})"` : '';
+      ? `data-action="goPage" data-args="${encodeURIComponent(JSON.stringify(['overview', repo.id]))}"` : '';
 
     return `
       <div class="repo-item${isActive ? ' pending' : ''}" ${clickAttr} style="${repo.status === 'done' ? 'cursor:pointer' : ''}">
         <div>
-          <a class="repo-name" href="${repo.url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" title="GitHub에서 열기">${repoName}</a>
+          <a class="repo-name" href="${esc(repo.url)}" target="_blank" rel="noopener noreferrer" data-action="stop" title="GitHub에서 열기">${esc(repoName)}</a>
           <div class="repo-meta">${meta}</div>
         </div>
         <div class="repo-item-right">

@@ -1,3 +1,4 @@
+import { request } from './platform/transport.js';
 
 import { isLoggedIn, openLoginModal } from './login.js';
 import { parseRepoName, urlInput, fmtDuration } from './utils.js';
@@ -92,7 +93,7 @@ export function openJobModal(mode, repoId) {
   document.getElementById('modal-prog-label').textContent = '분석 요청 중...';
   document.getElementById('modal-error-box').style.display = 'none';
   document.getElementById('modal-footer').innerHTML =
-    '<button class="btn-secondary" onclick="closeJobModal()">닫기</button>';
+    '<button class="btn-secondary" data-action="closeJobModal">닫기</button>';
   // pipeline 초기화
   const oldDetail = document.getElementById('modal-collect-detail');
   if (oldDetail) oldDetail.remove();
@@ -120,7 +121,7 @@ export function openJobModal(mode, repoId) {
 
 /* 모달 상단에 실제 repo 이름을 채운다 (reanalyze/poll 모드는 URL 입력값이 없어서 별도 조회 필요) */
 function _fillRepoName(repoId) {
-  fetch(`${API_BASE}/repositories/${repoId}`).then(r => r.json()).then(d => {
+  request(`${API_BASE}/repositories/${repoId}`).then(r => r.json()).then(d => {
     if (d.url) {
       _currentRepoUrl = d.url;
       document.getElementById('modal-repo').textContent = d.url.replace('https://github.com/', '');
@@ -131,8 +132,8 @@ function _fillRepoName(repoId) {
 /* ── 오류 표시 공통 ──
    원인(로그인 만료 / 접근 불가 / 요청 충돌 / 서버 지연 …)을 구분해 보여준다.
    서버 연결 오류로 뭉뚱그리지 않는다. */
-const _btn = (label, onclick, primary = false) =>
-  `<button class="${primary ? 'btn-primary' : 'btn-secondary'}" onclick="${onclick}">${label}</button>`;
+const _btn = (label, action, primary = false, args = []) =>
+  `<button class="${primary ? 'btn-primary' : 'btn-secondary'}" data-action="${action}" data-args="${encodeURIComponent(JSON.stringify(args))}">${label}</button>`;
 
 function _showError({ heading, title, body, time = '', label, actions = [] }) {
   _jobState = 'error';
@@ -143,19 +144,19 @@ function _showError({ heading, title, body, time = '', label, actions = [] }) {
   document.getElementById('modal-error-time').textContent = time;
   document.getElementById('modal-error-box').style.display = 'block';
   document.getElementById('modal-footer').innerHTML =
-    _btn('닫기', 'closeJobModal()') + actions.map(([l, fn, primary]) => _btn(l, fn, primary)).join('');
+    _btn('닫기', 'closeJobModal') + actions.map(([l, fn, primary]) => _btn(l, fn, primary)).join('');
 }
 
 /* 시작 요청(POST) 실패를 HTTP 상태별로 안내한다. 백엔드 detail은 사용자에게 보여줄 한글 문장이다. */
 async function _showStartFailure(res) {
   let detail = null;
   try { const b = await res.json(); if (typeof b?.detail === 'string') detail = b.detail; } catch { /* 본문 없음 */ }
-  const retry = ['다시 시도', 'retryJob()', true];
+  const retry = ['다시 시도', 'retryJob', true];
   const status = res.status;
 
   if (status === 401) {
     return _showError({ heading: '로그인이 필요합니다', title: '분석을 요청하려면 로그인해 주세요', body: detail || '로그인이 만료되었거나 로그인하지 않은 상태입니다.',
-      label: '요청하지 못했습니다', actions: [['다시 로그인', 'reloginFromJob()', true]] });
+      label: '요청하지 못했습니다', actions: [['다시 로그인', 'reloginFromJob', true]] });
   }
   if (status === 404) {
     return _showError({ heading: '분석 요청 실패', title: '레포지토리를 찾을 수 없거나 접근할 수 없습니다', body: 'URL을 확인해 주세요. 존재하지 않거나 접근 권한이 없는 저장소는 구분해서 안내하지 않습니다.',
@@ -163,7 +164,7 @@ async function _showStartFailure(res) {
   }
   if (status === 409) {
     // 실행 중인 작업과 충돌 — 네트워크 오류가 아니다. 이미 진행 중이라면 그 진행 상황을 볼 수 있다.
-    const actions = _currentRepoId ? [['진행 상황 보기', 'resumePolling()', true]] : [];
+    const actions = _currentRepoId ? [['진행 상황 보기', 'resumePolling', true]] : [];
     return _showError({ heading: '이미 진행 중인 분석이 있습니다', title: '실행 중인 분석 작업과 충돌했습니다',
       body: detail || '같은 저장소의 분석이 아직 실행 중입니다. 끝난 뒤 다시 요청해 주세요.', label: '요청이 거부되었습니다', actions });
   }
@@ -182,13 +183,13 @@ async function _showStartFailure(res) {
 async function _postAndStartPolling(path) {
   let res;
   try {
-    res = await fetch(`${API_BASE}${path}`, {
+    res = await request(`${API_BASE}${path}`, {
       method: 'POST',
       credentials: 'include',
     });
   } catch {
     _showError({ heading: '서버에 연결할 수 없습니다', title: '분석 서버에 연결할 수 없습니다', body: '네트워크 상태와 백엔드 실행 여부를 확인한 뒤 다시 시도해 주세요.',
-      label: '요청하지 못했습니다', actions: [['다시 시도', 'retryJob()', true]] });
+      label: '요청하지 못했습니다', actions: [['다시 시도', 'retryJob', true]] });
     return;
   }
 
@@ -199,7 +200,7 @@ async function _postAndStartPolling(path) {
 
   if (!data.repository_id) {
     _showError({ heading: '분석 요청 실패', title: '응답을 해석할 수 없습니다', body: '서버 응답에 저장소 정보가 없습니다. 잠시 후 다시 시도해 주세요.',
-      label: '요청하지 못했습니다', actions: [['다시 시도', 'retryJob()', true]] });
+      label: '요청하지 못했습니다', actions: [['다시 시도', 'retryJob', true]] });
     return;
   }
 
@@ -246,7 +247,7 @@ function resumePolling() {
   document.getElementById('modal-error-box').style.display = 'none';
   document.getElementById('modal-title').textContent = '분석 진행 중';
   document.getElementById('modal-prog-label').textContent = '상태 확인 중...';
-  document.getElementById('modal-footer').innerHTML = _btn('닫기', 'closeJobModal()');
+  document.getElementById('modal-footer').innerHTML = _btn('닫기', 'closeJobModal');
   _failedFor = null;
   _jobState = 'running';
   _startPolling(repoId);
@@ -277,10 +278,10 @@ function _showRetryNotice(n) {
 /* 폴링이 더 이상 진행되지 않을 때 — 원인별 안내. 조회를 못 한 것과 분석이 실패한 것은 다르다. */
 function _onPollStop({ reason, status, message }) {
   _clearRetryNotice();
-  const again = ['다시 확인', 'resumePolling()', true];
+  const again = ['다시 확인', 'resumePolling', true];
   if (reason === 'auth') {
     return _showError({ heading: '로그인이 필요합니다', title: '로그인이 만료되었습니다', label: '진행 상황을 확인하지 못했습니다',
-      body: '다시 로그인한 뒤 진행 상황을 확인해 주세요. 분석 작업은 계속 진행 중일 수 있습니다.', actions: [['다시 로그인', 'reloginFromJob()', true]] });
+      body: '다시 로그인한 뒤 진행 상황을 확인해 주세요. 분석 작업은 계속 진행 중일 수 있습니다.', actions: [['다시 로그인', 'reloginFromJob', true]] });
   }
   if (reason === 'not_found') {
     // 비공개 저장소 존재 여부를 드러내지 않도록 "삭제됨/권한 없음"을 구분하지 않는다
@@ -311,7 +312,7 @@ async function _offerLastSuccess(repoId) {
     const last = r.snapshots && r.snapshots[0];
     if (!last || _failedFor !== repoId || !document.getElementById('job-modal').classList.contains('open')) return;
     const footer = document.getElementById('modal-footer');
-    footer.insertAdjacentHTML('beforeend', _btn(`마지막 성공 결과 보기 (#${last.id})`, `viewLastSuccess(${last.id})`));
+    footer.insertAdjacentHTML('beforeend', _btn(`마지막 성공 결과 보기 (#${last.id})`, 'viewLastSuccess', false, [last.id]));
   } catch { /* 이력 조회 실패는 조용히 무시 — 실패 안내가 우선 */ }
 }
 
@@ -335,7 +336,7 @@ function _renderStatus(s) {
   }
   if (status === 'failed') {
     _showError({ heading: '분석 실패', title: '분석 실패', label: '분석 실패',
-      body: s.error_message || '분석 중 오류가 발생했습니다.', actions: [['다시 시도', 'retryJob()', true]] });
+      body: s.error_message || '분석 중 오류가 발생했습니다.', actions: [['다시 시도', 'retryJob', true]] });
     if (_currentRepoId) _offerLastSuccess(_currentRepoId);
     _notifyReposChanged();
     return 'stop';
@@ -344,7 +345,7 @@ function _renderStatus(s) {
     // 서버가 멈춘 작업을 새 분석 요청으로 안전하게 교체한 상태 — 실패가 아니다
     _showError({ heading: '이전 분석이 교체되었습니다', title: '새 분석 요청으로 교체되었습니다', label: '이 작업은 교체되었습니다',
       body: s.error_message || '응답이 없던 분석 작업이 새 분석 요청으로 교체되었습니다. 새 작업의 진행 상황을 확인하세요.',
-      actions: [['새 작업 확인', 'resumePolling()', true]] });
+      actions: [['새 작업 확인', 'resumePolling', true]] });
     return 'stop';
   }
 
@@ -408,7 +409,7 @@ function _renderStaleWarning(s) {
     s.stale_seconds != null ? `${fmtDuration(s.stale_seconds)}째 응답 없음` : '';
   document.getElementById('modal-error-box').style.display = 'block';
   document.getElementById('modal-footer').innerHTML =
-    _btn('닫기', 'closeJobModal()') + _btn('재시작', '_restartStaleJob()', true);
+    _btn('닫기', 'closeJobModal') + _btn('재시작', '_restartStaleJob', true);
   return true;
 }
 
@@ -419,17 +420,17 @@ async function _restartStaleJob() {
   document.getElementById('modal-error-box').style.display = 'none';
   document.getElementById('modal-title').textContent = '분석 진행 중';
   document.getElementById('modal-prog-label').textContent = '재시작 요청 중...';
-  document.getElementById('modal-footer').innerHTML = _btn('닫기', 'closeJobModal()');
+  document.getElementById('modal-footer').innerHTML = _btn('닫기', 'closeJobModal');
 
   let res;
   try {
-    res = await fetch(`${API_BASE}/repositories?github_url=${encodeURIComponent(_currentRepoUrl)}`, {
+    res = await request(`${API_BASE}/repositories?github_url=${encodeURIComponent(_currentRepoUrl)}`, {
       method: 'POST',
       credentials: 'include',
     });
   } catch {
     _showError({ heading: '서버에 연결할 수 없습니다', title: '재시작 요청을 보내지 못했습니다', body: '네트워크 상태를 확인한 뒤 다시 시도해 주세요.',
-      label: '요청하지 못했습니다', actions: [['다시 시도', '_restartStaleJob()', true]] });
+      label: '요청하지 못했습니다', actions: [['다시 시도', '_restartStaleJob', true]] });
     return;
   }
 
@@ -466,7 +467,7 @@ function reloginFromJob() {
 function viewLastSuccess(snapshotId) {
   const repoId = _failedFor ?? _currentRepoId;
   closeJobModal();
-  window.goPage('timeline', repoId || undefined, snapshotId);
+  window.goPage('overview', repoId || undefined, snapshotId);
 }
 // 가려져 있던 탭이 다시 보이면 느린 간격을 기다리지 않고 바로 상태를 확인한다
 document.addEventListener('visibilitychange', () => { if (!document.hidden && _poller) _poller.nudge(); });
@@ -480,12 +481,12 @@ window.resumePolling = resumePolling;
 function _attachSimButtons() {
   const sim = document.createElement('div');
   sim.dataset.sim = '1';
-  sim.style.cssText = 'margin-top:12px;padding-top:10px;border-top:0.5px solid var(--border);font-size:10px;color:var(--text3);';
+  sim.style.cssText = 'margin-top:12px;padding-top:10px;border-top:0.5px solid var(--border);font-size:var(--ui-text-xs);color:var(--text3);';
   sim.innerHTML = `<span style="display:block;margin-bottom:4px;">— 와이어프레임 시뮬레이션 —</span>
-    <button class="btn-secondary" style="font-size:10px;padding:3px 8px;margin-right:4px;" onclick="simulateJobState('done')">완료</button>
-    <button class="btn-secondary" style="font-size:10px;padding:3px 8px;margin-right:4px;" onclick="simulateJobState('error-rate-limit')">Rate Limit</button>
-    <button class="btn-secondary" style="font-size:10px;padding:3px 8px;margin-right:4px;" onclick="simulateJobState('error-not-found')">404</button>
-    <button class="btn-secondary" style="font-size:10px;padding:3px 8px;" onclick="simulateJobState('error-unreachable')">502</button>`;
+    <button class="btn-secondary" style="font-size:var(--ui-text-xs);padding:3px 8px;margin-right:4px;" data-action="simulateJobState" data-args="%5B%22done%22%5D">완료</button>
+    <button class="btn-secondary" style="font-size:var(--ui-text-xs);padding:3px 8px;margin-right:4px;" data-action="simulateJobState" data-args="%5B%22error-rate-limit%22%5D">Rate Limit</button>
+    <button class="btn-secondary" style="font-size:var(--ui-text-xs);padding:3px 8px;margin-right:4px;" data-action="simulateJobState" data-args="%5B%22error-not-found%22%5D">404</button>
+    <button class="btn-secondary" style="font-size:var(--ui-text-xs);padding:3px 8px;" data-action="simulateJobState" data-args="%5B%22error-unreachable%22%5D">502</button>`;
   document.querySelector('#job-modal .modal').appendChild(sim);
 }
 
@@ -499,8 +500,8 @@ export function simulateJobState(state) {
     progLabel.textContent = '분석 완료';
     document.getElementById('modal-title').textContent = '분석 완료';
     errBox.style.display = 'none';
-    footer.innerHTML = `<button class="btn-secondary" onclick="closeJobModal()">닫기</button>
-      <button class="btn-primary" onclick="viewResult()">결과 보기 →</button>`;
+    footer.innerHTML = `<button class="btn-secondary" data-action="closeJobModal">닫기</button>
+      <button class="btn-primary" data-action="viewResult">결과 보기 →</button>`;
     return;
   }
 
@@ -511,17 +512,17 @@ export function simulateJobState(state) {
   document.getElementById('modal-error-body').textContent = cfg.body;
   document.getElementById('modal-error-time').textContent = cfg.time;
   errBox.style.display = 'block';
-  footer.innerHTML = `<button class="btn-secondary" onclick="closeJobModal()">닫기</button>` +
-    (cfg.retry ? `<button class="btn-primary" onclick="retryJob()">재시도</button>` : '');
+  footer.innerHTML = `<button class="btn-secondary" data-action="closeJobModal">닫기</button>` +
+    (cfg.retry ? `<button class="btn-primary" data-action="retryJob">재시도</button>` : '');
 }
 
-/* 분석 완료 → 방금 분석한 repo의 타임라인 결과로 이동.
+/* 분석 완료 → 방금 분석한 repo의 분석 개요로 이동.
    완료된 job의 snapshot_id를 명시해, 이전에 열어 둔 오래된 결과가 선택되지 않게 한다. */
 export function viewResult() {
   const repoId = _currentRepoId || undefined;
   const snapshotId = _currentSnapshotId || undefined;
   closeJobModal();
-  window.goPage('timeline', repoId, snapshotId);
+  window.goPage('overview', repoId, snapshotId);
 }
 
 export function closeJobModal() {

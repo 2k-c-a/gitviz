@@ -1,5 +1,6 @@
 import { isLoggedIn, openLoginModal } from './login.js';
 import { openJobModal } from './modal.js';
+import { token } from './ui/chart-theme.js';
 
 /* ── URL 유효성 검사 ── */
 export function isValidGithubUrl(url) {
@@ -101,15 +102,15 @@ export function fmtDuration(totalSeconds) {
 }
 
 /* ── color helpers ── */
-export const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-export const gridC  = dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
-export const textC  = dark ? '#888780' : '#9c9a94';
-export const tooltipBg = dark ? '#272725' : '#ffffff';
-export const tooltipBorder = dark ? '#444441' : '#e0ded8';
+export const dark = document.documentElement?.dataset.theme === 'dark';
+export const gridC = token('--ui-border');
+export const textC = token('--ui-muted');
+export const tooltipBg = token('--ui-surface');
+export const tooltipBorder = token('--ui-border-strong');
 
 if (typeof Chart !== 'undefined') {
-  Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-  Chart.defaults.font.size   = 11;
+  Chart.defaults.font.family = token('--ui-font', 'Segoe UI');
+  Chart.defaults.font.size   = 12;
 }
 
 

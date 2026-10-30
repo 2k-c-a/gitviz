@@ -20,7 +20,7 @@ if DATABASE_URL.startswith("postgresql://"):
 # ── Supabase 풀러(pgbouncer, transaction mode) + asyncpg 연결 설정 ─────────────
 #   • ssl: 명시적 컨텍스트를 주지 않으면 asyncpg가 기본 클라이언트 인증서 경로
 #          (~/.postgresql/...)를 로드하려다 비ASCII 홈 경로에서 깨진다(EILSEQ).
-#          Supabase 풀러 인증서 체인은 self-signed 이므로 검증은 끈다.
+#          원격 인증서·호스트명을 검증한다. 사설 CA는 DATABASE_SSL_CA로 명시한다.
 #   • statement_cache_size / prepared_statement_*: transaction pooling에서는
 #          prepared statement가 커넥션 간 공유되지 않아 DuplicatePreparedStatement가
 #          난다 → 캐시 끄고 statement 이름을 매번 고유화.
@@ -32,10 +32,7 @@ def _async_ssl_context(url: str):
     ca = os.getenv("DATABASE_SSL_CA", "").strip()
     if ca:
         return ssl.create_default_context(cafile=ca)
-    ssl_ctx = ssl.create_default_context()
-    ssl_ctx.check_hostname = False
-    ssl_ctx.verify_mode = ssl.CERT_NONE
-    return ssl_ctx
+    return ssl.create_default_context()
 
 
 def _build_async_engine(url: str):

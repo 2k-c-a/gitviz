@@ -1,6 +1,8 @@
+import { bindPanel, chart, contributorList, action } from './ui/analytics-view.js';
+import { element } from './ui/components.js';
 /* ── 타임라인 페이지: 결과 API → DOM/차트 연동 ──
    chart-timeline 캔버스가 있을 때(=타임라인 페이지)만 동작한다. */
-import { dark, gridC, textC, tooltipBg, tooltipBorder } from './utils.js';
+import { textC, tooltipBg, tooltipBorder } from './utils.js';
 import { fmtWindow, windowDays } from './fmt.js';
 import { renderLoadError } from './page-context.js';
 import {
@@ -24,9 +26,8 @@ if (timelineCanvas && typeof Chart !== 'undefined') {
 }
 
 /* ── helpers ── */
-const num = (n) => (n ?? 0).toLocaleString('en-US');
+const num = (n) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const ymToLabel = (ym) => ym.slice(2).replace('-', '.');           // '2025-04' → '25.04'
 const fmtDate = (iso) => {
   if (!iso) return '';
   const d = new Date(iso);
@@ -34,36 +35,32 @@ const fmtDate = (iso) => {
 };
 
 const TYPE_META = {
-  feature:  { label: '기능 추가', color: '#378ADD' },
-  refactor: { label: '리팩토링',  color: '#EF9F27' },
-  bugfix:   { label: '버그 픽스', color: '#1D9E75' },
-  docs:     { label: '문서',      color: '#F0997B' },
-  chore:    { label: '잡무',      color: '#C0DD97' },
-  other:    { label: '기타',      color: '#B4B2A9' },
+  feature:  { label: '기능 추가', color: 'var(--chart-1)' },
+  refactor: { label: '리팩토링',  color: 'var(--chart-4)' },
+  bugfix:   { label: '버그 픽스', color: 'var(--chart-2)' },
+  docs:     { label: '문서',      color: 'var(--chart-5)' },
+  chore:    { label: '잡무',      color: 'var(--chart-3)' },
+  other:    { label: '기타',      color: 'var(--chart-6)' },
 };
 const RELEASE_DOT = { major: 'major', minor: 'minor', patch: 'patch' };
-const HEAT_COLORS = ['var(--bg2)', '#B5D4F4', '#85B7EB', '#378ADD', '#185FA5'];
+const HEAT_COLORS = Array.from({ length: 5 }, (_, i) => `var(--chart-heat-${i})`);
 
 async function initTimelinePage() {
   const id = getRepoId();
-  const [meta, summary, timeline, types, releases, contributors, heatmap] = await Promise.all([
-    fetchSnapshotMeta(id),
-    fetchSummary(id),
-    fetchTimeline(id, 36),
-    fetchCommitTypes(id),
-    fetchReleases(id, 5),
-    fetchTopContributors(id, 5),
-    fetchContributorHeatmap(id, 16, 8),
+  const meta = await fetchSnapshotMeta(id);
+  await Promise.all([
+    bindPanel(document.querySelector('.metrics-4'), () => fetchSummary(id), data => renderHeader(data, meta.snapshot)),
+    bindPanel(timelineCanvas.closest('.panel'), () => fetchTimeline(id, 0), renderTimelineChart),
+    bindPanel(document.getElementById('tl-donut-legend').closest('.panel'), () => fetchCommitTypes(id), renderDonut),
+    bindPanel(document.getElementById('tl-release-list'), () => fetchReleases(id, 10), data => renderReleases(data.releases || [])),
+    bindPanel(document.getElementById('act-heatmap'), () => fetchContributorHeatmap(id, 16, 8), renderHeatmap),
+    bindPanel(document.getElementById('tl-contrib-list').closest('.panel'), () => fetchTopContributors(id, 50), data => {
+      const rows = data.contributors || [];
+      const input = element('input'); input.type = 'search'; input.placeholder = '불러온 상위 50명에서 이름 검색'; input.setAttribute('aria-label', '기여자 이름 검색');
+      const draw = () => renderContributors(rows.filter(row => (row.github_login || row.display_name || '').toLowerCase().includes(input.value.toLowerCase())));
+      input.addEventListener('input', draw); document.getElementById('tl-contrib-list').before(input); draw();
+    }),
   ]);
-
-  if (summary.error) throw new Error(summary.error);
-
-  renderHeader(summary, meta.snapshot);
-  renderTimelineChart(timeline);
-  renderDonut(types);
-  renderReleases(releases.releases || []);
-  renderContributors(contributors.contributors || []);
-  renderHeatmap(heatmap);
 }
 
 /* ── 헤더 + 지표 카드 ──
@@ -78,10 +75,10 @@ function renderHeader(s, snap) {
   setText('tl-dash-sub',
     `관측 구간 커밋 ${num(s.total_commits)}개 · 기여자 ${num(s.total_contributors)}명 · 관측 기간 ${period}`);
   setText('tl-window-note',
-    `월별 커밋 수 · 활성 기여자 수 · 버그 픽스 비율. 관측 기간 ${period}(종료 시각 제외) 안의 기록만 보여주며 전체 누적 수가 아닙니다.`);
+    '월별 커밋 수 · 활성 기여자 수 · 버그 수정 분류 비율. 관측 구간 안의 기록입니다.');
 
   setText('tl-m-commits', num(s.total_commits));
-  setText('tl-m-commits-sub', `분석 종료 시점 이전 30일 ${num(s.commits_30d)}개`);
+  setText('tl-m-commits-sub', `최근 30일 · ${num(s.commits_30d)}개`);
   setText('tl-m-contributors', num(s.active_contributors_90d));
   setText('tl-m-releases', num(s.total_releases));
   setText('tl-m-releases-sub', s.latest_release ? `최신 ${s.latest_release}` : '릴리즈 없음');
@@ -90,36 +87,33 @@ function renderHeader(s, snap) {
 
 /* ── 타임라인 차트 ── */
 function renderTimelineChart(t) {
-  if (!t.months || !t.months.length) {
-    const box = timelineCanvas.parentElement;
-    box.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text3);text-align:center;">관측 구간에 커밋이 없습니다 (수집 실패가 아니라 구간 밖의 변경일 수 있습니다).</div>';
-    return;
+  const panel = timelineCanvas.closest('.panel');
+  const controls = element('div', 'analysis-toolbar');
+  const metric = element('select'); metric.setAttribute('aria-label', '월별 지표');
+  for (const [key, label] of [['commits', '커밋 수 (건)'], ['active_contributors', '활성 기여자 (명)'], ['bugfix_pct', '버그 수정 분류 비율 (%)']]) {
+    const option = element('option', '', label); option.value = key; metric.append(option);
   }
-  new Chart(timelineCanvas.getContext('2d'), {
-    type: 'bar',
-    data: {
-      labels: t.months.map(ymToLabel),
-      datasets: [
-        { label: '커밋 수', data: t.commits, backgroundColor: '#B5D4F4', borderRadius: 2, yAxisID: 'y', order: 3 },
-        { label: '활성 기여자 수', data: t.active_contributors, type: 'line', borderColor: '#1D9E75', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.4, yAxisID: 'y2', order: 2 },
-        { label: '버그 픽스 비율(%)', data: t.bugfix_pct, type: 'line', borderColor: '#EF9F27', backgroundColor: 'transparent', borderWidth: 1.5, borderDash: [4, 3], pointRadius: 0, tension: 0.4, yAxisID: 'y3', order: 1 },
-      ],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: { backgroundColor: tooltipBg, borderColor: tooltipBorder, borderWidth: 0.5, titleColor: dark ? '#c2c0b6' : '#3d3d3a', bodyColor: textC, padding: 10 },
-      },
-      scales: {
-        x: { grid: { color: gridC, lineWidth: 0.5 }, ticks: { color: textC, maxTicksLimit: 14 }, border: { color: 'transparent' } },
-        y: { position: 'left', grid: { color: gridC, lineWidth: 0.5 }, ticks: { color: textC, maxTicksLimit: 5 }, border: { color: 'transparent' } },
-        y2: { position: 'right', grid: { display: false }, ticks: { color: '#1D9E75', maxTicksLimit: 4 }, border: { color: 'transparent' } },
-        y3: { display: false },
-      },
-    },
-  });
+  const range = element('select'); range.setAttribute('aria-label', '스냅샷 내 표시할 관측 월 수');
+  for (const [value, label] of [[0, '관측 구간 전체'], [3, '마지막 3개 관측 월'], [6, '마지막 6개 관측 월']]) {
+    const option = element('option', '', label); option.value = value; range.append(option);
+  }
+  const selected = element('p', 'p-note'); selected.setAttribute('role', 'status');
+  const numbers = element('details'); numbers.append(element('summary', '', '월별 수치와 상세 선택'));
+  const rows = element('div', 'analysis-list'); numbers.append(rows);
+  const draw = () => {
+    const offset = Number(range.value) ? Math.max(0, t.months.length - Number(range.value)) : 0;
+    const months = t.months.slice(offset), values = (t[metric.value] || []).slice(offset);
+    const select = i => { selected.textContent = `${months[i]} · 커밋 ${num(t.commits[offset+i])}건 · 활성 기여자 ${num(t.active_contributors?.[offset+i])}명 · 버그 수정 분류 ${t.bugfix_pct?.[offset+i] == null ? '—' : t.bugfix_pct?.[offset+i] + '%'}`; };
+    timelineCanvas.parentElement.hidden = !months.length;
+    if (!months.length) Chart.getChart(timelineCanvas)?.destroy();
+    else chart(timelineCanvas, { labels: months, values, label: metric.selectedOptions[0].textContent, color: metric.value === 'commits' ? 1 : metric.value === 'active_contributors' ? 2 : 4, percent: metric.value === 'bugfix_pct', type: metric.value === 'commits' ? 'bar' : 'line', onSelect: select });
+    rows.replaceChildren(...months.map((month, i) => action(`${month} · ${values[i] == null ? '—' : values[i]}`, () => select(i))));
+    selected.textContent = months.length ? '차트의 데이터 또는 월별 수치를 선택하세요. 표시 범위는 현재 스냅샷 안에서만 바뀝니다.' : '관측 구간에 커밋이 없습니다.';
+  };
+  controls.hidden = !t.months.length; numbers.hidden = !t.months.length;
+  controls.append(metric, range); panel.querySelector('.p-note').after(controls);
+  panel.querySelector('.legend')?.remove(); panel.append(selected, numbers);
+  metric.addEventListener('change', draw); range.addEventListener('change', draw); draw();
 }
 
 /* ── 커밋 유형 도넛 + 범례 ── */
@@ -129,7 +123,8 @@ function renderDonut(t) {
   const meta = (k) => TYPE_META[k] || { label: k, color: '#B4B2A9' };
 
   if (donutCanvas) {
-    new Chart(donutCanvas.getContext('2d'), {
+    donutCanvas.hidden = !types.length; Chart.getChart(donutCanvas)?.destroy();
+    if (types.length) new Chart(donutCanvas.getContext('2d'), {
       type: 'doughnut',
       data: {
         labels: types.map(x => meta(x.type).label),
@@ -144,7 +139,7 @@ function renderDonut(t) {
 
   const legend = document.getElementById('tl-donut-legend');
   if (legend) {
-    legend.innerHTML = types.map(x => {
+    legend.innerHTML = !types.length ? '관측 구간에 분류할 커밋이 없습니다.' : types.map(x => {
       const m = meta(x.type);
       return `<div class="donut-leg-row"><div class="donut-leg-label"><div class="donut-swatch" style="background:${m.color};"></div>${esc(m.label)}</div><div class="donut-pct">${x.pct}%</div></div>`;
     }).join('');
@@ -159,7 +154,7 @@ function renderReleases(releases) {
 
   wrap.innerHTML = releases.map((r, i) => {
     const dot = RELEASE_DOT[r.release_type] || 'patch';
-    const badge = r.release_type === 'major' ? ' <span class="badge badge-blue" style="font-size:10px;">major</span>' : '';
+    const badge = r.release_type === 'major' ? ' <span class="badge badge-blue" style="font-size:var(--ui-text-xs);">major</span>' : '';
     const line = i < releases.length - 1 ? '<div class="rel-line"></div>' : '';
     const meta = [fmtDate(r.published_at), r.commit_count ? `커밋 ${num(r.commit_count)}개` : null].filter(Boolean).join(' · ');
     return `<div class="rel-row"><div class="rel-dot-col"><div class="rel-dot ${dot}"></div>${line}</div>`
@@ -168,22 +163,8 @@ function renderReleases(releases) {
 }
 
 /* ── 상위 기여자 ── */
-function renderContributors(contributors) {
-  const wrap = document.getElementById('tl-contrib-list');
-  if (!wrap) return;
-  if (!contributors.length) { wrap.innerHTML = '<div class="c-meta" style="padding:4px;">기여자 정보 없음</div>'; return; }
-
-  const max = contributors[0].commit_count || 1;
-  wrap.innerHTML = contributors.map(c => {
-    const name = c.github_login || c.display_name || '익명';
-    const pct = Math.round(100 * c.commit_count / max);
-    const recent = c.last_commit_at ? ` · 마지막 커밋 ${fmtDate(c.last_commit_at)}` : '';  // 오래된 저장 결과에서 '오늘 기준 N일 전'으로 읽히지 않게 날짜로 표시
-    return `<div class="c-row" style="cursor:pointer;" onclick="window.openContributorDrilldown(${c.id})" title="소유 파일·협업자 보기">`
-      + `<div class="avatar" style="background:#E6F1FB;color:#185FA5;">${esc(name[0].toUpperCase())}</div>`
-      + `<div class="c-info"><div class="c-name">${esc(name)}</div><div class="c-meta">커밋 ${num(c.commit_count)}개${recent}</div></div>`
-      + `<div class="bar-wrap"><div class="bar-fill bar-blue" style="width:${pct}%;"></div></div>`
-      + `<div class="c-count">${num(c.commit_count)}</div></div>`;
-  }).join('');
+function renderContributors(rows) {
+  const host = document.getElementById('tl-contrib-list'); host.replaceChildren(); contributorList(host, rows);
 }
 
 /* ── 기여자별 활동 히트맵 ── */
@@ -230,6 +211,9 @@ function renderHeatmap(data) {
   }).join('');
 
   wrap.innerHTML = `<div class="act-months">${monthsRow}</div>${rows}`;
+  const details = element('details'); details.append(element('summary', '', '주별 커밋 수를 텍스트로 보기'));
+  contributors.forEach(c => details.append(element('p', 'p-note', `${c.name}: ${weeks.map((w, i) => `${w} ${num(c.counts[i])}건`).join(' · ')}`)));
+  wrap.append(details);
 }
 
 function setText(id, text) {

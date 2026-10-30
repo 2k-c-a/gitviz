@@ -1,3 +1,4 @@
+import { request } from './platform/transport.js';
 /* ── 저장소 검색 페이지: GitHub 레포 검색 + 경량 예비 점수 리스트 ──
    search-results가 있을 때(=검색 페이지)만 동작한다.
    GET /search/github-repositories (Track 01)가 채워주는 스키마를 그대로 그린다:
@@ -5,12 +6,17 @@
      stars, forks, open_issues, pushed_at, is_registered, scores:{activity,health,total} }] } */
 
 import { isLoggedIn, openLoginModal } from './login.js';
+import { createState, element } from './ui/components.js';
 
 const resultsEl  = document.getElementById('search-results');
 const summaryEl  = document.getElementById('search-summary');
 const inputEl    = document.getElementById('search-input');
 const sortEl     = document.getElementById('search-sort');
 const btnEl      = document.getElementById('search-btn');
+const selectionEl = document.getElementById('search-selection');
+let searchGeneration = 0;
+let resultRepos = [];
+let registeredReady;
 
 const num = (n) => (n ?? 0).toLocaleString('en-US');
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -26,14 +32,11 @@ let registeredMap = new Map();
 const normalizeUrl = (url) => String(url ?? '').trim().replace(/\/+$/, '').replace(/\.git$/i, '');
 
 async function loadRegisteredMap() {
-  try {
-    const res = await fetch('/repositories?limit=200');
-    if (!res.ok) return;
-    const repos = await res.json();
-    repos.forEach(r => registeredMap.set(normalizeUrl(r.url), r.id));
-  } catch {
-    /* 실패해도 검색 자체는 계속 동작해야 하므로 조용히 무시 */
-  }
+  const paths = ['/repositories?limit=100', ...(isLoggedIn ? ['/repositories/mine'] : [])];
+  await Promise.allSettled(paths.map(async path => {
+    const response = await request(path);
+    if (response.ok) (await response.json()).forEach(repo => registeredMap.set(normalizeUrl(repo.url), repo.id));
+  }));
 }
 
 function fmtRelative(iso) {
@@ -86,9 +89,7 @@ function buildCard(repo) {
   const pushedRel = fmtRelative(repo.pushed_at);
   const registeredId = repo.is_registered ? (registeredMap.get(normalizeUrl(repo.url)) ?? '') : '';
 
-  const actionHtml = repo.is_registered
-    ? `<button class="btn-secondary search-detail-btn">상세 분석 보기</button>`
-    : `<button class="btn-primary search-start-btn">분석 시작</button>`;
+  const actionHtml = '<button class="btn-secondary search-select-btn" type="button">분석 대상 선택</button>';
 
   return `
     <div class="panel search-card" data-url="${esc(repo.url)}" data-registered="${repo.is_registered ? '1' : '0'}" data-repo-id="${registeredId}">
@@ -96,7 +97,7 @@ function buildCard(repo) {
       <div class="search-card-body">
         <div class="search-card-title">
           ${GITHUB_ICON}
-          <a class="search-card-name" href="${esc(repo.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="GitHub에서 열기">${esc(fullName)}</a>
+          <a class="search-card-name" href="${esc(repo.url)}" target="_blank" rel="noopener" data-action="stop" title="GitHub에서 열기">${esc(fullName)}</a>
           ${langBadge}
           ${registeredBadge}
         </div>
@@ -117,21 +118,22 @@ function buildCard(repo) {
 
 function showLoading() {
   summaryEl.style.display = 'none';
-  resultsEl.innerHTML = `<div class="panel" style="padding:40px 20px;text-align:center;color:var(--text3);font-size:13px;">검색 중...</div>`;
+  resultsEl.replaceChildren(createState({ kind: 'loading', title: '저장소를 검색하는 중' }));
 }
 
 function showError(msg) {
   summaryEl.style.display = 'none';
-  resultsEl.innerHTML = `<div class="panel" style="padding:40px 20px;text-align:center;color:var(--red-dark);font-size:13px;">${esc(msg)}</div>`;
+  resultsEl.replaceChildren(createState({ kind: 'error', title: '검색하지 못했습니다', message: msg, retry: runSearch }));
 }
 
 function showEmpty(query) {
   summaryEl.style.display = 'none';
-  resultsEl.innerHTML = `<div class="panel" style="padding:40px 20px;text-align:center;color:var(--text2);font-size:13px;">'${esc(query)}'에 대한 검색 결과가 없습니다.</div>`;
+  resultsEl.replaceChildren(createState({ kind: 'empty', title: '검색 결과가 없습니다', message: `'${query}' 대신 다른 키워드 또는 저장소 이름으로 검색하세요.` }));
 }
 
 function renderResults(data) {
   const results = Array.isArray(data.results) ? data.results : [];
+  resultRepos = results;
   if (!results.length) {
     showEmpty(data.query ?? inputEl.value.trim());
     return;
@@ -146,6 +148,23 @@ function renderResults(data) {
   resultsEl.innerHTML = results.map(buildCard).join('');
 }
 
+function selectRepository(repo) {
+  selectionEl.hidden = false;
+  selectionEl.replaceChildren();
+  selectionEl.append(element('h2', 'ui-panel-title', `선택한 저장소 · ${repo.owner}/${repo.repo_name}`));
+  selectionEl.append(element('p', 'p-sub', repo.description || '설명이 없습니다.'));
+  const actions = element('div', 'ui-toolbar');
+  if (repo.is_registered) {
+    const open = element('button', 'btn-primary', '저장된 결과 확인');
+    open.type = 'button'; open.addEventListener('click', () => goToDetail(repo.url)); actions.append(open);
+  }
+  const start = element('button', repo.is_registered ? 'btn-secondary' : 'btn-primary', repo.is_registered ? '새 분석 요청' : '선택한 저장소 분석 시작');
+  start.type = 'button'; start.addEventListener('click', () => startAnalysis(repo.url));
+  actions.append(start); selectionEl.append(actions);
+  const notice = element('p', 'p-sub', '대상 선택만으로 분석을 시작하지 않습니다. 저장된 결과 확인은 새 분석을 만들지 않습니다.');
+  selectionEl.append(notice); selectionEl.tabIndex = -1; selectionEl.focus({ preventScroll: true }); selectionEl.scrollIntoView({ block: 'nearest' });
+}
+
 /* 홈 화면의 "분석 시작" 흐름(main.js/modal.js의 openJobModal('new'))을 그대로 재사용한다.
    그 흐름은 #url-input의 값을 읽어 POST /repositories 를 호출하고 진행 모달을 띄운다. */
 function startAnalysis(url) {
@@ -155,39 +174,50 @@ function startAnalysis(url) {
   window.openJobModal('new');
 }
 
-function goToDetail(url, repoId) {
+async function goToDetail(url, repoId) {
+  // Auth can finish after the eager search module. Refresh the read-only map when needed.
+  if (!repoId && !registeredMap.has(normalizeUrl(url))) await loadRegisteredMap();
   const id = repoId || registeredMap.get(normalizeUrl(url));
-  if (id) { window.goPage('code-analysis', id); return; }
-  // is_registered=true인데 로컬에 매핑이 없는 예외 상황(목록 limit 초과 등) —
-  // POST /repositories는 이미 등록된 URL이면 기존 repository_id를 그대로 반환하므로
-  // 분석 시작 흐름으로 안전하게 폴백한다.
-  startAnalysis(url);
+  if (id) { window.goPage('overview', id); return; }
+  // 조회가 새 분석을 만들지 않도록 ID 미확정은 별도 오류로 남긴다.
+  showError('기존 결과의 저장소 ID를 확인하지 못했습니다. 최근·내 분석에서 결과를 열거나 다시 검색하세요. 새 분석은 시작하지 않았습니다.');
 }
 
 async function runSearch() {
   const q = inputEl.value.trim();
   if (!q) { inputEl.focus(); return; }
+  const generation = ++searchGeneration;
+  selectionEl.hidden = true;
+  const url = new URL(location.href); url.searchParams.set('q', q); url.searchParams.set('order', sortEl.value); history.replaceState(null, '', url);
 
   showLoading();
   btnEl.disabled = true;
   try {
-    const res = await fetch(`/search/github-repositories?q=${encodeURIComponent(q)}&sort=${encodeURIComponent(sortEl.value)}&per_page=20`);
+    const res = await request(`/search/github-repositories?q=${encodeURIComponent(q)}&sort=${encodeURIComponent(sortEl.value)}&per_page=20`);
+    if (generation !== searchGeneration) return;
     if (!res.ok) {
-      if (res.status === 429) showError('GitHub 검색 API 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.');
+      if (res.status === 401 || res.status === 403) showError('저장소를 검색할 권한이 없습니다. 로그인한 계정을 확인한 뒤 다시 시도하세요.');
+      else if (res.status === 429) showError('GitHub 검색 API 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.');
       else showError(`검색에 실패했습니다 (HTTP ${res.status}).`);
       return;
     }
     const data = await res.json();
+    await registeredReady;
+    if (generation !== searchGeneration) return;
     renderResults(data);
   } catch {
+    if (generation !== searchGeneration) return;
     showError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.');
   } finally {
-    btnEl.disabled = false;
+    if (generation === searchGeneration) btnEl.disabled = false;
   }
 }
 
 function initSearchPage() {
-  loadRegisteredMap();
+  registeredReady = loadRegisteredMap();
+  const saved = new URLSearchParams(location.search);
+  inputEl.value = saved.get('q') || '';
+  if (['stars', 'updated'].includes(saved.get('order'))) sortEl.value = saved.get('order');
 
   btnEl.addEventListener('click', runSearch);
   inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
@@ -203,10 +233,12 @@ function initSearchPage() {
   resultsEl.addEventListener('click', (e) => {
     const card = e.target.closest('.search-card');
     if (!card) return;
-    const { url, registered, repoId } = card.dataset;
-    if (e.target.closest('.search-start-btn')) { startAnalysis(url); return; }
-    if (e.target.closest('.search-detail-btn') || registered === '1') { goToDetail(url, repoId); }
+    if (e.target.closest('.search-select-btn')) {
+      const repo = resultRepos.find(item => item.url === card.dataset.url);
+      if (repo) selectRepository(repo);
+    }
   });
+  if (inputEl.value) void runSearch();
 }
 
 if (resultsEl) initSearchPage();

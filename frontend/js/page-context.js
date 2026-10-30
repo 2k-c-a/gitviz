@@ -7,6 +7,7 @@
 import { esc, fmtDateTime, fmtWindow, windowDays, num } from './fmt.js';
 import { policyOf, assessDataQuality, COLLECTION_TEXT, EVIDENCE_TEXT, STATUS_TONE, COLLECTION_NOTE, evidenceNote } from './policy.js';
 import { parseState, buildQuery } from './viz-state.js';
+import { workspaceEntryUrl } from './platform/workspace-navigation.js';
 
 const host = () => document.querySelector('.page.active .body') || document.querySelector('.page.active') || document.querySelector('main') || document.body;
 
@@ -65,19 +66,27 @@ export function renderContextBanner(data) {
       <span class="ctx-id" title="이 화면이 보고 있는 저장된 분석 결과 번호">저장 결과 #${esc(snap.id)}</span>
       <span class="ctx-item"><b>관측 기간</b> ${esc(windowText)}</span>
       <span class="ctx-item"><b>지표 정책</b> ${esc(policy.versionLabel)}</span>
-      <a class="ctx-link" href="#" onclick="goPage('history');return false;">분석 이력·비교 →</a>
+      <a class="ctx-link" href="#" data-action="goPage" data-args="%5B%22history%22%5D">분석 이력·비교 →</a>
     </div>
     <div class="ctx-row">
       <span class="ctx-chip ok" title="저장된 결과를 불러왔습니다. 수집이 끝났거나 분석 근거가 충분하다는 뜻이 아닙니다.">결과 조회 성공</span>
       <span class="ctx-chip ${STATUS_TONE[a.collection]}" title="${esc(collectionTip)}">${COLLECTION_TEXT[a.collection]}</span>
       <span class="ctx-chip ${STATUS_TONE[a.evidence]}" title="${esc(a.evidenceReasons.join(' / ') || evidenceNote(a.threshold))}">${EVIDENCE_TEXT[a.evidence]}</span>
-      ${a.notes.length ? `<span class="ctx-note">${esc(a.notes.join(' · '))}</span>` : ''}
+      <span class="ctx-note">${esc(policy.versionLabel)}</span>
     </div>
-    ${reasons.length ? `<ul class="ctx-reasons">${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
     ${legacy}
-    <details class="ctx-details"><summary>수집 범위 · 기술 정보</summary>
+    <details class="ctx-details"><summary>수집 범위·분석 기준${reasons.length ? ` · 확인할 항목 ${reasons.length}개` : ''}</summary>
+      ${reasons.length ? `<ul class="ctx-reasons">${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
+      ${a.notes.length ? `<p class="ctx-note">${esc(a.notes.join(' · '))}</p>` : ''}
       <table class="info-table">${techRows(snap, dq)}</table>
     </details>`;
+  const entry = workspaceEntryUrl(location.href);
+  if (entry) {
+    const link = document.createElement('a');
+    link.href = entry; link.className = 'ctx-link'; link.dataset.workspaceEntry = '';
+    link.textContent = '로컬 프로젝트·통합 알림으로 이동';
+    el.append(link);
+  }
 }
 
 /* 결과 조회 실패 안내 — 404(없는/남의 저장소 결과)·409(결과 없음/무결성)·네트워크 오류를 구분한다 */
@@ -87,14 +96,14 @@ export function renderLoadError(err) {
   const st = parseState(location.search);
   let title = '분석 결과를 불러오지 못했습니다';
   let body = err?.message || '알 수 없는 오류';
-  let actions = '<a class="btn-secondary" href="#" onclick="location.reload();return false;">다시 시도</a>';
+  let actions = '<a class="btn-secondary" href="#" data-action="reloadPage">다시 시도</a>';
 
   if (err?.status === 404) {
     title = st.snapshot != null ? `저장 결과 #${st.snapshot}을(를) 열 수 없습니다` : '분석 결과를 찾을 수 없습니다';
     body = '이 저장소의 결과가 아니거나 삭제되었거나 접근 권한이 없을 수 있습니다.';
     if (st.snapshot != null) {
       const latest = buildQuery({ repo: st.repo });
-      actions = `<a class="btn-secondary" href="#" onclick="location.href=location.pathname+'${latest}';return false;">최신 결과 보기</a>`;
+      actions = `<a class="btn-secondary" href="#" data-action="latestResult" data-args="${encodeURIComponent(JSON.stringify([latest]))}">최신 결과 보기</a>`;
     }
   } else if (err?.status === 409) {
     title = '표시할 수 있는 결과가 없습니다';
@@ -105,10 +114,11 @@ export function renderLoadError(err) {
   if (old) old.remove();
   const box = document.createElement('div');
   box.id = 'load-error';
-  box.className = 'ctx-error';
+  box.className = 'ctx-error ui-state ui-state-error';
+  box.setAttribute('role', 'alert');
   box.innerHTML = `<div class="ctx-error-title">${esc(title)}</div>
     <div class="ctx-error-body">${esc(body)}</div>
     <div class="ctx-error-actions">${actions}
-      <a class="btn-secondary" href="#" onclick="goPage('history');return false;">분석 이력 보기</a></div>`;
+      <a class="btn-secondary" href="#" data-action="goPage" data-args="%5B%22history%22%5D">분석 이력 보기</a></div>`;
   container.prepend(box);
 }

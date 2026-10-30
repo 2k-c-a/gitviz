@@ -1,0 +1,28 @@
+.overview-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr); gap: 16px; }
+.overview-grid h2 { margin-bottom: 12px; }
+.overview-trend { min-width: 0; }
+.analysis-list-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--ui-border); }
+.analysis-list-row > span { white-space: nowrap; font-size: 13px; font-variant-numeric: tabular-nums; }
+.ui-list-link { min-width: 0; padding: 0; min-height: 30px; color: var(--ui-accent); background: transparent; border: 0; justify-content: flex-start; text-align: left; overflow-wrap: anywhere; font: inherit; }
+.analysis-type-row { display: grid; grid-template-columns: 80px minmax(50px, 1fr) 130px; gap: 10px; align-items: center; padding-block: 8px; font-size: 13px; }
+.analysis-type-row progress { width: 100%; height: 12px; }
+.analysis-type-row > span:last-child { text-align: right; }
+.analysis-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.search-selection { margin-bottom: 16px; border-inline-start: 3px solid var(--ui-accent); }
+.search-selection h2 { margin-bottom: 8px; }
+@media (width < 1000px) { .overview-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.analysis-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-block: 12px; }
+
+#page-code-analysis [hidden] { display: none !important; }
+#page-code-analysis .hm-td.file { max-width: none; min-width: 220px; white-space: normal; overflow-wrap: anywhere; }
+.analysis-toolbar button[aria-pressed="true"] { color: var(--ui-accent); background: var(--ui-accent-soft); border-color: var(--ui-accent); }
+
+.ui-panel-status { grid-column: 1 / -1; }
+.ui-panel-status:empty { display: none; }
+.overview-grid { align-items: start; }
+
+/* Reserve readable columns; only the table wrapper scrolls in narrow windows. */
+#cx-file-list-table { width: 100%; min-width: 940px; table-layout: fixed; }
+#cx-file-list-table th { width: 12%; word-break: keep-all; }
+#cx-file-list-table th:first-child { width: 40%; }

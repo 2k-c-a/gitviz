@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+    <script src="../js/ui/theme.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../css/index.css">
@@ -21,9 +22,9 @@
 
     <div class="body">
       <div class="panel" style="margin-bottom:14px;">
-        <div class="search-bar">
-          <input type="text" id="search-input" placeholder="레포지토리 이름 또는 키워드로 검색 (예: fastapi)">
-          <select id="search-sort">
+        <div class="search-bar ui-toolbar">
+          <input type="search" id="search-input" aria-label="저장소 이름 또는 검색어" placeholder="레포지토리 이름 또는 키워드로 검색 (예: fastapi)">
+          <select class="ui-filter" id="search-sort" aria-label="검색 결과 정렬">
             <option value="stars">Stars 많은순</option>
             <option value="updated">최근 업데이트순</option>
           </select>
@@ -33,14 +34,15 @@
           점수 배지는 GitHub 메타데이터(최근 활동·이슈 비율)만으로 계산한 <strong>예비 점수</strong>입니다. 클론 후 커밋·PR 이력까지 분석하는 상세 분석(점검 우선순위 등)과는 다른 척도이니 참고용으로만 사용해 주세요.
         </div>
         <div class="search-examples" id="search-examples">
-          <span style="font-size:11px;color:var(--text3);">예시:</span>
+          <span style="font-size:var(--ui-text-xs);color:var(--text3);">예시:</span>
           <div class="chip search-example-chip" data-q="fastapi">fastapi</div>
           <div class="chip search-example-chip" data-q="react">react</div>
           <div class="chip search-example-chip" data-q="django">django</div>
         </div>
       </div>
 
-      <div id="search-summary" class="search-summary" style="display:none;"></div>
+      <section id="search-selection" class="panel search-selection" aria-label="선택한 분석 대상" hidden></section>
+      <div id="search-summary" class="search-summary" style="display:none;" role="status"></div>
       <div id="search-results" class="search-results">
         <div class="panel" style="padding:40px 20px;text-align:center;color:var(--text3);font-size:13px;">
           검색어를 입력하고 검색해 보세요.

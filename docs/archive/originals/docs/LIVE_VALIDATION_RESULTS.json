@@ -1,0 +1,435 @@
+{
+  "executed_at": "2026-10-02T16:03:41.847255+00:00",
+  "mode": {
+    "github": "live REST APIs; GraphQL blocked without configured token",
+    "git": "live clone",
+    "session": "signed test fixture, OAuth callback not exercised",
+    "queue": "Celery eager transport, Redis not exercised",
+    "identity_stage2": "disabled to limit unauthenticated API usage",
+    "wait_budget": "maximum 5s per sleep and 15s total per collector"
+  },
+  "repositories": [
+    {
+      "requested_repo": "octocat/git-consortium",
+      "repository_id": 1,
+      "job_id": 5,
+      "window_end": "2026-10-02T16:03:22.987636+00:00",
+      "job_status": "done",
+      "error": null,
+      "snapshot_id": 4,
+      "target_sha": "b33a9c7c02ad93f621fa38f0e9fc9e867e12fa0e",
+      "git_commit_count": 6,
+      "target_file_count": 3,
+      "file_change_count": 7,
+      "data_quality": {
+        "commit_count": 6,
+        "coverage_scope": "수집된 이력 기준. GitHub 전체 이력의 수집 완전성을 보장하지 않음",
+        "prs_with_files": 0,
+        "merged_pr_count": 0,
+        "contributor_count": 1,
+        "unidentified_commits": 0,
+        "low_support_threshold": 5,
+        "target_tree_file_count": 3,
+        "github_account_unlinked": 0,
+        "prs_with_linked_commits": 0,
+        "collected_target_file_count": 3,
+        "low_rule_confidence_commits": 2
+      },
+      "reanalysis_job_status": "done"
+    },
+    {
+      "requested_repo": "navdeep-G/samplemod",
+      "repository_id": 2,
+      "job_id": 7,
+      "window_end": "2026-10-02T16:03:30.010998+00:00",
+      "job_status": "done",
+      "error": null,
+      "snapshot_id": 6,
+      "target_sha": "d469f2f5e0a472be2c7d95ff90ed46e975810dc8",
+      "git_commit_count": 29,
+      "target_file_count": 18,
+      "file_change_count": 42,
+      "data_quality": {
+        "commit_count": 29,
+        "coverage_scope": "수집된 이력 기준. GitHub 전체 이력의 수집 완전성을 보장하지 않음",
+        "prs_with_files": 0,
+        "merged_pr_count": 9,
+        "contributor_count": 11,
+        "unidentified_commits": 0,
+        "low_support_threshold": 5,
+        "target_tree_file_count": 18,
+        "github_account_unlinked": 2,
+        "prs_with_linked_commits": 0,
+        "collected_target_file_count": 18,
+        "low_rule_confidence_commits": 4
+      },
+      "reanalysis_job_status": "done"
+    }
+  ],
+  "checks": [
+    {
+      "check": "octocat/git-consortium POST analysis",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "octocat/git-consortium job done + saved snapshot",
+      "passed": true,
+      "details": {
+        "requested_repo": "octocat/git-consortium",
+        "repository_id": 1,
+        "job_id": 5,
+        "window_end": "2026-10-02T16:03:22.987636+00:00",
+        "job_status": "done",
+        "error": null,
+        "snapshot_id": 4
+      }
+    },
+    {
+      "check": "octocat/git-consortium completion points to snapshot",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "octocat/git-consortium default-branch SHA set",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "octocat/git-consortium file changes and churn equal independent Git diff",
+      "passed": true,
+      "details": {
+        "git_pairs": 7,
+        "db_pairs": 7,
+        "missing": 0,
+        "extra": 0
+      }
+    },
+    {
+      "check": "octocat/git-consortium GET summary",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "octocat/git-consortium GET tree",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "octocat/git-consortium GET risk-scores",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "octocat/git-consortium GET bus-factor",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "octocat/git-consortium GET network",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "octocat/git-consortium GET coupling",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "octocat/git-consortium GET timeline",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "octocat/git-consortium GET contributor-heatmap",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "octocat/git-consortium summary commit count",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "octocat/git-consortium target SHA tree paths",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "octocat/git-consortium risk/BF endpoint consistency",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "octocat/git-consortium BF independent cumulative-80pct count",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "octocat/git-consortium GET files/2/detail",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "octocat/git-consortium network endpoints valid",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "octocat/git-consortium PR file detail coverage",
+      "passed": true,
+      "details": {
+        "commit_count": 6,
+        "coverage_scope": "수집된 이력 기준. GitHub 전체 이력의 수집 완전성을 보장하지 않음",
+        "prs_with_files": 0,
+        "merged_pr_count": 0,
+        "contributor_count": 1,
+        "unidentified_commits": 0,
+        "low_support_threshold": 5,
+        "target_tree_file_count": 3,
+        "github_account_unlinked": 0,
+        "prs_with_linked_commits": 0,
+        "collected_target_file_count": 3,
+        "low_rule_confidence_commits": 2
+      }
+    },
+    {
+      "check": "octocat/git-consortium repeated pinned summary identical",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "octocat/git-consortium reanalysis request",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "octocat/git-consortium reanalysis done",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "octocat/git-consortium fixed-input payload hash identical",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "octocat/git-consortium reanalysis inserts no duplicate raw rows",
+      "passed": true,
+      "details": {
+        "commits": 6,
+        "changes": 7,
+        "files": 3
+      }
+    },
+    {
+      "check": "octocat/git-consortium identical snapshot comparison",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "navdeep-G/samplemod POST analysis",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod job done + saved snapshot",
+      "passed": true,
+      "details": {
+        "requested_repo": "navdeep-G/samplemod",
+        "repository_id": 2,
+        "job_id": 7,
+        "window_end": "2026-10-02T16:03:30.010998+00:00",
+        "job_status": "done",
+        "error": null,
+        "snapshot_id": 6
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod completion points to snapshot",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "navdeep-G/samplemod default-branch SHA set",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "navdeep-G/samplemod file changes and churn equal independent Git diff",
+      "passed": true,
+      "details": {
+        "git_pairs": 42,
+        "db_pairs": 42,
+        "missing": 0,
+        "extra": 0
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod GET summary",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod GET tree",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod GET risk-scores",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod GET bus-factor",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod GET network",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod GET coupling",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod GET timeline",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod GET contributor-heatmap",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod summary commit count",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "navdeep-G/samplemod target SHA tree paths",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "navdeep-G/samplemod risk/BF endpoint consistency",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "navdeep-G/samplemod BF independent cumulative-80pct count",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "navdeep-G/samplemod GET files/14/detail",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod network endpoints valid",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "navdeep-G/samplemod PR file detail coverage",
+      "passed": false,
+      "details": {
+        "commit_count": 29,
+        "coverage_scope": "수집된 이력 기준. GitHub 전체 이력의 수집 완전성을 보장하지 않음",
+        "prs_with_files": 0,
+        "merged_pr_count": 9,
+        "contributor_count": 11,
+        "unidentified_commits": 0,
+        "low_support_threshold": 5,
+        "target_tree_file_count": 18,
+        "github_account_unlinked": 2,
+        "prs_with_linked_commits": 0,
+        "collected_target_file_count": 18,
+        "low_rule_confidence_commits": 4
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod repeated pinned summary identical",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "navdeep-G/samplemod reanalysis request",
+      "passed": true,
+      "details": {
+        "status": 200
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod reanalysis done",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "navdeep-G/samplemod fixed-input payload hash identical",
+      "passed": true,
+      "details": null
+    },
+    {
+      "check": "navdeep-G/samplemod reanalysis inserts no duplicate raw rows",
+      "passed": true,
+      "details": {
+        "commits": 29,
+        "changes": 42,
+        "files": 18
+      }
+    },
+    {
+      "check": "navdeep-G/samplemod identical snapshot comparison",
+      "passed": true,
+      "details": null
+    }
+  ]
+}

@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
+    <script src="../js/ui/theme.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="../vendor/d3-7.8.5/d3.min.js"></script>
     <link rel="stylesheet" href="../css/index.css">
     <title>GitViz</title>
 </head>
@@ -19,14 +20,14 @@
         <div class="status-dot" style="background:#639922;"></div>
         <span id="cx-status" style="font-size:12px;color:var(--text2);">결과 조회 중</span>
       </div>
-      <button class="btn-secondary" data-auth="1" id="btn-reanalyze" onclick="openReanalyzeToast()">재분석</button>
+      <button class="btn-secondary" data-auth="1" id="btn-reanalyze" data-action="openReanalyzeToast">재분석</button>
     </div>
   </div>
   <div class="sub-tabs">
-    <div class="sub-tab" onclick="goPage('timeline')">타임라인</div>
-    <div class="sub-tab" onclick="goPage('network')">협업 네트워크</div>
+    <div class="sub-tab" data-action="goPage" data-args="%5B%22timeline%22%5D">타임라인</div>
+    <div class="sub-tab" data-action="goPage" data-args="%5B%22network%22%5D">협업 네트워크</div>
     <div class="sub-tab active">코드분석</div>
-    <div class="sub-tab" onclick="goPage('history')">분석 이력·비교</div>
+    <div class="sub-tab" data-action="goPage" data-args="%5B%22history%22%5D">분석 이력·비교</div>
   </div>
   <div class="body">
     <div class="metrics-4">
@@ -52,7 +53,7 @@
       </div>
       <div class="p-note">폴더(큰 원)를 클릭하면 하위 폴더·파일이 펼쳐지고, 다시 클릭하면 접힙니다. 파일(작은 원)을 클릭하면 상세 정보를 볼 수 있고, 이름을 클릭하면 GitHub에서 해당 위치를 확인할 수 있습니다. 드래그로 화면을 옮기고, Ctrl+휠 또는 오른쪽 아래 버튼으로 확대·축소하세요.</div>
 
-      <div style="display:grid;grid-template-columns:1fr 300px;gap:14px;align-items:start;">
+      <div class="cx-tree-layout">
         <div>
           <div class="cx-canvas-wrap">
             <svg class="coup-svg cx-canvas" id="cx-svg"></svg>
@@ -76,15 +77,15 @@
     <div class="panel" style="margin-bottom:14px;">
       <div class="p-head" style="margin-bottom:6px;">
         <div class="p-title">전체 파일 종합 리스트</div>
-        <div style="font-size:11px;color:var(--text2);" id="cx-list-note">정렬 기준을 불러오는 중</div>
+        <div style="font-size:var(--ui-text-xs);color:var(--text2);" id="cx-list-note">정렬 기준을 불러오는 중</div>
       </div>
-      <div class="p-note">파일 경로를 클릭하면 GitHub에서 열리고, 행의 나머지 영역을 클릭하면 점수 구성·기여 분포·함께 변경된 파일을 볼 수 있습니다. 점수가 없는 파일(—)은 0이 아니라 관측 변경 없음 또는 자료 부족이며 항상 순위 뒤에 둡니다.</div>
+      <div class="p-note">파일 경로를 선택하면 상세 패널에서 점수 구성·기여 분포·함께 변경된 파일을 볼 수 있습니다. GitHub 링크는 원본 코드를 엽니다. 파일별 마지막 수정 시각은 제공되지 않아 날짜순 목록은 표시하지 않습니다. 점수가 없는 파일(—)은 0이 아니라 관측 변경 없음 또는 자료 부족이며 항상 순위 뒤에 둡니다.</div>
       <input type="search" id="cx-search" class="cx-search" placeholder="파일 경로 검색 (예: api/, analytics)" autocomplete="off" aria-label="파일 경로 검색">
       <div class="hm-wrap">
-        <table class="hm-table">
+        <table class="hm-table" id="cx-file-list-table">
           <thead>
             <tr>
-              <th class="hm-th left">파일</th>
+              <th class="hm-th left">파일</th><th class="hm-th">관측 변경 횟수</th>
               <th class="hm-th" id="cx-th-score">점수</th>
               <th class="hm-th" id="cx-th-bf">주요 수정자 수</th>
               <th class="hm-th" id="cx-th-cp">함께 수정 정도</th>
@@ -100,7 +101,7 @@
     <div class="panel" style="margin-bottom:14px;">
       <div class="p-head" style="margin-bottom:6px;">
         <div class="p-title">기여 분포 (주요 수정자 수)</div>
-        <div style="font-size:11px;color:var(--text2);">관측 구간의 파일 변경 기여 집중도</div>
+        <div style="font-size:var(--ui-text-xs);color:var(--text2);">관측 구간의 파일 변경 기여 집중도</div>
       </div>
       <div class="p-note">주요 수정자 수는 관측 구간에서 파일 변경 커밋의 80%를 차지하는 최소 기여자 수입니다(식별된 기여 기준). 1은 한 명에게 관측 변경 기여가 집중되었다는 뜻이며 실제 지식 보유 인원이 아닙니다. 기여 분산도가 높다고 위험하다는 뜻은 아니어서 색을 붙이지 않았습니다. 기여자가 1명이면 정규화 기여 분산도는 0, 식별된 기여가 없으면 값이 없습니다(—).</div>
       <div id="cx-bf-body"><div class="cx-empty">불러오는 중...</div></div>

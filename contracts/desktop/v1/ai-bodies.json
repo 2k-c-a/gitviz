@@ -1,0 +1,373 @@
+{
+  "PrepareInputRequest": {
+    "additionalProperties": false,
+    "description": "POST /inputs. owner는 서버가 세션에서 정한다.",
+    "properties": {
+      "repository_id": {
+        "exclusiveMinimum": 0,
+        "title": "Repository Id",
+        "type": "integer"
+      },
+      "pr_number": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Pr Number"
+      },
+      "commit_sha": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Commit Sha"
+      },
+      "expected_base_sha": {
+        "title": "Expected Base Sha",
+        "type": "string"
+      },
+      "expected_head_sha": {
+        "title": "Expected Head Sha",
+        "type": "string"
+      },
+      "selected_paths": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 1000,
+        "minItems": 1,
+        "title": "Selected Paths",
+        "type": "array"
+      }
+    },
+    "required": [
+      "repository_id",
+      "expected_base_sha",
+      "expected_head_sha",
+      "selected_paths"
+    ],
+    "title": "PrepareInputRequest",
+    "type": "object"
+  },
+  "CreateJobRequest": {
+    "$defs": {
+      "TransferConsent": {
+        "additionalProperties": false,
+        "description": "전송 동의: 사용자가 확인한 코드 범위(manifest_hash)와 제공자·모델·key 버전.",
+        "properties": {
+          "profile_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Profile Fingerprint"
+          },
+          "input_id": {
+            "format": "uuid",
+            "title": "Input Id",
+            "type": "string"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "profile_id": {
+            "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$",
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "credential_version": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Credential Version"
+          },
+          "policy_version": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Policy Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "input_id",
+          "manifest_hash",
+          "provider",
+          "profile_id",
+          "policy_version"
+        ],
+        "title": "TransferConsent",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "POST /jobs: 동의한 전송 내용(코드 범위·제공자·모델·key 버전)으로 설명·리뷰 생성을 접수한다.",
+    "properties": {
+      "kind": {
+        "enum": [
+          "summary",
+          "review"
+        ],
+        "title": "Kind",
+        "type": "string"
+      },
+      "consent": {
+        "$ref": "#/$defs/TransferConsent"
+      },
+      "force_regenerate": {
+        "default": false,
+        "title": "Force Regenerate",
+        "type": "boolean"
+      },
+      "history_snapshot_id": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "History Snapshot Id"
+      }
+    },
+    "required": [
+      "kind",
+      "consent"
+    ],
+    "title": "CreateJobRequest",
+    "type": "object"
+  },
+  "RetryJobRequest": {
+    "$defs": {
+      "TransferConsent": {
+        "additionalProperties": false,
+        "description": "전송 동의: 사용자가 확인한 코드 범위(manifest_hash)와 제공자·모델·key 버전.",
+        "properties": {
+          "profile_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Profile Fingerprint"
+          },
+          "input_id": {
+            "format": "uuid",
+            "title": "Input Id",
+            "type": "string"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "profile_id": {
+            "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$",
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "credential_version": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Credential Version"
+          },
+          "policy_version": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Policy Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "input_id",
+          "manifest_hash",
+          "provider",
+          "profile_id",
+          "policy_version"
+        ],
+        "title": "TransferConsent",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "POST /jobs/{id}/retry: 실패·취소된 작업의 명시적 재생성. 비용·전송이 다시 생기므로 동의를 다시 받는다.",
+    "properties": {
+      "consent": {
+        "$ref": "#/$defs/TransferConsent"
+      }
+    },
+    "required": [
+      "consent"
+    ],
+    "title": "RetryJobRequest",
+    "type": "object"
+  },
+  "RegisterKeyRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "api_key": {
+        "format": "password",
+        "maxLength": 400,
+        "minLength": 16,
+        "title": "Api Key",
+        "type": "string",
+        "writeOnly": true
+      },
+      "profile_id": {
+        "anyOf": [
+          {
+            "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Profile Id"
+      },
+      "verify": {
+        "default": true,
+        "title": "Verify",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "api_key"
+    ],
+    "title": "RegisterKeyRequest",
+    "type": "object"
+  },
+  "UpdateCredentialRequest": {
+    "additionalProperties": false,
+    "description": "PATCH /credentials/{provider}: key는 그대로 두고 기본 모델만 바꾼다.",
+    "properties": {
+      "profile_id": {
+        "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$",
+        "title": "Profile Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "profile_id"
+    ],
+    "title": "UpdateCredentialRequest",
+    "type": "object"
+  },
+  "FeedbackRequest": {
+    "$defs": {
+      "Verdict": {
+        "enum": [
+          "valid",
+          "false_positive",
+          "uncertain"
+        ],
+        "title": "Verdict",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "verdict": {
+        "$ref": "#/$defs/Verdict"
+      },
+      "note": {
+        "anyOf": [
+          {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Note"
+      },
+      "expected_version": {
+        "minimum": 0,
+        "title": "Expected Version",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "verdict",
+      "expected_version"
+    ],
+    "title": "FeedbackRequest",
+    "type": "object"
+  },
+  "AttachHistoryRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "snapshot_id": {
+        "minimum": 1,
+        "title": "Snapshot Id",
+        "type": "integer"
+      },
+      "as_of": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "As Of"
+      }
+    },
+    "required": [
+      "snapshot_id"
+    ],
+    "title": "AttachHistoryRequest",
+    "type": "object"
+  }
+}

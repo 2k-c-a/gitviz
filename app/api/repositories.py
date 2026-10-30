@@ -16,7 +16,7 @@ from app.models.commit import Commit
 from app.models.pull_request import PullRequest
 from app.models.file import File
 from app.tasks.analyze_repository import analyze_repository
-from app.routers.auth import _get_session_user_id
+from app.api.auth import _get_session_user_id
 from app.models.analysis_snapshot import AnalysisSnapshot
 from app.services.analysis_snapshots import analysis_parameters, load_snapshot
 from app.services.repository_access import (canonical_github_url, github_metadata, user_github_token,

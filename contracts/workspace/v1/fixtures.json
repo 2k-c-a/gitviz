@@ -1,0 +1,836 @@
+[
+  {
+    "name": "health",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "operation": "workspace.system.health",
+      "payload": {}
+    },
+    "valid": true
+  },
+  {
+    "name": "extra-field",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "operation": "workspace.system.health",
+      "payload": {},
+      "projectId": "00000000-0000-4000-8000-000000000001"
+    },
+    "valid": false
+  },
+  {
+    "name": "boolean-version",
+    "schema": "request",
+    "value": {
+      "protocolVersion": true,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "operation": "workspace.system.health",
+      "payload": {}
+    },
+    "valid": false
+  },
+  {
+    "name": "unknown-operation",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "operation": "workspace.files.write",
+      "payload": {}
+    },
+    "valid": false
+  },
+  {
+    "name": "coercion",
+    "schema": "request",
+    "value": {
+      "protocolVersion": "1",
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "operation": "workspace.system.health",
+      "payload": {}
+    },
+    "valid": false
+  },
+  {
+    "name": "invalid-id",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "UUID",
+      "operation": "workspace.system.health",
+      "payload": {}
+    },
+    "valid": false
+  },
+  {
+    "name": "bootstrap",
+    "schema": "bootstrap",
+    "value": {
+      "type": "bootstrap",
+      "protocolVersion": 1,
+      "keyVersion": 1,
+      "keyBase64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+    },
+    "valid": true
+  },
+  {
+    "name": "response-0",
+    "schema": "response",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": true,
+      "result": {
+        "agentVersion": "0.1.0",
+        "protocolVersion": 1,
+        "localSchemaRange": {
+          "min": 1,
+          "max": 1
+        },
+        "capabilities": [
+          "workspace.system.handshake",
+          "workspace.system.health",
+          "workspace.system.shutdown"
+        ],
+        "state": "initializing"
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "response-1",
+    "schema": "response",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": true,
+      "result": {
+        "state": "ready",
+        "components": {
+          "store": "ready",
+          "secrets": "ready",
+          "lifecycle": "ready"
+        }
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "response-2",
+    "schema": "response",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": true,
+      "result": {
+        "accepted": true
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "p02 explicit project status",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.git.status",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "payload": {
+        "recentLimit": 20
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "p02 missing project",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.git.status",
+      "payload": {
+        "recentLimit": 20
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "p02 renderer absolute root",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.git.status",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "payload": {
+        "recentLimit": 20,
+        "root": "C:/outside"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "p02 coerced recentLimit",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.git.status",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "payload": {
+        "recentLimit": "20"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "p02 unbounded log",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.git.status",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "payload": {
+        "recentLimit": 101
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "p02 settings CAS and mutation key",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.projects.updateSettings",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "idempotencyKey": "00000000-0000-4000-8000-000000000002",
+      "payload": {
+        "recentLimit": 7,
+        "expectedVersion": 1
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "p02 mutation requires key",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.projects.updateSettings",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "payload": {
+        "recentLimit": 7,
+        "expectedVersion": 1
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "p02 main native selection inspection",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000002",
+      "idempotencyKey": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.projects.selectAndRegister",
+      "payload": {
+        "phase": "inspect",
+        "selectedRoot": "C:/fixture",
+        "metadataScopes": [],
+        "expandedRoot": false,
+        "reconnectApproved": false
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "p04-capture",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.changes.capture",
+      "payload": {
+        "items": [
+          {
+            "facet": "staged",
+            "path": "src/a.py"
+          }
+        ],
+        "includeUntracked": false
+      },
+      "idempotencyKey": "00000000-0000-4000-8000-000000000001"
+    },
+    "valid": true
+  },
+  {
+    "name": "p04-capture-arbitrary-exec",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.changes.capture",
+      "payload": {
+        "items": [
+          {
+            "facet": "staged",
+            "path": "src/a.py"
+          }
+        ],
+        "includeUntracked": false,
+        "executable": "cmd.exe"
+      },
+      "idempotencyKey": "00000000-0000-4000-8000-000000000001"
+    },
+    "valid": false
+  },
+  {
+    "name": "p04-detect",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.validation.detect",
+      "payload": {
+        "cwdRelative": ".",
+        "packageManager": null
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "p04-detect-arbitrary-exec",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.validation.detect",
+      "payload": {
+        "cwdRelative": ".",
+        "packageManager": null,
+        "executable": "cmd.exe"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "p05-preview",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.reviews.preview",
+      "payload": {
+        "snapshotId": "00000000-0000-4000-8000-000000000001",
+        "kind": "review",
+        "purpose": "review",
+        "profileId": "ollama-local-v1",
+        "generation": 1
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "p05-preview-url",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.reviews.preview",
+      "payload": {
+        "snapshotId": "00000000-0000-4000-8000-000000000001",
+        "kind": "review",
+        "purpose": "review",
+        "profileId": "ollama-local-v1",
+        "generation": 1,
+        "endpoint": "https://evil.invalid"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "p05-start",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.reviews.start",
+      "payload": {
+        "previewId": "00000000-0000-4000-8000-000000000001",
+        "previewHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "manifestHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "acknowledged": true,
+        "maxEstimatedCost": "0",
+        "duplicateRiskAcknowledged": false
+      },
+      "idempotencyKey": "00000000-0000-4000-8000-000000000001"
+    },
+    "valid": true
+  },
+  {
+    "name": "p05-start-url",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.reviews.start",
+      "payload": {
+        "previewId": "00000000-0000-4000-8000-000000000001",
+        "previewHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "manifestHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "acknowledged": true,
+        "maxEstimatedCost": "0",
+        "duplicateRiskAcknowledged": false,
+        "endpoint": "https://evil.invalid"
+      },
+      "idempotencyKey": "00000000-0000-4000-8000-000000000001"
+    },
+    "valid": false
+  },
+  {
+    "name": "p05-start-without-consent",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.reviews.start",
+      "payload": {
+        "previewId": "00000000-0000-4000-8000-000000000001",
+        "previewHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "manifestHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "acknowledged": false,
+        "maxEstimatedCost": "0",
+        "duplicateRiskAcknowledged": false
+      },
+      "idempotencyKey": "00000000-0000-4000-8000-000000000001"
+    },
+    "valid": false
+  },
+  {
+    "name": "p05-error-cloud_mapping_required",
+    "schema": "response",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": false,
+      "error": {
+        "code": "CLOUD_MAPPING_REQUIRED",
+        "message": "CLOUD_MAPPING_REQUIRED",
+        "retryable": false,
+        "details": {}
+      }
+    }
+  },
+  {
+    "name": "p05-error-content_excluded",
+    "schema": "response",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": false,
+      "error": {
+        "code": "CONTENT_EXCLUDED",
+        "message": "CONTENT_EXCLUDED",
+        "retryable": false,
+        "details": {}
+      }
+    }
+  },
+  {
+    "name": "p05-error-consent_expired",
+    "schema": "response",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": false,
+      "error": {
+        "code": "CONSENT_EXPIRED",
+        "message": "CONSENT_EXPIRED",
+        "retryable": false,
+        "details": {}
+      }
+    }
+  },
+  {
+    "name": "p05-error-consent_required",
+    "schema": "response",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": false,
+      "error": {
+        "code": "CONSENT_REQUIRED",
+        "message": "CONSENT_REQUIRED",
+        "retryable": false,
+        "details": {}
+      }
+    }
+  },
+  {
+    "name": "p05-error-empty_input",
+    "schema": "response",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": false,
+      "error": {
+        "code": "EMPTY_INPUT",
+        "message": "EMPTY_INPUT",
+        "retryable": false,
+        "details": {}
+      }
+    }
+  },
+  {
+    "name": "p05-error-unsupported_kind",
+    "schema": "response",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": false,
+      "error": {
+        "code": "UNSUPPORTED_KIND",
+        "message": "UNSUPPORTED_KIND",
+        "retryable": false,
+        "details": {}
+      }
+    }
+  },
+  {
+    "name": "p05-error-duplicate_risk_confirmation_required",
+    "schema": "response",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": false,
+      "error": {
+        "code": "DUPLICATE_RISK_CONFIRMATION_REQUIRED",
+        "message": "DUPLICATE_RISK_CONFIRMATION_REQUIRED",
+        "retryable": false,
+        "details": {}
+      }
+    }
+  },
+  {
+    "name": "p05-error-review_data_requires_explicit_removal",
+    "schema": "response",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": false,
+      "error": {
+        "code": "REVIEW_DATA_REQUIRES_EXPLICIT_REMOVAL",
+        "message": "REVIEW_DATA_REQUIRES_EXPLICIT_REMOVAL",
+        "retryable": false,
+        "details": {}
+      }
+    }
+  },
+  {
+    "name": "p06-internal-apply",
+    "schema": "request",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.proposals.apply",
+      "idempotencyKey": "00000000-0000-4000-8000-000000000003",
+      "payload": {
+        "proposalId": "00000000-0000-4000-8000-000000000004",
+        "approvalId": "00000000-0000-4000-8000-000000000005",
+        "capability": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    }
+  },
+  {
+    "name": "p06-apply-no-path-override",
+    "schema": "request",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.proposals.apply",
+      "idempotencyKey": "00000000-0000-4000-8000-000000000003",
+      "payload": {
+        "proposalId": "00000000-0000-4000-8000-000000000004",
+        "approvalId": "00000000-0000-4000-8000-000000000005",
+        "capability": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "path": "../outside"
+      }
+    }
+  },
+  {
+    "name": "p06-agent-apply-needs-native-capability",
+    "schema": "request",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000002",
+      "operation": "workspace.proposals.apply",
+      "idempotencyKey": "00000000-0000-4000-8000-000000000003",
+      "payload": {
+        "proposalId": "00000000-0000-4000-8000-000000000004",
+        "approvalId": "00000000-0000-4000-8000-000000000005"
+      }
+    }
+  },
+  {
+    "name": "p07-start-internal",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000001",
+      "idempotencyKey": "00000000-0000-4000-8000-000000000001",
+      "operation": "workspace.validation.start",
+      "payload": {
+        "planId": "00000000-0000-4000-8000-000000000001",
+        "approvalId": "00000000-0000-4000-8000-000000000001",
+        "capability": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "p07-start-missing-capability",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000001",
+      "idempotencyKey": "00000000-0000-4000-8000-000000000001",
+      "operation": "workspace.validation.start",
+      "payload": {
+        "planId": "00000000-0000-4000-8000-000000000001",
+        "approvalId": "00000000-0000-4000-8000-000000000001"
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "p07-start-command-proxy",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000001",
+      "idempotencyKey": "00000000-0000-4000-8000-000000000001",
+      "operation": "workspace.validation.start",
+      "payload": {
+        "planId": "00000000-0000-4000-8000-000000000001",
+        "approvalId": "00000000-0000-4000-8000-000000000001",
+        "capability": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "argv": [
+          "cmd.exe"
+        ]
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "p07-editor-setting",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000001",
+      "idempotencyKey": "00000000-0000-4000-8000-000000000001",
+      "operation": "workspace.projects.setEditor",
+      "payload": {
+        "editorId": "cursor",
+        "expectedVersion": 1
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "p07-editor-arbitrary-command",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000001",
+      "idempotencyKey": "00000000-0000-4000-8000-000000000001",
+      "operation": "workspace.projects.setEditor",
+      "payload": {
+        "editorId": "cmd.exe",
+        "expectedVersion": 1
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "p07-untrusted-approval",
+    "schema": "request",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "projectId": "00000000-0000-4000-8000-000000000001",
+      "idempotencyKey": "00000000-0000-4000-8000-000000000001",
+      "operation": "workspace.validation.approve",
+      "payload": {
+        "planId": "00000000-0000-4000-8000-000000000001",
+        "confirmationHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "capability": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "trusted": false
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "changeset-size-limit",
+    "schema": "response",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": false,
+      "error": {
+        "code": "CHANGESET_TOO_LARGE",
+        "message": "CHANGESET_TOO_LARGE",
+        "retryable": false,
+        "details": {
+          "operation": "pin",
+          "limitItems": 20000,
+          "observedItems": 20001
+        }
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "changeset-size-no-path",
+    "schema": "response",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": false,
+      "error": {
+        "code": "CHANGESET_TOO_LARGE",
+        "message": "CHANGESET_TOO_LARGE",
+        "retryable": false,
+        "details": {
+          "operation": "pin",
+          "limitItems": 20000,
+          "observedItems": 20001,
+          "path": "private/path"
+        }
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "changeset-size-negative-count",
+    "schema": "response",
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": false,
+      "error": {
+        "code": "CHANGESET_TOO_LARGE",
+        "message": "CHANGESET_TOO_LARGE",
+        "retryable": false,
+        "details": {
+          "operation": "pin",
+          "limitItems": 20000,
+          "observedItems": -1
+        }
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "status-unsupported-reparse",
+    "schema": "response",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": true,
+      "result": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "branch": "main",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "detached": false,
+        "unborn": false,
+        "objectFormat": "sha1",
+        "staged": [],
+        "unstaged": [],
+        "untracked": [],
+        "conflicts": [],
+        "recentCommits": [],
+        "limitations": [
+          "reparse-points-listed-unsupported"
+        ],
+        "unsupported": [
+          {
+            "path": "jdir",
+            "status": "--",
+            "unsupported": "reparse-point"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "status-unsupported-no-content",
+    "schema": "response",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "requestId": "00000000-0000-4000-8000-000000000001",
+      "ok": true,
+      "result": {
+        "projectId": "00000000-0000-4000-8000-000000000001",
+        "branch": "main",
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "detached": false,
+        "unborn": false,
+        "objectFormat": "sha1",
+        "staged": [],
+        "unstaged": [],
+        "untracked": [],
+        "conflicts": [],
+        "recentCommits": [],
+        "limitations": [
+          "reparse-points-listed-unsupported"
+        ],
+        "unsupported": [
+          {
+            "path": "jdir",
+            "status": "--",
+            "unsupported": "reparse-point",
+            "content": "must never be present"
+          }
+        ]
+      }
+    }
+  }
+]

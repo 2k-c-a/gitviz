@@ -355,7 +355,7 @@ def serve_snapshot(snapshot, route, query):
             file = next((f for f in p["file_index"] if f["id"]==fid),None)
             if not file:
                 raise HTTPException(404,"파일이 해당 스냅샷에 없습니다.")
-            from app.api.analytics import _coupled_files_for, COUPLED_SORT_KEYS
+            from app.services.coupled_files import _coupled_files_for, COUPLED_SORT_KEYS
             sort_by = query.get("sort_by")
             if sort_by is not None and sort_by not in COUPLED_SORT_KEYS:
                 raise HTTPException(422,"sort_by는 coupling 또는 idf입니다.")

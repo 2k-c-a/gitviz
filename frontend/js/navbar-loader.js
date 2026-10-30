@@ -1,4 +1,6 @@
 import { nextQuery } from './viz-state.js';
+import { workspaceEntryUrl } from './platform/workspace-navigation.js';
+import { mountShell } from './ui/shell.js';
 
 export async function loadNavbar() {
 
@@ -14,6 +16,10 @@ export async function loadNavbar() {
   const html = await response.text();
 
   document.getElementById('navbar-container').innerHTML = html;
+  mountShell({ account: document.querySelector('.shell-account') });
+  const workspace = document.querySelector('[data-workspace-entry]');
+  const entry = workspaceEntryUrl(window.location.href);
+  if (workspace && entry) { workspace.href = entry; workspace.hidden = false; }
 
   // 햄버거 메뉴 이벤트
   const hamburgerBtn = document.getElementById('hamburger-btn');
@@ -42,10 +48,11 @@ window.goPage = function(page, repoId, snapshotId){
     ROOT + page + '.html' + nextQuery(location.search, repoId, snapshotId);
 };
 
-/* AI 리뷰 메뉴는 항상 새 프로젝트 선택부터 시작한다. 이전 리뷰 주소의 상태를 가져가지 않는다. */
+/* 저장소 맥락만 전달하며 이전 PR/input/job 상태는 가져가지 않는다. */
 window.goAiReview = function(){
   const isPage = window.location.pathname.includes('/pages/');
-  location.href = (isPage ? './' : './pages/') + 'ai-review.html';
+  const repo = new URLSearchParams(location.search).get('repo');
+  location.href = (isPage ? './' : './pages/') + 'ai-review.html' + (/^[1-9]\d*$/.test(repo || '') ? `?repo=${repo}` : '');
 };
 
 window.goHome = function(){

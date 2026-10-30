@@ -16,6 +16,7 @@ import {
 import { getRepoGithubInfo, githubFileUrl } from './github.js';
 import { esc, num, fmtScore, fmtScoreStable, fmtPct, fmtWindow, DASH } from './fmt.js';
 import { policyOf, scoreOf, evidenceOf, DISPLAY_THRESHOLD, STRONG_COUPLING } from './policy.js';
+import { createState } from './ui/components.js';
 
 const overlay  = () => document.getElementById('drilldown-modal');
 const titleEl  = () => document.getElementById('dd-title');
@@ -31,6 +32,7 @@ const na = (reason) => `<span class="cx-na" title="${esc(reason)}">${DASH}</span
 const has = (o, k) => o != null && o[k] !== undefined;
 
 let _stack = []; // [{type:'contributor', id} | {type:'file', id}]
+let _renderGeneration = 0;
 
 export function openContributorDrilldown(contributorId) {
   _stack = [{ type: 'contributor', id: contributorId }];
@@ -57,6 +59,7 @@ export function drilldownBack() {
 }
 
 export function closeDrilldown() {
+  _renderGeneration++;
   const el = overlay();
   if (el) el.classList.remove('open');
   _stack = [];
@@ -65,28 +68,33 @@ export function closeDrilldown() {
 async function renderTop() {
   const el = overlay();
   if (!el) return;
+  const generation = ++_renderGeneration;
   el.classList.add('open');
   backBtn().style.display = _stack.length > 1 ? '' : 'none';
   codeBtn().style.display = 'none';
 
   const frame = _stack[_stack.length - 1];
-  bodyEl().innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px;">불러오는 중...</div>';
+  titleEl().textContent = frame.type === 'contributor' ? '기여자 상세' : '파일 상세';
+  subEl().textContent = '';
+  bodyEl().replaceChildren(createState({ kind: 'loading', title: '상세 정보를 불러오는 중' }));
 
   try {
-    if (frame.type === 'contributor') await renderContributor(frame.id);
-    else await renderFile(frame.id, frame.extra);
+    if (frame.type === 'contributor') await renderContributor(frame.id, generation);
+    else await renderFile(frame.id, frame.extra, generation);
   } catch (err) {
+    if (generation !== _renderGeneration) return;
     console.error('[drilldown] 로드 실패:', err);
-    bodyEl().innerHTML = `<div style="padding:24px;text-align:center;color:var(--red-dark);font-size:12px;">불러오지 못했습니다.${err && err.message ? `<br><small>${esc(err.message)}</small>` : ''}</div>`;
+    bodyEl().replaceChildren(createState({ kind: 'error', title: '상세 정보를 불러오지 못했습니다', message: err?.message, retry: renderTop }));
   }
 }
 
-async function renderContributor(contributorId) {
+async function renderContributor(contributorId, generation) {
   const repoId = getRepoId();
   const [owned, collab] = await Promise.all([
     fetchContributorOwnedFiles(repoId, contributorId, 20),
     fetchContributorCollaborators(repoId, contributorId, 10),
   ]);
+  if (generation !== _renderGeneration) return;
   if (owned.error || collab.error) throw new Error(owned.error || collab.error);
 
   const name = owned.contributor?.name || collab.contributor?.name || '익명';
@@ -98,8 +106,8 @@ async function renderContributor(contributorId) {
   const files = owned.files || [];
   const filesHtml = files.length
     ? files.map(f => `
-        <div class="coup-row" style="cursor:pointer;" onclick="window.__ddPushFile(${Number(f.file_id)})" title="${esc(f.path)}">
-          <div class="coup-file">${esc(f.path)}${f.is_bus_factor_risk ? ' <span class="badge badge-red" style="font-size:9px;">한 명 집중</span>' : ''}</div>
+        <div class="coup-row" style="cursor:pointer;" data-action="__ddPushFile" data-args="${encodeURIComponent(JSON.stringify([Number(f.file_id)]))}" title="${esc(f.path)}">
+          <div class="coup-file">${esc(f.path)}${f.is_bus_factor_risk ? ' <span class="badge badge-red" style="font-size:var(--ui-text-xs);">한 명 집중</span>' : ''}</div>
           <div class="coup-pct" title="이 파일의 관측 구간 변경 중 이 기여자의 비율">${pct(f.share)}%</div>
         </div>`).join('')
     : '<div style="padding:12px;text-align:center;color:var(--text3);font-size:12px;">기여 파일 정보 없음</div>';
@@ -107,9 +115,9 @@ async function renderContributor(contributorId) {
   const collaborators = collab.collaborators || [];
   const collabHtml = collaborators.length
     ? collaborators.map(c => `
-        <div class="c-row" style="cursor:pointer;" onclick="window.__ddPushContributor(${Number(c.contributor.id)})">
-          <div class="avatar" style="background:#E6F1FB;color:#185FA5;">${avatarLetter(c.contributor.name)}</div>
-          <div class="c-info"><div class="c-name">${esc(c.contributor.name)}</div><div class="c-meta">협업 강도 ${(c.edge_weight * 100).toFixed(1)}</div></div>
+        <div class="c-row" style="cursor:pointer;" data-action="__ddPushContributor" data-args="${encodeURIComponent(JSON.stringify([Number(c.contributor.id)]))}">
+          <div class="avatar" style="background:var(--ui-accent-soft);color:var(--ui-accent);">${avatarLetter(c.contributor.name)}</div>
+          <div class="c-info"><div class="c-name">${esc(c.contributor.name)}</div><div class="c-meta">협업 강도 ${Number(c.edge_weight).toFixed(3)}</div></div>
         </div>`).join('')
     : '<div style="padding:12px;text-align:center;color:var(--text3);font-size:12px;">협업 데이터 없음 (PR 상세·리뷰 수집 범위가 부족한 경우도 포함)</div>';
 
@@ -247,7 +255,7 @@ function couplingBlock({ detail, sortPolicy }) {
     ? `전체 후보 ${num(total)}개를 이 기준으로 서버에서 정렬한 상위 ${num(shown.length)}개`
     : `조회된 후보 ${num(fetched)}개 안에서만 정렬했습니다. 전체 후보 기준의 정확한 순위가 아닐 수 있습니다`;
   const rows = shown.map(f => `
-    <tr style="cursor:pointer;" onclick="window.__ddPushFile(${Number(f.file_id)})" title="${esc(f.path)}">
+    <tr style="cursor:pointer;" data-action="__ddPushFile" data-args="${encodeURIComponent(JSON.stringify([Number(f.file_id)]))}" title="${esc(f.path)}">
       <td class="file">${esc(f.path)}</td>
       <td class="r">${num(f.co_change_count)}회${f.low_support ? `<div>${tag('amber', `표본 ${num(f.co_change_count)}회`, '함께 수정 5건 미만 — 표본 부족(표시 정책이며 통계적 신뢰수준이 아님)')}</div>` : ''}</td>
       <td class="r">${fmtScore(f.coupling_score)}</td>
@@ -269,7 +277,7 @@ function couplingBlock({ detail, sortPolicy }) {
       정렬: ${esc(SORT_TEXT[sortPolicy])}${idf ? ' — 기본 정렬이 아닌 실험용 선택입니다' : ' — 기본'} · ${esc(scopeText)}.</div>`;
 }
 
-async function renderFile(fileId, extra) {
+async function renderFile(fileId, extra, generation) {
   const repoId = getRepoId();
   const sortPolicy = getSortPolicy();
   /* 후보 정렬은 서버가 전체 후보에 대해 한 뒤 잘라 보낸다 — 잘린 목록을 화면에서 다시 정렬하지 않는다 */
@@ -278,6 +286,7 @@ async function renderFile(fileId, extra) {
     fetchSnapshotMeta(repoId),
     getRepoGithubInfo(repoId),
   ]);
+  if (generation !== _renderGeneration) return;
   if (detail.error) throw new Error(detail.error);
 
   const snap = meta.snapshot;
@@ -305,8 +314,8 @@ async function renderFile(fileId, extra) {
   const editors = detail.editors || [];
   const editorsHtml = editors.length
     ? editors.map(e => `
-        <div class="c-row" style="cursor:pointer;" onclick="window.__ddPushContributor(${Number(e.contributor_id)})">
-          <div class="avatar" style="background:#E6F1FB;color:#185FA5;">${avatarLetter(e.name)}</div>
+        <div class="c-row" style="cursor:pointer;" data-action="__ddPushContributor" data-args="${encodeURIComponent(JSON.stringify([Number(e.contributor_id)]))}">
+          <div class="avatar" style="background:var(--ui-accent-soft);color:var(--ui-accent);">${avatarLetter(e.name)}</div>
           <div class="c-info"><div class="c-name">${esc(e.name)}</div><div class="c-meta">변경 지분 ${pct(e.share)}%</div></div>
         </div>`).join('')
     : '<div style="padding:12px;text-align:center;color:var(--text3);font-size:12px;">식별된 수정 기록 없음 (작성자 미식별이거나 관측 구간에 변경 없음)</div>';

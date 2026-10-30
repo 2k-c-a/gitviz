@@ -12,7 +12,7 @@ class SnapshotAnalyticsRoute(APIRoute):
     def get_route_handler(self):
         async def handler(request):
             def read():
-                from app.routers.auth import _get_session_user_id
+                from app.api.auth import _get_session_user_id
                 try:
                     rid = int(request.path_params["repository_id"])
                     sid = int(request.query_params["snapshot_id"]) if "snapshot_id" in request.query_params else None

@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "ignoreDeprecations": "6.0",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": false,
+    "noEmitOnError": true,
+    "rootDir": ".",
+    "outDir": "dist",
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "src/**/*.ts",
+    "contracts/**/*.ts",
+    "tests/**/*.ts",
+    "forge.config.ts"
+  ],
+  "exclude": [
+    "src/preload.ts"
+  ]
+}

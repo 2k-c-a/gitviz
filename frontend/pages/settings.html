@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <script src="../js/ui/theme.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../css/index.css">
+    <link rel="stylesheet" href="../css/ai-review.css">
+    <title>GitViz · 설정</title>
+</head>
+<body>
+    <div id="navbar-container"></div>
+    <div id="modal-container"></div>
+    <!-- ═══════════ AI 리뷰 (키·모델 → PR → 파일 → 미리보기·동의 → 실행 → 결과·피드백) ═══════════
+         주소 ?repo=<id>&pr=<번호>&input=<uuid>&job=<uuid> 가 유일한 기준이다(저장된 값·기본 저장소 없음). -->
+    <div class="page active" id="page-settings">
+      <div class="dash-head">
+        <div>
+          <div class="dash-title" id="ai-title">설정 · API key 관리</div>
+          <div class="dash-sub">AI 제공자·모델과 서버에 저장할 API Key를 관리합니다. 저장한 키 원문은 다시 표시하지 않습니다.</div>
+        </div>
+      </div>
+      <div class="body ai-body">
+        <ol class="ai-steps" id="ai-steps" aria-label="진행 단계"></ol>
+        <div id="ai-notice" aria-live="polite"></div>
+        <section id="ai-scope"></section>
+        <section id="ai-keys"></section>
+        <section id="ai-main"></section>
+      </div>
+    </div>
+</body>
+
+<script type="module" src="../js/main.js"></script>
+<script type="module" src="../js/ai-review.js"></script>
+</html>

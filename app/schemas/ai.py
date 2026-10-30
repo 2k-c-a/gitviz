@@ -1,7 +1,7 @@
 """AI 기능 공통 계약 DTO (S0).
 
 수집·백엔드·시각화가 같은 정의를 사용한다. enum 값과 필드 의미는 단계가 바뀌어도
-임의로 바꾸지 않으며, 변경은 docs/AI_INTERFACE_CONTRACT.md의 버전 규칙을 따른다.
+임의로 바꾸지 않으며, 변경은 docs/contracts/ai-api.md와 docs/decisions/index.md의 버전 정책을 확인한다.
 """
 import hashlib
 import json

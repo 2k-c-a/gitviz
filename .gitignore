@@ -13,6 +13,11 @@ venv/
 .venv/
 .validation/
 
+# Generated presentation and document outputs
+/outputs/
+Claude outputs/
+/build-output/
+
 # Secrets / environment (절대 커밋 금지)
 .env
 .env.*
@@ -46,3 +51,6 @@ app/api/iot.py
 # OS
 .DS_Store
 Thumbs.db
+
+# Local AI agent entry point (points to docs/architecture/PROJECT_RULES.md)
+CLAUDE.md

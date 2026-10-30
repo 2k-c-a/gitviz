@@ -1,6 +1,7 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
+    <script src="../js/ui/theme.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../css/index.css">
@@ -14,13 +15,13 @@
   <div class="dash-head">
     <div><div class="dash-title" id="hist-repo-title">—</div><div class="dash-sub">분석 이력 — 저장된 결과를 열어 보거나 두 결과를 비교합니다</div></div>
     <div style="display:flex;align-items:center;gap:10px;">
-      <button class="btn-secondary" data-auth="1" id="btn-reanalyze" onclick="openReanalyzeToast()">재분석</button>
+      <button class="btn-secondary" data-auth="1" id="btn-reanalyze" data-action="openReanalyzeToast">재분석</button>
     </div>
   </div>
   <div class="sub-tabs">
-    <div class="sub-tab" onclick="goPage('timeline')">타임라인</div>
-    <div class="sub-tab" onclick="goPage('network')">협업 네트워크</div>
-    <div class="sub-tab" onclick="goPage('code-analysis')">코드분석</div>
+    <div class="sub-tab" data-action="goPage" data-args="%5B%22timeline%22%5D">타임라인</div>
+    <div class="sub-tab" data-action="goPage" data-args="%5B%22network%22%5D">협업 네트워크</div>
+    <div class="sub-tab" data-action="goPage" data-args="%5B%22code-analysis%22%5D">코드분석</div>
     <div class="sub-tab active">분석 이력·비교</div>
   </div>
   <div class="body">
@@ -30,7 +31,7 @@
     <div class="panel" style="margin-bottom:14px;">
       <div class="p-head" style="margin-bottom:6px;">
         <div class="p-title">저장된 분석 결과</div>
-        <div style="font-size:11px;color:var(--text2);" id="hist-count">불러오는 중</div>
+        <div style="font-size:var(--ui-text-xs);color:var(--text2);" id="hist-count">불러오는 중</div>
       </div>
       <div class="p-note">분석을 실행할 때마다 불변 결과가 하나씩 저장됩니다. 재분석이 실패해도 마지막으로 성공한 결과는 그대로 열 수 있습니다. 결과의 관측 기간과 계산 버전은 서로 다를 수 있어, 숫자를 비교하기 전에 확인하세요.</div>
       <div class="hm-wrap">
