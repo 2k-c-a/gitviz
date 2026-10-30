@@ -265,7 +265,7 @@ gitviz/
 | 1 | 사용자 데이터 경로 | `app.getPath('userData')` = Roaming | `app.setPath('userData'/'sessionData', Local 경로)` + 1회 이전 | `desktop/src/main.ts`, E2E 프로필, VM 검증 스크립트의 경로 상수, 문서 |
 | 2 | 개발 실행 데이터 분리 | 설치 앱과 공유 | 개발 빌드 전용 폴더 | `main.ts` |
 | 3 | 접속 원점 | 환경변수 | 빌드 채널 설정 + 포장 빌드는 환경변수 무시 | `main.ts`, `forge.config.ts`/`build.mjs`, VM·스테이징 스크립트 |
-| 4 | 패키지 내용 | `typescript`, `dist/tests` 포함 | `typescript`를 `devDependencies`로, `ignore`에서 `dist/tests` 제외 | `desktop/package.json`, `forge.config.ts`. **E2E가 `dist/tests`를 포장 앱에서 실행하는 검증 패키지 변형은 별도 설정으로 분리 필요** |
+| 4 | 패키지 내용 | `typescript`, `dist/tests` 포함 | `ignore`에서 `dist/tests`·소스맵·`.d.ts` 제외 (`typescript`는 런타임 의존이라 유지 — 5차 정정) | `desktop/package.json`, `forge.config.ts`. **E2E가 `dist/tests`를 포장 앱에서 실행하는 검증 패키지 변형은 별도 설정으로 분리 필요** |
 | 5 | 빌드 재현성 | 임의 Python | 잠금 venv 검증, 에이전트 빌드 시각·해시 확인 | `build_workspace_agent.py`, `forge.config.ts` |
 | 6 | DB 가드 | 파일별 부분 | 단일 모듈 + `GITVIZ_ENV` | `app/core/database.py`, `app/database.py`, `migrations/env.py`, 스크립트, 테스트 지원 |
 | 7 | 로그 | 서버 5개 파일만 `logging`, 클라이언트 없음 | 클라이언트 순환 로그, 서버 전역 구성 | 새 모듈 |

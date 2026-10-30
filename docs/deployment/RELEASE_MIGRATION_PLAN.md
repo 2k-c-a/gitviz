@@ -35,7 +35,7 @@
 
 | 대상 | 현재 | 조치 | 시점 |
 |---|---|---|---|
-| `node_modules/typescript` | 포함 (`dependencies`에 있음) | `devDependencies`로 이동하거나 packager `ignore`로 제외. 런타임에 필요한지 `desktop/src` import 확인 후 결정 | R2 |
+| `node_modules/typescript` | 포함 (`dependencies`에 있음) | **유지 (5차 정정)**: `desktop/src/impact-worker.ts`가 런타임에 import한다. 제외 대상은 `dist/tests`·소스맵·`.d.ts` | R2 |
 | `dist/tests/**` | 포함 | packager `ignore` | R2 |
 | `*.map`, `.env*`, `forge.*.ts`, 소스 `src/` | 확인 필요 | 허용 목록 검사로 판정 | R2 |
 | 에이전트의 서버 모듈 | `excludes`로 차단 | 유지 (`test_import_boundary.py`) | — |

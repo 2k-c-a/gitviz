@@ -96,7 +96,7 @@ CI는 `--ignore-scripts`로 설치하므로 `electron-winstaller`의 7-Zip 선�
 | 앱 이름 / userData | `GitVizWorkspace…Verify`, 임시 프로필 | `GitVizWorkspace`, 제품 경로 |
 | `main` | `dist/tests/*.e2e.js` | `dist/src/main.js` |
 | `dist/tests` | 포함 | **제외** (`ignore`에 추가) |
-| `typescript` | — | `devDependencies`로 이동해 **제외** (현재 `dependencies`라 `app.asar`에 156개 항목·디스크 24 MB가 포함됨) |
+| `typescript` | — | **유지** (5차 정정: `desktop/src/impact-worker.ts`가 런타임에 `typescript`를 import하므로 제외할 수 없다. 제외 대상은 `dist/tests`·소스맵·`.d.ts`) |
 | 환경변수 분기 | 허용 | 코드에서 제거 |
 | 채널 설정(접속 원점) | 스테이징 원점 | 운영 원점(내장) |
 | 서명 | 없음 | 있음(인증서 확보 후) |

@@ -39,6 +39,7 @@
 | 개발·빌드·운영 환경 분리 설계 (2차) | [환경 아키텍처](architecture/ENVIRONMENT_ARCHITECTURE.md) · [개발 환경 설정](development/DEVELOPMENT_SETUP.md) · [빌드와 릴리스](deployment/BUILD_AND_RELEASE.md) · [설치 안내](deployment/INSTALLATION_GUIDE.md) · [데이터 저장 정책](deployment/DATA_STORAGE_POLICY.md) |
 | 통합 최종 설계 (3차, 4차 작업의 기준) | [최종 아키텍처](architecture/FINAL_ARCHITECTURE.md) · [디렉터리 구조](architecture/FINAL_DIRECTORY_TREE.md) · [이동·변경 계획](architecture/FINAL_MIGRATION_PLAN.md) · [결정 기록](architecture/ARCHITECTURE_DECISIONS.md) · [환경 매트릭스](deployment/FINAL_ENVIRONMENT_MATRIX.md) · [릴리스 이행 계획](deployment/RELEASE_MIGRATION_PLAN.md) |
 | 4차 구조 변경 실행 기록 | [구현 기록](architecture/IMPLEMENTATION_LOG.md) · [이동 이력](architecture/MIGRATION_HISTORY.md) |
+| 릴리스 검증 (5차, Setup.exe) | [릴리스 체크리스트](deployment/RELEASE_CHECKLIST.md) · [설치 검증 보고](deployment/TEST_INSTALLATION_REPORT.md) · [운영 준비 보고](deployment/PRODUCTION_READINESS_REPORT.md) · [알려진 문제](deployment/KNOWN_ISSUES.md) |
 
 ## 사실과 결정의 구분
 
