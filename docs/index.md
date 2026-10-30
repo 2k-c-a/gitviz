@@ -35,6 +35,10 @@
 | 핵심 화면·기존 기능 통합 Phase 3 | [구현·실행 검증·남은 제약](ux-redesign/phase-3-core-screens.md) |
 | 전체 UX/UI 검증·최종 개선 Phase 4 | [결함·수정·사용자 여정·최종 검증 보고](ux-redesign/phase-4-ux-quality.md) |
 | 로컬 워크스페이스 정보 구조·화면 설계 Phase 5 (설계만, 미구현) | [정보 구조·와이어프레임·시각 방향](ux-redesign/phase-5-workspace-ia.md) |
+| 프로젝트 구조 감사 (1차, 읽기 전용) | [구조 감사](architecture/PROJECT_STRUCTURE_AUDIT.md) · [현재 아키텍처](architecture/CURRENT_ARCHITECTURE.md) · [의존성 분석](architecture/DEPENDENCY_ANALYSIS.md) · [제안 아키텍처](architecture/PROPOSED_ARCHITECTURE.md) · [이동 후보](architecture/FILE_MIGRATION_CANDIDATES.md) |
+| 개발·빌드·운영 환경 분리 설계 (2차) | [환경 아키텍처](architecture/ENVIRONMENT_ARCHITECTURE.md) · [개발 환경 설정](development/DEVELOPMENT_SETUP.md) · [빌드와 릴리스](deployment/BUILD_AND_RELEASE.md) · [설치 안내](deployment/INSTALLATION_GUIDE.md) · [데이터 저장 정책](deployment/DATA_STORAGE_POLICY.md) |
+| 통합 최종 설계 (3차, 4차 작업의 기준) | [최종 아키텍처](architecture/FINAL_ARCHITECTURE.md) · [디렉터리 구조](architecture/FINAL_DIRECTORY_TREE.md) · [이동·변경 계획](architecture/FINAL_MIGRATION_PLAN.md) · [결정 기록](architecture/ARCHITECTURE_DECISIONS.md) · [환경 매트릭스](deployment/FINAL_ENVIRONMENT_MATRIX.md) · [릴리스 이행 계획](deployment/RELEASE_MIGRATION_PLAN.md) |
+| 4차 구조 변경 실행 기록 | [구현 기록](architecture/IMPLEMENTATION_LOG.md) · [이동 이력](architecture/MIGRATION_HISTORY.md) |
 
 ## 사실과 결정의 구분
 

@@ -15,6 +15,8 @@ venv/
 
 # Generated presentation and document outputs
 /outputs/
+Claude outputs/
+/build-output/
 
 # Secrets / environment (절대 커밋 금지)
 .env
