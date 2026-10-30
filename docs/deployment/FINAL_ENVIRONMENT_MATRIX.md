@@ -33,7 +33,7 @@
 | V2 | 테스트가 개발/운영 DB를 지움 | 테스트는 DB 이름이 `gitviz_test`로 시작하지 않으면 시작 거부(현재 파일별 → 공통 모듈) | R1 |
 | V3 | 패키징된 앱이 개발 경로(`GITVIZ_AGENT_COMMAND`, `GITVIZ_USER_DATA_DIR`, `GITVIZ_SERVER_ORIGIN`)를 따름 | `app.isPackaged`이면 위 변수를 무시하고 로그에 경고 없이 고정값 사용 | R1 |
 | V4 | 빌드 산출물에 `.env`·비밀·개발 경로 포함 | 패키지 후 `app.asar` 항목을 **허용 목록**으로 검사하고 `.env*`, `typescript`, `dist/tests`, `*.map` 발견 시 실패 | R2 |
-| V5 | 설치본이 `--remote-debugging-port` 등 디버그 인수를 수용 | 패키징된 exe에서 해당 인수 차단 | R2 |
+| V5 | 설치본이 `--remote-debugging-port` 등 디버그 인수를 수용 | 패키징된 exe에서 해당 인수 차단 | 해결(`desktop/src/debug-guard.ts`, K-04) |
 | V6 | 운영 서버가 `.env`를 읽어 개발 값 사용 | `GITVIZ_ENV=production`이면 `load_dotenv` 호출 안 함 | R1 |
 | V7 | 로그·백업·오류에 비밀값 기록 | 로그 필터 + 비밀 값 패턴 테스트 | R1 |
 | V8 | 구조 변경 중 경로 하드코딩 잔존 | `git grep -n "scripts/\|desktop/out\|dist/workspace-agent" -- . ':!docs/archive' ':!.validation'` 결과가 0건 | S9 종료 시 |

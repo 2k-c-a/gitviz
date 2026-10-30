@@ -176,10 +176,10 @@ npm --prefix desktop start          # = electron .
 | 서버 | `python -m uvicorn … --reload`(코드 변경 자동 재시작), 브라우저 개발자 도구, `.claude/launch.json`(로컬 도구 설정) | `--reload`는 [제안], 나머지 [현재] |
 | Celery | `--loglevel=debug` | [현재 옵션] |
 | 에이전트 | 단위 테스트(`unittest`)를 IDE에서 실행. 표준 입출력 프레임을 직접 보려면 테스트 하니스(`tests/workspace/fixture_*.py`)를 참고 | [현재] |
-| 데스크톱 렌더러 | 앱 창은 `devTools: false`(`window.ts`)라 개발자 도구가 열리지 않는다. 진단에는 Chromium 스위치 `--remote-debugging-port=<포트>`로 CDP에 붙였다(이번 프로젝트의 진단 세션에서 포장 앱에도 동작함을 확인) | [현재] |
+| 데스크톱 렌더러 | 앱 창은 `devTools: false`(`window.ts`)라 개발자 도구가 열리지 않는다. 개발(비포장) 실행(`electron .`)에서는 Chromium 스위치 `--remote-debugging-port=<포트>`로 CDP에 붙일 수 있다. **포장 앱은 이 스위치를 주면 즉시 종료한다**(K-04) | [현재] |
 | 로그 | 서버: 콘솔(`logging`을 쓰는 파일은 5개뿐, `print` 78회). 데스크톱: 로그 파일 없음 | 개선은 [제안] |
 
-**[제안]** 포장 빌드에서는 `--remote-debugging-port`·`--inspect`를 거부하도록 하고(Electron fuses 또는 시작 시 인자 검사), 개발 빌드에서만 허용한다. 현재 포장 앱이 이 스위치를 받아들이는 점은 [환경 분리 아키텍처](../architecture/ENVIRONMENT_ARCHITECTURE.md) §6의 검토 항목이다.
+**[현재]** 포장 빌드는 시작 시 인자 검사(`desktop/src/debug-guard.ts`)로 `--remote-debugging-*`·`--inspect*`를 거부하고, 개발 빌드에서만 허용한다. 포장 앱 검증은 렌더러 조사(CDP) 대신 프로세스·에이전트·데이터 파일 확인으로 해야 한다.
 
 ## 9. 테스트 실행 (시나리오 C)
 

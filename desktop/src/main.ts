@@ -24,7 +24,10 @@ import { CloudReview } from './cloud-review';
 import { HistoricalImpact } from './historical-impact';
 import { createUpdateService, DISABLED_UPDATE_POLICY } from './update';
 import { parentProcess, runSquirrel, squirrelAction } from './squirrel';
+import { DEBUG_EXIT_CODE, forbiddenDebugSwitches } from './debug-guard';
 
+// First thing: a packaged release refuses to run with a debugging port (see debug-guard.ts). process.exit stops this module synchronously.
+if (forbiddenDebugSwitches(app.isPackaged, process.argv).length > 0) process.exit(DEBUG_EXIT_CODE);
 registerScheme();
 let window: BrowserWindow | undefined;
 let agent: Agent | undefined;

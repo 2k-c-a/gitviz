@@ -120,7 +120,7 @@ Roaming이 부적절한 이유:
 | DB | 로컬 compose Postgres `gitviz_dev` | `gitviz_test*` (CI 서비스 컨테이너 / 로컬 임시) | 서버: 관리형 Postgres(TLS 검증, `DATABASE_SSL_CA`) / 클라이언트: 로컬 SQLite |
 | API 원점 | `http://127.0.0.1:8000`(웹), 데스크톱은 개발 서버 HTTPS 원점 | 테스트 더블 / 로컬 | 빌드에 내장한 HTTPS 원점 |
 | 로그 수준 | DEBUG | WARNING 이상 | 서버: INFO / 클라이언트: INFO(민감정보 제외) |
-| 디버그 | 개발자 도구 허용 | 비허용 | 비허용(`--remote-debugging-port` 금지) |
+| 디버그 | 개발자 도구 허용 | 비허용 | 비허용(`--remote-debugging-port`·`--inspect` 등을 주면 패키지 실행이 즉시 종료, `desktop/src/debug-guard.ts`) |
 | 저장 경로 | 개발 전용 데이터 폴더(임시/`GitViz-Dev`) | 임시 폴더 | `%LOCALAPPDATA%\GitViz\Workspace\…` |
 | 세션 쿠키 | `SESSION_COOKIE_SECURE=0` 허용 | 테스트용 | 반드시 `1`, `https_only` |
 | AI | 기본 꺼짐, 필요 시 로컬 모델 | 가짜 제공자(`ai_fake_provider.py`) | 정책에 따름(`AI_ALLOW_EXTERNAL_TRANSFER` 명시) |
