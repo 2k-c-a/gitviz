@@ -80,7 +80,7 @@ void app.whenReady().then(async () => {
     registerImpact(window, agent, contracts, new HistoricalImpact(agent, coordinator, remote)), registerDiagnostics(window, () => agent.health(), async () => diagnosticPath)];
   const directory = join(temporary, 'data');
   try {
-    const executable = app.isPackaged ? join(process.resourcesPath, 'agent/gitviz-workspace-agent.exe') : join(__dirname, '../../../dist/workspace-agent/agent/gitviz-workspace-agent.exe');
+    const executable = app.isPackaged ? join(process.resourcesPath, 'agent/gitviz-workspace-agent.exe') : join(__dirname, '../../../build-output/agent/dist/agent/gitviz-workspace-agent.exe');
     await serveAssets(join(__dirname, '../ui'));
     await agent.start(executable, directory, () => loadKey(join(directory, 'key.dpapi'), { available: () => safeStorage.isAsyncEncryptionAvailable(), encrypt: value => safeStorage.encryptStringAsync(value), decrypt: async value => (await safeStorage.decryptStringAsync(value)).result }));
     await window.loadURL(APP_URL);

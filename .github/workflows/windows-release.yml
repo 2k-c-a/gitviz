@@ -51,10 +51,10 @@ jobs:
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'gitviz-release'
           New-Item -ItemType Directory -Path $out | Out-Null
-          $package = Get-ChildItem desktop/out -Directory | Where-Object Name -like 'GitVizWorkspace-win32-x64' | Select-Object -First 1
+          $package = Get-ChildItem build-output/desktop -Directory | Where-Object Name -like 'GitVizWorkspace-win32-x64' | Select-Object -First 1
           if (-not $package) { throw 'Packaged directory not found.' }
           Compress-Archive -Path "$($package.FullName)/*" -DestinationPath (Join-Path $out 'GitVizWorkspace-win32-x64-unsigned.zip')
-          $make = 'desktop/out/make/squirrel.windows/x64'
+          $make = 'build-output/desktop/make/squirrel.windows/x64'
           $setup = Join-Path $make 'GitVizWorkspaceSetup.exe'
           if (-not (Test-Path $setup)) { throw 'Installer not found.' }
           Copy-Item "$make/*" $out

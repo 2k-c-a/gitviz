@@ -24,7 +24,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 void app.whenReady().then(async () => {
   const temporary = await mkdtemp(join(tmpdir(), 'gitviz-status-'));
   const contracts = new Contracts(join(__dirname, '../schema'));
-  const real = app.isPackaged ? join(process.resourcesPath, 'agent/gitviz-workspace-agent.exe') : join(__dirname, '../../../dist/workspace-agent/agent/gitviz-workspace-agent.exe');
+  const real = app.isPackaged ? join(process.resourcesPath, 'agent/gitviz-workspace-agent.exe') : join(__dirname, '../../../build-output/agent/dist/agent/gitviz-workspace-agent.exe');
   await serveAssets(join(__dirname, '../ui'));
 
   async function scenario(name: string, executable: string, startDelay: number, body: (ctx: { evaluate: (source: string) => Promise<unknown>; seen: Set<string>; started: Promise<void> }) => Promise<void>) {

@@ -22,6 +22,7 @@ from tests.workspace.test_review import output, uid
 
 class P06MigrationTests(WorkspaceFixture):
     def test_actual_p05_v4_schema_and_review_ciphertext_survive_failed_then_successful_upgrade(self) -> None:
+        # Preserved historical frozen agent from an earlier release build; kept at its original location, not a current build output.
         binary = Path(__file__).resolve().parents[2] / 'desktop/out/GitVizWorkspaceP05Verify-win32-x64/resources/agent/gitviz-workspace-agent.exe'
         if not binary.is_file():
             self.skipTest('Preserved actual P05 frozen agent required for historical v4 fixture')

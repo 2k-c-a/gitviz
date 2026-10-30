@@ -59,7 +59,7 @@ void app.whenReady().then(async () => {
   const evaluate = (source: string) => window.webContents.executeJavaScript(source);
   const wait = async (condition: string) => { for (let turn = 0; turn < 100; turn++) { if (await evaluate(condition)) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw new Error('CONDITION_TIMED_OUT'); };
   try {
-    await agent.start(join(__dirname, '../../../dist/workspace-agent/agent/gitviz-workspace-agent.exe'), directory, () => loadKey(join(directory, 'key.dpapi'), {
+    await agent.start(join(__dirname, '../../../build-output/agent/dist/agent/gitviz-workspace-agent.exe'), directory, () => loadKey(join(directory, 'key.dpapi'), {
       available: () => safeStorage.isAsyncEncryptionAvailable(), encrypt: value => safeStorage.encryptStringAsync(value), decrypt: async value => (await safeStorage.decryptStringAsync(value)).result,
     }));
     await serveAssets(join(__dirname, '../ui')); await window.loadURL(APP_URL);

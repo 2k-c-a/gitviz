@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../..')).Path
-$package = (Resolve-Path -LiteralPath (Join-Path $root 'desktop/out/GitVizWorkspaceP08bVerify-win32-x64')).Path
+$package = (Resolve-Path -LiteralPath (Join-Path $root 'build-output/desktop/GitVizWorkspaceP08bVerify-win32-x64')).Path
 $evidence = Join-Path $root ('.validation/p08b/package-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $evidence | Out-Null
 $previousPath = $env:PATH
@@ -11,7 +11,7 @@ try {
     if ($process.ExitCode -ne 0) { throw 'P08b verification failed; evidence retained.' }
     $output = Get-Content -LiteralPath (Join-Path $evidence 'stdout.log') -Raw
     if (!$output.Contains('PASS P08b frozen agent/native cancel/account/identity/transition/permission/navigation/config')) { throw 'P08b marker missing.' }
-    $source = (Get-FileHash -LiteralPath (Join-Path $root 'dist/workspace-agent/agent/gitviz-workspace-agent.exe')).Hash
+    $source = (Get-FileHash -LiteralPath (Join-Path $root 'build-output/agent/dist/agent/gitviz-workspace-agent.exe')).Hash
     $bundled = (Get-FileHash -LiteralPath (Join-Path $package 'resources/agent/gitviz-workspace-agent.exe')).Hash
     if ($source -ne $bundled) { throw 'P08b agent hash mismatch.' }
     $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)

@@ -66,3 +66,10 @@
 - **변경:** `COUPLED_SORT_KEYS`, `_coupled_files_for`(본문 불변, 35줄)를 새 모듈로 이동. `analytics.py`는 같은 이름을 import(기존 `from app.api.analytics import _coupled_files_for` 사용처 호환), `analysis_snapshots.py`·`history_context.py`는 서비스 모듈에서 직접 import. `tests/server/test_metric_policy.py`는 `analytics.py`에서 AST로 함수를 추출해 실행하므로 새 모듈에서도 추출하도록 로더 4줄 추가.
 - **테스트:** OpenAPI 라우트 67개 동일, `test_metric_policy`·`test_repository_snapshots`·`test_analytics_calculations`·`test_ai_history_context`·`test_backend_improvements` 통과(스냅샷 해시 포함), 서버 CI 38줄 전부 통과.
 - **성공 기준 조정:** 계획의 "services→api import 0건"은 달성하지 못했다. `app/services/analysis_snapshots.py:207`이 `app.api.analytics`의 다른 계산 함수(`_compute_coupling` 등)를 함수 안에서 import한다. 이 의존 제거는 계산 코드 전체 이동이 필요해 승인된 범위(이번 함수 2개) 밖이므로 하지 않고 남은 문제로 기록한다.
+
+## S9 생성물 경로 통합 (`build/`, `dist/`, `desktop/out` → `build-output/`)
+- **변경:** 에이전트 동결 산출 `build-output/agent/dist/agent`, 작업 폴더 `build-output/agent/work`(spec의 shim 포함), 데스크톱 `outDir`을 `build-output/desktop`(`forge.config.ts`의 `outDir`, `extraResource` 갱신). 참조 갱신 25개 파일: `build_workspace_agent.py`, `audit_workspace_agent.py`, spec, `forge.config.ts`, `desktop/tests/*.e2e.ts` 11개(개발 실행이 쓰는 에이전트 경로), `validate_p03~p08b_package.ps1` 6개, `tools/vm/install_p01_vm.ps1`, `windows-release.yml`.
+- **예외(의도적):** `tests/workspace/test_p06_migration.py`·`test_p07_migration.py`는 **과거 릴리스에서 보존한 동결 에이전트**(`desktop/out/GitVizWorkspaceP05Verify…`, `…P06Verify…`)를 읽는 이력 검증이다. 현재 빌드 산출물이 아니므로 원래 위치(`desktop/out`)를 유지하고 주석을 달았다. 이 보존 패키지와 `make-0.7.0-*`는 이동·삭제하지 않았다(복구 불가·대용량, 별도 승인).
+- **보류:** 에이전트 빌드 가상환경을 `build-output/venv-agent`로 옮기는 항목은 실행하지 않았다. 가상환경은 경로 고정이라 새로 만들어 패키지를 설치해야 하므로 승인 대상이다. 현재는 `.validation/venv-workspace`를 유지(게이트 기본값, CI 동일). 5차 이전에 결정 필요.
+- **테스트:** 전체 게이트 통과(23단계; 첫 실행은 위 예외 때문에 `test_p07_migration`에서 실패 → 보존 경로 복원 후 재실행 통과), `npm run make`로 새 위치에 패키지와 Setup.exe 생성. 에이전트 파일 목록 134개 = 기준선, 패키지된 `resources\agent` 목록 = 기준선, `app.asar` 항목 985개 목록 = 기준선(**동일**). Setup.exe 180,332,032바이트(기준선 180,328,960; +3 KB는 재컴파일된 JS의 경로 문자열), PE 헤더 확인. 문서 검사 통과.
+- **오류:** `test_p07_migration` 실패(위). 해결: 보존 경로 복원.

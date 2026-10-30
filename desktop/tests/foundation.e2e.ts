@@ -56,7 +56,7 @@ void app.whenReady().then(async () => {
     assert.ok(restored.getBounds().x > -999999);
     await new Promise<void>(resolve => { restored.once('closed', resolve); restored.close(); });
     assert.ok(JSON.parse(await readFile(stateFile, 'utf8')).x > -999999);
-    const executable = app.isPackaged ? join(process.resourcesPath, 'agent/gitviz-workspace-agent.exe') : join(__dirname, '../../../dist/workspace-agent/agent/gitviz-workspace-agent.exe');
+    const executable = app.isPackaged ? join(process.resourcesPath, 'agent/gitviz-workspace-agent.exe') : join(__dirname, '../../../build-output/agent/dist/agent/gitviz-workspace-agent.exe');
     for (let turn = 0; turn < 2; turn++) {
       const current = turn === 0 ? agent : new Agent(new Contracts(join(__dirname, '../schema')));
       await current.start(executable, directory, () => loadKey(join(directory, 'key.dpapi'), {

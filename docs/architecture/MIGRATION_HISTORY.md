@@ -138,3 +138,8 @@
 
 ## S8
 - `app/api/analytics.py`의 `COUPLED_SORT_KEYS`, `_coupled_files_for` → `app/services/coupled_files.py` (함수 이동)
+
+## S9
+- `dist/workspace-agent/agent` → `build-output/agent/dist/agent` (생성물 경로, 기존 폴더는 보존)
+- `build/workspace-agent` → `build-output/agent/work` (생성물 경로)
+- `desktop/out` → `build-output/desktop` (생성물 경로; 보존 패키지·`make-0.7.0-*`는 `desktop/out`에 그대로 둠)

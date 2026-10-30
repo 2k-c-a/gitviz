@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$package = (Resolve-Path (Join-Path $root 'desktop\out\GitVizWorkspaceP05Verify-win32-x64')).Path
+$package = (Resolve-Path (Join-Path $root 'build-output\desktop\GitVizWorkspaceP05Verify-win32-x64')).Path
 $evidence = Join-Path $root ('.validation\p05\package-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $evidence | Out-Null
 $previousPath = $env:PATH
@@ -13,7 +13,7 @@ try {
     if (!$output.Contains('PASS P05 frozen agent preview/cloud block')) { throw 'P05 acceptance marker missing.' }
     if (!$output.Contains('kill/restart uncertain without resend')) { throw 'P05 crash recovery acceptance marker missing.' }
     $agentHash = (Get-FileHash -LiteralPath (Join-Path $package 'resources\agent\gitviz-workspace-agent.exe')).Hash
-    $originalHash = (Get-FileHash -LiteralPath (Join-Path $root 'dist\workspace-agent\agent\gitviz-workspace-agent.exe')).Hash
+    $originalHash = (Get-FileHash -LiteralPath (Join-Path $root 'build-output\agent\dist\agent\gitviz-workspace-agent.exe')).Hash
     if ($agentHash -ne $originalHash) { throw 'Bundled P05 agent hash mismatch.' }
     $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     $record = [ordered]@{

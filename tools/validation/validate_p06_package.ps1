@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$package = (Resolve-Path (Join-Path $root 'desktop\out\GitVizWorkspaceP06Verify-win32-x64')).Path
+$package = (Resolve-Path (Join-Path $root 'build-output\desktop\GitVizWorkspaceP06Verify-win32-x64')).Path
 $evidence = Join-Path $root ('.validation\p06\package-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $evidence | Out-Null
 $previousPath = $env:PATH
@@ -12,7 +12,7 @@ try {
     $output = Get-Content -LiteralPath (Join-Path $evidence 'stdout.log') -Raw
     if (!$output.Contains('PASS P06 frozen agent native approval/apply')) { throw 'P06 acceptance marker missing.' }
     $agentHash = (Get-FileHash -LiteralPath (Join-Path $package 'resources\agent\gitviz-workspace-agent.exe')).Hash
-    $originalHash = (Get-FileHash -LiteralPath (Join-Path $root 'dist\workspace-agent\agent\gitviz-workspace-agent.exe')).Hash
+    $originalHash = (Get-FileHash -LiteralPath (Join-Path $root 'build-output\agent\dist\agent\gitviz-workspace-agent.exe')).Hash
     if ($agentHash -ne $originalHash) { throw 'Bundled P06 agent hash mismatch.' }
     $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     $record = [ordered]@{

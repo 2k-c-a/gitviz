@@ -14,7 +14,7 @@ REQUIRED = ('app.workspace.crypto', 'app.workspace.migrations', 'app.workspace.r
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument('--directory', type=Path, default=Path('dist/workspace-agent/agent'))
+    parser.add_argument('--directory', type=Path, default=Path('build-output/agent/dist/agent'))
     parser.add_argument('--output', type=Path)
     options = parser.parse_args()
     root = options.directory

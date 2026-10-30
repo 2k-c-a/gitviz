@@ -64,9 +64,9 @@ try{
   try{
    Copy-Item -LiteralPath (Join-Path $repo 'desktop\tests\run-clean-vm.ps1') -Destination 'C:\P01\run-clean-vm.ps1' -ToSession $session -Force
    Copy-Item -LiteralPath (Join-Path $repo 'desktop\tests\clean-vm.ps1') -Destination 'C:\P01\clean-vm.ps1' -ToSession $session -Force
-   $asar=Join-Path $repo 'desktop\out\GitVizWorkspaceVerify-win32-x64\resources\app.asar'
+   $asar=Join-Path $repo 'build-output\desktop\GitVizWorkspaceVerify-win32-x64\resources\app.asar'
    Copy-Item -LiteralPath $asar -Destination 'C:\P01\Package\resources\app.asar' -ToSession $session -Force
-   Copy-Item -LiteralPath (Join-Path $repo 'desktop\out\GitVizWorkspaceVerify-win32-x64\GitVizWorkspaceVerify.exe') -Destination 'C:\P01\Package\GitVizWorkspaceVerify.exe' -ToSession $session -Force
+   Copy-Item -LiteralPath (Join-Path $repo 'build-output\desktop\GitVizWorkspaceVerify-win32-x64\GitVizWorkspaceVerify.exe') -Destination 'C:\P01\Package\GitVizWorkspaceVerify.exe' -ToSession $session -Force
    $asarHash=(Get-FileHash -LiteralPath $asar).Hash
    $result.guest=Invoke-Command -Session $session -ArgumentList $asarHash -ScriptBlock {
     param($ExpectedAsarHash)
@@ -224,7 +224,7 @@ try{
   [IO.File]::WriteAllText("${destination}Windows\Panther\unattend.xml",$answer,[Text.UTF8Encoding]::new($false))
   $stage="${destination}P01"
   New-Item -ItemType Directory -Path $stage,"$stage\results" -Force | Out-Null
-  & robocopy.exe (Join-Path $repo 'desktop\out\GitVizWorkspaceVerify-win32-x64') "$stage\Package" /E /R:0 /W:0 /NFL /NDL /NJH /NJS *> (Join-Path $work 'package-copy.log')
+  & robocopy.exe (Join-Path $repo 'build-output\desktop\GitVizWorkspaceVerify-win32-x64') "$stage\Package" /E /R:0 /W:0 /NFL /NDL /NJH /NJS *> (Join-Path $work 'package-copy.log')
   if($LASTEXITCODE -ge 8){throw 'Verification package copy failed'}
   Copy-Item -LiteralPath (Join-Path $repo 'desktop\tests\clean-vm.ps1') -Destination "$stage\clean-vm.ps1"
   Copy-Item -LiteralPath (Join-Path $repo 'desktop\tests\run-clean-vm.ps1') -Destination "$stage\run-clean-vm.ps1"

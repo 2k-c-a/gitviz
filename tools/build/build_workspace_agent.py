@@ -10,8 +10,8 @@ def main() -> int:
     root = Path(__file__).resolve().parents[2]
     # -I prevents project/site customizations from entering the build tool process.
     return subprocess.call([sys.executable, "-I", "-m", "PyInstaller", "--noconfirm",
-                            "--distpath", str(root / "dist/workspace-agent"),
-                            "--workpath", str(root / "build/workspace-agent"),
+                            "--distpath", str(root / "build-output/agent/dist"),
+                            "--workpath", str(root / "build-output/agent/work"),
                             str(root / "packaging/agent/workspace_agent.spec")], cwd=root)
 
 

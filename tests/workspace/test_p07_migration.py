@@ -21,6 +21,7 @@ from tests.workspace.test_apply import ApplyFixture, uid
 
 class P07MigrationTests(ApplyFixture):
     def test_actual_p06_v5_proposals_preserved_after_failure_and_upgrade(self) -> None:
+        # Preserved historical frozen agent from an earlier release build; kept at its original location, not a current build output.
         binary = Path(__file__).resolve().parents[2] / 'desktop/out/GitVizWorkspaceP06Verify-win32-x64/resources/agent/gitviz-workspace-agent.exe'
         if not binary.is_file() and os.environ.get('GITVIZ_CI_GOLDEN_SCHEMA') == '1':
             self.skipTest('CI: archived DDL covered separately; historical binary execution remains a host acceptance gate')

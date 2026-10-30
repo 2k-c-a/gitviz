@@ -52,7 +52,7 @@ void app.whenReady().then(async () => {
     { ...options, cwd: repository })) as typeof spawn;
   const agent = new Agent(contracts, launch);
   const directory = join(temporary, 'data');
-  const executable = app.isPackaged ? join(process.resourcesPath, 'agent/gitviz-workspace-agent.exe') : join(__dirname, '../../../dist/workspace-agent/agent/gitviz-workspace-agent.exe');
+  const executable = app.isPackaged ? join(process.resourcesPath, 'agent/gitviz-workspace-agent.exe') : join(__dirname, '../../../build-output/agent/dist/agent/gitviz-workspace-agent.exe');
   const key = () => loadKey(join(directory, 'key.dpapi'), { available: () => safeStorage.isAsyncEncryptionAvailable(), encrypt: value => safeStorage.encryptStringAsync(value), decrypt: async value => (await safeStorage.decryptStringAsync(value)).result });
   const window = createWindow(false);
   const health = registerHealth(window, () => agent.health());

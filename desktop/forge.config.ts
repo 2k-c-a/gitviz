@@ -10,8 +10,9 @@ const p04 = process.env.GITVIZ_VERIFY_P04 === '1';
 // Forge validates this config at package time. Importing its umbrella types also
 // imports unrelated macOS signing declarations that require newer Node types.
 const config = {
+  outDir: resolve(process.cwd(), '../build-output/desktop'),
   packagerConfig: { name: p05 ? 'GitVizWorkspaceP05Verify' : p04 ? 'GitVizWorkspaceP04Verify' : p03 ? 'GitVizWorkspaceP03Verify' : verification ? 'GitVizWorkspaceVerify' : 'GitVizWorkspace', executableName: p05 ? 'GitVizWorkspaceP05Verify' : p04 ? 'GitVizWorkspaceP04Verify' : p03 ? 'GitVizWorkspaceP03Verify' : verification ? 'GitVizWorkspaceVerify' : 'GitVizWorkspace', asar: true,
-    extraResource: [resolve(process.cwd(), '../dist/workspace-agent/agent')],
+    extraResource: [resolve(process.cwd(), '../build-output/agent/dist/agent')],
     ignore: (path: string) => path !== '' && !/^\/(?:dist(?:\/|$)|node_modules(?:\/|$)|package\.json$)/.test(path.replaceAll('\\', '/')),
     afterCopy: (verification || p03 || p04 || p05) ? [async ({ buildPath }: { buildPath: string }) => {
       const path = resolve(buildPath, 'package.json');

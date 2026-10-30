@@ -34,7 +34,7 @@ void app.whenReady().then(async () => {
   const launch = ((_executable: string, args: readonly string[], options: SpawnOptions) => spawn(
     python, ['-X', 'utf8', '-B', join(repository, 'tests/workspace/fixture_review_agent.py'), ...args], { ...options, cwd: repository })) as typeof spawn;
   const directory = join(temporary, 'data');
-  const executable = join(__dirname, '../../../dist/workspace-agent/agent/gitviz-workspace-agent.exe');
+  const executable = join(__dirname, '../../../build-output/agent/dist/agent/gitviz-workspace-agent.exe');
   const key = () => loadKey(join(directory, 'key.dpapi'), { available: () => safeStorage.isAsyncEncryptionAvailable(), encrypt: value => safeStorage.encryptStringAsync(value), decrypt: async value => (await safeStorage.decryptStringAsync(value)).result });
   let agent = new Agent(contracts, launch);
   const window = createWindow(false);
