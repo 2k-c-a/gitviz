@@ -1,5 +1,7 @@
 # 빌드와 릴리스 (2차 · 설계)
 
+> **4차 반영(2026-10-30):** 이 문서의 [현재] 명령은 4차 구조 변경(S1~S9) 이후의 경로를 따른다: `tools/{build,validation,ops,vm}`, `tests/{server,frontend,workspace}`, `packaging/agent`, `build-output/`. 경로 이동 이력은 [이동 이력](../architecture/MIGRATION_HISTORY.md), 실행 기록은 [구현 기록](../architecture/IMPLEMENTATION_LOG.md). [제안]으로 표시된 환경 가드·채널 설정·데이터 경로 변경은 아직 적용되지 않았다(R1~R4).
+
 작성일: 2026-10-30 · 기준 커밋: `65f1b62` · [문서 안내](../index.md)
 
 설계 배경: [환경 분리 아키텍처](../architecture/ENVIRONMENT_ARCHITECTURE.md). 짝 문서: [개발 환경 설정](../development/DEVELOPMENT_SETUP.md) · [설치 안내](INSTALLATION_GUIDE.md) · [데이터 저장 정책](DATA_STORAGE_POLICY.md)
@@ -20,8 +22,8 @@
 | 입력 | 고정 방법 | 상태 |
 |---|---|---|
 | Python | CI `setup-python` 3.12.10 | [현재] 로컬은 임의 버전 가능 |
-| Python 의존성(에이전트) | `requirements-workspace.lock`(해시), CI `pip install --require-hashes --only-binary=:all:` | [현재] 로컬 설치는 해시 강제 여부가 사람에 달림 |
-| PyInstaller, ruff | `requirements-workspace-build.txt` (`pyinstaller==6.22.3`, `ruff==0.17.2`) | [현재] |
+| Python 의존성(에이전트) | `packaging/agent/requirements-workspace.lock`(해시), CI `pip install --require-hashes --only-binary=:all:` | [현재] 로컬 설치는 해시 강제 여부가 사람에 달림 |
+| PyInstaller, ruff | `packaging/agent/requirements-workspace-build.txt` (`pyinstaller==6.22.3`, `ruff==0.17.2`) | [현재] |
 | Node.js | `engines: >=24.20.0 <25`, CI 24.20.0 | [현재] |
 | Node 의존성 | `desktop/package-lock.json`, `npm ci` | [현재] |
 | Electron / forge | `electron 45.0.0`, `@electron-forge/* 8.0.1` | [현재] |
@@ -29,10 +31,10 @@
 
 ### 2.2 재현성 허점 (확인)
 
-1. `scripts/build_workspace_agent.py`는 `sys.executable`로 PyInstaller를 실행한다. 어떤 Python이든 실행되고, 그 환경이 잠금 파일과 일치하는지 검사하지 않는다.
-2. `desktop/forge.config.ts`는 `../dist/workspace-agent/agent`를 **언제 만들어졌든** 읽는다. 에이전트를 다시 빌드하지 않고 `make`를 하면 오래된 에이전트가 설치 프로그램에 들어간다. (현재 `dist`의 에이전트는 번들 대상 소스보다 새롭다 — 확인했으나 이를 강제하는 장치는 없다.)
+1. `tools/build/build_workspace_agent.py`는 `sys.executable`로 PyInstaller를 실행한다. 어떤 Python이든 실행되고, 그 환경이 잠금 파일과 일치하는지 검사하지 않는다.
+2. `desktop/forge.config.ts`는 `../build-output/agent/dist/agent`를 **언제 만들어졌든** 읽는다. 에이전트를 다시 빌드하지 않고 `make`를 하면 오래된 에이전트가 설치 프로그램에 들어간다. (현재 `dist`의 에이전트는 번들 대상 소스보다 새롭다 — 확인했으나 이를 강제하는 장치는 없다.)
 3. 빌드 입력 일부가 환경변수(`GITVIZ_VERIFY_*`, `GITVIZ_SIGN_PFX*`)로 바뀐다. 셸에 남은 값이 결과를 바꿀 수 있다.
-4. 빌드가 저장소 폴더 안에 쓴다(`build/`, `dist/`, `desktop/dist`, `desktop/out`). 이전 산출물이 남아 새 산출물과 섞인다(`desktop/out`에 이전 빌드 폴더 4개와 검증용 패키지 7개가 공존).
+4. 빌드가 저장소 폴더 안에 쓴다(`build/`, `dist/`, `desktop/dist`, `build-output/desktop`). 이전 산출물이 남아 새 산출물과 섞인다(`build-output/desktop`에 이전 빌드 폴더 4개와 검증용 패키지 7개가 공존).
 5. 서버 의존성(`requirements.txt`)과 에이전트 의존성이 분리되어 있는 것은 좋지만, 같은 라이브러리(`cryptography`)가 다른 버전(48.0.0 / 50.0.2)이다. 의도라면 기록해야 한다.
 
 ### 2.3 [제안] 기준 빌드 환경
@@ -49,23 +51,23 @@
 ```powershell
 # 0) 에이전트 가상환경 (CI와 동일 위치)
 python -m venv .validation\venv-workspace
-.\.validation\venv-workspace\Scripts\python.exe -m pip install --require-hashes --only-binary=:all: -r requirements-workspace.lock
-.\.validation\venv-workspace\Scripts\python.exe -m pip install -r requirements-workspace-build.txt
+.\.validation\venv-workspace\Scripts\python.exe -m pip install --require-hashes --only-binary=:all: -r packaging/agent/requirements-workspace.lock
+.\.validation\venv-workspace\Scripts\python.exe -m pip install -r packaging/agent/requirements-workspace-build.txt
 
-# 1) 에이전트 동결 (onedir)  →  dist\workspace-agent\agent
-.\.validation\venv-workspace\Scripts\python.exe -X utf8 -B scripts\build_workspace_agent.py
+# 1) 에이전트 동결 (onedir)  →  build-output\agent\dist\agent
+.\.validation\venv-workspace\Scripts\python.exe -X utf8 -B tools\build\build_workspace_agent.py
 
 # 2) 에이전트 감사 (금지 모듈·필수 모듈·SHA-256 목록)
-.\.validation\venv-workspace\Scripts\python.exe scripts\audit_workspace_agent.py --directory dist\workspace-agent\agent --output <새 파일>
+.\.validation\venv-workspace\Scripts\python.exe tools\build\audit_workspace_agent.py --directory build-output\agent\dist\agent --output <새 파일>
 
 # 3) 데스크톱
 npm --prefix desktop ci --ignore-scripts --no-audit --no-fund
 node desktop\node_modules\electron\install.js
 npm --prefix desktop run build           # tsc + scripts/build.mjs  →  desktop\dist
-npm --prefix desktop run make            # electron-forge → desktop\out\...
+npm --prefix desktop run make            # electron-forge → build-output\desktop\...
 
 # 4) ASAR 검사
-node desktop\scripts\audit-bundle.mjs desktop\out\GitVizWorkspace-win32-x64\resources\app.asar <새 보고서 파일>
+node desktop\scripts\audit-bundle.mjs build-output\desktop\GitVizWorkspace-win32-x64\resources\app.asar <새 보고서 파일>
 ```
 
 CI는 `--ignore-scripts`로 설치하므로 `electron-winstaller`의 7-Zip 선택 스크립트가 돌지 않아 `vendor\7z-x64.exe`/`.dll`을 `7z.exe`/`.dll`로 수동 복사한다(`windows-release.yml`). 로컬에서 스크립트를 켜고 설치하면 필요 없다.

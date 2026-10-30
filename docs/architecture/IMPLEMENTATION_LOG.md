@@ -73,3 +73,10 @@
 - **보류:** 에이전트 빌드 가상환경을 `build-output/venv-agent`로 옮기는 항목은 실행하지 않았다. 가상환경은 경로 고정이라 새로 만들어 패키지를 설치해야 하므로 승인 대상이다. 현재는 `.validation/venv-workspace`를 유지(게이트 기본값, CI 동일). 5차 이전에 결정 필요.
 - **테스트:** 전체 게이트 통과(23단계; 첫 실행은 위 예외 때문에 `test_p07_migration`에서 실패 → 보존 경로 복원 후 재실행 통과), `npm run make`로 새 위치에 패키지와 Setup.exe 생성. 에이전트 파일 목록 134개 = 기준선, 패키지된 `resources\agent` 목록 = 기준선, `app.asar` 항목 985개 목록 = 기준선(**동일**). Setup.exe 180,332,032바이트(기준선 180,328,960; +3 KB는 재컴파일된 JS의 경로 문자열), PE 헤더 확인. 문서 검사 통과.
 - **오류:** `test_p07_migration` 실패(위). 해결: 보존 경로 복원.
+
+## 마무리 검증과 문서 반영
+- **문서:** `DEVELOPMENT_SETUP.md`, `BUILD_AND_RELEASE.md`의 경로·명령을 새 구조로 갱신하고 4차 반영 안내를 추가. 에이전트 테스트는 에이전트 venv에서 실행해야 한다는 실측을 기록.
+- **백엔드:** 일회용 테스트 DB/Redis로 `uvicorn app.main:app` 기동 → `/openapi.json` 200, `/` 200, `/js/main.js` 200, `/api/auth/me` 비로그인 401. 종료 확인.
+- **정적 검사:** `npm run typecheck`·`typecheck:agent`(pyright 0/0/0)·`lint`, ruff(에이전트 대상) 통과, `app`·`tools`·`tests` 파이썬 281개 구문 검사 통과.
+- **데이터:** 호스트의 실제 사용자 데이터(`%APPDATA%\gitviz-workspace\workspace\`) 4개 파일의 SHA-256이 작업 전 백업과 동일. 4차 동안 사용자 DB·키는 열지도 쓰지도 않았다.
+- **정리:** 일회용 컨테이너(`gitviz-p11-testdb`, `gitviz-p11-testredis`)는 검증 후 제거. 백업·증거는 `C:\Users\user\gitviz-p11-backup\`에 보존.

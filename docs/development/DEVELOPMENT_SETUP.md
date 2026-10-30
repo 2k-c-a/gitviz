@@ -1,5 +1,7 @@
 # 개발 환경 설정 (2차 · 설계)
 
+> **4차 반영(2026-10-30):** 이 문서의 [현재] 명령은 4차 구조 변경(S1~S9) 이후의 경로를 따른다: `tools/{build,validation,ops,vm}`, `tests/{server,frontend,workspace}`, `packaging/agent`, `build-output/`. 경로 이동 이력은 [이동 이력](../architecture/MIGRATION_HISTORY.md), 실행 기록은 [구현 기록](../architecture/IMPLEMENTATION_LOG.md). [제안]으로 표시된 환경 가드·채널 설정·데이터 경로 변경은 아직 적용되지 않았다(R1~R4).
+
 작성일: 2026-10-30 · 기준 커밋: `65f1b62` · [문서 안내](../index.md)
 
 설계 배경은 [환경 분리 아키텍처](../architecture/ENVIRONMENT_ARCHITECTURE.md)에 있다. 짝 문서: [빌드와 릴리스](../deployment/BUILD_AND_RELEASE.md) · [설치 안내](../deployment/INSTALLATION_GUIDE.md) · [데이터 저장 정책](../deployment/DATA_STORAGE_POLICY.md)
@@ -78,12 +80,12 @@ docker compose up -d db redis
 
 ### 워크스페이스 에이전트 (빌드·테스트용)
 
-**[현재]** 서버 요구사항과 섞지 않는다(`requirements-workspace.txt`의 주석).
+**[현재]** 서버 요구사항과 섞지 않는다(`packaging/agent/requirements-workspace.txt`의 주석).
 
 ```powershell
 python -m venv .validation\venv-workspace          # CI와 같은 위치
-.\.validation\venv-workspace\Scripts\python.exe -m pip install --require-hashes --only-binary=:all: -r requirements-workspace.lock
-.\.validation\venv-workspace\Scripts\python.exe -m pip install -r requirements-workspace-build.txt   # PyInstaller, ruff
+.\.validation\venv-workspace\Scripts\python.exe -m pip install --require-hashes --only-binary=:all: -r packaging/agent/requirements-workspace.lock
+.\.validation\venv-workspace\Scripts\python.exe -m pip install -r packaging/agent/requirements-workspace-build.txt   # PyInstaller, ruff
 ```
 
 `pyright-workspace.json`이 `.validation/venv-workspace`를 가리키므로 `npm run typecheck:agent`도 이 이름을 기대한다. **[제안]** 위치를 `.local/venv-build-agent`로 옮기고 설정을 함께 바꾼다(3차).
@@ -122,7 +124,7 @@ $env:GITVIZ_TEST_DATABASE_URL = "postgresql://gitviz:gitviz@localhost:5432/gitvi
 
 **[제안]** compose가 `gitviz_dev`·`gitviz_test`를 초기화 스크립트로 함께 만들고, 개발 서버와 테스트가 서로 다른 DB를 쓰게 한다.
 
-테스트 데이터: `scripts/fixtures/`(6개)와 테스트 내부 생성 데이터. 운영 데이터를 복사해서 쓰지 않는다.
+테스트 데이터: `tests/server/fixtures/`(6개)와 테스트 내부 생성 데이터. 운영 데이터를 복사해서 쓰지 않는다.
 
 ## 7. 개발 서버 실행
 
@@ -187,13 +189,15 @@ npm --prefix desktop start          # = electron .
 
 ```powershell
 $env:GITVIZ_TEST_DATABASE_URL = "postgresql://gitviz:gitviz@localhost:5432/gitviz_test"
-python scripts/test_backend_improvements.py
-python scripts/test_ai_contracts.py
+python tests/server/test_backend_improvements.py
+python tests/server/test_ai_contracts.py
 # 전체 목록: .github/workflows/backend-validation.yml (36줄)
-node scripts/test_metric_display.cjs
+node tests/frontend/test_metric_display.cjs
 ```
 
 AI 통합(큐) 테스트는 `GITVIZ_TEST_REDIS_URL`(테스트 전용 Redis)도 요구한다. 시작 시 해당 DB를 비우므로 개발 Redis와 절대 같은 값을 쓰면 안 된다(`test_ai_queue_integration.py` 설명).
+
+에이전트 테스트(`tests/workspace`)는 개발용 `venv`가 아니라 에이전트 잠금 환경(`.validation/venv-workspace`)에서 실행한다. 개발용 `venv`에는 `jsonschema`가 없어 17개 모듈이 import 오류로 실패한다(4차 S0 실측).
 
 ### 에이전트
 
@@ -201,7 +205,7 @@ AI 통합(큐) 테스트는 `GITVIZ_TEST_REDIS_URL`(테스트 전용 Redis)도 �
 
 ```powershell
 .\.validation\venv-workspace\Scripts\python.exe -m unittest discover -s tests/workspace -p "test_*.py" -v
-.\.validation\venv-workspace\Scripts\python.exe -m ruff check --no-cache --config ruff-workspace.toml app/workspace tests/workspace scripts/build_workspace_agent.py
+.\.validation\venv-workspace\Scripts\python.exe -m ruff check --no-cache --config ruff-workspace.toml app/workspace tests/workspace tools/build/build_workspace_agent.py
 npm --prefix desktop run typecheck:agent        # pyright strict
 ```
 
@@ -221,7 +225,7 @@ E2E는 `desktop/tests/profile.ts`가 임시 폴더를 `userData`/`sessionData`�
 
 ### 전체
 
-**[현재]** Windows 통합 게이트: `scripts/validate_workspace_windows.ps1 -Node <node.exe> -EvidenceDirectory <폴더>`(단계: `ruff`, `desktop-build`, `agent-freeze`, `host-unit`, `workspace-unit`, `web-navigation`, `web-regression`, `documents`). **[제안]** `tools/dev/test.ps1 [server|agent|desktop|all]`로 `GITVIZ_ENV=test`와 임시 데이터 폴더를 강제.
+**[현재]** Windows 통합 게이트: `tools/validation/validate_workspace_windows.ps1 -Node <node.exe> -EvidenceDirectory <폴더>`(단계: `ruff`, `desktop-build`, `agent-freeze`, `host-unit`, `workspace-unit`, `web-navigation`, `web-regression`, `documents`). **[제안]** `tools/dev/test.ps1 [server|agent|desktop|all]`로 `GITVIZ_ENV=test`와 임시 데이터 폴더를 강제.
 
 ## 10. 개발 환경 초기화
 
@@ -232,10 +236,10 @@ E2E는 `desktop/tests/profile.ts`가 임시 폴더를 `userData`/`sessionData`�
 | 개발 DB | `docker compose down -v`(볼륨 삭제) 후 `up -d`, `alembic upgrade head` | [현재 명령]. 운영 DB에는 영향 없음 — 단, 개발 `.env`가 로컬 compose를 가리킬 때만 |
 | 테스트 DB | `gitviz_test*` DB에서 실행한다(DB 이름이 `gitviz_test`로 시작하지 않으면 거부). `test_backend_improvements.py`는 `command.upgrade(config, 'head')`로 Alembic 전체 체인을 적용하며, 오래된 리비전(`393e33b2dcbb`, `e2f3a4b5c6d7`)에서 `head`로 올려도 데이터가 보존되는지도 검사한다 | [현재] |
 | 개발 데스크톱 데이터 | 개발 전용 폴더 삭제 | [제안] (현재는 설치 앱과 같은 폴더라 **삭제하지 말 것**) |
-| 생성물 | `desktop\dist`, `desktop\out`, `dist\`, `build\` 삭제 후 재빌드 | [현재] |
+| 생성물 | `desktop\dist`, `build-output\` 삭제 후 재빌드 (4차 S9 이후 에이전트·패키지·설치 파일 모두 `build-output` 아래) | [현재] |
 | 가상환경 | 폴더 삭제 후 재생성 | [현재] |
 
-**금지:** `.env`의 `DATABASE_URL`이 원격 호스트인 상태에서 `scripts/cleanup_*.py`, `migrate_*.py`, `backfill_*.py`를 실행하지 않는다. 이 스크립트들은 현재 DB 이름·호스트를 검사하지 않는다(가드 0개). **[제안]** 가드 도입 전까지 로컬 compose 환경에서만 실행.
+**금지:** `.env`의 `DATABASE_URL`이 원격 호스트인 상태에서 `tools/ops/cleanup_*.py`, `tools/ops/legacy/migrate_*.py`, `tools/ops/backfill_*.py`를 실행하지 않는다. 이 스크립트들은 현재 DB 이름·호스트를 검사하지 않는다(가드 0개). **[제안]** 가드 도입 전까지 로컬 compose 환경에서만 실행.
 
 ## 11. 운영 데이터와의 격리 점검표
 
