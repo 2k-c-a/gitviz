@@ -34,6 +34,10 @@ ns['router']=SimpleNamespace(get=lambda *args,**kwargs:lambda f:f)
 load_functions(ROOT/'app/api/analytics.py', {'_ownership_analysis','_metric_window',
     '_fetch_recent_ownership','_compute_risk_scores','get_risk_scores','_coupled_files_for','_compute_coupling','get_coupling',
     '_module_of','get_bus_factor_analysis','get_repo_tree','_build_tree','_per_file_coupling_summary'},ns)
+load_functions(ROOT/'app/services/coupled_files.py', {'_coupled_files_for'}, ns)
+for node in ast.parse((ROOT/'app/services/coupled_files.py').read_text(encoding='utf-8')).body:
+    if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='COUPLED_SORT_KEYS' for t in node.targets):
+        exec(compile(ast.Module(body=[node],type_ignores=[]),'coupled-sort-keys','exec'),ns)
 analytics_tree=ast.parse((ROOT/'app/api/analytics.py').read_text(encoding='utf-8'))
 for node in analytics_tree.body:
     if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id in {'_PR_PAIRS_SQL','_COMMIT_PAIRS_SQL'} for t in node.targets):

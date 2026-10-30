@@ -61,3 +61,8 @@
 - **변경:** `git mv`, 빈 `app/routers/` 패키지 제거. import 갱신: `app/main.py`, `app/api/{ai/dependencies,desktop/repositories,repositories,snapshot_route,snapshots}.py`, `tests/server/*`(import와 `patch("app.api.auth.…")` 문자열), 문서 링크 2곳. 코드 본문과 `_get_session_user_id` 이름은 변경 없음.
 - **테스트:** OpenAPI 라우트 67개(경로+메서드) 이동 전후 **동일**, 서버 CI 38줄 전부 통과, 잔존 `app.routers` 참조 0건(설계 문서 제외), 문서 검사 통과.
 - **오류:** 없음. 참고: `app.main` 임포트 시 로컬 `.env`의 `DATABASE_URL_ASYNC`가 적용되어 설정 검증이 실패하므로(테스트 DB와 불일치), 검증은 `DATABASE_URL_ASYNC`를 테스트 DB로 명시해 실행했다(연결은 하지 않음).
+
+## S8 동반 변경 파일 계산 분리 (`app/api/analytics.py` → `app/services/coupled_files.py`)
+- **변경:** `COUPLED_SORT_KEYS`, `_coupled_files_for`(본문 불변, 35줄)를 새 모듈로 이동. `analytics.py`는 같은 이름을 import(기존 `from app.api.analytics import _coupled_files_for` 사용처 호환), `analysis_snapshots.py`·`history_context.py`는 서비스 모듈에서 직접 import. `tests/server/test_metric_policy.py`는 `analytics.py`에서 AST로 함수를 추출해 실행하므로 새 모듈에서도 추출하도록 로더 4줄 추가.
+- **테스트:** OpenAPI 라우트 67개 동일, `test_metric_policy`·`test_repository_snapshots`·`test_analytics_calculations`·`test_ai_history_context`·`test_backend_improvements` 통과(스냅샷 해시 포함), 서버 CI 38줄 전부 통과.
+- **성공 기준 조정:** 계획의 "services→api import 0건"은 달성하지 못했다. `app/services/analysis_snapshots.py:207`이 `app.api.analytics`의 다른 계산 함수(`_compute_coupling` 등)를 함수 안에서 import한다. 이 의존 제거는 계산 코드 전체 이동이 필요해 승인된 범위(이번 함수 2개) 밖이므로 하지 않고 남은 문제로 기록한다.

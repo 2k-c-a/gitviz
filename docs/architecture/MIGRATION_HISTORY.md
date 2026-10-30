@@ -135,3 +135,6 @@
 
 ## S7
 - `app/routers/auth.py` → `app/api/auth.py`
+
+## S8
+- `app/api/analytics.py`의 `COUPLED_SORT_KEYS`, `_coupled_files_for` → `app/services/coupled_files.py` (함수 이동)
