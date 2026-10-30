@@ -132,3 +132,6 @@
 - `scripts/verify_live_repository.py` → `tests/server/verify_live_repository.py`
 - `scripts/verify_production_integration.py` → `tests/server/verify_production_integration.py`
 - `scripts/verify_snapshot_integration.py` → `tests/server/verify_snapshot_integration.py`
+
+## S7
+- `app/routers/auth.py` → `app/api/auth.py`

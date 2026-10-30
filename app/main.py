@@ -23,7 +23,7 @@ from app.api.analytics import router as analytics_router
 from app.api.snapshots import router as snapshots_router
 
 # ── feat/login 팀: 비동기 auth 라우터 ────────────────────────────────────────
-from app.routers import auth as auth_router
+from app.api import auth as auth_router
 from app.api.desktop.repositories import router as desktop_repositories_router
 
 app = FastAPI(title="GitViz API", version="0.1.0")

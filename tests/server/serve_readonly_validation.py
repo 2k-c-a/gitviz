@@ -24,7 +24,7 @@ def enforce_read_only(connection):
 
 from app.api.analytics import router as analytics_router
 from app.api.repositories import router as repository_router
-from app.routers.auth import router as auth_router
+from app.api.auth import router as auth_router
 
 app = FastAPI(title="GitViz read-only integration validation")
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET_KEY", "validation-only"),

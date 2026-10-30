@@ -45,9 +45,9 @@ from app.desktop_auth_middleware import DesktopAuthMiddleware
 from app.models.user import User
 from app.models.desktop_session import DesktopAuthTransaction, DesktopSession
 from app.services import desktop_auth as service
-from app.routers.auth import _get_session_user_id
+from app.api.auth import _get_session_user_id
 from app.api.ai.dependencies import require_csrf
-from app.routers.auth import router as web_auth_router
+from app.api.auth import router as web_auth_router
 from app.database import get_db as get_async_db
 
 
@@ -303,9 +303,9 @@ class DesktopAuthTests(unittest.TestCase):
         response = self.browser.get("/api/auth/github")
         state = parse_qs(urlsplit(response.headers["location"]).query)["state"][0]
         with (
-            patch("app.routers.auth.exchange_code_for_token", AsyncMock(return_value="fixture-github-token")),
-            patch("app.routers.auth.fetch_github_user", AsyncMock(return_value={})),
-            patch("app.routers.auth.upsert_user", AsyncMock(return_value=SimpleNamespace(id=self.user_id))),
+            patch("app.api.auth.exchange_code_for_token", AsyncMock(return_value="fixture-github-token")),
+            patch("app.api.auth.fetch_github_user", AsyncMock(return_value={})),
+            patch("app.api.auth.upsert_user", AsyncMock(return_value=SimpleNamespace(id=self.user_id))),
         ):
             result = self.browser.get("/api/auth/callback", params={"code": "fixture", "state": state})
         self.assertEqual(result.status_code, 302)

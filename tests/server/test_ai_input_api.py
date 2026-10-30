@@ -24,7 +24,7 @@ from app.api.ai import inputs as inputs_api  # noqa: E402
 from app.api.ai.dependencies import ai_error_response, ai_validation_error_response  # noqa: E402
 from app.collectors.ai_errors import (MergeBaseUnavailable, PRChanged, RateLimited, ResourceNotFound,  # noqa: E402
                                       UpstreamUnavailable)
-from app.routers import auth as auth_router  # noqa: E402
+from app.api import auth as auth_router  # noqa: E402
 from app.schemas.ai import ErrorCode  # noqa: E402
 from app.services.ai import job_runner  # noqa: E402
 from app.services.ai.access import AIAction, AIError  # noqa: E402

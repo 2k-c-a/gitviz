@@ -28,7 +28,7 @@ from starlette.middleware.sessions import SessionMiddleware  # noqa: E402
 
 from app.api.ai.dependencies import ai_error_response, require_ai_user, require_csrf  # noqa: E402
 from app.core import ai_settings  # noqa: E402
-from app.routers import auth as auth_router  # noqa: E402
+from app.api import auth as auth_router  # noqa: E402
 from app.schemas.ai import ErrorCode  # noqa: E402
 from app.services.ai import access  # noqa: E402
 from app.services.ai.access import AIAction, AIError, authorize_ai, ensure_owner  # noqa: E402

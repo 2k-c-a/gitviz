@@ -9,7 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.core.ai_settings import get_ai_settings
-from app.routers.auth import _get_session_user_id
+from app.api.auth import _get_session_user_id
 from app.schemas.ai import ErrorBody, ErrorCode, ErrorEnvelope
 from app.services.ai.access import AIError
 

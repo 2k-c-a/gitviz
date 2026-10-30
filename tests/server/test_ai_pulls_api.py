@@ -23,7 +23,7 @@ from app.api.ai import commits as commits_api
 from app.api.ai.dependencies import ai_error_response, ai_validation_error_response  # noqa: E402
 from app.collectors.ai_errors import RateLimited, ResourceNotFound, UpstreamUnavailable  # noqa: E402
 from app.collectors.github.ai_pr_collector import PRFilesPage, PRPage  # noqa: E402
-from app.routers import auth as auth_router  # noqa: E402
+from app.api import auth as auth_router  # noqa: E402
 from app.schemas.ai import ErrorCode, InventoryCoverage  # noqa: E402
 from app.services.ai.access import AIError  # noqa: E402
 

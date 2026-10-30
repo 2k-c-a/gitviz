@@ -29,7 +29,7 @@ from app.api.ai import history as history_api  # noqa: E402
 from app.api.ai import jobs as jobs_api  # noqa: E402
 from app.api.ai import results as results_api  # noqa: E402
 from app.api.ai.dependencies import ai_error_response, ai_validation_error_response  # noqa: E402
-from app.routers import auth as auth_router  # noqa: E402
+from app.api import auth as auth_router  # noqa: E402
 from app.schemas.ai import ErrorCode, canonical_hash  # noqa: E402
 from app.services.ai import history_context, job_service  # noqa: E402
 from app.services.ai.access import AIError  # noqa: E402

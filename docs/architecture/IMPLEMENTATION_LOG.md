@@ -56,3 +56,8 @@
 - **오류와 해결:** 전체 게이트의 `workspace-unit`에서 `tests/workspace/test_ai_core.py`가 `scripts/test_ai_output_validation.py`를 직접 읽는 것을 발견(이동 전 스캔이 `scripts/` 내부 파일만 대상이어서 놓침). 경로를 `tests/server/…`로 수정하고 재검증. 교훈: 참조 검색은 저장소 전체(`git grep`)로 한다.
 - **테스트:** 서버·프런트 CI 38줄 전부 통과(일회용 테스트 DB/Redis, 새 경로), `tests/server` 52개 컴파일 OK, 문서 검사 통과, **전체 게이트 통과**(재실행; 첫 실행은 위 오류로 실패), 작업 트리 변경 없음.
 - **참고:** `docs/migration/12-testing-strategy.md` 등 과거 계획 문서의 명령 텍스트 `scripts/…`는 당시 기록으로 유지.
+
+## S7 인증 라우터 이동 (`app/routers/auth.py` → `app/api/auth.py`)
+- **변경:** `git mv`, 빈 `app/routers/` 패키지 제거. import 갱신: `app/main.py`, `app/api/{ai/dependencies,desktop/repositories,repositories,snapshot_route,snapshots}.py`, `tests/server/*`(import와 `patch("app.api.auth.…")` 문자열), 문서 링크 2곳. 코드 본문과 `_get_session_user_id` 이름은 변경 없음.
+- **테스트:** OpenAPI 라우트 67개(경로+메서드) 이동 전후 **동일**, 서버 CI 38줄 전부 통과, 잔존 `app.routers` 참조 0건(설계 문서 제외), 문서 검사 통과.
+- **오류:** 없음. 참고: `app.main` 임포트 시 로컬 `.env`의 `DATABASE_URL_ASYNC`가 적용되어 설정 검증이 실패하므로(테스트 DB와 불일치), 검증은 `DATABASE_URL_ASYNC`를 테스트 DB로 명시해 실행했다(연결은 하지 않음).

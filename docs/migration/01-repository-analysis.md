@@ -12,7 +12,7 @@
 | O04 | [분석 API](../../app/api/analytics.py), [snapshot route](../../app/api/snapshot_route.py), [snapshot 서비스](../../app/services/analysis_snapshots.py): HTTP는 저장된 결과 조회, 계산 함수는 별도 사용 |
 | O05 | [저장소 API](../../app/api/repositories.py), [점수](../../app/services/lightweight_score.py): GitHub 검색·목록·등록·재분석·상태. 경량 점수와 파일 상대 위험 점수는 다른 척도 |
 | O06 | [Git 수집](../../app/collectors/git/clone_manager.py): `storage/repos/<id>`, clone/fetch·PR ref 수집, 수집용 clone에 hard reset 존재 |
-| O07 | [인증 router](../../app/routers/auth.py), [인증 서비스](../../app/services/auth_service.py): OAuth state·`read:user,repo` scope·서버 client secret·AES-GCM 토큰 저장·쿠키 user ID |
+| O07 | [인증 router](../../app/api/auth.py), [인증 서비스](../../app/services/auth_service.py): OAuth state·`read:user,repo` scope·서버 client secret·AES-GCM 토큰 저장·쿠키 user ID |
 | O08 | [동기 DB](../../app/core/database.py), [비동기 DB](../../app/database.py), [migration env](../../migrations/env.py): 동기/비동기 Base 분리, 원격 async CA 미설정 시 TLS 검증 해제 경로 |
 | O09 | [모델](../../app/models/repository.py), [snapshot](../../app/models/analysis_snapshot.py), [AI 입력](../../app/models/ai_input.py), [결과](../../app/models/ai_result.py): 서버 ID·PostgreSQL 전용 제약·고정 리비전·해시 |
 | O10 | [AI DTO](../../app/schemas/ai.py), [AI API 안내](../contracts/ai-api.md), [AI client](../../frontend/js/ai-api.js): 계약 1.9, PR/커밋 선택·CSRF·멱등 key·오류 envelope |

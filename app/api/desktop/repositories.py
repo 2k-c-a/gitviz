@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.desktop.auth import enabled, NO_STORE
 from app.core.database import get_db
-from app.routers.auth import _get_session_user_id
+from app.api.auth import _get_session_user_id
 from app.services.repository_access import canonical_github_url, verify_repository_access
 
 router = APIRouter(prefix='/api/desktop/v1', tags=['desktop'], dependencies=[Depends(enabled)])
