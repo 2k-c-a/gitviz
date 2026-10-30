@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param([ValidateSet('Prepare','Collect')][string]$Mode='Prepare',[switch]$Elevated)
 $ErrorActionPreference='Stop'
-$repo=Split-Path $PSScriptRoot -Parent
+$repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $work=Join-Path $repo '.validation\p01-vm'
 $vmId=[guid]'25a434e8-1335-47ad-a6c1-cdec28192507'
 $diskPath=Join-Path $work 'physical-full.vhdx'

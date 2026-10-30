@@ -32,3 +32,9 @@
 - **변경:** 29개 파일 `git mv`(운영 18, legacy 11). 루트 계산(`dirname` 중첩/`parents[N]`)을 깊이에 맞게 수정, 사용법 문구의 경로 갱신. `test_ai_ops.py`는 `tools/ops`를 `sys.path`에 추가. 참조 수정: `docker-compose.yml` 주석, `docs/operations/ai.md`, `docs/architecture/repository-access-and-snapshots.md`, `app/tasks/analyze_repository.py` 주석.
 - **테스트:** 29개 전부 컴파일 OK(실행 없음, 운영 DB 대상 도구 포함), 루트 계산 결과가 저장소 루트와 일치, `tools/ops/ai_ops.py status`를 일회용 테스트 DB에 실행(읽기 전용) 정상, `test_ai_ops` 7개 통과, 문서 검사 통과.
 - **오류:** 없음.
+
+## S3 VM 도구 이동 (`scripts/` → `tools/vm`)
+- **변경:** 9개 `git mv`. 7개 ps1의 저장소 루트 계산(`Split-Path $PSScriptRoot -Parent`)을 한 단계 더 올림, `staging_vm.ps1` 안내 문구 경로 갱신. 서로 호출하는 `$PSScriptRoot` 상대 호출(`install_p01_vm` → `p01_boot_repair_iso`)과 `enable_p01_hyperv.bat`의 `%~dp0`는 같은 폴더 이동이라 수정 불필요.
+- **테스트:** PowerShell 파서로 7개 ps1 구문 오류 0(실행하지 않음, VM 미조작), 문서 검사 통과.
+- **정정:** 기존 문서(`docs/operations/windows-desktop.md`, `p10-partial`)는 0.7.0→0.7.1 업그레이드를 clean VM에서 확인했다고 기록한다. 3차 문서가 "미검증"이라 적은 것을 "마커 파일 수준 검증됨, 실제 DB 상태는 미검증"으로 정정(`INSTALLATION_GUIDE`, `RELEASE_MIGRATION_PLAN`, `FINAL_ARCHITECTURE`).
+- **참고:** `docs/migration/validation/*`의 과거 증거 문서가 인용하는 `scripts/…` 경로 텍스트는 당시 실행 기록이므로 수정하지 않았다(링크 아님, 검사 통과).

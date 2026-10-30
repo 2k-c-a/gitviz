@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param([ValidateSet('Inspect','InspectDisk','RepairBoot','Install','Finish','Collect','CollectLive','RunLive','Diagnose','Finalize')][string]$Mode='Inspect',[switch]$Elevated,[switch]$BootRepair)
 $ErrorActionPreference='Stop'
-$repo=Split-Path $PSScriptRoot -Parent
+$repo=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $work=Join-Path $repo '.validation\p01-vm'
 $iso=Join-Path $repo '.validation\iso\Windows11_Client_x64_ko-kr_26300_9457.iso'
 $vhd=Join-Path $work 'system.vhdx'

@@ -36,3 +36,14 @@
 - `scripts/run_pr_authorship.py` → `tools/ops/run_pr_authorship.py`
 - `scripts/show_summary.py` → `tools/ops/show_summary.py`
 - `scripts/trigger_async.py` → `tools/ops/trigger_async.py`
+
+## S3
+- `scripts/enable_p01_hyperv.bat` → `tools/vm/enable_p01_hyperv.bat`
+- `scripts/enable_p01_hyperv.ps1` → `tools/vm/enable_p01_hyperv.ps1`
+- `scripts/install_p01_vm.ps1` → `tools/vm/install_p01_vm.ps1`
+- `scripts/p01_boot_repair_iso.ps1` → `tools/vm/p01_boot_repair_iso.ps1`
+- `scripts/prepare_p01_vm.ps1` → `tools/vm/prepare_p01_vm.ps1`
+- `scripts/staging_stack.ps1` → `tools/vm/staging_stack.ps1`
+- `scripts/staging_vm.ps1` → `tools/vm/staging_vm.ps1`
+- `scripts/test_installer_vm.ps1` → `tools/vm/test_installer_vm.ps1`
+- `scripts/validate_p01_full_disk.ps1` → `tools/vm/validate_p01_full_disk.ps1`

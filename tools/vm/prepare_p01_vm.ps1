@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param([switch]$Elevated)
 $ErrorActionPreference = 'Stop'
-$root = Split-Path $PSScriptRoot -Parent
+$root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $directory = Join-Path $root '.validation\p01-vm'
 $name = 'GitViz-P01-Clean-Win11'
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)

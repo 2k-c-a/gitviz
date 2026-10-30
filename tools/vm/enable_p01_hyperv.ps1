@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param([switch]$Elevated)
 $ErrorActionPreference = 'Stop'
-$repo = Split-Path $PSScriptRoot -Parent
+$repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $logRoot = Join-Path $repo '.validation\hyperv'
 New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()

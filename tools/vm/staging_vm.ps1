@@ -4,7 +4,7 @@ param([ValidateSet('Up', 'Capture', 'Close', 'Trust', 'Probe', 'Clone', 'Edit', 
 # Host changes (portproxy + firewall rule) and guest changes (autologon, trust, portproxy, env var) are all undone by -Mode Down
 # (stop VM, restore checkpoint, remove host rules). Needs a UAC-elevated host token.
 $ErrorActionPreference = 'Stop'
-$repo = Split-Path $PSScriptRoot -Parent
+$repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $work = Join-Path $repo '.validation\p10-vm'
 $p01 = Join-Path $repo '.validation\p01-vm'
 $staging = Join-Path $repo '.validation\staging'
@@ -196,7 +196,7 @@ const out = {};
         $result.status = 'closed-checked'
     }
     else {
-        if (-not (Get-NetTCPConnection -LocalPort 8443 -State Listen -ErrorAction SilentlyContinue)) { throw 'Staging server is not listening on 8443; run scripts/staging_stack.ps1 -Mode Up first.' }
+        if (-not (Get-NetTCPConnection -LocalPort 8443 -State Listen -ErrorAction SilentlyContinue)) { throw 'Staging server is not listening on 8443; run tools/vm/staging_stack.ps1 -Mode Up first.' }
         $cer = Join-Path $staging 'tls\server.cer'
         if (-not (Test-Path $cer)) { throw 'Staging certificate missing.' }
         if (-not $StageDirectory -or -not (Test-Path (Join-Path $StageDirectory 'v070\GitVizWorkspaceSetup.exe'))) { throw 'StageDirectory with v070 installer required.' }

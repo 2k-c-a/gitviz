@@ -3,7 +3,7 @@ param([ValidateSet('Prepare', 'Up', 'Worker', 'Down', 'Status')][string]$Mode = 
 # Isolated staging stack for P03/N06 acceptance: own PostgreSQL cluster, own Redis, own secrets, HTTPS on loopback.
 # Never touches the development database or .env. Secrets live only under .validation\staging (git-ignored).
 $ErrorActionPreference = 'Stop'
-$repo = Split-Path $PSScriptRoot -Parent
+$repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $root = Join-Path $repo '.validation\staging'
 $pgBin = 'C:\Program Files\PostgreSQL\18\bin'
 $python = Join-Path $repo 'venv\Scripts\python.exe'

@@ -3,7 +3,7 @@ param([ValidateSet('Inspect', 'Run', 'Restore')][string]$Mode = 'Inspect', [stri
 # Clean-VM installer acceptance helper for P10. Reuses the P01 VM and its DPAPI credentials; needs a UAC-elevated host token.
 # Run: checkpoint -> install 0.7.0 -> launch -> upgrade to 0.7.1 -> uninstall as the standard user -> collect evidence -> restore checkpoint.
 $ErrorActionPreference = 'Stop'
-$repo = Split-Path $PSScriptRoot -Parent
+$repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $work = Join-Path $repo '.validation\p10-vm'
 $p01 = Join-Path $repo '.validation\p01-vm'
 $vmId = [guid]'25a434e8-1335-47ad-a6c1-cdec28192507'
