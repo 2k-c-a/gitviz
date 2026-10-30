@@ -45,7 +45,7 @@ docker compose up -d db redis
 
 주의: 이 PC의 기존 가상환경은 `venv/`(README는 `.venv`)이고, `.claude/launch.json`이 `venv\Scripts\python.exe`를 절대 경로로 가리킨다. 새 클론에서는 README의 `.venv`를 따른다.
 
-**[제안]** 위 단계를 `tools/dev/bootstrap.ps1`로 묶어 다음을 검사한다: 도구 버전, `.env`에 운영 호스트가 있는지(있으면 중단), 개발 DB 컨테이너 상태.
+**[현재 · 원클릭]** 위 단계는 `pwsh tools/dev/bootstrap.ps1 -LocalDefaults -Run`으로 묶여 있다(Python 3.12·Git·Docker 확인, `.venv`, 의존성, `.env`, db/redis 기동, `alembic upgrade head`, 서버·worker 실행). 이미 있는 `.env`는 읽거나 고치지 않는다. **[제안, 미구현]** `.env`의 운영 호스트 검사와 개발 DB 컨테이너 상태 점검은 아직 없다.
 
 ## 4. 환경 변수
 

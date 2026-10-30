@@ -24,7 +24,7 @@
 | 프로세스 간 계약(JSON Schema) | `contracts/` | 공유 계약의 유일한 위치 |
 | 에이전트 동결 입력 | `packaging/agent/` | spec, 잠금된 빌드 의존성 |
 | 테스트 | `tests/{server,frontend,workspace}`, `desktop/tests` | 이 밖에 테스트 파일을 두지 않는다 |
-| 빌드·검증·운영·VM 도구 | `tools/{build,validation,ops,vm}` (`ops/legacy`는 일회성) | 제품 코드 금지 |
+| 빌드·검증·운영·VM 도구 | `tools/{build,dev,validation,ops,vm}` (`ops/legacy`는 일회성) | 제품 코드 금지 |
 | 문서·보고서 | `docs/` (배포 관련은 `docs/deployment/`, 구조는 `docs/architecture/`) | 새 문서는 반드시 [문서 안내](../index.md)에서 연결 |
 | 모든 빌드 산출물 | `build-output/` (Git 제외) | 설치 파일 후보는 `build-output/release-candidates/` |
 | 검증 증거·VM 상태 | `.validation/` (Git 제외) | 증거는 커밋하지 않는다 |

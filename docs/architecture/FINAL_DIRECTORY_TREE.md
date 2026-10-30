@@ -44,6 +44,7 @@ gitviz/
 │  ├─ validation/                 (신규, S5) Windows 게이트·단계별 패키지 검증·AI 목업
 │  ├─ ops/                        (신규, S2) 수동 운영 도구 (ai_ops.py 포함)
 │  │  └─ legacy/                   일회성 마이그레이션·검증 스크립트 (삭제 아님)
+│  ├─ dev/                        (신규, 5차 이후) 개발 환경 원클릭 준비·실행 `bootstrap.ps1`
 │  └─ vm/                         (신규, S3) Hyper-V·스테이징 도구
 ├─ docs/                         (유지) 구조·감사 규칙 유지, index.md에 새 문서 연결 (S1)
 ├─ .github/workflows/            (유지) 경로만 갱신

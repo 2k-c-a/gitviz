@@ -6,7 +6,21 @@ GitHub 저장소의 개발 이력을 수집하고 수정 집중도·공동 변�
 
 ## 로컬 실행
 
-Python 3.12, Git, Docker를 준비한다. 프로젝트 루트 PowerShell에서:
+Python 3.12, Git, Docker(Docker Desktop 실행 중)를 준비한다.
+
+### 원클릭
+
+```powershell
+git clone https://github.com/2k-c-a/gitviz.git
+cd gitviz
+pwsh tools/dev/bootstrap.ps1 -LocalDefaults -Run
+```
+
+`.venv` 생성, 의존성 설치, `.env` 준비, DB·Redis 컨테이너 기동, 마이그레이션까지 하고 `-Run`이면 서버와 worker를 새 창으로 띄운다(`http://localhost:8000`). `-LocalDefaults`는 `.env`를 이번에 새로 만든 경우에만 로컬 compose 주소와 임의 암호화·세션 키를 채운다. 이미 있는 `.env`는 읽거나 고치지 않는다. GitHub OAuth 값은 직접 발급해 `.env`에 넣어야 로그인할 수 있다. 옵션은 `-SkipDocker`, `-SkipMigrate`. 코드 구조는 [최종 디렉터리 구조](docs/architecture/FINAL_DIRECTORY_TREE.md), 개발 환경 전체는 [개발 환경 설정](docs/development/DEVELOPMENT_SETUP.md)을 본다.
+
+### 수동 실행
+
+프로젝트 루트 PowerShell에서:
 
 ```powershell
 python -m venv .venv
