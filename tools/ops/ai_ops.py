@@ -1,11 +1,11 @@
 """AI 기능 운영 도구: 설정 점검·상태 확인·작업 취소·복구·기한 삭제. 사용법과 절차는 docs/operations/ai.md.
 
-    python scripts/ai_ops.py check                     설정·DB(migration)·Redis 점검(문제가 있으면 종료 코드 1)
-    python scripts/ai_ops.py status                    작업·대기열·예산·보관 현황
-    python scripts/ai_ops.py uncertain                 결과를 알 수 없는 호출(예산을 점유 중)
-    python scripts/ai_ops.py resolve <예약id> [--settle 금액]   불명 호출 정리: 금액을 주면 정산, 없으면 해제
-    python scripts/ai_ops.py cancel <작업id>           작업 취소(대기 중이면 즉시, 실행 중이면 취소 접수)
-    python scripts/ai_ops.py maintenance               복구·기한 삭제를 지금 한 번 실행(dispatcher가 주기적으로 같은 일을 한다)
+    python tools/ops/ai_ops.py check                     설정·DB(migration)·Redis 점검(문제가 있으면 종료 코드 1)
+    python tools/ops/ai_ops.py status                    작업·대기열·예산·보관 현황
+    python tools/ops/ai_ops.py uncertain                 결과를 알 수 없는 호출(예산을 점유 중)
+    python tools/ops/ai_ops.py resolve <예약id> [--settle 금액]   불명 호출 정리: 금액을 주면 정산, 없으면 해제
+    python tools/ops/ai_ops.py cancel <작업id>           작업 취소(대기 중이면 즉시, 실행 중이면 취소 접수)
+    python tools/ops/ai_ops.py maintenance               복구·기한 삭제를 지금 한 번 실행(dispatcher가 주기적으로 같은 일을 한다)
 
 DATABASE_URL 등 운영 환경변수가 있는 셸에서 실행한다. 사용자 API key·원문 코드는 출력하지 않는다.
 """
@@ -18,7 +18,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from uuid import UUID
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from sqlalchemy import text  # noqa: E402

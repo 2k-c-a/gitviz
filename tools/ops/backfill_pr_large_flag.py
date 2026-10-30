@@ -10,13 +10,13 @@ pull_request_files에는 GraphQL로 수집한 실제 파일 목록이 이미 들
 다시 호출할 필요 없이 그 실제 개수로 재계산만 하면 된다.
 
 사용법:
-  python scripts/backfill_pr_large_flag.py            # 전체 레포지토리
-  python scripts/backfill_pr_large_flag.py <repo_id>  # 특정 레포지토리만
+  python tools/ops/backfill_pr_large_flag.py            # 전체 레포지토리
+  python tools/ops/backfill_pr_large_flag.py <repo_id>  # 특정 레포지토리만
 """
 
 import sys, os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sqlalchemy import text
 from app.core.database import SessionLocal

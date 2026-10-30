@@ -18,6 +18,7 @@ sys.path.insert(0, str(support.ROOT))
 
 import ai_credential_support as C  # noqa: E402
 import ai_input_support as S  # noqa: E402
+sys.path.insert(0, str(support.ROOT / "tools" / "ops"))
 import ai_ops  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 

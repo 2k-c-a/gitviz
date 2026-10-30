@@ -1,11 +1,11 @@
 """GitViz 데이터 현황 한눈에 보기 (읽기 전용).
 
-사용법: python scripts/show_summary.py [repository_id=1]
+사용법: python tools/ops/show_summary.py [repository_id=1]
 """
 
 import sys, os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sqlalchemy import text
 from app.core.database import SessionLocal

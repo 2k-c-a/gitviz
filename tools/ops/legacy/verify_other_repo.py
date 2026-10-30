@@ -4,12 +4,12 @@ API(create_repository) 흐름을 모사해 Repository/AnalysisJob 행을 만들�
 analyze_repository 태스크를 동기로 호출(.delay 아님)해 파이프라인 전체를 실행한다.
 1회차 = 전체 수집, 2회차 = 같은 URL 증분 (중복 없이 신규만 추가되는지 확인).
 
-사용법: python scripts/verify_other_repo.py <github_url> [--run2]
+사용법: python tools/ops/legacy/verify_other_repo.py <github_url> [--run2]
 """
 
 import sys, os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from sqlalchemy import text
 from app.core.database import SessionLocal

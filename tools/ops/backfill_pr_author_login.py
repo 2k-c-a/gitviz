@@ -5,7 +5,7 @@ REST PR 목록을 다시 페이지네이션하며 pr_number → author_login 매
 
 import sys, os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sqlalchemy import text
 from app.core.database import SessionLocal

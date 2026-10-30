@@ -20,7 +20,7 @@ services:
   # ── AI 작업 처리(선택). `docker compose --profile ai up`으로 실행한다 ─────────────────
   # DB는 .env의 DATABASE_URL을 쓰므로 컨테이너에서 접근 가능한 주소여야 한다(localhost 불가).
   # worker와 dispatcher는 둘 다 필요하다: dispatcher가 없으면 접수된 작업이 대기열로 나가지 않고, worker가 없으면 처리되지 않는다.
-  # 중단되면 작업은 처리권 만료 뒤 유지관리가 정리한다(docs/operations/ai.md). 점검: python scripts/ai_ops.py status
+  # 중단되면 작업은 처리권 만료 뒤 유지관리가 정리한다(docs/operations/ai.md). 점검: python tools/ops/ai_ops.py status
   ai-worker:
     profiles: ["ai"]
     restart: unless-stopped

@@ -1,13 +1,13 @@
 """Identity Resolution 수동 실행.
 
 사용법:
-  python scripts/run_identity_resolution.py <repository_id> [--stage2-limit N | --stage2-full]
+  python tools/ops/run_identity_resolution.py <repository_id> [--stage2-limit N | --stage2-full]
   (기본: 1단계만)
 """
 
 import sys, os, argparse
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sqlalchemy import text
 from app.core.database import SessionLocal

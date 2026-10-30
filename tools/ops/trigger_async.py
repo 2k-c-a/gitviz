@@ -3,12 +3,12 @@
 API의 create_repository 흐름을 모사해 Repository/AnalysisJob 행을 만들고
 analyze_repository.delay()로 큐에 넣는다. worker가 비동기로 실행한다.
 
-사용법: python scripts/trigger_async.py <github_url>
+사용법: python tools/ops/trigger_async.py <github_url>
 """
 
 import sys, os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from app.core.database import SessionLocal
 from app.models.repository import Repository

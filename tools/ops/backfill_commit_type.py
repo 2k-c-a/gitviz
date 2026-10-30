@@ -1,11 +1,11 @@
 """기존 repo의 commit_type 분류 + is_large_commit 백필 (업무지시서 3-2).
 
-사용법: python scripts/backfill_commit_type.py [repository_id=1]
+사용법: python tools/ops/backfill_commit_type.py [repository_id=1]
 """
 
 import sys, os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sqlalchemy import text
 from app.core.database import SessionLocal

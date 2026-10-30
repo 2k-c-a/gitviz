@@ -7,7 +7,7 @@ collect_commits를 전체(full) vs since(증분)로 호출해 읽는 양 차이�
 import sys, os
 from datetime import timedelta
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sqlalchemy import text
 from app.core.database import SessionLocal

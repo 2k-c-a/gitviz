@@ -31,15 +31,15 @@ AI를 켜려면 원문·자격 증명용 서로 다른 암호화 키와 버전, 
 
 | 명령 | 효과 |
 |---|---|
-| `python scripts/ai_ops.py check` | 설정·migration·Redis 점검 |
-| `python scripts/ai_ops.py status` | 대기·만료 lease·outbox·보관 정리 상태 조회 |
-| `python scripts/ai_ops.py uncertain` | 불명 예약 조회 |
-| `python scripts/ai_ops.py resolve <예약UUID>` | 미처리 확인 후 예약 해제, DB 변경 |
-| `python scripts/ai_ops.py resolve <예약UUID> --settle 0.12` | 확인한 비용으로 정산, DB 변경 |
-| `python scripts/ai_ops.py cancel <작업UUID>` | 본인 대신 운영자 취소 기록, DB 변경 |
-| `python scripts/ai_ops.py maintenance` | 복구·만료 정리, DB 변경 |
+| `python tools/ops/ai_ops.py check` | 설정·migration·Redis 점검 |
+| `python tools/ops/ai_ops.py status` | 대기·만료 lease·outbox·보관 정리 상태 조회 |
+| `python tools/ops/ai_ops.py uncertain` | 불명 예약 조회 |
+| `python tools/ops/ai_ops.py resolve <예약UUID>` | 미처리 확인 후 예약 해제, DB 변경 |
+| `python tools/ops/ai_ops.py resolve <예약UUID> --settle 0.12` | 확인한 비용으로 정산, DB 변경 |
+| `python tools/ops/ai_ops.py cancel <작업UUID>` | 본인 대신 운영자 취소 기록, DB 변경 |
+| `python tools/ops/ai_ops.py maintenance` | 복구·만료 정리, DB 변경 |
 
-도구 근거: [ai_ops](../../scripts/ai_ops.py). 조회와 변경 명령을 구분한다. 불명 예약을 자동으로 해제해 미과금으로 단정하지 않는다.
+도구 근거: [ai_ops](../../tools/ops/ai_ops.py). 조회와 변경 명령을 구분한다. 불명 예약을 자동으로 해제해 미과금으로 단정하지 않는다.
 
 ## 멈춤·불명·삭제
 

@@ -1,11 +1,11 @@
 """검증용 repository 삭제 (자식 → 부모 순, 단일 트랜잭션).
 
-사용법: python scripts/cleanup_test_repo.py <repository_id>
+사용법: python tools/ops/cleanup_test_repo.py <repository_id>
 """
 
 import sys, os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from sqlalchemy import text
 from app.core.database import SessionLocal

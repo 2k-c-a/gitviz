@@ -27,3 +27,8 @@
 ## S1 문서·무시 규칙
 - **변경:** `docs/index.md`에 1·2·3·4차 문서 연결, `.gitignore`에 `Claude outputs/`·`/build-output/` 추가, 추적 중이던 `Claude outputs` 1개 추적 해제(디스크 파일 유지), `FILE_MIGRATION_CANDIDATES.md`에 3차 대체 안내, 데이터 경로 정정, 1~3차 문서 15개 추가.
 - **테스트:** 문서 검사 전부 통과(도달 가능 페이지 104).
+
+## S2 운영 도구 이동 (`scripts/` → `tools/ops`, `tools/ops/legacy`)
+- **변경:** 29개 파일 `git mv`(운영 18, legacy 11). 루트 계산(`dirname` 중첩/`parents[N]`)을 깊이에 맞게 수정, 사용법 문구의 경로 갱신. `test_ai_ops.py`는 `tools/ops`를 `sys.path`에 추가. 참조 수정: `docker-compose.yml` 주석, `docs/operations/ai.md`, `docs/architecture/repository-access-and-snapshots.md`, `app/tasks/analyze_repository.py` 주석.
+- **테스트:** 29개 전부 컴파일 OK(실행 없음, 운영 DB 대상 도구 포함), 루트 계산 결과가 저장소 루트와 일치, `tools/ops/ai_ops.py status`를 일회용 테스트 DB에 실행(읽기 전용) 정상, `test_ai_ops` 7개 통과, 문서 검사 통과.
+- **오류:** 없음.

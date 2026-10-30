@@ -1,6 +1,6 @@
 """Compare snapshot SQL plans on real data without saving results or changing DB settings.
 
-Example: python scripts/verify_analysis_sql.py --repository-id 14 --compare-ref HEAD
+Example: python tools/ops/legacy/verify_analysis_sql.py --repository-id 14 --compare-ref HEAD
 Each query has a transaction-local timeout. Both builds see the same DB snapshot,
 Git target, time window, and formulas; only SnapshotInput's SQL scoping differs.
 """
@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 from sqlalchemy import text

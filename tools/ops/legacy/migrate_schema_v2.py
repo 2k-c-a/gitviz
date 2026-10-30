@@ -6,7 +6,7 @@
 - 전체가 단일 트랜잭션: 실패 시 롤백
 """
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from sqlalchemy import text
 from app.core.database import SessionLocal

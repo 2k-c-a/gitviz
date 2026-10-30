@@ -33,11 +33,11 @@ analysis_end=2026-07-01T00:00:00+09:00
 
 ```powershell
 python -m alembic upgrade head
-python scripts/backfill_analysis_snapshots.py
-python scripts/backfill_analysis_snapshots.py --apply
+python tools/ops/backfill_analysis_snapshots.py
+python tools/ops/backfill_analysis_snapshots.py --apply
 ```
 
-기본 실행은 [스크립트의 옵션·보고](../../scripts/backfill_analysis_snapshots.py)를 확인한다. `--apply`는 DB에 쓴다. 이름 기반 기존 clone은 origin을 검증하고 주소가 다르면 `verified_clone_required`로 남긴다. 임의 clone을 다른 저장소에 대응시키지 않는다.
+기본 실행은 [스크립트의 옵션·보고](../../tools/ops/backfill_analysis_snapshots.py)를 확인한다. `--apply`는 DB에 쓴다. 이름 기반 기존 clone은 origin을 검증하고 주소가 다르면 `verified_clone_required`로 남긴다. 임의 clone을 다른 저장소에 대응시키지 않는다.
 
 - `--offline-existing-data`: 외부 GitHub 확인 없이 기존 DB·clone으로 처리하는 유지보수 옵션이다. 공개 여부·사용자 권한을 갱신하지 않으며 HTTP의 현재 접근 검사는 유지한다.
 - `--repair-hashes`: 기존 결과를 덮어쓰는 대신 새 해시 형식의 snapshot을 추가한다.
