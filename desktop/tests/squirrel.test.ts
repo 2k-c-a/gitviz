@@ -88,7 +88,7 @@ function fakeLaunch() {
 }
 const removal = { updateExe: update, args: ['--removeShortcut', 'GitVizWorkspace.exe'] };
 
-test('uninstall removes the shortcut, then schedules a one-shot task outside our process tree, then finishes', () => {
+test('uninstall removes the shortcut, then starts the helper through WMI outside our process tree, then finishes', () => {
   const plan = cleanupPlan(exec, present)!;
   const { calls, launch, log, write, logged, written } = fakeLaunch(); let done = 0;
   runSquirrel({ ...removal, cleanup: plan }, () => { done++; }, launch, log, write);
@@ -97,21 +97,39 @@ test('uninstall removes the shortcut, then schedules a one-shot task outside our
   assert.equal(written.length, 1, 'the script is written once');
   assert.ok(written[0].path.toLowerCase().endsWith(`\\${CLEANUP_SCRIPT}`.toLowerCase()));
   assert.equal(written[0].text, `\uFEFF${plan.script}`);
-  assert.equal(calls.length, 2); assert.equal(done, 0, 'not finished before the task exists');
+  assert.equal(calls.length, 2); assert.equal(done, 0, 'not finished before the helper exists');
   const create = calls[1];
+  assert.match(create.file, /System32\\WindowsPowerShell\\v1\.0\\powershell\.exe$/);
+  assert.deepEqual(create.args.slice(0, 6), ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass']);
+  assert.equal(create.args[6], '-Command');
+  const script = create.args[7];
+  assert.ok(script.includes('Invoke-CimMethod -ClassName Win32_Process -MethodName Create'));
+  assert.ok(script.includes(`-File "${written[0].path}"`) && /powershell\.exe" -NoProfile -NonInteractive -WindowStyle Hidden/.test(script));
+  assert.doesNotMatch(script, /EncodedCommand/);
+  create.child.emit('close', 0);
+  assert.equal(calls.length, 2, 'no scheduled task when WMI worked'); assert.equal(done, 1);
+  assert.match(logged.join('|'), /cleanup planned.*wmi Win32_Process\.Create exit 0/);
+  assert.equal(calls.every(call => call.options.detached !== true || call.file === update), true, 'no detached helper of ours');
+});
+
+test('when WMI is refused the one-shot scheduled task is the fallback', () => {
+  const plan = cleanupPlan(exec, present)!;
+  const { calls, launch, log, write, logged } = fakeLaunch(); let done = 0;
+  runSquirrel({ ...removal, cleanup: plan }, () => { done++; }, launch, log, write);
+  calls[0].child.emit('close', 0);
+  calls[1].child.emit('close', 3);
+  assert.equal(calls.length, 3); assert.equal(done, 0, 'not finished before the task exists');
+  const create = calls[2];
   assert.match(create.file, /System32\\schtasks\.exe$/);
   assert.deepEqual(create.args.slice(0, 3), ['/Create', '/TN', CLEANUP_TASK]);
   assert.deepEqual(create.args.slice(5), ['/SC', 'ONCE', '/ST', '00:00', '/F']);
   const command = create.args[create.args.indexOf('/TR') + 1];
   assert.ok(command.length <= 260, 'schtasks /TR limit');
-  assert.ok(command.includes(`-File "${written[0].path}"`) && /powershell\.exe" -NoProfile -NonInteractive -WindowStyle Hidden/.test(command));
-  assert.doesNotMatch(command, /EncodedCommand/);
   create.child.emit('close', 0);
-  assert.equal(calls.length, 3); assert.deepEqual(calls[2].args, ['/Run', '/TN', CLEANUP_TASK]); assert.equal(done, 0);
-  calls[2].child.emit('close', 0);
+  assert.equal(calls.length, 4); assert.deepEqual(calls[3].args, ['/Run', '/TN', CLEANUP_TASK]); assert.equal(done, 0);
+  calls[3].child.emit('close', 0);
   assert.equal(done, 1);
-  assert.match(logged.join('|'), /cleanup planned.*schtasks \/Create exit 0.*schtasks \/Run exit 0/);
-  assert.equal(calls.every(call => call.options.detached !== true || call.file === update), true, 'no detached helper of ours');
+  assert.match(logged.join('|'), /wmi Win32_Process\.Create exit 3.*schtasks \/Create exit 0.*schtasks \/Run exit 0/);
 });
 
 test('a failing shortcut removal still schedules the cleanup; other events schedule nothing', () => {
@@ -119,7 +137,7 @@ test('a failing shortcut removal still schedules the cleanup; other events sched
   const failing = fakeLaunch(); let done = 0;
   runSquirrel({ ...removal, cleanup: plan }, () => { done++; }, failing.launch, failing.log, failing.write);
   failing.calls[0].child.emit('error', new Error('spawn failed'));
-  assert.equal(failing.calls.length, 2); assert.equal(failing.calls[1].args[0], '/Create');
+  assert.equal(failing.calls.length, 2); assert.match(failing.calls[1].file, /powershell\.exe$/);
   const install = fakeLaunch(); done = 0;
   runSquirrel({ updateExe: update, args: ['--createShortcut', 'GitVizWorkspace.exe'] }, () => { done++; }, install.launch, install.log, install.write);
   install.calls[0].child.emit('close', 0);
@@ -147,18 +165,20 @@ test('every way the scheduling can fail is logged and still lets the uninstall f
   runSquirrel({ ...removal, cleanup: plan }, () => { done++; }, refused.launch, refused.log, refused.write);
   refused.calls[0].child.emit('close', 0);
   refused.calls[1].child.emit('close', 1);
-  assert.equal(refused.calls.length, 2, 'no /Run when /Create failed'); assert.equal(done, 1);
+  refused.calls[2].child.emit('close', 1);
+  assert.equal(refused.calls.length, 3, 'no /Run when /Create failed'); assert.equal(done, 1);
   assert.match(refused.logged.join('|'), /schtasks \/Create exit 1/);
 
   const broken = fakeLaunch(); done = 0;
   runSquirrel({ ...removal, cleanup: plan }, () => { done++; }, broken.launch, broken.log, broken.write);
   broken.calls[0].child.emit('close', 0);
-  broken.calls[1].child.emit('error', new Error('no schtasks'));
+  broken.calls[1].child.emit('error', new Error('no powershell'));
+  broken.calls[2].child.emit('error', new Error('no schtasks'));
   assert.equal(done, 1); assert.match(broken.logged.join('|'), /failed to start: no schtasks/);
 
   const throwing = fakeLaunch(); done = 0;
   const updater = new FakeChild();
-  const launch = ((file: string) => { if (/schtasks/i.test(file)) throw new Error('blocked'); return updater; }) as unknown as typeof spawn;
+  const launch = ((file: string) => { if (/powershell|schtasks/i.test(file)) throw new Error('blocked'); return updater; }) as unknown as typeof spawn;
   runSquirrel({ ...removal, cleanup: plan }, () => { done++; }, launch, throwing.log, throwing.write);
   updater.emit('close', 0);
   assert.equal(done, 1); assert.match(throwing.logged.join('|'), /could not be launched: blocked/);

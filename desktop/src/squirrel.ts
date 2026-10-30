@@ -100,7 +100,8 @@ const defaultLog = (line: string): void => {
 
 /**
  * Squirrel's Update.exe waits for every process the uninstall hook starts, so any helper we start ourselves (detached, `cmd start`, ...)
- * is waited for by the very process it is waiting for. A one-shot scheduled task is started by the Task Scheduler service instead, outside that tree.
+ * is waited for by the very process it is waiting for. The helper is therefore started by another service, outside that tree: WMI first (works without
+ * an interactive logon, which an unattended uninstall does not have), a one-shot scheduled task if WMI is refused (only runs while the user is logged on).
  */
 function scheduleCleanup(cleanup: CleanupPlan, launch: typeof spawn, log: (line: string) => void, write: (path: string, text: string) => void, next: () => void): void {
   const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
@@ -111,16 +112,24 @@ function scheduleCleanup(cleanup: CleanupPlan, launch: typeof spawn, log: (line:
   if (!SAFE_ROOT.test(scriptPath) || command.length > 260) { log(`cleanup not scheduled: unsuitable script path (${scriptPath.length} characters)`); next(); return; }
   try { write(scriptPath, `\uFEFF${cleanup.script}`); } catch (error) { log(`cleanup script could not be written: ${error instanceof Error ? error.message : String(error)}`); next(); return; }
   const schtasks = win32.join(systemRoot, 'System32', 'schtasks.exe');
-  const run = (args: string[], then: (code: number | null) => void): void => {
+  const run = (file: string, label: string, args: string[], then: (code: number | null) => void): void => {
     let ended = false;
-    const end = (code: number | null): void => { if (ended) return; ended = true; log(`schtasks ${args[0]} exit ${code}`); then(code); };
+    const end = (code: number | null): void => { if (ended) return; ended = true; log(`${label} exit ${code}`); then(code); };
     try {
-      const child = launch(schtasks, args, { stdio: 'ignore', windowsHide: true, cwd: systemRoot });
-      child.once('error', error => { log(`schtasks ${args[0]} failed to start: ${error.message}`); end(null); });
+      const child = launch(file, args, { stdio: 'ignore', windowsHide: true, cwd: systemRoot });
+      child.once('error', error => { log(`${label} failed to start: ${error.message}`); end(null); });
       child.once('close', end);
-    } catch (error) { log(`schtasks ${args[0]} could not be launched: ${error instanceof Error ? error.message : String(error)}`); end(null); }
+    } catch (error) { log(`${label} could not be launched: ${error instanceof Error ? error.message : String(error)}`); end(null); }
   };
-  run(['/Create', '/TN', CLEANUP_TASK, '/TR', command, '/SC', 'ONCE', '/ST', '00:00', '/F'], code => { if (code === 0) run(['/Run', '/TN', CLEANUP_TASK], () => next()); else next(); });
+  // Fallback: a one-shot task. It only runs while the user has an interactive logon, so it is not enough for an unattended uninstall.
+  const viaTaskScheduler = (): void => {
+    run(schtasks, 'schtasks /Create', ['/Create', '/TN', CLEANUP_TASK, '/TR', command, '/SC', 'ONCE', '/ST', '00:00', '/F'],
+      code => { if (code === 0) run(schtasks, 'schtasks /Run', ['/Run', '/TN', CLEANUP_TASK], () => next()); else next(); });
+  };
+  // Preferred: WMI creates the helper through the WMI service, so it is outside this process tree and needs no interactive session.
+  const wmi = `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '${command.replaceAll("'", "''")}' }; if ($r.ReturnValue -ne 0 -or -not $r.ProcessId) { exit 3 }`;
+  run(powershell, 'wmi Win32_Process.Create', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-Command', wmi],
+    code => { if (code === 0) next(); else viaTaskScheduler(); });
 }
 
 export function runSquirrel(action: SquirrelAction, done: () => void, launch: typeof spawn = spawn, log: (line: string) => void = defaultLog, write: (path: string, text: string) => void = (path, text) => writeFileSync(path, text, 'utf8')): void {
