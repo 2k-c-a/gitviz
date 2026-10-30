@@ -38,7 +38,8 @@ if (typeof Chart !== 'undefined') {
   window.addEventListener('gitviz-theme-changed', () => {
     for (const chart of Object.values(Chart.instances)) {
       // Apply before update resolves dataset options, so painted elements change too.
-      themeSeries(chart); chart.update('none');
+      // 'none' would leave Chart.js's cached shared element options (e.g. bar colours) at the old theme; 'resize' refreshes them without animating.
+      themeSeries(chart); chart.update('resize');
     }
   });
 }

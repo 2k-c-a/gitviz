@@ -29,7 +29,7 @@ const output = join(__dirname, '../../../.validation/phase4');
 const checks: { name: string; passed: boolean; detail?: unknown }[] = [];
 let releaseUsage: (() => void) | null = null;
 let releaseJob: (() => void) | null = null, jobViews = 0;
-let usageDelay = false, invalidKey = false, stress = false, emptyData = false, emptyReview = false;
+let usageDelay = false, invalidKey = false, stress = false, emptyData = false, emptyReview = false, richCharts = false;
 let searchStatus = 200, snapshotStatus = 200, jobStatus = 'succeeded', analysisStatus = 'done';
 let pageRequests = 0;
 let blankSearch = false;
@@ -80,8 +80,10 @@ const http: Http = async (path, method, _body, givenToken) => {
   else if (p === '/repositories/2') body = repo;
   else if (p.endsWith('/analytics/snapshot')) body = { snapshot, data_quality: { commit_count: 1, contributor_count: 1 } };
   else if (p.endsWith('/summary')) body = { repository: repo, total_commits: 1, total_contributors: 1, commits_30d: 1, active_contributors_90d: 1, total_releases: 0, bugfix_pct: 0 };
+  else if (p.endsWith('/timeline') && richCharts) body = { months: ['2026-03', '2026-04', '2026-05'], commits: [3, 5, 2], active_contributors: [1, 2, 2], bugfix_pct: [0, 20, 10] };
   else if (p.endsWith('/timeline')) body = { months: ['2026-05'], commits: [1], active_contributors: [1], bugfix_pct: [0] };
   else if (p.endsWith('/commit-types') && typeFailure) return { status: 503, body: { detail: 'fixture temporary error' }, headers: {} };
+  else if (p.endsWith('/commit-types') && richCharts) body = { types: ([['feature', 10], ['refactor', 3], ['bugfix', 5], ['docs', 2], ['chore', 1], ['other', 1]] as [string, number][]).map(([type, count]) => ({ type, count, pct: count * 100 / 22 })) };
   else if (p.endsWith('/commit-types')) body = { types: [{ type: 'feature', count: 1, pct: 100 }] };
   else if (p.endsWith('/contributor-heatmap')) body = { weeks: [], contributors: [] };
   else if (p.endsWith('/top-contributors')) body = { contributors: [{ id: 1, github_login: 'Fixture', commit_count: 1 }] };
@@ -144,8 +146,10 @@ void app.whenReady().then(async () => {
     for (let i = 0; i < 180; i++) { if (await window.webContents.executeJavaScript(expression)) return; await new Promise(resolve => setTimeout(resolve, 25)); }
     throw new Error(`${phase}: ${expression}`);
   }
-  async function check(name: string, expression: string) {
-    const passed = !!await window.webContents.executeJavaScript(expression); checks.push({ name, passed });
+  // `detail` is only evaluated when the check fails, so a flaky failure reports what the page actually held.
+  async function check(name: string, expression: string, detail?: string) {
+    const passed = !!await window.webContents.executeJavaScript(expression);
+    checks.push({ name, passed, ...(!passed && detail ? { detail: JSON.stringify(await window.webContents.executeJavaScript(detail)) } : {}) });
   }
   async function clickText(text: string) {
     await window.webContents.executeJavaScript(`(() => { const b = [...document.querySelectorAll('button,a')].find(e => e.textContent.trim() === ${JSON.stringify(text)} && e.getClientRects().length); if(!b) throw new Error('missing action'); b.click(); })()`);
@@ -197,7 +201,13 @@ void app.whenReady().then(async () => {
     await check('A analysis failure offers retry and previous successful result', `!!document.querySelector('#modal-footer [data-action="retryJob"]') && !!document.querySelector('#modal-footer [data-action="viewLastSuccess"]')`);
     await window.webContents.executeJavaScript(`document.querySelector('#modal-footer [data-action="viewLastSuccess"]').click()`);await wait(`location.pathname.endsWith('/overview.html') && location.search.includes('snapshot=7')`);analysisStatus='done';
     await load('overview'); await wait(`!!document.querySelector('#overview-trend canvas') && document.querySelector('#overview-files button')`);
-    await capture('overview-900-dark.png',900,640,'dark'); await check('dark chart axis title uses readable theme text', `Chart.getChart(document.querySelector('#overview-trend canvas')).options.scales.y.title.color===getComputedStyle(document.documentElement).getPropertyValue('--ui-muted').trim()`); await capture('overview-1920-light.png',1920,1080,'light'); await check('rendered chart bars follow theme switch', `Chart.getChart(document.querySelector('#overview-trend canvas')).getDatasetMeta(0).data[0].options.backgroundColor===getComputedStyle(document.documentElement).getPropertyValue('--chart-1').trim()`);
+    // Chart.js caches shared element options and only refreshes them on non-direct updates, so a theme switch must not depend on a later resize.
+    const trendBar = `(() => { const c = Chart.getChart(document.querySelector('#overview-trend canvas')); return { theme: document.documentElement.dataset.theme, rendered: c.getDatasetMeta(0).data.map(bar => bar.options.backgroundColor), token: getComputedStyle(document.documentElement).getPropertyValue('--chart-1').trim() }; })()`;
+    for (const theme of ['dark', 'light', 'dark']) {
+      await window.webContents.executeJavaScript(`document.getElementById('shell-theme').value=${JSON.stringify(theme)};document.getElementById('shell-theme').dispatchEvent(new Event('change'))`);
+      await check(`bar chart follows a switch to ${theme} without any resize`, `(() => { const v = ${trendBar}; return v.theme === ${JSON.stringify(theme)} && v.rendered.length > 0 && v.rendered.every(color => color === v.token); })()`, trendBar);
+    }
+    await capture('overview-900-dark.png',900,640,'dark'); await check('dark chart axis title uses readable theme text', `Chart.getChart(document.querySelector('#overview-trend canvas')).options.scales.y.title.color===getComputedStyle(document.documentElement).getPropertyValue('--ui-muted').trim()`); await capture('overview-1920-light.png',1920,1080,'light'); await check('rendered chart bars follow theme switch', `Chart.getChart(document.querySelector('#overview-trend canvas')).getDatasetMeta(0).data[0].options.backgroundColor===getComputedStyle(document.documentElement).getPropertyValue('--chart-1').trim()`, `(() => { const c = Chart.getChart(document.querySelector('#overview-trend canvas')); return { theme: document.documentElement.dataset.theme, rendered: c.getDatasetMeta(0).data.map(bar => bar.options.backgroundColor), dataset: c.data.datasets[0].backgroundColor, token: getComputedStyle(document.documentElement).getPropertyValue('--chart-1').trim() }; })()`);
     await window.webContents.executeJavaScript(`document.querySelector('#overview-contributors button').click()`); await wait(`document.getElementById('dd-title').textContent==='Fixture'`);
     await window.webContents.executeJavaScript(`document.querySelector('[data-action="__ddPushFile"]').click()`); await wait(`document.getElementById('dd-title').textContent==='fixture.ts'`);
     await window.webContents.executeJavaScript(`document.querySelector('#dd-body [data-action="__ddPushContributor"]').click()`);await wait(`document.getElementById('dd-title').textContent==='Fixture'`);
@@ -254,6 +264,31 @@ void app.whenReady().then(async () => {
     checks.push({name:'E PR → selected files → preview → consent → result',passed:true});
     emptyData=true; await load('overview'); await wait(`document.getElementById('overview-contributors').textContent.includes('표시할 데이터가 없습니다')`); await check('zero and unavailable ratio are distinct', `document.getElementById('overview-kpis').textContent.includes('0개') && document.getElementById('overview-kpis').textContent.includes('—')`); await capture('overview-empty-600-dark.png',600,400,'dark');
     await load('timeline'); await wait(`document.getElementById('tl-window-note').textContent.includes('월별') && !!document.querySelector('.analysis-toolbar select')`); await check('empty activity hides meaningless plot axes', `document.getElementById('chart-timeline').parentElement.hidden && !Chart.getChart('chart-timeline')`); await capture('activity-empty-1280-light.png',1280,800,'light'); emptyData=false;
+    // The other charts that share the theme update path: activity bar/line (three metrics, two colour indexes) and the doughnut.
+    // Themes are switched with no resize in between; expected colours come from the CSS tokens, not from the implementation.
+    richCharts = true; await load('timeline');
+    const tok = (name: string) => `getComputedStyle(document.documentElement).getPropertyValue('${name}').trim()`;
+    const switchTheme = (theme: string) => window.webContents.executeJavaScript(`document.getElementById('shell-theme').value=${JSON.stringify(theme)};document.getElementById('shell-theme').dispatchEvent(new Event('change'))`);
+    const timelineState = (color: number) => `(() => { const c = Chart.getChart('chart-timeline'); const meta = c.getDatasetMeta(0); const line = c.config.type === 'line'; return { type: c.config.type, theme: document.documentElement.dataset.theme, token: ${tok(`--chart-${color}`)}, scaleTitle: c.options.scales.y.title.color, muted: ${tok('--ui-muted')}, bars: line ? [] : meta.data.map(e => e.options.backgroundColor), line: line ? meta.dataset.options.borderColor : null, points: line ? meta.data.map(e => e.options.backgroundColor + '/' + e.options.borderColor) : [] }; })()`;
+    const timelineOk = (color: number, type: string, theme: string) => `(() => { const v = ${timelineState(color)}; return v.type === ${JSON.stringify(type)} && v.theme === ${JSON.stringify(theme)} && v.scaleTitle === v.muted && (v.type === 'bar' ? v.bars.length === 3 && v.bars.every(c => c === v.token) : v.line === v.token && v.points.length === 3 && v.points.every(c => c === v.token + '/' + v.token)); })()`;
+    const donutState = `(() => { const c = Chart.getChart('chart-donut'); const order = { '기능 추가': 1, '리팩토링': 4, '버그 픽스': 2, '문서': 5, '잡무': 3, '기타': 6 }; return { theme: document.documentElement.dataset.theme, expected: c.data.labels.map(label => ${tok("--chart-' + order[label] + '")}), rendered: c.getDatasetMeta(0).data.map(arc => arc.options.backgroundColor) }; })()`;
+    const donutOk = (theme: string) => `(() => { const v = ${donutState}; return v.theme === ${JSON.stringify(theme)} && v.rendered.length === 6 && v.rendered.every((color, i) => color === v.expected[i]); })()`;
+    await wait(`!!Chart.getChart('chart-timeline') && Chart.getChart('chart-timeline').getDatasetMeta(0).data.length === 3 && !!Chart.getChart('chart-donut') && Chart.getChart('chart-donut').getDatasetMeta(0).data.length === 6`);
+    // Let the doughnut's entrance animation finish before switching, so only the theme switch is measured.
+    await wait(`(() => { const c = Chart.getChart('chart-donut'); const t = n => ${tok("--chart-' + n + '")}; const order = { '기능 추가': 1, '리팩토링': 4, '버그 픽스': 2, '문서': 5, '잡무': 3, '기타': 6 }; return c.getDatasetMeta(0).data.every((arc, i) => arc.options.backgroundColor === t(order[c.data.labels[i]])); })()`);
+    for (const [metric, type, color] of [['commits', 'bar', 1], ['active_contributors', 'line', 2], ['bugfix_pct', 'line', 4]] as const) {
+      await window.webContents.executeJavaScript(`(() => { const s = document.querySelector('select[aria-label="월별 지표"]'); s.value = ${JSON.stringify(metric)}; s.dispatchEvent(new Event('change')); })()`);
+      await wait(`Chart.getChart('chart-timeline')?.config.type === ${JSON.stringify(type)} && Chart.getChart('chart-timeline').getDatasetMeta(0).data.length === 3`);
+      for (const theme of ['dark', 'light', 'dark', 'light']) {
+        await switchTheme(theme);
+        await check(`activity ${type} chart (${metric}) follows a switch to ${theme} without any resize`, timelineOk(color, type, theme), timelineState(color));
+      }
+    }
+    for (const theme of ['dark', 'light', 'dark', 'light']) {
+      await switchTheme(theme);
+      await check(`activity doughnut slices follow a switch to ${theme} without any resize`, donutOk(theme), donutState);
+    }
+    richCharts = false;
     writeFileSync(join(output,'ux-results.json'),JSON.stringify({fixtureOnly:true,checks},null,2));
     checks.forEach(c=>process.stdout.write(`${c.passed?'PASS':'FAIL'} ${c.name}${c.detail===undefined?'':` (${c.detail})`}\n`));
     if(checks.some(c=>!c.passed)) throw new Error('UX checks failed; see ux-results.json');
