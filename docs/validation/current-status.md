@@ -10,13 +10,13 @@
 
 | 명령 | 결과 | 의미·한계 |
 |---|---|---|
-| `venv/Scripts/python.exe -B scripts/test_ai_contracts.py` | 29개 통과, exit 0 | DTO·fixture·DB guard, 실제 DB·인증 아님 |
-| `venv/Scripts/python.exe -B scripts/test_analytics_calculations.py` | 11개 통과, exit 0 | 실제 함수/SQL의 SQLite·분리 실행, 운영 PG 아님 |
-| `venv/Scripts/python.exe -B scripts/test_metric_policy.py` | 12개 통과, exit 0 | 정책·결측·구간·정렬, 순위 정확도 아님 |
-| `node scripts/test_ai_frontend.cjs` | 38/38 통과, exit 0 | URL·API wrapper·상태·polling, 실제 브라우저 DOM 아님 |
-| `node scripts/test_metric_display.cjs` | 통과, exit 0 | 지표 집계·설명 순수 회귀 |
-| `node scripts/test_viz_modules.cjs` | 통과, exit 0 | viz-state·fmt·policy·poll 순수 회귀 |
-| `venv/Scripts/python.exe -B scripts/evaluate_ai_review.py --check-release` | exit 1, 미완료 4개 | 실제 final 사례 없음, criteria 미합의, needs_human_curation, 최종 모델 평가 미실행 |
+| `venv/Scripts/python.exe -B tests/server/test_ai_contracts.py` | 29개 통과, exit 0 | DTO·fixture·DB guard, 실제 DB·인증 아님 |
+| `venv/Scripts/python.exe -B tests/server/test_analytics_calculations.py` | 11개 통과, exit 0 | 실제 함수/SQL의 SQLite·분리 실행, 운영 PG 아님 |
+| `venv/Scripts/python.exe -B tests/server/test_metric_policy.py` | 12개 통과, exit 0 | 정책·결측·구간·정렬, 순위 정확도 아님 |
+| `node tests/frontend/test_ai_frontend.cjs` | 38/38 통과, exit 0 | URL·API wrapper·상태·polling, 실제 브라우저 DOM 아님 |
+| `node tests/frontend/test_metric_display.cjs` | 통과, exit 0 | 지표 집계·설명 순수 회귀 |
+| `node tests/frontend/test_viz_modules.cjs` | 통과, exit 0 | viz-state·fmt·policy·poll 순수 회귀 |
+| `venv/Scripts/python.exe -B tests/server/evaluate_ai_review.py --check-release` | exit 1, 미완료 4개 | 실제 final 사례 없음, criteria 미합의, needs_human_curation, 최종 모델 평가 미실행 |
 | migration AST 그래프 검사 | head `a9d2f4c6e8b0` 1개, 누락 부모 없음 | 파일 의존 구조만 확인, DB upgrade 실행 아님 |
 | 기존 Markdown 상대 링크 검사 | 41건 대상 파일 존재 | 일반 링크 대상, 외부·모든 anchor·prose 참조 의미 제외 |
 | `python -B docs/audit/check_documents.py` | 원본 31개 보존·인벤토리 31개·새 문서 17개 도달·링크/앵커 253건 통과, exit 0 | CI·배포·의미 정확도 대체 아님 |
@@ -34,7 +34,7 @@
 |---|---|
 | `python -B docs/audit/check_documents.py` | 원문 31개 해시·이동표·인벤토리, Markdown 49개 도달성, 로컬 링크/앵커 409건 통과 |
 | `python -B docs/audit/test_check_documents.py` | 원문 변조·누락·잘못된 이동표·이전 경로 잔류·현재 경로 누락·anchor·고립 문서 등 10개 통과 |
-| `python -B scripts/test_validation_reports.py` | reports/validation의 고유 출력명·payload 보존·덮어쓰기 방지·경로 탈출 거부 3개 통과 |
+| `python -B tests/server/test_validation_reports.py` | reports/validation의 고유 출력명·payload 보존·덮어쓰기 방지·경로 탈출 거부 3개 통과 |
 | 변경 Python AST·Git diff 검사 | Python 10개 문법 통과, 문서 참조 수정 3개의 실행 AST 동일, diff 공백 검사 통과. 앱 import·DB 연결 없음 |
 
 검사 도구는 최종 문서를 대상으로 재실행한다. 과거 17개/253건은 추가 작성 단계 결과이며 현재 폴더의 총 문서·링크 수가 아니다. 테스트는 작업 공간의 전용 `.validation` 경로를 TEMP/TMP로 사용해 새 임시 fixture만 정리했다. workflow에 문서 검사 job을 추가했지만 원격 실행은 미확인이다. 실제 DB 검증 스크립트는 실행하지 않고 결과 출력 경로만 바꿨다.

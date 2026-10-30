@@ -31,9 +31,9 @@
 ## 검증
 
 ```text
-python scripts/test_analytics_calculations.py
-python scripts/test_metric_policy.py
-node scripts/test_metric_display.cjs
+python tests/server/test_analytics_calculations.py
+python tests/server/test_metric_policy.py
+node tests/frontend/test_metric_display.cjs
 ```
 
 `test_analytics_calculations.py`는 운영 DB 연결 없이 실제 분석 함수와 공동 수정 SQL을 실행한다. SQLite 표본 데이터로 집계 의미를 확인하며, PostgreSQL 운영 DB 통합 검증을 대체하지 않는다. `test_metric_display.cjs`는 DOM 없이 프론트 집계와 지표 설명을 검증한다.

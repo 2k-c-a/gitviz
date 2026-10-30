@@ -9,7 +9,7 @@ Repository 루트에서 표준 Python으로 실행한다.
 ```powershell
 python -B docs/audit/check_documents.py
 python -B docs/audit/test_check_documents.py
-python -B scripts/test_validation_reports.py
+python -B tests/server/test_validation_reports.py
 ```
 
 첫 검사는 쓰기·앱 import·.env·DB·네트워크 없이 다음을 확인한다.
@@ -28,13 +28,13 @@ python -B scripts/test_validation_reports.py
 
 ```powershell
 $env:PYTHONIOENCODING='utf-8'
-python -B scripts/test_ai_contracts.py
-python -B scripts/test_analytics_calculations.py
-python -B scripts/test_metric_policy.py
-node scripts/test_ai_frontend.cjs
-node scripts/test_metric_display.cjs
-node scripts/test_viz_modules.cjs
-python -B scripts/evaluate_ai_review.py --check-release
+python -B tests/server/test_ai_contracts.py
+python -B tests/server/test_analytics_calculations.py
+python -B tests/server/test_metric_policy.py
+node tests/frontend/test_ai_frontend.cjs
+node tests/frontend/test_metric_display.cjs
+node tests/frontend/test_viz_modules.cjs
+python -B tests/server/evaluate_ai_review.py --check-release
 ```
 
 실제 환경은 [현재 상태](../current-status.md)에 남긴다. 제품 코드가 바뀌지 않은 영역의 과거 실행을 이번 재실행으로 보고하지 않는다. 출시 점검의 exit 1은 미완료를 뜻하며 기준·정답을 임의로 채워 통과시키지 않는다.
@@ -43,12 +43,12 @@ python -B scripts/evaluate_ai_review.py --check-release
 
 | 층 | 도구·사례 | 완료 조건 |
 |---|---|---|
-| PG 설치·개인 API | [backend](../../../scripts/test_backend_improvements.py), [AI schema](../../../scripts/test_ai_schema.py), [AI API](../../../scripts/test_ai_api.py) | 전용 DB 빈 설치·upgrade·보존, owner·CSRF·동시성·기한 |
+| PG 설치·개인 API | [backend](../../../tests/server/test_backend_improvements.py), [AI schema](../../../tests/server/test_ai_schema.py), [AI API](../../../tests/server/test_ai_api.py) | 전용 DB 빈 설치·upgrade·보존, owner·CSRF·동시성·기한 |
 | 공유 | test_ai_api의 SharedRead와 실제 인증 | 공개 read와 조직 구성원의 차이, owner 쓰기 제한, 원문 비공개, 메모·삭제·만료·권한 회수 |
-| 큐·장애 | [queue](../../../scripts/test_ai_queue_integration.py), [MVP integration](../../../scripts/verify_ai_mvp_integration.py) | 전용 PG·Redis·별도 worker/dispatcher, 응답 유실·불명·취소·원문 삭제 |
-| snapshot·수집 | [snapshot](../../../scripts/test_repository_snapshots.py), [live](../../../scripts/verify_live_repository.py) | SHA·해시·분모·페이지·반복 수집 구분 |
+| 큐·장애 | [queue](../../../tests/server/test_ai_queue_integration.py), [MVP integration](../../../tests/server/verify_ai_mvp_integration.py) | 전용 PG·Redis·별도 worker/dispatcher, 응답 유실·불명·취소·원문 삭제 |
+| snapshot·수집 | [snapshot](../../../tests/server/test_repository_snapshots.py), [live](../../../tests/server/verify_live_repository.py) | SHA·해시·분모·페이지·반복 수집 구분 |
 | 브라우저 | 실제 앱·모의 서버 | URL·선택·공유 혼입, 동의·키·오류·XSS·모바일 |
-| 모델 | [평가 절차](ai-evaluation.md)·[manifest](../../../scripts/fixtures/ai/evaluation_manifest.json) | 사전 기준·사람 정답·조정/최종 분리, 품질·비용·coverage·한계 |
+| 모델 | [평가 절차](ai-evaluation.md)·[manifest](../../../tests/server/fixtures/ai/evaluation_manifest.json) | 사전 기준·사람 정답·조정/최종 분리, 품질·비용·coverage·한계 |
 
 전용 DB 이름은 gitviz_test로 시작해야 한다. 큐 통합은 테스트 Redis DB를 비우므로 운영 Redis를 쓰지 않는다. 실제 모델 호출은 별도 예산·자료·동의·실행 기록으로 구분한다. 신규 일반 검증 결과의 기본 위치는 reports/validation이며 과거 JSON을 덮어쓰지 않는다.
 

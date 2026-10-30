@@ -12,7 +12,7 @@ jobs:
           python-version: '3.12'
       - run: python -B docs/audit/check_documents.py
       - run: python -B docs/audit/test_check_documents.py
-      - run: python -B scripts/test_validation_reports.py
+      - run: python -B tests/server/test_validation_reports.py
   postgres:
     runs-on: ubuntu-latest
     services:
@@ -41,39 +41,39 @@ jobs:
         with:
           node-version: '22'
       - run: pip install -r requirements.txt
-      - run: python scripts/test_backend_improvements.py
-      - run: python scripts/test_analytics_calculations.py
-      - run: python scripts/test_metric_policy.py
-      - run: python scripts/test_repository_snapshots.py
-      - run: python scripts/test_lightweight_score.py
-      - run: node scripts/test_metric_display.cjs
-      - run: python scripts/test_ai_contracts.py
-      - run: python scripts/test_ai_security.py
-      - run: python scripts/test_desktop_auth.py
-      - run: python scripts/test_desktop_repository_identity.py
-      - run: python scripts/test_desktop_auth.py --postgres
-      - run: python scripts/test_desktop_api_compat.py
-      - run: python scripts/test_ai_schema.py
-      - run: python scripts/test_ai_pr_collection.py
-      - run: python scripts/test_ai_commit_collection.py
-      - run: python scripts/test_ai_job_lifecycle.py
-      - run: python scripts/test_ai_inputs.py
-      - run: python scripts/test_ai_input_api.py
-      - run: python scripts/test_ai_provider.py
-      - run: python scripts/test_ai_multi_provider.py
-      - run: python scripts/test_ai_multi_provider_api.py
-      - run: python scripts/test_ai_credentials.py
-      - run: python scripts/test_ai_credential_api.py
-      - run: python scripts/test_ai_generation.py
-      - run: python scripts/test_ai_api.py
-      - run: python scripts/test_ai_pulls_api.py
-      - run: python scripts/test_ai_history_context.py
-      - run: python scripts/test_ai_ops.py
-      - run: python scripts/test_ai_evaluation.py
-      - run: python scripts/test_ai_smoke.py
-      - run: node scripts/test_ai_frontend.cjs
-      - run: python scripts/test_ai_output_validation.py
-      - run: python scripts/test_ai_output_limits.py
+      - run: python tests/server/test_backend_improvements.py
+      - run: python tests/server/test_analytics_calculations.py
+      - run: python tests/server/test_metric_policy.py
+      - run: python tests/server/test_repository_snapshots.py
+      - run: python tests/server/test_lightweight_score.py
+      - run: node tests/frontend/test_metric_display.cjs
+      - run: python tests/server/test_ai_contracts.py
+      - run: python tests/server/test_ai_security.py
+      - run: python tests/server/test_desktop_auth.py
+      - run: python tests/server/test_desktop_repository_identity.py
+      - run: python tests/server/test_desktop_auth.py --postgres
+      - run: python tests/server/test_desktop_api_compat.py
+      - run: python tests/server/test_ai_schema.py
+      - run: python tests/server/test_ai_pr_collection.py
+      - run: python tests/server/test_ai_commit_collection.py
+      - run: python tests/server/test_ai_job_lifecycle.py
+      - run: python tests/server/test_ai_inputs.py
+      - run: python tests/server/test_ai_input_api.py
+      - run: python tests/server/test_ai_provider.py
+      - run: python tests/server/test_ai_multi_provider.py
+      - run: python tests/server/test_ai_multi_provider_api.py
+      - run: python tests/server/test_ai_credentials.py
+      - run: python tests/server/test_ai_credential_api.py
+      - run: python tests/server/test_ai_generation.py
+      - run: python tests/server/test_ai_api.py
+      - run: python tests/server/test_ai_pulls_api.py
+      - run: python tests/server/test_ai_history_context.py
+      - run: python tests/server/test_ai_ops.py
+      - run: python tests/server/test_ai_evaluation.py
+      - run: python tests/server/test_ai_smoke.py
+      - run: node tests/frontend/test_ai_frontend.cjs
+      - run: python tests/server/test_ai_output_validation.py
+      - run: python tests/server/test_ai_output_limits.py
   ai-queue:
     # 실제 PostgreSQL·Redis와 별도 Celery worker 프로세스로 outbox → 큐 → worker 경로를 검증한다.
     runs-on: ubuntu-latest
@@ -107,6 +107,6 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
-      - run: python scripts/test_ai_queue_integration.py
+      - run: python tests/server/test_ai_queue_integration.py
       # 실제 PostgreSQL·Redis + app 서버·dispatcher·worker·가짜 제공자 프로세스 + HTTP(실제 제공자·GitHub 없음)
-      - run: python scripts/verify_ai_mvp_integration.py
+      - run: python tests/server/verify_ai_mvp_integration.py

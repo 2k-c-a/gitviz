@@ -11,7 +11,7 @@
 | 분석 시각화 | repo·snapshot·sort_by를 이동에 유지. 다른 repo에 snapshot 혼입 금지 | [navbar](../../frontend/js/navbar-loader.js), [상태](../../frontend/js/viz-state.js) |
 | 분석 repo fallback | 일반 분석 API에는 query → localStorage → 기본 1이 남아 있음 | [api.js](../../frontend/js/api.js) |
 | AI | 명시한 repo·pr/commit·input·job·shared로 상태 결정. repo 없는 기본 저장소 fallback 금지 | [ai-state](../../frontend/js/ai-state.js), [ai-review](../../frontend/js/ai-review.js) |
-| AI 비동기 | navigation guard·abort·직렬 polling·429/backoff·종료 중단 | [ai-poll](../../frontend/js/ai-poll.js), [AI 프론트 검사](../../scripts/test_ai_frontend.cjs) |
+| AI 비동기 | navigation guard·abort·직렬 polling·429/backoff·종료 중단 | [ai-poll](../../frontend/js/ai-poll.js), [AI 프론트 검사](../../tests/frontend/test_ai_frontend.cjs) |
 
 AI의 엄격한 URL 규칙을 일반 분석 화면에도 이미 동일하게 적용됐다고 설명하지 않는다. 현재 공유 조회는 `?repo=<id>&shared=<result UUID>`를 사용하며 개인 job 조회와 분리한다.
 

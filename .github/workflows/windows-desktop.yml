@@ -11,7 +11,7 @@ on:
       - 'tests/workspace/**'
       - 'packaging/agent/**'
       - 'tools/validation/validate_workspace_windows.ps1'
-      - 'scripts/test_workspace_navigation.cjs'
+      - 'tests/frontend/test_workspace_navigation.cjs'
       - '.github/workflows/windows-desktop.yml'
 permissions:
   contents: read

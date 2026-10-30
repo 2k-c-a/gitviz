@@ -46,7 +46,7 @@ function Test-Step([string]$Script, [string[]]$Arguments = @()) {
     $info.Environment['DATABASE_URL_ASYNC'] = $info.Environment['GITVIZ_TEST_DATABASE_URL'].Replace('postgresql://', 'postgresql+asyncpg://')
     $info.Environment['PYTHON_DOTENV_DISABLED'] = '1'; $info.Environment['PYTHONUTF8'] = '1'; $info.Environment['PYTHONDONTWRITEBYTECODE'] = '1'
     $info.Environment['HTTP_PROXY'] = 'http://127.0.0.1:9'; $info.Environment['HTTPS_PROXY'] = 'http://127.0.0.1:9'; $info.Environment['NO_PROXY'] = 'localhost,127.0.0.1,::1'
-    foreach ($item in @('-X', 'utf8', '-B', "scripts/$Script") + $Arguments) { $info.ArgumentList.Add($item) }
+    foreach ($item in @('-X', 'utf8', '-B', "tests/server/$Script") + $Arguments) { $info.ArgumentList.Add($item) }
     $process = [Diagnostics.Process]::Start($info)
     $stdout = $process.StandardOutput.ReadToEndAsync(); $stderr = $process.StandardError.ReadToEndAsync()
     $timedOut = !$process.WaitForExit(900000)

@@ -36,7 +36,7 @@ try {
     # Pin fixture policy; inherited developer configuration must not change test expectations.
     $env:AI_DAILY_JOB_LIMIT = '30'
     $env:PYTHON_DOTENV_DISABLED = '1'
-    & (Join-Path $root 'venv\Scripts\python.exe') -X utf8 -B (Join-Path $root 'scripts\test_ai_history_context.py') *> (Join-Path $run 'history-context-tests.log')
+    & (Join-Path $root 'venv\Scripts\python.exe') -X utf8 -B (Join-Path $root 'tests\server\test_ai_history_context.py') *> (Join-Path $run 'history-context-tests.log')
     if ($LASTEXITCODE -ne 0) { throw 'Existing S11 history regression failed; logs preserved.' }
     Write-Output 'PASS P06 isolated PostgreSQL existing S11 history regression'
     Write-Output "Evidence: $run"

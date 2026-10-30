@@ -46,7 +46,7 @@ docs/
 
 ## 검증 결과 파일
 
-새 검증 결과는 `reports/validation/<종류>-<UTC시각>-<고유값>.json`에 기록한다. [출력 도구](../../scripts/validation_reports.py)와 검증 스크립트 기본 출력 경로를 갱신해 예전 루트·docs JSON을 다시 만들거나 Historical 결과를 덮어쓰지 않게 했다. live 수집 스크립트의 명시적 `--output`은 유지한다. 이번 정리에서 실제 수집·운영 DB 검증을 수행하지 않았다.
+새 검증 결과는 `reports/validation/<종류>-<UTC시각>-<고유값>.json`에 기록한다. [출력 도구](../../tests/server/validation_reports.py)와 검증 스크립트 기본 출력 경로를 갱신해 예전 루트·docs JSON을 다시 만들거나 Historical 결과를 덮어쓰지 않게 했다. live 수집 스크립트의 명시적 `--output`은 유지한다. 이번 정리에서 실제 수집·운영 DB 검증을 수행하지 않았다.
 
 ## 완료 조건
 

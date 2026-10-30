@@ -31,7 +31,7 @@ root 로컬 화면은 `/index.html`, 원격 UI는 `/web/...`를 유지한다. �
 | [timeline](../../frontend/js/timeline.js), [network](../../frontend/js/network.js), [utils](../../frontend/js/utils.js) | chart/heatmap/군집 테마 토큰 및 공통 avatar 색 사용. 산식·집계·정렬 유지 |
 | [frontend index](../../frontend/index.html), 각 `frontend/pages/*.html` | theme bootstrap, 한국어 문서 lang, 파일 tree 레이아웃 class, workspace shared bootstrap. 화면 기능/IDs 보존 |
 | [remote-compat E2E](../../desktop/tests/remote-compat.e2e.ts) | 기존 sandbox 페이지 검증에 셸·맥락·테마·resize·detail/모달/툴팁·요청 경쟁 검사 추가 |
-| [metric display test](../../scripts/test_metric_display.cjs) | 공통 DOM state를 사용하는 상세 UI에 맞게 최소 DOM 대역 보완. 기존 지표 의미 assertion 보존 |
+| [metric display test](../../tests/frontend/test_metric_display.cjs) | 공통 DOM state를 사용하는 상세 UI에 맞게 최소 DOM 대역 보완. 기존 지표 의미 assertion 보존 |
 
 기존 Phase 1 문서와 미추적 사용자 보고서를 덮어쓰지 않았다. `docs/index.md`에 이 보고서 링크를 추가했다. `desktop/dist`는 기존 build script로 생성했으며 직접 편집하지 않았다. 자산 inventory가 `/web/css`, `/web/js/ui`를 자동 포함하므로 build/protocol allowlist 변경은 필요하지 않았다.
 

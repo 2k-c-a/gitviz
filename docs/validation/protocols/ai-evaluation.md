@@ -2,27 +2,27 @@
 
 검토일: 2026-10-23 · 코드 기준: `a8351f0` · [현재 검증 상태](../current-status.md)
 
-확인: [평가 도구](../../../scripts/evaluate_ai_review.py), [smoke 도구](../../../scripts/smoke_ai_live.py), [manifest](../../../scripts/fixtures/ai/evaluation_manifest.json)를 기준으로 한다. 현재 final 사례·합격 기준·최종 모델 평가는 미완료다. [보존 원문](../../archive/originals/docs/AI_EVALUATION_PROTOCOL.md)의 하네스 검증 완료는 모델 품질 평가 완료가 아니다.
+확인: [평가 도구](../../../tests/server/evaluate_ai_review.py), [smoke 도구](../../../tests/server/smoke_ai_live.py), [manifest](../../../tests/server/fixtures/ai/evaluation_manifest.json)를 기준으로 한다. 현재 final 사례·합격 기준·최종 모델 평가는 미완료다. [보존 원문](../../archive/originals/docs/AI_EVALUATION_PROTOCOL.md)의 하네스 검증 완료는 모델 품질 평가 완료가 아니다.
 
 ## 1. 호출 없는 준비 점검
 
 ```powershell
-python scripts/evaluate_ai_review.py --validate-manifest
-python scripts/evaluate_ai_review.py --check-release
+python tests/server/evaluate_ai_review.py --validate-manifest
+python tests/server/evaluate_ai_review.py --check-release
 ```
 
 `--check-release`는 최종 평가 미실행도 보고하므로 평가 전 모든 항목이 비어 있어야만 시작할 수 있다는 조건으로 쓰지 않는다. 미완료를 기록하고 아래 자료·예산·동의·smoke 조건을 준비한다. 종료 코드 1을 무조건 도구 오류나 제품 회귀로 취급하지 않는다.
 
-평가 도구 자체의 테스트는 `scripts/test_ai_evaluation.py`, smoke 도구는 `scripts/test_ai_smoke.py`, HTTP 흐름은 `scripts/verify_ai_mvp_integration.py`로 구분한다. 실제 제공자 대신 대역을 사용한 결과를 live 품질 근거로 쓰지 않는다.
+평가 도구 자체의 테스트는 `tests/server/test_ai_evaluation.py`, smoke 도구는 `tests/server/test_ai_smoke.py`, HTTP 흐름은 `tests/server/verify_ai_mvp_integration.py`로 구분한다. 실제 제공자 대신 대역을 사용한 결과를 live 품질 근거로 쓰지 않는다.
 
 ## 2. 제공자·GitHub 소량 smoke
 
 key는 해당 제공자의 `GITVIZ_SMOKE_API_KEY` 환경변수로만 준비한다. 시험 주소 `AI_TEST_PROVIDER_BASE_URL`은 비우고 명시적으로 실행한다. 다음은 예시이며 이번 정리에서 호출하지 않았다.
 
 ```powershell
-python scripts/smoke_ai_live.py provider --profile gpt-5.4-v4 --live --budget 0.50
-python scripts/smoke_ai_live.py provider --profile ollama-local-v1 --live --budget 0
-python scripts/smoke_ai_live.py github --live --repo owner/name --pr 123 --path src/app.py
+python tests/server/smoke_ai_live.py provider --profile gpt-5.4-v4 --live --budget 0.50
+python tests/server/smoke_ai_live.py provider --profile ollama-local-v1 --live --budget 0
+python tests/server/smoke_ai_live.py github --live --repo owner/name --pr 123 --path src/app.py
 ```
 
 GitHub 단계의 인증은 `GITHUB_TOKEN`으로 준비한다. 선택한 profile·모델·prompt/schema·한도·가격 버전을 기록한다. smoke의 기존 어댑터 지원 여부와 계정·설치 모델을 먼저 확인한다. [제공자 안내](../../operations/providers.md)는 등록값이며 실제 요금·가용성 보증이 아니다.
@@ -42,8 +42,8 @@ GitHub 단계의 인증은 `GITHUB_TOKEN`으로 준비한다. 선택한 profile�
 ## 4. 실행·판정·재채점
 
 ```text
-python scripts/evaluate_ai_review.py --live --set tuning --budget <USD> --base-url <URL> --cookie <본인세션> --repository-id <ID>
-python scripts/evaluate_ai_review.py --rescore reports/ai-eval-tuning-<실행>.json --base-url <URL> --cookie <본인세션>
+python tests/server/evaluate_ai_review.py --live --set tuning --budget <USD> --base-url <URL> --cookie <본인세션> --repository-id <ID>
+python tests/server/evaluate_ai_review.py --rescore reports/ai-eval-tuning-<실행>.json --base-url <URL> --cookie <본인세션>
 ```
 
 실행 → 각 지적을 사람이 valid/false_positive/uncertain으로 판정 → `--rescore` 순서다. 세션·key를 공유 보고서에 기록하지 않는다. tuning으로 조정한 뒤 final을 한 번 실행한다. prompt/schema/profile이 바뀌면 적용 버전과 평가 대상을 구분한다.

@@ -7,15 +7,15 @@
 | 실행·자료 | 보고된 결과 | 환경·실제/대역 경계 | 재현 도구·한계 |
 |---|---|---|---|
 | [초기 검토](../archive/originals/REVIEW_2026-10-02.md) | 계산 9·스냅샷 14 등과 pending 결함 | `05a58db` 기준 검토, 일부 함수 분리 | 현재 결함 목록 아님 |
-| [백엔드 개선](../archive/originals/docs/BACKEND_IMPROVEMENTS.md) | 처음 12, 후속 성공 worker 포함 13 | 격리 PG18, 실제 운영·OAuth 제외 | [backend tests](../../scripts/test_backend_improvements.py). 문서 내 실행별 집계 구분 |
-| [운영 DB 통합](../archive/originals/INTEGRATION_VALIDATION.md) + [JSON](../archive/originals/INTEGRATION_RESULTS.json) | 32개 검사, HTTP 22개 | 기존 운영 PG read-only·브라우저, OAuth·재수집 제외 | [verify_production_integration](../../scripts/verify_production_integration.py). 과거 데이터·접근 환경 필요 |
-| [스냅샷 적용 기록](../archive/originals/SNAPSHOT_AND_ACCESS.md) + [JSON](../archive/originals/SNAPSHOT_INTEGRATION_RESULTS.json) | 53개 검사 기록 | JSON의 `authorization_mode=test_fixture` | [verify_snapshot_integration](../../scripts/verify_snapshot_integration.py). 실제 GitHub 인증 전체 통과 아님 |
+| [백엔드 개선](../archive/originals/docs/BACKEND_IMPROVEMENTS.md) | 처음 12, 후속 성공 worker 포함 13 | 격리 PG18, 실제 운영·OAuth 제외 | [backend tests](../../tests/server/test_backend_improvements.py). 문서 내 실행별 집계 구분 |
+| [운영 DB 통합](../archive/originals/INTEGRATION_VALIDATION.md) + [JSON](../archive/originals/INTEGRATION_RESULTS.json) | 32개 검사, HTTP 22개 | 기존 운영 PG read-only·브라우저, OAuth·재수집 제외 | [verify_production_integration](../../tests/server/verify_production_integration.py). 과거 데이터·접근 환경 필요 |
+| [스냅샷 적용 기록](../archive/originals/SNAPSHOT_AND_ACCESS.md) + [JSON](../archive/originals/SNAPSHOT_INTEGRATION_RESULTS.json) | 53개 검사 기록 | JSON의 `authorization_mode=test_fixture` | [verify_snapshot_integration](../../tests/server/verify_snapshot_integration.py). 실제 GitHub 인증 전체 통과 아님 |
 | [LIVE 최초 JSON](../archive/originals/docs/LIVE_VALIDATION_INITIAL.json) | job running·snapshot 저장 재현 | 2026-10-02 UTC 실행, Git/REST 실제, 서명 세션 fixture·eager | 수정 전 실패 증거로 보존 |
-| [LIVE 최종 보고](../archive/originals/docs/LIVE_VALIDATION.md) + [JSON](../archive/originals/docs/LIVE_VALIDATION_RESULTS.json) | 52개 중 51 통과, samplemod PR 상세 실패 | PG18 전용 DB·실제 Git/REST, OAuth callback·Redis 별도 worker 제외 | [verify_live_repository](../../scripts/verify_live_repository.py). 토큰·네트워크·전용 DB 필요 |
+| [LIVE 최종 보고](../archive/originals/docs/LIVE_VALIDATION.md) + [JSON](../archive/originals/docs/LIVE_VALIDATION_RESULTS.json) | 52개 중 51 통과, samplemod PR 상세 실패 | PG18 전용 DB·실제 Git/REST, OAuth callback·Redis 별도 worker 제외 | [verify_live_repository](../../tests/server/verify_live_repository.py). 토큰·네트워크·전용 DB 필요 |
 | [PG 정책 검증](../archive/originals/docs/POSTGRES_VALIDATION_2026-10-03.md) | backend 14·정책 12 | PG18 전용 DB, GitHub·수집 대역 | 빈 설치·기존 upgrade·snapshot/HTTP. CI PG16과 별도 |
 | [WEB 통합](../archive/originals/docs/WEB_INTEGRATION_2026-10-03.md) | 실제 신규·재분석·화면 이동 성공 | 실제 사용자 OAuth, Redis DB14·별도 worker·PG18 | PR 상세 23/23은 존재율, 모든 페이지 완전성 아님. `.validation/web-evidence/` 증거의 정식 보존 미확정 |
 | [초기 AI 기획 검토](../archive/originals/docs/AI_ASSISTANT_PLAN_REVIEW_2026-10-07.md) | 선택 회귀 통과, snapshot 전체 중단 | `0ecbca71bcd2fe5f08400397990c18d16fbf50eb` 당시 코드 | 중단한 검사를 전체 통과로 쓰지 않음 |
-| [AI MVP 수용](../archive/originals/docs/AI_MVP_ACCEPTANCE.md) | 통합 16 등, 구조·안전 수용 | 일회용 PG16·Redis7·별도 API/worker/dispatcher, 가짜 provider·GitHub | [verify_ai_mvp_integration](../../scripts/verify_ai_mvp_integration.py). 모델 정확도·실제 인증 제외 |
+| [AI MVP 수용](../archive/originals/docs/AI_MVP_ACCEPTANCE.md) | 통합 16 등, 구조·안전 수용 | 일회용 PG16·Redis7·별도 API/worker/dispatcher, 가짜 provider·GitHub | [verify_ai_mvp_integration](../../tests/server/verify_ai_mvp_integration.py). 모델 정확도·실제 인증 제외 |
 | [provider 확장 기록](../archive/originals/docs/AI_PROVIDER_SUPPORT.md) | Python 484·Node 32 등 기록 | HTTP 대역·격리 PG·모의 브라우저 | 당시 묶음 집계, 현재 전체 통과·모델별 품질 아님 |
 
 ## Git에서 제외된 로컬 스냅샷 자료

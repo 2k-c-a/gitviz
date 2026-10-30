@@ -45,8 +45,8 @@ python tools/ops/backfill_analysis_snapshots.py --apply
 ## 검사와 증거
 
 ```powershell
-python scripts/test_repository_snapshots.py
-python scripts/verify_snapshot_integration.py --auth-fixture
+python tests/server/test_repository_snapshots.py
+python tests/server/verify_snapshot_integration.py --auth-fixture
 ```
 
 후자의 운영 DB 읽기 검사는 GitHub 접근을 대역으로 분리한다. 실제 GitHub 인증 통과와 구분한다. 일반 모드는 실제 접근을 확인한다. 필요한 DB·clone·서버 조건을 준비하고 [검증 상태](../validation/current-status.md)에 별도 실행으로 기록한다. 새 결과는 `reports/validation/`에 실행별 파일로 저장한다.

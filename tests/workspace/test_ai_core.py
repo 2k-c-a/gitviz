@@ -48,7 +48,7 @@ for name in ('app.main','app.database','app.core.database','app.core.ai_settings
         self.assertEqual(result.returncode, 0, result.stderr.decode())
 
     def test_existing_pr_commit_validation_and_policy_equality(self) -> None:
-        path = Path(__file__).resolve().parents[2] / 'scripts/test_ai_output_validation.py'
+        path = Path(__file__).resolve().parents[2] / 'tests/server/test_ai_output_validation.py'
         spec = importlib.util.spec_from_file_location('p04_golden_validation', path)
         assert spec is not None and spec.loader is not None
         golden = importlib.util.module_from_spec(spec)

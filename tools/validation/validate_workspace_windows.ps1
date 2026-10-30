@@ -57,8 +57,8 @@ try {
     Run-Step 'agent-freeze' $Python @('-X', 'utf8', '-B', 'tools/build/build_workspace_agent.py') 1200
     Run-Step 'host-unit' $Node @($npm, '--prefix', 'desktop', 'test')
     Run-Step 'workspace-unit' $Python @('-X', 'utf8', '-B', '-m', 'unittest', 'discover', '-s', 'tests/workspace', '-p', 'test_*.py', '-v') 2400
-    Run-Step 'web-navigation' $Node @('scripts/test_workspace_navigation.cjs')
-    Run-Step 'web-regression' $Node @('scripts/test_viz_modules.cjs')
+    Run-Step 'web-navigation' $Node @('tests/frontend/test_workspace_navigation.cjs')
+    Run-Step 'web-regression' $Node @('tests/frontend/test_viz_modules.cjs')
     foreach ($name in @('remote-workspace', 'workspace', 'inbox', 'projects', 'changes', 'review-preview', 'review', 'refactor', 'validation', 'auth', 'remote-compat', 'foundation')) {
         Run-Step "electron-$name" $electron @("dist/tests/$name.e2e.js") 420 (Join-Path $repo 'desktop')
     }

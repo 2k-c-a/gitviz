@@ -37,7 +37,7 @@ API·worker·런타임은 같은 PC의 호스트 프로세스로 실행한다. w
 
 ## 검증·유효성
 
-실제 smoke의 명시 실행 도구는 [smoke_ai_live](../../scripts/smoke_ai_live.py), 현재 절차는 [AI 평가](../validation/protocols/ai-evaluation.md)다. 선택한 profile의 사용량·schema 수용·비용·속도를 따로 기록한다. 이번 문서 정리는 유료 호출·모델 다운로드·런타임 시작을 수행하지 않았다.
+실제 smoke의 명시 실행 도구는 [smoke_ai_live](../../tests/server/smoke_ai_live.py), 현재 절차는 [AI 평가](../validation/protocols/ai-evaluation.md)다. 선택한 profile의 사용량·schema 수용·비용·속도를 따로 기록한다. 이번 문서 정리는 유료 호출·모델 다운로드·런타임 시작을 수행하지 않았다.
 
 추정: profile 변경의 이유·승인·검증 보고를 [D03](../decisions/index.md#d03)에 연결하는 것이 적절하다.
 

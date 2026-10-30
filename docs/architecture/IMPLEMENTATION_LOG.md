@@ -49,3 +49,10 @@
 - **변경:** `git mv` 11개. ps1의 루트 계산 `Join-Path $PSScriptRoot '..'` → `'../..'`, `ai_ui_mock_server.py`의 `parents[2]`, 두 워크플로의 게이트 호출·경로 필터, 로컬 `.claude/launch.json`(미추적)의 목업 서버 경로. 이 ps1들이 부르는 `scripts\test_*`·`scripts/*.cjs` 경로는 S6에서 테스트와 함께 바꾼다(그때까지 유효).
 - **테스트:** 10개 ps1 구문 오류 0, 문서 검사 통과, **`tools/validation/validate_workspace_windows.ps1` 전체 게이트 통과**(23단계, 실패 0, ruff·desktop-build·agent-freeze·host/workspace 단위·Electron E2E 포함, 작업 트리 변경 없음, 증거 `gitviz-p11-backup\S5-gate`).
 - **오류:** 증거 폴더를 미리 만들어 게이트가 "Evidence directory must be new"로 거부 → 새 경로로 재실행(코드 문제 아님).
+
+## S6 테스트·지원 모듈 이동 (`scripts/` → `tests/server`, `tests/frontend`)
+- **계획 수정:** `smoke_ai_live.py`·`ai_integration_stack.py`는 형제 import 때문에 `tests/server`로 확정(S5 기록). `scripts/`는 비어서 제거(생성물 `__pycache__`만 남아 있던 디렉터리 삭제).
+- **변경:** `git mv` 62개(서버 52 + 픽스처 6 + 프런트 4). 루트 계산(`parents[N]`, `dirname` 중첩)을 깊이에 맞게 수정, 모듈 경로 `scripts.*` → `tests.server.*`(`AI_HANDLER_MODULES`, `from scripts import validation_reports` 등), 픽스처 경로 `scripts/fixtures/ai` → `tests/server/fixtures/ai`, 하위 프로세스 스폰 경로, `.cjs`의 `frontend` 상대 경로(`../../frontend`), `test_desktop_auth.py`의 `ROOT/"scripts"` → `ROOT/"tests"/"server"`. `backend-validation.yml` 36줄·`windows-desktop.yml` 필터·게이트의 web 테스트 경로·`validate_p03/p06_postgres.ps1`·`validate_p09_services.ps1` 갱신. 현행 문서 11개의 링크·명령 경로 갱신(과거 증거 문서 `docs/migration/validation/**`는 링크 대상만).
+- **오류와 해결:** 전체 게이트의 `workspace-unit`에서 `tests/workspace/test_ai_core.py`가 `scripts/test_ai_output_validation.py`를 직접 읽는 것을 발견(이동 전 스캔이 `scripts/` 내부 파일만 대상이어서 놓침). 경로를 `tests/server/…`로 수정하고 재검증. 교훈: 참조 검색은 저장소 전체(`git grep`)로 한다.
+- **테스트:** 서버·프런트 CI 38줄 전부 통과(일회용 테스트 DB/Redis, 새 경로), `tests/server` 52개 컴파일 OK, 문서 검사 통과, **전체 게이트 통과**(재실행; 첫 실행은 위 오류로 실패), 작업 트리 변경 없음.
+- **참고:** `docs/migration/12-testing-strategy.md` 등 과거 계획 문서의 명령 텍스트 `scripts/…`는 당시 기록으로 유지.
