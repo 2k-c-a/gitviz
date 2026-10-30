@@ -23,13 +23,13 @@ import { registerDiagnostics } from './diagnostics-ipc';
 import { CloudReview } from './cloud-review';
 import { HistoricalImpact } from './historical-impact';
 import { createUpdateService, DISABLED_UPDATE_POLICY } from './update';
-import { runSquirrel, squirrelAction } from './squirrel';
+import { parentProcess, runSquirrel, squirrelAction } from './squirrel';
 
 registerScheme();
 let window: BrowserWindow | undefined;
 let agent: Agent | undefined;
 let quitting = false;
-const squirrel = squirrelAction(process.platform, process.argv, process.execPath);
+const squirrel = squirrelAction(process.platform, process.argv, process.execPath, { localAppData: process.env.LOCALAPPDATA, parent: () => parentProcess(process.ppid) });
 if (squirrel) runSquirrel(squirrel, () => app.quit());
 else if (!app.requestSingleInstanceLock()) app.quit();
 else {
