@@ -47,3 +47,11 @@
 - `scripts/staging_vm.ps1` → `tools/vm/staging_vm.ps1`
 - `scripts/test_installer_vm.ps1` → `tools/vm/test_installer_vm.ps1`
 - `scripts/validate_p01_full_disk.ps1` → `tools/vm/validate_p01_full_disk.ps1`
+
+## S4
+- `requirements-workspace-build.txt` → `packaging/agent/requirements-workspace-build.txt`
+- `requirements-workspace.lock` → `packaging/agent/requirements-workspace.lock`
+- `requirements-workspace.txt` → `packaging/agent/requirements-workspace.txt`
+- `workspace_agent.spec` → `packaging/agent/workspace_agent.spec`
+- `scripts/audit_workspace_agent.py` → `tools/build/audit_workspace_agent.py`
+- `scripts/build_workspace_agent.py` → `tools/build/build_workspace_agent.py`

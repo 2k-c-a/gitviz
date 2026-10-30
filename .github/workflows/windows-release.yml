@@ -25,7 +25,7 @@ jobs:
         run: |
           python -m venv .validation/venv-workspace
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./.validation/venv-workspace/Scripts/python.exe -m pip install --require-hashes --only-binary=:all: -r requirements-workspace.lock
+          ./.validation/venv-workspace/Scripts/python.exe -m pip install --require-hashes --only-binary=:all: -r packaging/agent/requirements-workspace.lock
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm --prefix desktop ci --ignore-scripts --no-audit --no-fund
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

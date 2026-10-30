@@ -38,3 +38,8 @@
 - **테스트:** PowerShell 파서로 7개 ps1 구문 오류 0(실행하지 않음, VM 미조작), 문서 검사 통과.
 - **정정:** 기존 문서(`docs/operations/windows-desktop.md`, `p10-partial`)는 0.7.0→0.7.1 업그레이드를 clean VM에서 확인했다고 기록한다. 3차 문서가 "미검증"이라 적은 것을 "마커 파일 수준 검증됨, 실제 DB 상태는 미검증"으로 정정(`INSTALLATION_GUIDE`, `RELEASE_MIGRATION_PLAN`, `FINAL_ARCHITECTURE`).
 - **참고:** `docs/migration/validation/*`의 과거 증거 문서가 인용하는 `scripts/…` 경로 텍스트는 당시 실행 기록이므로 수정하지 않았다(링크 아님, 검사 통과).
+
+## S4 에이전트 빌드 입력·도구 (`packaging/agent`, `tools/build`)
+- **변경:** `workspace_agent.spec`, `requirements-workspace{,-build}.txt`, `requirements-workspace.lock`을 `packaging/agent/`로, `build_workspace_agent.py`·`audit_workspace_agent.py`를 `tools/build/`로 `git mv`. spec의 `root = Path(SPECPATH).parents[1]`, 빌드 스크립트의 `parents[2]`와 spec 경로, `pyright-workspace.json`, `validate_workspace_windows.ps1`(ruff 대상·agent-freeze), 두 CI 워크플로(경로 필터 `packaging/agent/**`, 잠금 설치 경로), 문서 링크(`docs/migration/validation/p01-2026-10-24.md`, `docs/ux-redesign/phase-1-c459f29/project-audit.md`) 갱신.
+- **테스트:** 새 위치에서 에이전트 동결 성공(18초), 산출물 파일 134개 목록이 기준선(B7)과 **동일**, `audit_workspace_agent.py` 통과(module 623, 서버 모듈·비공개 파일 없음), `.lock` SHA-256 불변(`09ac9377…`), ruff 통과, pyright 0 오류, `tests/workspace` 134개 통과, 문서 검사 통과.
+- **참고:** exe의 SHA-256은 재빌드로 달라졌다(빌드 시각 포함, 예상된 변화). 파일 구성·크기 수준은 동일. 잠금 설치(`--require-hashes`)는 새 가상환경이 필요해 실행하지 않았다(파일 내용 불변, `-r` 상대 경로는 같은 폴더).

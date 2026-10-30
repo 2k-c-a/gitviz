@@ -52,9 +52,9 @@ function Run-Step([string]$Name, [string]$Executable, [string[]]$Arguments, [int
 Save-State 'before'
 try {
     foreach ($script in @('lint', 'typecheck', 'typecheck:agent')) { Run-Step $script $Node @($npm, '--prefix', 'desktop', 'run', $script) }
-    Run-Step 'ruff' $Python @('-X', 'utf8', '-B', '-m', 'ruff', 'check', '--no-cache', '--config', 'ruff-workspace.toml', 'app/workspace', 'tests/workspace', 'scripts/build_workspace_agent.py')
+    Run-Step 'ruff' $Python @('-X', 'utf8', '-B', '-m', 'ruff', 'check', '--no-cache', '--config', 'ruff-workspace.toml', 'app/workspace', 'tests/workspace', 'tools/build/build_workspace_agent.py')
     Run-Step 'desktop-build' $Node @($npm, '--prefix', 'desktop', 'run', 'build')
-    Run-Step 'agent-freeze' $Python @('-X', 'utf8', '-B', 'scripts/build_workspace_agent.py') 1200
+    Run-Step 'agent-freeze' $Python @('-X', 'utf8', '-B', 'tools/build/build_workspace_agent.py') 1200
     Run-Step 'host-unit' $Node @($npm, '--prefix', 'desktop', 'test')
     Run-Step 'workspace-unit' $Python @('-X', 'utf8', '-B', '-m', 'unittest', 'discover', '-s', 'tests/workspace', '-p', 'test_*.py', '-v') 2400
     Run-Step 'web-navigation' $Node @('scripts/test_workspace_navigation.cjs')

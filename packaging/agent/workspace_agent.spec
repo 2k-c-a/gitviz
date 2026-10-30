@@ -1,6 +1,6 @@
 # PyInstaller entry uses an absolute import shim generated only in the build area.
 from pathlib import Path
-root = Path(SPECPATH)
+root = Path(SPECPATH).parents[1]
 shim = root / "build/workspace-agent/entry.py"
 shim.parent.mkdir(parents=True, exist_ok=True)
 shim.write_text("from app.workspace.__main__ import main\nraise SystemExit(main())\n", encoding="utf-8")

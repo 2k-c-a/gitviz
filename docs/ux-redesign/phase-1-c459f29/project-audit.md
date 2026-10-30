@@ -21,7 +21,7 @@
 | Windows 클라이언트 | Electron 45.0.0, TypeScript 6.0.3, Electron Forge 8.0.1, Squirrel 사용자별 설치 | [package](../../../desktop/package.json), [Forge 설정](../../../desktop/forge.config.ts) |
 | 데스크톱 빌드 | tsc 두 설정으로 main/preload 컴파일, build.mjs가 정적 자산·계약 복사. React/Vite 빌드는 이 경로에 없음 | [build.mjs](../../../desktop/scripts/build.mjs), [tsconfig](../../../desktop/tsconfig.json) |
 | 서버 | Python, FastAPI, Uvicorn, SQLAlchemy, Alembic, PostgreSQL, Redis/Celery, GitPython, NetworkX | [requirements](../../../requirements.txt), [main](../../../app/main.py), [compose](../../../docker-compose.yml) |
-| 로컬 기능 | Python workspace agent를 별도 exe로 실행, stdio 계약 통신, SQLite 저장소·암호화 자료. 원격 서버와 별개 | [agent](../../../desktop/src/agent.ts), [workspace 진입점](../../../app/workspace/__main__.py), [store](../../../app/workspace/store.py), [패키징](../../../workspace_agent.spec) |
+| 로컬 기능 | Python workspace agent를 별도 exe로 실행, stdio 계약 통신, SQLite 저장소·암호화 자료. 원격 서버와 별개 | [agent](../../../desktop/src/agent.ts), [workspace 진입점](../../../app/workspace/__main__.py), [store](../../../app/workspace/store.py), [패키징](../../../packaging/agent/workspace_agent.spec) |
 | 보안 경계 | sandbox/contextIsolation, Node renderer 차단, 고정 IPC·AJV 계약, 자산 allowlist·CSP. HTTPS 서버 origin은 main 환경 설정 | [window](../../../desktop/src/window.ts), [preload](../../../desktop/src/preload.ts), [protocol](../../../desktop/src/app-protocol.ts), [remote 계약](../../../desktop/src/remote-contracts.ts) |
 
 Python 3.12는 README 실행 전제이며 모든 requirements가 각 Python 버전에서 검증되었다는 뜻은 아니다. Node 엔진은 `>=24.20.0 <25`다. 버전은 최신 제품 정보가 아니라 이 커밋의 고정 설정이다.
@@ -167,7 +167,7 @@ python -B -m unittest discover -s tests/workspace
 # 서버에는 별도 PostgreSQL/Redis, Alembic, uvicorn, Celery가 필요
 ```
 
-`desktop start`만으로 agent exe를 생성하지 않는다. [agent build script](../../../scripts/build_workspace_agent.py)와 Forge의 agent 자원 경로를 확인해야 한다. 검증 프로젝트 코드를 실행하는 workspace validation은 단순 화면 검사와 별개의 승인 작업이다. DB/queue 시험은 전용 test 환경을 사용해야 하며 전체 suite를 현재 사용자 DB에 실행하지 않는다.
+`desktop start`만으로 agent exe를 생성하지 않는다. [agent build script](../../../tools/build/build_workspace_agent.py)와 Forge의 agent 자원 경로를 확인해야 한다. 검증 프로젝트 코드를 실행하는 workspace validation은 단순 화면 검사와 별개의 승인 작업이다. DB/queue 시험은 전용 test 환경을 사용해야 하며 전체 suite를 현재 사용자 DB에 실행하지 않는다.
 
 이번 재실행 결과:
 
