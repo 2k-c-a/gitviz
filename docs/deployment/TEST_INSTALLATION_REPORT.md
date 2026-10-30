@@ -54,7 +54,7 @@
 | 제거 | 제거 명령 종료 코드 0 | PASS | uninstall-exit |
 | 제거 | 바로가기·제어판 항목 제거 | PASS | uninstall-shortcuts/entry-removed |
 | 제거 | 사용자 데이터·설정 기본 보존(마커 파일·DB 해시 동일) | PASS | user-data-kept-after-uninstall |
-| 제거 | 앱 파일 완전 삭제 | **FAIL** | 무인(`--uninstall -s`) 제거 후 `.dead`, `Update.exe`, `app-0.7.1\squirrel.exe`, `app-0.7.1\v8_context_snapshot.bin` 4개가 90초 대기 후에도 남음(3계정 모두 재현). 대화형 세션 제거에서는 통과한 이전 증거 `.validation/p10-vm/installer-0.7.0-cleanup-interactive-Run-result.json` 있음 |
+| 제거 | 앱 파일 완전 삭제 | PASS (수정 후) | 5차 최초 시험에서는 FAIL(비대화형 제거 후 4개 잔존, K-05). 원인 수정 후 §8에서 4개 조합 모두 통과 |
 
 ### 3.1 장애·복구 (첫 계정 `P01Tester`만, 데이터 파일 해시 기준)
 
@@ -107,3 +107,27 @@
 ## 7. 보존된 증거
 
 `.validation/p11-vm/Release-result-run1.json`, `.validation/p11-vm/Release-result.json` (gitignored). 설치 파일과 해시는 `build-output/release-candidates/` (커밋 대상 아님).
+
+
+## 8. 무인 제거 잔존 파일 수정 검증 (K-05)
+
+시험 스크립트: `tools/vm/test_uninstall_vm.ps1`. 각 조합마다 체크포인트 `pre-p10-installer`에서 시작해 설치 → 실행 → 사용자 데이터에 표식 파일 기록 → 제거 → 점검 후 다시 복원했다. 증거: `.validation/p11-vm/Uninstall-before-fix-result.json`(수정 전), `Uninstall-after-fix-result.json`(수정 후).
+
+| 항목 | 내용 |
+|---|---|
+| 수정 전 설치 파일 | 5차 후보 `0.7.0` (SHA-256 `1ed1ba6f…852c0`) |
+| 수정 후 설치 파일 | `build-output/release-candidates/0.7.0-uninstallfix/GitVizWorkspaceSetup.exe` — 180,141,056 bytes, SHA-256 `a0324158d88756c16f2f35b16d691ea69aaaaa9071c3efcb8956e0f7b673bcf6`, 미서명. 패키지 최적화([패키지 감사](RELEASE_PACKAGE_AUDIT.md))도 포함된 빌드다 |
+| 잔존 파일 4개(수정 전) | `\.dead`, `\Update.exe`, `\app-0.7.0\squirrel.exe`, `\app-0.7.0\v8_context_snapshot.bin` (+ 빈 `\app-0.7.0` 폴더). 설치 폴더 `%LOCALAPPDATA%\GitVizWorkspace` |
+| 원인 | 정리 도우미를 작업 스케줄러 일회성 작업으로 시작. 이 작업은 사용자 대화형 로그온이 없으면 실행되지 않는다. 수정 전 로그: `schtasks /Create exit 0`, `/Run exit 0` 뒤 `helper: process started`가 없음 |
+| 수정 | `desktop/src/squirrel.ts`: WMI `Win32_Process.Create`로 도우미를 먼저 시작, 거부 시에만 기존 일회성 작업 사용. 단위 시험 `desktop/tests/squirrel.test.ts` 갱신(10개 통과) |
+
+| 세션 | 제거 방식 | 수정 전 | 수정 후 |
+|---|---|---|---|
+| 비대화형(로그온 없음) | 무인 `--uninstall -s` | FAIL (4개+빈 폴더 잔존) | PASS (잔존 0, 폴더 없음) |
+| 비대화형 | 일반 `--uninstall` | FAIL (동일) | PASS |
+| 대화형(자동 로그온) | 무인 `--uninstall -s` | PASS | PASS |
+| 대화형 | 일반 `--uninstall` | PASS | PASS |
+
+수정 후 4개 조합 공통으로 확인한 것: 제거 종료 코드 0, 설치 폴더 파일 0개와 폴더 자체 삭제, 바로가기·제어판 항목 제거, 사용자 데이터(표식 파일, DB·키 해시) 보존, 다른 앱 폴더(`%LOCALAPPDATA%`) 손실 없음, 남은 프로세스 없음, 정리 작업·스크립트 흔적 없음. 정리 도우미 로그에서 `wmi Win32_Process.Create exit 0` 뒤 `helper: finished; install directory exists=False`를 확인했다.
+
+**한계:** WMI가 거부되는 환경의 대체 경로(일회성 작업)는 단위 시험으로만 검증했고 VM에서는 재현하지 않았다. 이 시험은 설치→실행→제거를 한 계정에서 수행했으며, 업그레이드 후 제거, 앱 실행 중 제거, 제거 중 중단은 시험하지 않았다. 호스트에서 제거를 실행하지 않았다.

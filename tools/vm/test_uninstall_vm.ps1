@@ -41,7 +41,8 @@ $guestTest = {
     $data = Join-Path $env:APPDATA 'gitviz-workspace\workspace'
     $cleanupLog = Join-Path $env:TEMP 'GitVizWorkspace-uninstall-cleanup.log'
     function Hashes($dir) { $h = [ordered]@{}; if (Test-Path -LiteralPath $dir) { foreach ($f in Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue | Sort-Object Name) { try { $h[$f.Name] = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256 -ErrorAction Stop).Hash.Substring(0, 16) } catch { $h[$f.Name] = 'locked' } } }; $h }
-    $interactiveUser = @(Get-Process explorer -IncludeUserName -ErrorAction SilentlyContinue | Where-Object { $_.UserName -like "*\$env:USERNAME" }).Count -gt 0
+    $explorerOwners = @(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" -ErrorAction SilentlyContinue | ForEach-Object { (Invoke-CimMethod -InputObject $_ -MethodName GetOwner -ErrorAction SilentlyContinue).User })
+    $interactiveUser = $explorerOwners -contains $env:USERNAME
     Step 'session' $true "user=$env:USERNAME explorerOfThisUser=$interactiveUser sessionId=$((Get-Process -Id $PID).SessionId)"
 
     $p = Start-Process $Setup -ArgumentList '--silent' -PassThru
@@ -80,9 +81,9 @@ $guestTest = {
     Step 'other-app-folders-untouched' ($lostOther.Count -eq 0) "lost=[$($lostOther -join ',')]"
     $procs = @(Get-Process -Name GitVizWorkspace, gitviz-workspace-agent, Update, squirrel -ErrorAction SilentlyContinue | ForEach-Object { $_.ProcessName })
     Step 'no-leftover-processes' ($procs.Count -eq 0) "processes=[$($procs -join ',')]"
-    $task = (& schtasks.exe /Query /TN GitVizWorkspaceUninstallCleanup 2>&1 | Out-String).Trim()
-    Step 'cleanup-task-removed' ($task -match 'ERROR|오류|지정된 파일|cannot find|찾을 수') "query=[$($task -replace '\s+', ' ')]"
-    $log = if (Test-Path $cleanupLog) { @(Get-Content -LiteralPath $cleanupLog) } else { @('(no cleanup log file)') }
+    $task = (& schtasks.exe /Query /TN GitVizWorkspaceUninstallCleanup 2>&1 | Out-String).Trim(); $taskExit = $LASTEXITCODE
+    Step 'cleanup-task-removed' ($taskExit -ne 0) "queryExit=$taskExit"
+    $log = if (Test-Path $cleanupLog) { @(Get-Content -LiteralPath $cleanupLog | ForEach-Object { [string]$_ }) } else { @('(no cleanup log file)') }
     $script = Test-Path (Join-Path $env:TEMP 'GitVizWorkspace-uninstall-cleanup.ps1')
     Step 'cleanup-script-removed' (-not $script) "exists=$script"
     [ordered]@{ user = "$env:COMPUTERNAME\$env:USERNAME"; variant = $Variant; interactive = $interactiveUser; cleanupLog = $log; remaining = $remaining
