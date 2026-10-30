@@ -1,6 +1,6 @@
 param([string]$PostgresBin = 'C:\Program Files\PostgreSQL\18\bin')
 $ErrorActionPreference = 'Stop'
-$root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $run = Join-Path $root ('.validation\p06\pg-' + [guid]::NewGuid().ToString('N'))
 $port = 55436
 if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { throw 'Fixture port is in use.' }

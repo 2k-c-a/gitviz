@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 param([string]$PostgresBin = 'C:\Program Files\PostgreSQL\18\bin')
 $ErrorActionPreference = 'Stop'
-$root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+$root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../..')).Path
 $run = Join-Path $root ('.validation/p09/services-' + [guid]::NewGuid().ToString('N'))
 $pgPort = 55439; $redisPort = 56389
 foreach ($port in @($pgPort, $redisPort)) {

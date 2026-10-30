@@ -2,7 +2,7 @@
 param([string]$Python = '', [string]$Node = '', [string]$EvidenceDirectory = '')
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Windows fixture runner required.' }
-$repo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+$repo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../..')).Path
 if (!$Python) { $Python = Join-Path $repo '.validation/venv-workspace/Scripts/python.exe' }
 if (!$Node) { $Node = (Get-Command node.exe).Source }
 $Python = (Resolve-Path -LiteralPath $Python).Path

@@ -10,7 +10,7 @@ on:
       - 'contracts/**'
       - 'tests/workspace/**'
       - 'packaging/agent/**'
-      - 'scripts/validate_workspace_windows.ps1'
+      - 'tools/validation/validate_workspace_windows.ps1'
       - 'scripts/test_workspace_navigation.cjs'
       - '.github/workflows/windows-desktop.yml'
 permissions:
@@ -44,7 +44,7 @@ jobs:
         shell: pwsh
         env:
           GITVIZ_CI_GOLDEN_SCHEMA: '1'
-        run: ./scripts/validate_workspace_windows.ps1 -Node (Get-Command node.exe).Source -EvidenceDirectory "$env:RUNNER_TEMP/gitviz-evidence"
+        run: ./tools/validation/validate_workspace_windows.ps1 -Node (Get-Command node.exe).Source -EvidenceDirectory "$env:RUNNER_TEMP/gitviz-evidence"
       - name: Preserve fixture evidence
         if: always()
         uses: actions/upload-artifact@v4

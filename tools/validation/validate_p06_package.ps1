@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $package = (Resolve-Path (Join-Path $root 'desktop\out\GitVizWorkspaceP06Verify-win32-x64')).Path
 $evidence = Join-Path $root ('.validation\p06\package-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $evidence | Out-Null

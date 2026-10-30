@@ -43,3 +43,9 @@
 - **변경:** `workspace_agent.spec`, `requirements-workspace{,-build}.txt`, `requirements-workspace.lock`을 `packaging/agent/`로, `build_workspace_agent.py`·`audit_workspace_agent.py`를 `tools/build/`로 `git mv`. spec의 `root = Path(SPECPATH).parents[1]`, 빌드 스크립트의 `parents[2]`와 spec 경로, `pyright-workspace.json`, `validate_workspace_windows.ps1`(ruff 대상·agent-freeze), 두 CI 워크플로(경로 필터 `packaging/agent/**`, 잠금 설치 경로), 문서 링크(`docs/migration/validation/p01-2026-10-24.md`, `docs/ux-redesign/phase-1-c459f29/project-audit.md`) 갱신.
 - **테스트:** 새 위치에서 에이전트 동결 성공(18초), 산출물 파일 134개 목록이 기준선(B7)과 **동일**, `audit_workspace_agent.py` 통과(module 623, 서버 모듈·비공개 파일 없음), `.lock` SHA-256 불변(`09ac9377…`), ruff 통과, pyright 0 오류, `tests/workspace` 134개 통과, 문서 검사 통과.
 - **참고:** exe의 SHA-256은 재빌드로 달라졌다(빌드 시각 포함, 예상된 변화). 파일 구성·크기 수준은 동일. 잠금 설치(`--require-hashes`)는 새 가상환경이 필요해 실행하지 않았다(파일 내용 불변, `-r` 상대 경로는 같은 폴더).
+
+## S5 검증 도구 이동 (`scripts/` → `tools/validation`)
+- **계획 수정:** `smoke_ai_live.py`는 `test_ai_smoke.py`가, `ai_integration_stack.py`는 `verify_ai_mvp_integration.py`를 형제 import하므로 `tools/validation`이 아니라 `tests/server`(S6)로 확정. `tools/validation`은 11개(validate_*.ps1 10 + `ai_ui_mock_server.py`).
+- **변경:** `git mv` 11개. ps1의 루트 계산 `Join-Path $PSScriptRoot '..'` → `'../..'`, `ai_ui_mock_server.py`의 `parents[2]`, 두 워크플로의 게이트 호출·경로 필터, 로컬 `.claude/launch.json`(미추적)의 목업 서버 경로. 이 ps1들이 부르는 `scripts\test_*`·`scripts/*.cjs` 경로는 S6에서 테스트와 함께 바꾼다(그때까지 유효).
+- **테스트:** 10개 ps1 구문 오류 0, 문서 검사 통과, **`tools/validation/validate_workspace_windows.ps1` 전체 게이트 통과**(23단계, 실패 0, ruff·desktop-build·agent-freeze·host/workspace 단위·Electron E2E 포함, 작업 트리 변경 없음, 증거 `gitviz-p11-backup\S5-gate`).
+- **오류:** 증거 폴더를 미리 만들어 게이트가 "Evidence directory must be new"로 거부 → 새 경로로 재실행(코드 문제 아님).

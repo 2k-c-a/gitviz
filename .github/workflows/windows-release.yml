@@ -36,7 +36,7 @@ jobs:
         shell: pwsh
         env:
           GITVIZ_CI_GOLDEN_SCHEMA: '1'
-        run: ./scripts/validate_workspace_windows.ps1 -Node (Get-Command node.exe).Source -EvidenceDirectory "$env:RUNNER_TEMP/gitviz-evidence"
+        run: ./tools/validation/validate_workspace_windows.ps1 -Node (Get-Command node.exe).Source -EvidenceDirectory "$env:RUNNER_TEMP/gitviz-evidence"
       - name: Make installer and package (unsigned)
         shell: pwsh
         run: |

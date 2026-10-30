@@ -55,3 +55,16 @@
 - `workspace_agent.spec` → `packaging/agent/workspace_agent.spec`
 - `scripts/audit_workspace_agent.py` → `tools/build/audit_workspace_agent.py`
 - `scripts/build_workspace_agent.py` → `tools/build/build_workspace_agent.py`
+
+## S5
+- `scripts/ai_ui_mock_server.py` → `tools/validation/ai_ui_mock_server.py`
+- `scripts/validate_p03_package.ps1` → `tools/validation/validate_p03_package.ps1`
+- `scripts/validate_p03_postgres.ps1` → `tools/validation/validate_p03_postgres.ps1`
+- `scripts/validate_p04_package.ps1` → `tools/validation/validate_p04_package.ps1`
+- `scripts/validate_p05_package.ps1` → `tools/validation/validate_p05_package.ps1`
+- `scripts/validate_p06_package.ps1` → `tools/validation/validate_p06_package.ps1`
+- `scripts/validate_p06_postgres.ps1` → `tools/validation/validate_p06_postgres.ps1`
+- `scripts/validate_p07_package.ps1` → `tools/validation/validate_p07_package.ps1`
+- `scripts/validate_p08b_package.ps1` → `tools/validation/validate_p08b_package.ps1`
+- `scripts/validate_p09_services.ps1` → `tools/validation/validate_p09_services.ps1`
+- `scripts/validate_workspace_windows.ps1` → `tools/validation/validate_workspace_windows.ps1`

@@ -1,6 +1,6 @@
 """AI 리뷰 화면을 브라우저에서 확인하기 위한 모의 서버. 실제 백엔드·DB·GitHub·AI 제공자를 쓰지 않는다.
 
-    python scripts/ai_ui_mock_server.py [port]      # 기본 8765
+    python tools/validation/ai_ui_mock_server.py [port]      # 기본 8765
     http://127.0.0.1:8765/pages/ai-review.html?repo=1
 
 frontend/를 그대로 서빙하고 /api/ai/v1/* 응답을 계약(docs/contracts/ai-api.md)의 모양으로 흉내 낸다.
@@ -18,7 +18,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 app = FastAPI()
 
 SHA = lambda c: c * 40  # noqa: E731
