@@ -59,7 +59,7 @@ docker compose up -d db redis
 | `REDIS_URL` | Celery 브로커·백엔드 |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `FRONTEND_URL`, `TOKEN_ENCRYPTION_KEY` | GitHub 로그인·토큰 보관 |
 
-선택: `AI_ENABLED`와 `AI_*`(기본 꺼짐), `DESKTOP_AUTH_ENABLED`·`DESKTOP_PUBLIC_ORIGIN`·`DESKTOP_AUTH_RESPONSE_KEY`(데스크톱 로그인), `SESSION_COOKIE_SECURE`(개발은 0).
+선택: `AI_ENABLED`와 `AI_*`(기본 꺼짐), `DESKTOP_AUTH_ENABLED`·`DESKTOP_PUBLIC_ORIGIN`·`DESKTOP_AUTH_RESPONSE_KEY`(데스크톱 로그인), `SESSION_COOKIE_SECURE`(개발은 0), `VOICE_STUN_URLS`·`VOICE_TURN_URLS`·`VOICE_TURN_SECRET`(커뮤니티 음성 채팅, 비우면 같은 네트워크 안에서만 연결).
 
 **[제안] 환경별 파일:**
 
@@ -167,7 +167,8 @@ npm --prefix desktop start          # = electron .
 |---|---|---|
 | `GITVIZ_USER_DATA_DIR` | `userData`/`sessionData`를 지정 폴더로. 기본값 `%LOCALAPPDATA%\GitViz-Dev\` | 무시 |
 | `GITVIZ_AGENT_COMMAND` | 에이전트를 `python -m app.workspace` 같은 명령으로 실행 | 무시 |
-| `GITVIZ_SERVER_ORIGIN` | 개발 서버의 HTTPS 원점 | 무시(내장 설정 사용) |
+| `GITVIZ_SERVER_ORIGIN` | 개발 서버의 HTTPS 원점 | 내장 원점이 있으면 무시, 없으면 사용(스테이징 VM) |
+| `GITVIZ_BUILD_SERVER_ORIGIN` | (빌드 시) 앱에 내장할 서버 HTTPS 원점. `https://도메인[:포트]` 형식만 허용 | 설치본이 이 값을 사용 |
 
 ## 8. 디버깅
 

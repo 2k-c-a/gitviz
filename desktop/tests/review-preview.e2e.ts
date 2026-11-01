@@ -98,7 +98,8 @@ void app.whenReady().then(async () => {
     phase = 'review-preview';
     await evaluate(`document.getElementById('review-preview').click()`);
     await wait(`document.getElementById('review-preview-meta').textContent.includes('user-pc')`);
-    assert.equal(await evaluate(`document.getElementById('review-start').disabled`), true);
+    // Owner decision (2026-11-01): no consent checkbox; start is ready once the exact preview is shown.
+    assert.equal(await evaluate(`document.getElementById('review-start').disabled`), false);
     assert.equal(await evaluate(`document.getElementById('review-preview-bytes').textContent.includes('value =')`), true);
     await assert.rejects(agent.call('workspace.reviews.preview', { snapshotId: (await agent.call('workspace.reviews.list', { offset: 0, limit: 1 }, { projectId: project.id })).snapshotId ?? randomUUID(), kind: 'review', purpose: 'fixture', profileId: 'gpt-5.4-v1', generation: 1 }, { projectId: project.id }), /CLOUD_MAPPING_REQUIRED/);
     phase = 'review-loopback-fixture';

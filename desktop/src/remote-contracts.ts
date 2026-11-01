@@ -15,7 +15,7 @@ export const endpoints: Record<string, Endpoint> = {
   registerRepository: definition('POST', '/repositories', {}, { github_url: 'text' }),
   reanalyze: definition('POST', '/repositories/{repositoryId}/reanalyze', { repositoryId: 'id' }),
   repositoryStatus: definition('GET', '/repositories/{repositoryId}/status', { repositoryId: 'id' }),
-  search: definition('GET', '/search/github-repositories', {}, { q: 'text', sort: 'text', per_page: 'number' }),
+  search: definition('GET', '/search/github-repositories', {}, { q: 'text', sort: 'text', per_page: 'number', page: 'number' }),
   snapshotMeta: analytics('snapshot'), summary: analytics('summary'), timeline: analytics('timeline', { months: 'number' }),
   commitTypes: analytics('commit-types'), releases: analytics('releases', { limit: 'number' }),
   heatmap: analytics('contributor-heatmap', { weeks: 'number', limit: 'number' }), contributors: analytics('top-contributors', { limit: 'number' }),
@@ -56,6 +56,39 @@ export const endpoints: Record<string, Endpoint> = {
   feedback: ai('PUT', 'findings/{findingId}/feedback', { findingId: 'uuid' }, {}, 'FeedbackRequest'),
 };
 endpoints.pullFiles = ai('GET', 'pulls/{pr}/files', { pr: 'id' }, { repository_id: 'id', ...page });
+// Project community (AD-25). Members only; the server enforces roles, the allowlist only shapes requests.
+const community = (method: string, suffix: string, path: Record<string, Rule> = {}, query: Record<string, Rule> = {}, body?: string) =>
+  definition(method, `/api/community/v1/${suffix}`, path, query, body);
+const repo: Record<string, Rule> = { repositoryId: 'id' };
+Object.assign(endpoints, {
+  communities: community('GET', 'communities'),
+  community: community('GET', 'repositories/{repositoryId}', repo),
+  communityMembers: community('GET', 'repositories/{repositoryId}/members', repo),
+  updateCommunityMember: community('PATCH', 'repositories/{repositoryId}/members/{userId}', { ...repo, userId: 'uuid' }, {}, 'UpdateMemberRequest'),
+  transferCommunityAdmin: community('POST', 'repositories/{repositoryId}/admin', repo, {}, 'TransferAdminRequest'),
+  communityInvites: community('GET', 'repositories/{repositoryId}/invites', repo),
+  createCommunityInvite: community('POST', 'repositories/{repositoryId}/invites', repo, {}, 'CreateInviteRequest'),
+  revokeCommunityInvite: community('DELETE', 'repositories/{repositoryId}/invites/{inviteId}', { ...repo, inviteId: 'uuid' }),
+  redeemCommunityInvite: community('POST', 'invites/redeem', {}, {}, 'RedeemInviteRequest'),
+  communityPosts: community('GET', 'repositories/{repositoryId}/posts', repo, { before: 'id', limit: 'number' }),
+  createCommunityPost: community('POST', 'repositories/{repositoryId}/posts', repo, {}, 'CreatePostRequest'),
+  communityPost: community('GET', 'repositories/{repositoryId}/posts/{postId}', { ...repo, postId: 'id' }),
+  updateCommunityPost: community('PATCH', 'repositories/{repositoryId}/posts/{postId}', { ...repo, postId: 'id' }, {}, 'UpdatePostRequest'),
+  deleteCommunityPost: community('DELETE', 'repositories/{repositoryId}/posts/{postId}', { ...repo, postId: 'id' }),
+  createCommunityComment: community('POST', 'repositories/{repositoryId}/posts/{postId}/comments', { ...repo, postId: 'id' }, {}, 'CreateCommentRequest'),
+  updateCommunityComment: community('PATCH', 'repositories/{repositoryId}/comments/{commentId}', { ...repo, commentId: 'id' }, {}, 'UpdateCommentRequest'),
+  deleteCommunityComment: community('DELETE', 'repositories/{repositoryId}/comments/{commentId}', { ...repo, commentId: 'id' }),
+  // Group chat (AD-27): history and sending here; live events come through community-live.ts.
+  communityChatMessages: community('GET', 'repositories/{repositoryId}/chat/messages', repo, { before: 'id', limit: 'number' }),
+  sendCommunityChat: community('POST', 'repositories/{repositoryId}/chat/messages', repo, {}, 'CreateChatMessageRequest'),
+  deleteCommunityChat: community('DELETE', 'repositories/{repositoryId}/chat/messages/{messageId}', { ...repo, messageId: 'id' }),
+  // Voice chat (AD-28): seats and WebRTC signaling only; audio goes peer to peer, never through the server.
+  communityVoice: community('GET', 'repositories/{repositoryId}/voice', repo),
+  joinCommunityVoice: community('POST', 'repositories/{repositoryId}/voice/join', repo),
+  heartbeatCommunityVoice: community('POST', 'repositories/{repositoryId}/voice/heartbeat', repo, {}, 'VoiceSessionRequest'),
+  leaveCommunityVoice: community('POST', 'repositories/{repositoryId}/voice/leave', repo, {}, 'VoiceSessionRequest'),
+  signalCommunityVoice: community('POST', 'repositories/{repositoryId}/voice/signal', repo, {}, 'VoiceSignalRequest'),
+});
 
 export const UUID_PATTERN = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
 const property = (rule: Rule) => {

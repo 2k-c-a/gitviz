@@ -69,20 +69,29 @@ function showSnapshot(value, turn) {
 }
 document.getElementById('reload-changes').addEventListener('click', () => { void load(); });
 window.addEventListener('workspace-project-changed', () => { void load(); });
-document.getElementById('capture-changes').addEventListener('click', async event => {
-  const projectId = picker.value; if (!projectId) return;
+const actions = ['capture-changes', 'quick-review', 'quick-refactor'].map(id => document.getElementById(id));
+async function capture() {
+  const projectId = picker.value; if (!projectId) return null;
   const turn = generation;
-  const items = [...list.querySelectorAll('input:checked')].map(input => ({ facet: input.dataset.facet, path: input.dataset.path }));
+  const checked = [...list.querySelectorAll('input:checked')];
+  if (!checked.length) { message.textContent = '점검할 파일을 하나 이상 고르세요.'; return null; }
+  const items = checked.map(input => ({ facet: input.dataset.facet, path: input.dataset.path }));
   const body = { projectId, items, includeUntracked: document.getElementById('include-untracked').checked };
   const encoded = JSON.stringify(body);
   if (!pendingCapture || pendingCapture.body !== encoded) pendingCapture = { body: encoded, key: crypto.randomUUID() };
-  event.target.disabled = true;
+  for (const button of actions) button.disabled = true;
   try {
     const value = await api.captureChanges({ ...body, idempotencyKey: pendingCapture.key });
-    if (generation !== turn) return;
+    if (generation !== turn) return null;
     pendingCapture = null; showSnapshot(value, turn); message.textContent = '선택한 입력을 고정했습니다.';
-  } catch (error) { if (turn === generation) fail(error); }
-  finally { event.target.disabled = false; }
+    return value;
+  } catch (error) { if (turn === generation) fail(error); return null; }
+  finally { for (const button of actions) button.disabled = false; }
+}
+document.getElementById('capture-changes').addEventListener('click', () => { void capture(); });
+for (const [id, kind] of [['quick-review', 'review'], ['quick-refactor', 'refactor']]) document.getElementById(id).addEventListener('click', async () => {
+  const value = await capture();
+  if (value) window.dispatchEvent(new CustomEvent('workspace-quick-ai', { detail: { kind, snapshotId: value.snapshotId } }));
 });
 document.getElementById('detect-validation').addEventListener('click', async () => {
   const projectId = picker.value; const turn = generation;
@@ -100,7 +109,11 @@ document.getElementById('detect-validation').addEventListener('click', async () 
         if (!planKeys.has(key)) planKeys.set(key, crypto.randomUUID());
         try {
           const plan = await api.planValidation({ projectId, snapshotId, candidateId: candidate.candidateId, idempotencyKey: planKeys.get(key) });
-          if (generation === turn && snapshot?.snapshotId === snapshotId) { row.append(node('pre', JSON.stringify(plan, null, 2)), node('p', '계획을 저장했습니다. 아래 검증 실행에서 native 승인하세요.')); window.dispatchEvent(new CustomEvent('workspace-validation-plan', { detail: plan })); }
+          if (generation === turn && snapshot?.snapshotId === snapshotId) {
+            row.append(node('pre', JSON.stringify(plan, null, 2)), node('p', '계획을 저장했습니다. 아래 검증 실행에서 native 승인하세요.'));
+            window.dispatchEvent(new CustomEvent('workspace-validation-plan', { detail: plan }));
+            window.dispatchEvent(new CustomEvent('workspace-validation-candidate', { detail: { projectId, candidateId: candidate.candidateId } }));
+          }
         } catch (error) { if (generation === turn) fail(error); }
       });
       row.append(button); detected.append(row);

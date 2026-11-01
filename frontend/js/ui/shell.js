@@ -1,6 +1,5 @@
 import { parseRoute as parseAiRoute, buildRoute as buildAiRoute } from '../ai-state.js';
 import { parseState, nextQuery } from '../viz-state.js';
-import { workspaceEntryUrl } from '../platform/workspace-navigation.js';
 import { element, createIcon, enhanceTooltips, observeActions } from './components.js';
 
 const webRoot = new URL('../../', import.meta.url);
@@ -41,18 +40,17 @@ export function mountShell({ local = false, account = null } = {}) {
   const repo = element('strong', 'app-repository', local ? '프로젝트를 선택하세요' : '저장소를 선택하세요'); repo.id = 'shell-repository';
   const context = element('span', 'app-context'); context.id = 'shell-context';
   heading.append(repo, context);
-  const themeLabel = element('label', 'app-theme');
-  const themeText = element('span', 'ui-sr-only', '화면 테마');
-  const theme = element('select'); theme.id = 'shell-theme'; theme.setAttribute('aria-label', '화면 테마');
-  theme.dataset.tooltip = '시스템 설정 또는 라이트·다크 테마를 선택하세요';
-  for (const [value, text] of [['system', '시스템 테마'], ['light', '라이트'], ['dark', '다크']]) {
-    const option = element('option', '', text); option.value = value; theme.append(option);
-  }
-  theme.value = document.documentElement.dataset.themePreference || 'system';
-  theme.addEventListener('change', () => window.dispatchEvent(new CustomEvent('gitviz-theme-select', { detail: theme.value })));
-  window.addEventListener('gitviz-theme-changed', event => { theme.value = event.detail.preference; });
-  themeLabel.append(themeText, theme);
-  toolbar.append(menu, mode, heading, themeLabel);
+  // One toggle: the icon shows the theme in use (moon = dark, sun = light); until pressed it follows Windows.
+  const theme = element('button', 'app-theme'); theme.type = 'button'; theme.id = 'shell-theme';
+  theme.dataset.tooltip = '라이트·다크 테마 전환';
+  const showTheme = current => {
+    theme.replaceChildren(createIcon(current === 'dark' ? '☾' : '☀'));
+    theme.dataset.theme = current; theme.setAttribute('aria-label', current === 'dark' ? '다크 모드 · 라이트 모드로 전환' : '라이트 모드 · 다크 모드로 전환');
+  };
+  showTheme(document.documentElement.dataset.theme);
+  theme.addEventListener('click', () => window.dispatchEvent(new CustomEvent('gitviz-theme-select', { detail: theme.dataset.theme === 'dark' ? 'light' : 'dark' })));
+  window.addEventListener('gitviz-theme-changed', event => showTheme(event.detail.theme));
+  toolbar.append(menu, mode, heading, theme);
   if (account) toolbar.append(account);
   const main = local ? document.querySelector('body > main') : element('main');
   main.id = 'app-main'; main.tabIndex = -1; main.classList.add('app-main');
@@ -76,10 +74,22 @@ export function mountShell({ local = false, account = null } = {}) {
     if (selected) a.setAttribute('aria-current', 'page');
     parent.append(a); return a;
   };
-  const group = text => nav.append(element('p', 'app-nav-group', text));
   link('저장소 탐색', '⌕', new URL('pages/search.html', webRoot).href, currentPage === 'search');
   link('최근·내 분석', '▦', new URL('pages/myprojects.html', webRoot).href, currentPage === 'myprojects');
   link('URL로 분석 시작', '↗', new URL('index.html', webRoot).href, !local && currentPage === 'index');
+  // The same seven entries on web pages and in the local workspace, so the rail never changes when moving between them.
+  const aiLink = link('AI 리뷰', '◇', pageUrl('ai-review'), currentPage === 'ai-review');
+  link('커뮤니티', '☷', new URL('pages/community.html', webRoot).href, currentPage === 'community');
+  const toView = (a, view) => {
+    a.dataset.wsView = view;
+    a.addEventListener('click', event => { event.preventDefault(); setNavOpen(false); window.dispatchEvent(new CustomEvent('workspace-navigate', { detail: { view } })); });
+    return a;
+  };
+  const settingsHref = () => { const url = new URL(pageUrl('settings')); if (currentPage === 'ai-review') url.searchParams.set('return', buildAiRoute(parseAiRoute(location.search))); return url.href; };
+  // In the workspace, 설정 is its own settings view (AI model, keys, editor); web pages keep the server-side settings page.
+  const settingsLink = local ? toView(link('설정', '⚙', '#'), 'settings') : link('설정', '⚙', settingsHref(), currentPage === 'settings');
+  if (local) toView(link('프로젝트', '▣', '#'), 'projects');
+  else if (location.protocol === 'gitviz:') link('프로젝트', '▣', new URL('../index.html', webRoot).href);
   const repositoryNav = element('div', 'app-repository-nav'); nav.append(repositoryNav);
   let repositoryLinks = [];
   let repositoryId;
@@ -89,25 +99,14 @@ export function mountShell({ local = false, account = null } = {}) {
     if (!local && state.repo) {
       repositoryNav.append(element('p', 'app-nav-group', '현재 저장소'));
       for (const [page, label] of Object.entries(pages)) {
+        if (page === 'ai-review') continue; // Already a top-level entry.
         const a = link(label, glyphs[page], pageUrl(page), currentPage === page, repositoryNav);
         a.dataset.shellPage = page; repositoryLinks.push(a);
       }
-    } else if (!local) link('AI 리뷰', '◇', pageUrl('ai-review'), currentPage === 'ai-review', repositoryNav);
+    }
   };
   buildRepositoryLinks();
-  const settingsHref = () => { const url = new URL(pageUrl('settings')); if (currentPage === 'ai-review') url.searchParams.set('return', buildAiRoute(parseAiRoute(location.search))); return url.href; };
-  const settingsLink = link('설정 · API Key', '⚙', settingsHref(), currentPage === 'settings');
-  const workspace = local ? new URL('index.html', location.href).href : workspaceEntryUrl(location.href);
-  if (workspace) {
-    group('워크스페이스');
-    if (!local) { const a = link('로컬 프로젝트·알림', '▣', workspace, false); a.dataset.workspaceEntry = ''; }
-  }
   if (local) {
-    // Views of the local workspace; layout.js decides what is shown and marks the current one.
-    for (const [view, label, glyph] of [['projects', '프로젝트', '▣'], ['inbox', '알림', '◔'], ['account', '계정·연결', '◉'], ['settings', '설정', '⚙']]) {
-      const a = link(label, glyph, '#', false); a.dataset.wsView = view;
-      a.addEventListener('click', event => { event.preventDefault(); setNavOpen(false); window.dispatchEvent(new CustomEvent('workspace-navigate', { detail: { view } })); });
-    }
     const picker = document.getElementById('project-picker');
     const updateProject = () => { repo.textContent = picker?.value ? picker.selectedOptions[0].textContent : '프로젝트를 선택하세요'; };
     picker?.addEventListener('change', updateProject); updateProject();
@@ -130,8 +129,7 @@ export function mountShell({ local = false, account = null } = {}) {
       status.textContent = document.getElementById('load-error') ? '결과 조회 실패 · 본문에서 확인' : banner ? '저장 결과 조회됨 · 수집 범위는 본문 참조' : '원격 분석';
       settingsLink.href = settingsHref();
       for (const a of repositoryLinks) a.href = pageUrl(a.dataset.shellPage);
-      const entry = document.querySelector('[data-workspace-entry]');
-      const entryUrl = workspaceEntryUrl(location.href); if (entry && entryUrl) entry.href = entryUrl;
+      aiLink.href = pageUrl('ai-review');
     }
   };
   if (!local) {

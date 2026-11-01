@@ -1,13 +1,30 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { readFile, lstat, open, rename, unlink } from 'node:fs/promises';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import type { Http, RemoteResponse } from './remote';
 import { rejectLinks, type ProtectedStorage } from './secrets';
 
 type User = { id: string; github_login: string; display_name: string | null };
 interface Session { sessionToken: string; sessionId: string; user: User; expiresAt: string; capabilities: string[]; apiCapabilities: { desktopProtocol: number; aiContract: string }; pendingRevocation?: boolean }
-interface Flow { flowId: string; verifier: string; pollSecret: string; key: string; displayCode: string; expires: number; nextPoll: number }
+interface Flow { flowId: string; verifier: string; pollSecret: string; key: string; displayCode: string; expires: number; nextPoll: number; listener: Server; code?: string }
 export interface AuthState { state: 'signed-out' | 'pending' | 'authenticated' | 'revoke-pending'; user?: User; expiresAt?: string; displayCode?: string; pollAfterMs?: number }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DONE = '<!doctype html><html lang="ko"><meta charset="utf-8"><title>GitViz</title><p>로그인했습니다. 이 창을 닫고 GitViz 앱으로 돌아가세요.</p></html>';
+// RFC 8252 loopback: the browser brings the one-time code back to this machine only. 127.0.0.1, random port, one GET.
+async function listenLoopback(accept: (flowId: string | null, code: string | null) => boolean): Promise<Server> {
+  const server = createServer((request, response) => {
+    const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+    const ok = request.method === 'GET' && url.pathname === '/callback' && accept(url.searchParams.get('flow'), url.searchParams.get('code'));
+    response.writeHead(ok ? 200 : 404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer',
+      'Content-Security-Policy': "default-src 'none'" });
+    response.end(ok ? DONE : '');
+    if (ok) server.close();
+  });
+  server.unref();
+  await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', () => resolve()); });
+  return server;
+}
 function record(value: unknown): Record<string, unknown> { if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('BAD_RESPONSE'); return value as Record<string, unknown>; }
 function session(value: unknown): Session {
   const body = record(value); const user = record(body.user); const api = record(body.apiCapabilities);
@@ -60,7 +77,8 @@ export class DesktopAuth {
     if (this.active) this.invalidate();
     return null;
   };
-  invalidate = (): void => { this.active = null; this.flow = null; this.generation++; void this.vault.write(null).catch(() => {}); };
+  invalidate = (): void => { this.active = null; this.end(); this.generation++; void this.vault.write(null).catch(() => {}); };
+  private end(): void { this.flow?.listener.close(); this.flow = null; }
   private view(): AuthState {
     if (this.revoking) return { state: 'revoke-pending' };
     if (this.active && this.identity()) return { state: 'authenticated', user: this.active.user, expiresAt: this.active.expiresAt };
@@ -93,18 +111,34 @@ export class DesktopAuth {
       if (this.revoking) throw new Error('REVOCATION_REQUIRED');
       if (this.active) return this.view();
       if (this.flow && this.flow.expires > Date.now()) return this.view();
+      this.end();
       const verifier = randomBytes(32).toString('base64url');
-      const response = await this.http('/api/desktop/v1/auth/transactions', 'POST', JSON.stringify({
-        challenge: createHash('sha256').update(verifier).digest('hex'), deviceLabel: 'GitViz Desktop' }));
-      if (response.status !== 201) throw new Error(response.status === 429 ? 'RATE_LIMITED' : 'UNSUPPORTED_SERVER');
+      let listener: Server;
+      try {
+        listener = await listenLoopback((flowId, code) => {
+          const flow = this.flow;
+          if (!flow || flow.listener !== listener || flow.code || flowId !== flow.flowId || !code || !/^[A-Za-z0-9_-]{43}$/.test(code)) return false;
+          flow.code = code; flow.nextPoll = Math.min(flow.nextPoll, Date.now());
+          return true;
+        });
+      } catch { throw new Error('BROWSER_UNAVAILABLE'); }
+      const port = (listener.address() as AddressInfo).port;
+      let response: RemoteResponse;
+      try {
+        response = await this.http('/api/desktop/v1/auth/transactions', 'POST', JSON.stringify({
+          challenge: createHash('sha256').update(verifier).digest('hex'), deviceLabel: 'GitViz Desktop', redirectPort: port }));
+      } catch (error) { listener.close(); throw error; }
+      const fail = (code: string): never => { listener.close(); throw new Error(code); };
+      if (response.status !== 201) fail(response.status === 429 ? 'RATE_LIMITED' : 'UNSUPPORTED_SERVER');
       const body = record(response.body);
       if (typeof body.flowId !== 'string' || !uuid.test(body.flowId) || typeof body.pollSecret !== 'string' || !/^[A-Za-z0-9_-]{43,128}$/.test(body.pollSecret) ||
           typeof body.displayCode !== 'string' || !/^[A-F0-9]{8}$/.test(body.displayCode) || typeof body.expiresAt !== 'string' ||
           !Number.isFinite(Date.parse(body.expiresAt)) || Date.parse(body.expiresAt) <= Date.now() || Date.parse(body.expiresAt) > Date.now() + 301000 || body.pollAfterMs !== 2000 ||
-          body.browserUrl !== `${this.origin}/api/desktop/v1/auth/authorize?flow=${body.flowId}`) throw new Error('BAD_RESPONSE');
-      this.flow = { flowId: body.flowId, verifier, pollSecret: body.pollSecret, key: randomUUID(), displayCode: body.displayCode,
-        expires: Date.parse(body.expiresAt), nextPoll: Date.now() + 2000 };
-      try { await this.openBrowser(body.browserUrl as string); } catch { this.flow = null; throw new Error('BROWSER_UNAVAILABLE'); }
+          body.browserUrl !== `${this.origin}/api/desktop/v1/auth/authorize?flow=${body.flowId}&port=${port}`) fail('BAD_RESPONSE');
+      const flowId = body.flowId as string;
+      this.flow = { flowId, verifier, pollSecret: body.pollSecret as string, key: randomUUID(), displayCode: body.displayCode as string,
+        expires: Date.parse(body.expiresAt as string), nextPoll: Date.now() + 2000, listener };
+      try { await this.openBrowser(body.browserUrl as string); } catch { this.end(); throw new Error('BROWSER_UNAVAILABLE'); }
       return this.view();
     });
   }
@@ -112,12 +146,12 @@ export class DesktopAuth {
     return this.exclusively(async () => {
       if (!this.flow) return this.view();
       const flow = this.flow;
-      if (flow.expires <= Date.now()) { this.flow = null; return this.view(); }
+      if (flow.expires <= Date.now()) { this.end(); return this.view(); }
       if (flow.nextPoll > Date.now()) return this.view();
       // Advance before I/O: errors cannot trigger a tight retry loop or a fresh key.
       flow.nextPoll = Date.now() + 2000;
       const response: RemoteResponse = await this.http('/api/desktop/v1/auth/exchange', 'POST', JSON.stringify({
-        flowId: flow.flowId, pollSecret: flow.pollSecret, verifier: flow.verifier }), undefined, flow.key);
+        flowId: flow.flowId, pollSecret: flow.pollSecret, verifier: flow.verifier, ...(flow.code ? { callbackCode: flow.code } : {}) }), undefined, flow.key);
       if (response.status === 202 || response.status === 429) {
         const retry = response.headers['retry-after'];
         const ms = retry && /^\d+$/.test(retry) ? Number(retry) * 1000 : retry ? Date.parse(retry) - Date.now() : 2000;
@@ -125,17 +159,17 @@ export class DesktopAuth {
         return this.view();
       }
       if (response.status >= 500) throw new Error('AUTH_UNAVAILABLE');
-      if (response.status !== 200) { this.flow = null; throw new Error('AUTH_REQUIRED'); }
+      if (response.status !== 200) { this.end(); throw new Error('AUTH_REQUIRED'); }
       const issued = session(response.body);
       try { await this.vault.write(issued); }
-      catch { this.revoking = issued; this.flow = null; this.generation++; throw new Error('STORAGE_UNAVAILABLE'); }
-      this.active = issued; this.flow = null; this.generation++;
+      catch { this.revoking = issued; this.end(); this.generation++; throw new Error('STORAGE_UNAVAILABLE'); }
+      this.active = issued; this.end(); this.generation++;
       return this.view();
     });
   }
   async logout(): Promise<AuthState> {
     return this.exclusively(async () => {
-      this.revoking = this.revoking ?? this.active; this.active = null; this.flow = null; this.generation++;
+      this.revoking = this.revoking ?? this.active; this.active = null; this.end(); this.generation++;
       // Quarantined encrypted credentials survive restart only to retry revocation,
       // never to authenticate an account after an offline logout.
       if (this.revoking) {

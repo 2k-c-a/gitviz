@@ -1,0 +1,276 @@
+{
+  "CreatePostRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "title": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+        "title": "Title",
+        "type": "string"
+      },
+      "body": {
+        "maxLength": 20000,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+        "title": "Body",
+        "type": "string"
+      }
+    },
+    "required": [
+      "title",
+      "body"
+    ],
+    "title": "CreatePostRequest",
+    "type": "object"
+  },
+  "UpdatePostRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "title": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+        "title": "Title",
+        "type": "string"
+      },
+      "body": {
+        "maxLength": 20000,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+        "title": "Body",
+        "type": "string"
+      }
+    },
+    "required": [
+      "title",
+      "body"
+    ],
+    "title": "UpdatePostRequest",
+    "type": "object"
+  },
+  "CreateCommentRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "body": {
+        "maxLength": 5000,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+        "title": "Body",
+        "type": "string"
+      }
+    },
+    "required": [
+      "body"
+    ],
+    "title": "CreateCommentRequest",
+    "type": "object"
+  },
+  "UpdateCommentRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "body": {
+        "maxLength": 5000,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+        "title": "Body",
+        "type": "string"
+      }
+    },
+    "required": [
+      "body"
+    ],
+    "title": "UpdateCommentRequest",
+    "type": "object"
+  },
+  "CreateInviteRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "expires_in_hours": {
+        "default": 168,
+        "maximum": 720,
+        "minimum": 1,
+        "title": "Expires In Hours",
+        "type": "integer"
+      },
+      "max_uses": {
+        "anyOf": [
+          {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Max Uses"
+      }
+    },
+    "title": "CreateInviteRequest",
+    "type": "object"
+  },
+  "RedeemInviteRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "token": {
+        "pattern": "^[A-Za-z0-9_-]{43}$",
+        "title": "Token",
+        "type": "string"
+      }
+    },
+    "required": [
+      "token"
+    ],
+    "title": "RedeemInviteRequest",
+    "type": "object"
+  },
+  "UpdateMemberRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "status": {
+        "pattern": "^(active|removed)$",
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "title": "UpdateMemberRequest",
+    "type": "object"
+  },
+  "TransferAdminRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "user_id": {
+        "format": "uuid",
+        "title": "User Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "user_id"
+    ],
+    "title": "TransferAdminRequest",
+    "type": "object"
+  },
+  "CreateChatMessageRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "body": {
+        "maxLength": 2000,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+        "title": "Body",
+        "type": "string"
+      }
+    },
+    "required": [
+      "body"
+    ],
+    "title": "CreateChatMessageRequest",
+    "type": "object"
+  },
+  "VoiceSessionRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "session_id": {
+        "pattern": "^[A-Za-z0-9_-]{22}$",
+        "title": "Session Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "session_id"
+    ],
+    "title": "VoiceSessionRequest",
+    "type": "object"
+  },
+  "VoiceSignalRequest": {
+    "additionalProperties": false,
+    "description": "WebRTC signaling relayed to one other seat: an SDP offer/answer, or one ICE candidate.",
+    "properties": {
+      "session_id": {
+        "pattern": "^[A-Za-z0-9_-]{22}$",
+        "title": "Session Id",
+        "type": "string"
+      },
+      "to": {
+        "pattern": "^[A-Za-z0-9_-]{22}$",
+        "title": "To",
+        "type": "string"
+      },
+      "kind": {
+        "pattern": "^(offer|answer|ice)$",
+        "title": "Kind",
+        "type": "string"
+      },
+      "sdp": {
+        "anyOf": [
+          {
+            "maxLength": 16000,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Sdp"
+      },
+      "candidate": {
+        "anyOf": [
+          {
+            "maxLength": 1024,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Candidate"
+      },
+      "sdp_mid": {
+        "anyOf": [
+          {
+            "maxLength": 64,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Sdp Mid"
+      },
+      "sdp_mline_index": {
+        "anyOf": [
+          {
+            "maximum": 64,
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Sdp Mline Index"
+      }
+    },
+    "required": [
+      "session_id",
+      "to",
+      "kind"
+    ],
+    "title": "VoiceSignalRequest",
+    "type": "object"
+  }
+}

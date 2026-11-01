@@ -1,6 +1,7 @@
 import { ipcMain, type BrowserWindow } from 'electron';
 import { trustedSender } from './ipc';
 import type { DesktopAuth } from './auth';
+import type { CommunityLive, LiveEvent } from './community-live';
 import type { Remote } from './remote';
 import type { UpdateService } from './update';
 
@@ -22,4 +23,25 @@ export function registerDesktop(window: BrowserWindow, auth: DesktopAuth | null,
     }
   });
   return () => { for (const channel of channels) ipcMain.removeHandler(channel); };
+}
+
+/** Chat live events for the page in this window only; any page navigation or sign-out ends the stream. */
+export function registerCommunityLive(window: BrowserWindow, create: ((emit: (event: LiveEvent) => void) => CommunityLive) | null): () => void {
+  const live = create?.(event => { if (!window.isDestroyed()) window.webContents.send('desktop:community-event', event); }) ?? null;
+  ipcMain.handle('desktop:community-subscribe', (event, ...args: unknown[]) => {
+    if (!trustedSender(event, window) || args.length !== 1) throw new Error('ACCESS_DENIED');
+    if (!live) throw new Error('SERVER_NOT_CONFIGURED');
+    return live.subscribe(args[0]);
+  });
+  ipcMain.handle('desktop:community-unsubscribe', (event, ...args: unknown[]) => {
+    if (!trustedSender(event, window) || args.length) throw new Error('ACCESS_DENIED');
+    return live?.unsubscribe() ?? { subscribed: false };
+  });
+  const navigate = (details: { isMainFrame: boolean; isSameDocument: boolean }) => { if (details.isMainFrame && !details.isSameDocument) live?.unsubscribe(); };
+  window.webContents.on('did-start-navigation', navigate);
+  return () => {
+    live?.unsubscribe();
+    if (!window.isDestroyed()) window.webContents.off('did-start-navigation', navigate);
+    ipcMain.removeHandler('desktop:community-subscribe'); ipcMain.removeHandler('desktop:community-unsubscribe');
+  };
 }

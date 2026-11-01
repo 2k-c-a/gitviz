@@ -39,7 +39,7 @@ void app.whenReady().then(async () => {
   const user = { id: '11111111-1111-4111-8111-111111111111', github_login: 'fixture', display_name: null };
   const issued = { user, sessionId: user.id, sessionToken: 'a'.repeat(64), expiresAt: new Date(Date.now() + 300000).toISOString(), capabilities: ['remote-v1'], apiCapabilities: { desktopProtocol: 1, aiContract: '1.9' } };
   let allowed = false, switchAccount = false, denied = false, job = 3, status = 'done', githubId = 123, visibility = 'public';
-  let reviewAllowed = false, modelCalls = 0, approvedHash = '', snapshotHead = '';
+  let modelCalls = 0, approvedHash = '', snapshotHead = '';
   let diagnosticPath: string | null = null;
   const byok = 'fixture-only-byok-never-in-agent-123456';
   const http: Http = async (path, method) => {
@@ -66,7 +66,7 @@ void app.whenReady().then(async () => {
   const coordinator = new RemoteWorkspace(agent, auth, remote, 'https://fixture.test', async detail => {
     assert.match(detail, /GitHub ID: 123/); assert.equal(detail.includes(root), true); if (switchAccount) auth.invalidate(); return allowed;
   });
-  const cloud = new CloudReview(agent, coordinator, () => auth.identity()?.generation ?? null, async (profile, bytes, key) => {
+  const cloud = new CloudReview(agent, async (profile, bytes, key) => {
     assert.equal(profile, 'gpt-5.4-v1'); assert.equal(key, byok);
     assert.equal(createHash('sha256').update(bytes).digest('hex'), approvedHash); modelCalls++;
     const body = { model: 'gpt-5.4-2026-03-05', status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text',
@@ -74,7 +74,7 @@ void app.whenReady().then(async () => {
     return { httpStatus: 200, rawBase64: Buffer.from(JSON.stringify(body)).toString('base64'), errorCode: null, uncertain: false };
   });
   const cleanup = [registerHealth(window, () => agent.health()), registerProjects(window, agent, contracts, { select: async () => root, confirm: async (_window, message, detail) => {
-    if (message.includes('AI에')) { assert.match(detail, /최대 비용 예약 추정 USD/); return reviewAllowed; } return true;
+    assert.equal(message.includes('AI에'), false, 'no native AI transfer prompt'); assert.ok(detail !== undefined); return true;
   } }, cloud),
     registerDesktop(window, auth, remote), registerNotifications(window, agent, contracts), registerRemoteWorkspace(window, coordinator),
     registerImpact(window, agent, contracts, new HistoricalImpact(agent, coordinator, remote)), registerDiagnostics(window, () => agent.health(), async () => diagnosticPath)];
@@ -97,17 +97,16 @@ void app.whenReady().then(async () => {
     phase = 'transition'; job = 4; status = 'running'; await coordinator.poll(); status = 'done'; await coordinator.poll(); await coordinator.poll();
     const page = await inbox(); assert.equal(page.items.length, 1); assert.equal(page.items[0].type, 'analysis.succeeded'); assert.equal(page.items[0].count, 1);
     const analysisId = page.items[0].target.resourceId;
-    phase = 'cloud-private-block';
+    // Owner decision (2026-11-01): BYOK cloud review no longer requires a public mapping, and the start has no native prompt.
+    phase = 'cloud-byok-private-allowed';
     const snapshot = await evaluate(`workspace.captureChanges({projectId:${JSON.stringify(project.id)},items:[{facet:'selected',path:'app.py'}],includeUntracked:false,idempotencyKey:crypto.randomUUID()})`);
     snapshotHead = snapshot.head;
     const previewCode = `workspace.previewReview({projectId:${JSON.stringify(project.id)},snapshotId:${JSON.stringify(snapshot.snapshotId)},kind:'review',purpose:'Review fixture',profileId:'gpt-5.4-v1',generation:1,apiKey:${JSON.stringify(byok)}})`;
-    visibility = 'private'; await assert.rejects(evaluate(previewCode), /CLOUD_MAPPING_REQUIRED/); assert.equal(modelCalls, 0); visibility = 'public';
-    phase = 'cloud-native-cancel'; const preview = await evaluate(previewCode); approvedHash = preview.requestHash;
-    assert.equal(JSON.stringify(preview).includes(byok), false);
+    visibility = 'private'; const preview = await evaluate(previewCode); approvedHash = preview.requestHash; assert.equal(modelCalls, 0); visibility = 'public';
+    assert.equal(JSON.stringify(preview).includes(byok), false); assert.equal('cloudMapping' in preview, false);
     const start = { projectId: project.id, previewId: preview.previewId, previewHash: preview.previewHash, manifestHash: preview.manifestHash,
       maxEstimatedCost: preview.maxEstimatedCost, acknowledged: true, duplicateRiskAcknowledged: false, idempotencyKey: '22222222-2222-4222-8222-222222222222' };
-    assert.equal(await evaluate(`workspace.startReview(${JSON.stringify(start)})`), null); assert.equal(modelCalls, 0);
-    phase = 'cloud-exact-transfer'; reviewAllowed = true; const run = await evaluate(`workspace.startReview(${JSON.stringify(start)})`);
+    phase = 'cloud-exact-transfer'; const run = await evaluate(`workspace.startReview(${JSON.stringify(start)})`);
     let reviewed = run;
     for (let i = 0; i < 200 && ['queued', 'running'].includes(reviewed.status); i++) {
       await new Promise(resolve => setTimeout(resolve, 25)); reviewed = await evaluate(`workspace.getReview({projectId:${JSON.stringify(project.id)},runId:${JSON.stringify(run.runId)}})`);

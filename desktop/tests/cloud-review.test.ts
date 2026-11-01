@@ -6,7 +6,7 @@ import type { Operation } from '../contracts/workspace';
 
 const KEY = 'fixture-only-key-never-crosses-stdio';
 function fixture() {
-  let generation = 1, deny = false, mismatch = false, reflected = false, escaped = false, sent = 0;
+  let mismatch = false, reflected = false, escaped = false, sent = 0;
   const calls: { operation: Operation; payload: Record<string, unknown> }[] = [];
   const wire = Buffer.from('{"approved":"fixture"}'), hash = createHash('sha256').update(wire).digest('hex');
   let reference: unknown;
@@ -21,13 +21,12 @@ function fixture() {
     if (operation === 'workspace.reviews.cloudExchange' && payload.phase === 'complete') { finished(); return { projectId: 'p', ready: false }; }
     return { projectId: 'p', runId: 'run', status: 'running' };
   } };
-  const mapping = { async publicProof() { if (deny) throw new Error('CLOUD_MAPPING_REQUIRED'); return { visibility: 'public', accountId: '11', configHash: 'a', expiresAt: Date.now() / 1000 + 30 }; } };
-  const cloud = new CloudReview(agent, mapping, () => generation, async (_profile, bytes, key) => {
+  const cloud = new CloudReview(agent, async (_profile, bytes, key) => {
     assert.equal(key, KEY); assert.deepEqual(bytes, wire); sent++;
     const raw = escaped ? '{"secret":"' + [...KEY].map(char => '\\u' + char.charCodeAt(0).toString(16).padStart(4, '0')).join('') + '"}' : reflected ? JSON.stringify({ secret: KEY }) : '{}';
     return { httpStatus: 200, rawBase64: Buffer.from(raw).toString('base64'), errorCode: null, uncertain: false };
   });
-  return { cloud, calls, done, result: () => ({runId:'run',status:'running',credentialRef:reference}), sent: () => sent, deny: () => { deny = true; }, changeAccount: () => { generation++; }, mismatch: () => { mismatch = true; }, reflect: (encode = false) => { reflected = true; escaped = encode; } };
+  return { cloud, calls, done, result: () => ({runId:'run',status:'running',credentialRef:reference}), sent: () => sent, mismatch: () => { mismatch = true; }, reflect: (encode = false) => { reflected = true; escaped = encode; } };
 }
 test('BYOK stays in main, exact approved bytes send once, durable replay does not resend', async () => {
   const h = fixture();
@@ -38,13 +37,23 @@ test('BYOK stays in main, exact approved bytes send once, durable replay does no
     assert.equal(h.calls.some(call => JSON.stringify(call.payload).includes(KEY)), false);
   } finally { h.cloud.dispose(); }
 });
-test('account or public-proof change after preview blocks before starting a provider request', async () => {
-  for (const mode of ['account', 'private']) {
+test('local key authorization needs no sign-in or public proof', async () => {
+  const h = fixture();
+  try {
+    await h.cloud.preview('p', { profileId: 'gpt-5.4-v1' }, KEY);
+    const authorize = h.calls.find(call => call.operation === 'workspace.reviews.cloudContext')!;
+    assert.equal(authorize.payload.phase, 'authorize-local'); assert.equal('proof' in authorize.payload, false);
+    await assert.rejects(h.cloud.preview('p', { profileId: 'gpt-5.4-v1' }, 'short'), /INVALID_REQUEST/);
+    await assert.rejects(h.cloud.preview('p', { profileId: 'ollama-local-v1' }, KEY), /INVALID_REQUEST/);
+  } finally { h.cloud.dispose(); }
+});
+test('a different project or a closed window blocks before starting a provider request', async () => {
+  for (const mode of ['project', 'disposed']) {
     const h = fixture(); let started = false;
     try {
       await h.cloud.preview('p', { profileId: 'gpt-5.4-v1' }, KEY);
-      if (mode === 'account') h.changeAccount(); else h.deny();
-      await assert.rejects(h.cloud.start({ projectId: 'p', previewId: 'preview' }, async () => { started = true; return {}; }));
+      if (mode === 'disposed') h.cloud.dispose();
+      await assert.rejects(h.cloud.start({ projectId: mode === 'project' ? 'other' : 'p', previewId: 'preview' }, async () => { started = true; return {}; }));
       assert.equal(started, false); assert.equal(h.sent(), 0);
     } finally { h.cloud.dispose(); }
   }

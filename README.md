@@ -1,12 +1,104 @@
 # GitViz
 
-GitHub 저장소의 개발 이력을 수집하고 수정 집중도·공동 변경·협업 관계를 분석한다. 결과는 기준 SHA와 기간을 가진 불변 스냅샷으로 저장한다. 선택 기능인 AI 리뷰는 PR·커밋의 변경 설명과 코드 검토를 돕는다.
+GitHub 저장소의 개발 이력을 수집하고 수정 집중도·공동 변경·협업 관계를 분석한다. 결과는 기준 SHA와 기간을 가진 불변 스냅샷으로 저장한다. 선택 기능인 AI 리뷰는 PR·커밋의 변경 설명과 코드 검토를 돕는다. Windows 데스크톱 앱에서 내 Git 프로젝트의 AI 리뷰·리팩터링과, 저장소별 커뮤니티(글·실시간 채팅·3인 음성 채팅)를 쓸 수 있다.
 
 **[전체 문서 안내](docs/index.md)** · [현재 기능 범위](docs/product/current-scope.md) · [검증 상태](docs/validation/current-status.md)
 
-## 로컬 실행
+## 데스크톱 앱 실행 (Windows)
 
-Python 3.12, Git, Docker(Docker Desktop 실행 중)를 준비한다.
+GitViz는 Windows 데스크톱 앱(Electron)이 기본 사용 방식이다. 앱은 내 PC의 Git 저장소를 다루는 로컬 기능(프로젝트, AI 리뷰·리팩터링 — 내 AI 키 사용)과 서버에 연결해서 쓰는 기능(GitHub 로그인, 저장소 탐색·분석, 커뮤니티 글·채팅·음성 채팅)으로 나뉜다.
+
+준비물: Windows 10/11 x64, Node.js 24.20 이상 25 미만, Python 3.12, Git.
+
+### 1. 앱 빌드
+
+프로젝트 루트 PowerShell에서:
+
+```powershell
+git clone https://github.com/2k-c-a/gitviz.git
+cd gitviz
+
+# 앱 의존성
+npm --prefix desktop ci
+
+# 로컬 작업 에이전트(앱에 함께 들어가는 Python 실행 파일) 빌드
+python -m venv .validation\venv-workspace
+.\.validation\venv-workspace\Scripts\python.exe -m pip install --require-hashes --only-binary=:all: -r packaging/agent/requirements-workspace.lock
+.\.validation\venv-workspace\Scripts\python.exe -m pip install -r packaging/agent/requirements-workspace-build.txt
+.\.validation\venv-workspace\Scripts\python.exe tools/build/build_workspace_agent.py
+
+# 앱 빌드와 패키징 → build-output\desktop\GitVizWorkspace-win32-x64\
+npm --prefix desktop run build
+npm --prefix desktop run package
+```
+
+### 2. 앱만 실행 (서버 없이)
+
+```powershell
+.\build-output\desktop\GitVizWorkspace-win32-x64\GitVizWorkspace.exe
+```
+
+프로젝트(로컬 Git 폴더 등록), AI 리뷰·리팩터링(설정에서 내 AI 키 저장)은 서버 없이 동작한다. 로그인·저장소 탐색·커뮤니티는 서버가 없으면 "서버가 설정되지 않음"으로 표시된다.
+
+### 3. 서버에 연결해 실행 (로그인·커뮤니티·채팅·음성)
+
+내 PC에 격리된 HTTPS 서버(스테이징)를 띄워 앱을 연결한다. 개발용 DB와 `.env`는 건드리지 않는다.
+
+추가 준비물:
+
+- PostgreSQL 18 (기본 경로 `C:\Program Files\PostgreSQL\18\bin`), winget으로 설치한 Redis(`redis-server.exe`)
+- GitHub OAuth App: Homepage URL `https://localhost:8443`, Authorization callback URL `https://localhost:8443/api/auth/callback`
+
+```powershell
+# 서버 의존성 (.venv)
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# DB·Redis·인증서·비밀키 준비와 마이그레이션 (여러 번 실행해도 된다)
+pwsh tools/vm/staging_stack.ps1 -Mode Prepare
+```
+
+`.validation\staging\staging.env`에 OAuth App 값을 적는다(이 폴더는 Git에 올라가지 않는다).
+
+```text
+GITHUB_CLIENT_ID=...
+GITHUB_CLIENT_SECRET=...
+```
+
+```powershell
+pwsh tools/vm/staging_stack.ps1 -Mode Up       # https://localhost:8443
+pwsh tools/vm/staging_stack.ps1 -Mode Worker   # 저장소 분석 작업 처리
+
+# 앱을 이 서버에 연결해 실행 (자체 서명 인증서를 신뢰시킨다)
+$env:GITVIZ_SERVER_ORIGIN = 'https://localhost:8443'
+$env:NODE_EXTRA_CA_CERTS = "$PWD\.validation\staging\tls\server.pem"
+.\build-output\desktop\GitVizWorkspace-win32-x64\GitVizWorkspace.exe
+```
+
+앱 오른쪽 위 **로그인**을 누르면 브라우저에서 GitHub 로그인 후 앱으로 자동으로 돌아온다. 상태 확인은 `-Mode Status`, 종료는 `-Mode Down`.
+
+- `GITVIZ_SERVER_ORIGIN`은 빌드에 서버 주소를 넣지 않은 앱에서만 쓰인다. 배포용 앱은 `$env:GITVIZ_BUILD_SERVER_ORIGIN = 'https://<서버 주소>'`로 빌드하면 그 주소가 앱에 들어간다.
+- 음성 채팅은 같은 네트워크 안에서는 바로 연결된다. 다른 네트워크 사이 연결은 서버 환경변수 `VOICE_STUN_URLS`·`VOICE_TURN_URLS`·`VOICE_TURN_SECRET`로 STUN/TURN 서버를 지정해야 한다([.env.example](.env.example)).
+
+### 4. 설치 파일 만들기 (선택)
+
+```powershell
+npm --prefix desktop run make   # build-output\desktop\make\squirrel.windows\x64\GitVizWorkspaceSetup.exe
+```
+
+현재 0.7.0은 코드 서명이 없어 설치 때 Windows SmartScreen 경고가 나온다. 설치는 사용자별(`%LOCALAPPDATA%\GitVizWorkspace`)이고 설치본은 `gitviz-join://` 초대 링크를 연다. 설치·업데이트 상태는 [Windows 데스크톱 안내](docs/operations/windows-desktop.md)를 따른다.
+
+### 앱 테스트
+
+```powershell
+npm --prefix desktop run lint
+npm --prefix desktop test                                 # 단위 테스트
+cd desktop; npx electron dist/tests/phase3-flows.e2e.js   # E2E 예시 (dist/tests/*.e2e.js)
+```
+
+## 웹 서버 개발 실행
+
+앱 없이 웹 화면(`http://localhost:8000`)으로 서버를 개발할 때 쓴다. Python 3.12, Git, Docker(Docker Desktop 실행 중)를 준비한다.
 
 ### 원클릭
 

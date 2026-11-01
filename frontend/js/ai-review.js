@@ -129,7 +129,7 @@ async function load() {
   if (settingsMode) {
     const returnState = S.parseRoute(new URLSearchParams(location.search).get('return') || S.buildRoute({ repo: route.repo }));
     const back = new URL('./ai-review.html', location.href); back.search = S.buildRoute(returnState);
-    mount($('ai-main'), h('section', { class: 'ai-card' }, h('h2', { text: '저장 위치와 적용 범위' }), h('p', { text: '이 화면에서 등록한 키는 연결된 GitViz 서버에 암호화해 저장됩니다. 원문은 다시 조회하지 않고 마스킹된 힌트만 표시합니다. 로컬 워크스페이스의 일회성 BYOK 키와는 별도입니다.' }), h('p', { class: 'ai-muted', text: '라이트·다크·시스템 테마는 상단의 화면 테마에서 변경할 수 있습니다.' }), h('a', { href: back.href, class: 'btn-secondary ai-btn', text: 'AI 리뷰로 돌아가기' })));
+    mount($('ai-main'), h('section', { class: 'ai-card' }, h('h2', { text: '저장 위치와 적용 범위' }), h('p', { text: '이 화면에서 등록한 키는 연결된 GitViz 서버에 암호화해 저장됩니다. 원문은 다시 조회하지 않고 마스킹된 힌트만 표시합니다. 로컬 워크스페이스의 일회성 BYOK 키와는 별도입니다.' }), h('p', { class: 'ai-muted', text: '라이트·다크 테마는 상단의 해·달 버튼으로 바꿀 수 있습니다.' }), h('a', { href: back.href, class: 'btn-secondary ai-btn', text: 'AI 리뷰로 돌아가기' })));
     return;
   }
   const views = {

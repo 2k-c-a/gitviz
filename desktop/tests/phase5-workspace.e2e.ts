@@ -89,8 +89,9 @@ void app.whenReady().then(async () => {
     phase = 'first-run';
     await wait(visible('[data-view="start"]'));
     await check('no project: start guide shown, project views hidden', `${visible('[data-view="start"]')} && !${visible('[data-view="project"]')} && !${visible('[data-view="projects"]')}`);
-    await check('rail lists only the four views', `[...document.querySelectorAll('[data-ws-view]')].map(a=>a.dataset.wsView).join()==='projects,inbox,account,settings'`);
-    await check('account chip says not signed in', `document.getElementById('ws-account-chip').textContent==='로그인하지 않음'`);
+    await check('rail has the same seven entries as the web pages', `[...document.querySelectorAll('.app-nav .app-nav-link')].map(a=>a.getAttribute('aria-label')).join()==='저장소 탐색,최근·내 분석,URL로 분석 시작,AI 리뷰,커뮤니티,설정,프로젝트' && [...document.querySelectorAll('[data-ws-view]')].map(a=>a.dataset.wsView).join()==='settings,projects'`);
+    await check('account chip offers sign-in when signed out', `document.getElementById('ws-account-chip').textContent==='로그인'`);
+    await check('theme is a sun/moon toggle without a system option', `(()=>{const b=document.getElementById('shell-theme');const before=document.documentElement.dataset.theme;b.click();const flipped=document.documentElement.dataset.theme!==before && b.dataset.theme===document.documentElement.dataset.theme;b.click();return b.tagName==='BUTTON' && flipped && !document.body.textContent.includes('시스템 테마');})()`);
     await capture('01-start-900.png', 900, 640);
 
     phase = 'register';
@@ -151,12 +152,16 @@ void app.whenReady().then(async () => {
     phase = 'views';
     await key3('4');
     await check('proposals tab explains how to create one', visible('#ws-proposal-empty'));
-    await evaluate(`document.querySelector('[data-ws-view="inbox"]').click()`);
-    await check('rail opens the inbox view and marks it current', `${visible('[data-view="inbox"]')} && document.querySelector('[data-ws-view="inbox"]').getAttribute('aria-current')==='page'`);
+    await evaluate(`window.dispatchEvent(new CustomEvent('workspace-navigate',{detail:{view:'inbox'}}))`);
+    await check('inbox view still opens (command palette / navigation event)', visible('[data-view="inbox"]'));
     await evaluate(`document.getElementById('ws-account-chip').click()`);
-    await check('account chip opens the account view', `${visible('[data-view="account"]')} && document.getElementById('ws-connect-project').textContent==='sample project'`);
-    await evaluate(`document.querySelector('[data-ws-view="settings"]').click()`);
-    await check('settings holds editor, project defaults and diagnostics', `${visible('#editor-id')} && ${visible('#recent-limit')} && ${visible('#export-diagnostics')}`);
+    // Owner decision: settings is only in the sidebar; the menu holds sign-in/out.
+    await check('account chip opens a menu with only a disabled sign-in when no server is configured', `${visible('#ws-account-menu')} && [...document.querySelectorAll('#ws-account-menu [role="menuitem"]')].map(b=>b.textContent).join('|')==='로그인 · 서버가 설정되지 않음' && document.querySelectorAll('#ws-account-menu [role="menuitem"]')[0].disabled`);
+    await evaluate(`document.body.click();window.dispatchEvent(new CustomEvent('workspace-navigate',{detail:{view:'account'}}))`);
+    await check('account view still opens with project connection', `${visible('[data-view="account"]')} && !${visible('#ws-account-menu')} && document.getElementById('ws-connect-project').textContent==='sample project'`);
+    await evaluate(`document.querySelector('.app-nav [data-ws-view="settings"]').click()`);
+    await check('sidebar opens settings with the AI section, editor, project defaults and diagnostics', `${visible('[data-view="settings"]')} && ${visible('#settings-ai-profile')} && ${visible('#settings-ai-key')} && ${visible('#editor-id')} && ${visible('#recent-limit')} && ${visible('#export-diagnostics')}`);
+    await check('saved AI key status shows booleans only', `document.getElementById('settings-ai-key-status').textContent==='저장 안 됨'`);
 
     phase = 'palette';
     await key3('k');

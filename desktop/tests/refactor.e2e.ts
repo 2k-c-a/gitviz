@@ -13,6 +13,7 @@ import { registerHealth } from '../src/ipc';
 import { registerProjects } from '../src/projects';
 import { registerProposals } from '../src/proposals';
 import { registerImpact } from '../src/impact';
+import { registerValidation } from '../src/validation';
 import { registerScheme, serveAssets, APP_URL } from '../src/app-protocol';
 import { createWindow } from '../src/window';
 import { loadKey } from '../src/secrets';
@@ -60,6 +61,8 @@ void app.whenReady().then(async () => {
   let nativeConsent = false;
   const proposals = registerProposals(window, agent, contracts, { confirm: async () => nativeConsent });
   const impact = registerImpact(window, agent, contracts);
+  // Comparison lives with validation; no test tool is linked, so nothing executes.
+  const validation = registerValidation(window, agent, contracts, { confirm: async () => false });
   const evaluate = (source: string) => window.webContents.executeJavaScript(source);
   async function wait(source: string): Promise<void> {
     for (let i = 0; i < 200; i++) { if (await evaluate(source)) return; await new Promise(resolve => setTimeout(resolve, 30)); }
@@ -72,26 +75,19 @@ void app.whenReady().then(async () => {
     await wait(`document.querySelectorAll('#project-picker option').length===2`);
     await evaluate(`document.getElementById('project-picker').value=${JSON.stringify(project.id)};document.getElementById('project-picker').dispatchEvent(new Event('change'));`);
     await wait(`document.querySelectorAll('#change-selection input').length>=2`);
-    phase = 'capture';
-    await evaluate(`for(const item of document.querySelectorAll('#change-selection input'))if(['app.py','app.ts'].includes(item.dataset.path))item.checked=true;document.getElementById('capture-changes').click()`);
-    await wait(`document.getElementById('capture-message').textContent==='선택한 입력을 고정했습니다.'`);
-    phase = 'refactor-generate';
-    await evaluate(`document.getElementById('review-kind').value='refactor';document.getElementById('review-kind').dispatchEvent(new Event('input'));document.getElementById('review-preview').click()`);
-    await wait(`document.getElementById('review-preview-meta').textContent.includes('user-pc')`);
-    await evaluate(`document.getElementById('review-consent').click();document.getElementById('review-start').click()`);
-    await wait(`document.getElementById('review-result').textContent.includes('succeeded')`);
-    await evaluate(`document.querySelector('#review-result button').click()`);
+    phase = 'one-click-refactor';
+    // Selecting files and pressing AI 리팩토링 captures, previews, starts and turns the result into a proposal.
+    await evaluate(`for(const item of document.querySelectorAll('#change-selection input'))if(['app.py','app.ts'].includes(item.dataset.path))item.checked=true;document.getElementById('quick-refactor').click()`);
     await wait(`document.getElementById('proposal-view').textContent.includes('pending')`);
+    assert.equal(await evaluate(`document.getElementById('review-kind').value==='refactor' && document.getElementById('review-preview-meta').textContent.includes('user-pc') && !document.getElementById('ws-panel-proposals').hidden`), true);
     assert.deepEqual(await hashes(root), before);
     await assert.rejects(evaluate(`workspace.applyProposal({projectId:${JSON.stringify(project.id)},proposalId:crypto.randomUUID(),approvalId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID()})`), /APPROVAL_REQUIRED/);
-    phase = 'native-cancel'; await evaluate(`document.querySelectorAll('#proposal-view button')[0].click()`);
-    await new Promise(resolve => setTimeout(resolve, 100)); assert.deepEqual(await hashes(root), before);
-    assert.equal(await evaluate(`document.querySelectorAll('#proposal-view button')[1].disabled`), true);
-    nativeConsent = true; phase = 'native-approve';
-    await evaluate(`document.querySelectorAll('#proposal-view button')[0].click()`);
-    await wait(`document.querySelectorAll('#proposal-view button')[1].disabled===false`);
-    phase = 'apply'; await evaluate(`document.querySelectorAll('#proposal-view button')[1].click()`);
+    // Owner decision (2026-11-01): the single 적용 button approves and applies without a native prompt.
+    phase = 'apply'; await evaluate(`document.querySelectorAll('#proposal-view button')[0].click()`);
     await wait(`document.querySelector('#proposal-view h3')?.textContent.startsWith('applied')`);
+    phase = 'auto-compare';
+    await wait(`/탭에서 확인|만들지 못했/.test(document.getElementById('proposal-message').textContent)`);
+    assert.equal(await evaluate(`document.getElementById('proposal-message').textContent.includes('탭에서 확인') && document.getElementById('comparison-view').childElementCount>0`), true);
     const applied = await hashes(root); assert.equal(before['.git/index'], applied['.git/index']);
     assert.notEqual(before['app.py'], applied['app.py']); assert.notEqual(before['app.ts'], applied['app.ts']);
     phase = 'impact'; await evaluate(`document.getElementById('analyze-impact').click()`);
@@ -110,16 +106,14 @@ void app.whenReady().then(async () => {
     await evaluate(`document.querySelector('#review-result button').click()`);
     await wait(`document.querySelector('#proposal-view h3')?.textContent.startsWith('pending')`);
     await evaluate(`document.querySelectorAll('#proposal-view button')[0].click()`);
-    await wait(`document.querySelectorAll('#proposal-view button')[1].disabled===false`);
-    await evaluate(`document.querySelectorAll('#proposal-view button')[1].click()`);
     await wait(`document.querySelector('#proposal-view h3')?.textContent.startsWith('recovery_required')`);
     phase = 'explicit-recovery'; nativeConsent = false;
-    await evaluate(`document.querySelectorAll('#proposal-view button')[4].click()`);
+    await evaluate(`document.querySelectorAll('#proposal-view button')[3].click()`);
     await new Promise(resolve => setTimeout(resolve, 100));
-    nativeConsent = true; await evaluate(`document.querySelectorAll('#proposal-view button')[4].click()`);
+    nativeConsent = true; await evaluate(`document.querySelectorAll('#proposal-view button')[3].click()`);
     await wait(`document.querySelector('#proposal-view h3')?.textContent.startsWith('restored')`);
     assert.deepEqual(await hashes(root), applied);
-    process.stdout.write('PASS P06 real renderer/main/source agent, refactor consent/native cancel/approval/apply/recovery, Python/TS worker evidence, index and external-change preservation\n');
+    process.stdout.write('PASS P06 real renderer/main/source agent, refactor generation/one-button apply/auto before-after comparison/recovery, Python/TS worker evidence, index and external-change preservation\n');
 
-  } finally { const diagnostic = await readFile(join(directory, 'p06-fixture-apply-error.json'), 'utf8').catch(() => ''); if (diagnostic) process.stderr.write(diagnostic + '\n'); impact(); proposals(); health(); projects(); window.destroy(); await agent.stop(); clearTimeout(deadline); await rm(temporary, { recursive: true, force: true }); }
+  } finally { const diagnostic = await readFile(join(directory, 'p06-fixture-apply-error.json'), 'utf8').catch(() => ''); if (diagnostic) process.stderr.write(diagnostic + '\n'); validation(); impact(); proposals(); health(); projects(); window.destroy(); await agent.stop(); clearTimeout(deadline); await rm(temporary, { recursive: true, force: true }); }
 }).then(() => app.exit(0)).catch(error => { process.stderr.write(`FAIL P06 (${phase}): ${error instanceof Error ? error.message.slice(0, 120) : 'assertion'}\n`); app.exit(1); });

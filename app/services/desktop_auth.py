@@ -1,4 +1,5 @@
 """Short-lived public-client flow. Callers own and commit the DB transaction."""
+import base64
 import hashlib
 import hmac
 import json
@@ -47,7 +48,7 @@ def unavailable():
     return HTTPException(401, '인증 요청을 확인할 수 없습니다.', headers={'Cache-Control': 'no-store'})
 
 
-def create_flow(db, challenge, label, issuer):
+def create_flow(db, challenge, label, issuer, port):
     origin, _ = settings()
     # Shared across workers. No client-supplied forwarding header is trusted here.
     issuer_hash = digest(issuer)
@@ -66,7 +67,7 @@ def create_flow(db, challenge, label, issuer):
         state='pending', created_at=moment, expires_at=moment + timedelta(minutes=5), next_poll_at=moment)
     db.add(flow)
     db.flush()
-    return {'flowId': str(flow.id), 'browserUrl': f'{origin}/api/desktop/v1/auth/authorize?flow={flow.id}',
+    return {'flowId': str(flow.id), 'browserUrl': f'{origin}/api/desktop/v1/auth/authorize?flow={flow.id}&port={port}',
             'pollSecret': poll_secret, 'displayCode': flow.display_code,
             'expiresAt': flow.expires_at.isoformat(), 'pollAfterMs': 2000}
 
@@ -86,12 +87,21 @@ def bind_browser(db, flow_id, binding):
     return flow
 
 
-def authorize(db, flow_id, binding, user_id, display_code, approve):
+def authorize(db, flow_id, binding, user_id):
     flow = bind_browser(db, flow_id, binding)
-    if not hmac.compare_digest(flow.display_code, display_code):
-        raise unavailable()
     flow.user_id = user_id
-    flow.state = 'authorized' if approve else 'denied'
+    flow.state = 'authorized'
+
+
+def callback_code(flow_id):
+    """One-time code the browser carries only to the loopback listener of the app that opened it (RFC 8252).
+
+    A forwarded authorize link lands on the other person's own 127.0.0.1, so a third party never learns it.
+    """
+    _, key = settings()
+    subkey = hashlib.sha256(b'gitviz-desktop-loopback:' + key).digest()
+    mac = hmac.new(subkey, flow_id.bytes, hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(mac).decode().rstrip('=')
 
 
 def user_view(user):
@@ -99,7 +109,7 @@ def user_view(user):
             'avatar_url': user.avatar_url, 'email': user.email}
 
 
-def exchange(db, flow_id, poll_secret, verifier, key):
+def exchange(db, flow_id, poll_secret, verifier, key, code=None):
     _, encryption_key = settings()
     flow = locked_flow(db, flow_id)
     moment = now()
@@ -125,7 +135,9 @@ def exchange(db, flow_id, poll_secret, verifier, key):
     if flow.next_poll_at > moment:
         raise HTTPException(429, '잠시 후 다시 시도해 주세요.', headers={'Retry-After': '2'})
     flow.next_poll_at = moment + timedelta(seconds=2)
-    if flow.state == 'pending':
+    # Authorized but no loopback code yet looks pending: the code is the only proof of the right browser.
+    if flow.state == 'pending' or (flow.state == 'authorized'
+                                   and not (code and hmac.compare_digest(code, callback_code(flow.id)))):
         return 202, {'state': 'pending'}
     if flow.state != 'authorized' or not flow.user_id:
         raise unavailable()

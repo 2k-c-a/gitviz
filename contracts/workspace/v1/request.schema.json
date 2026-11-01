@@ -3202,6 +3202,38 @@
               "type": "object",
               "properties": {
                 "phase": {
+                  "const": "authorize-local"
+                },
+                "profileId": {
+                  "enum": [
+                    "claude-opus-5-5-v1",
+                    "claude-sonnet-5-5-v1",
+                    "gpt-5.4-v1",
+                    "gemini-3.5-flash-lite-v1"
+                  ]
+                },
+                "credentialRef": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+                },
+                "credentialVersion": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "phase",
+                "profileId",
+                "credentialRef",
+                "credentialVersion"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "phase": {
                   "const": "authorize"
                 },
                 "profileId": {

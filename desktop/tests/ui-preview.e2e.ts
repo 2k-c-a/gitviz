@@ -66,7 +66,7 @@ void app.whenReady().then(async () => {
   async function capture(name: string, width: number, height: number, theme: string) {
     phase = name; window.setContentSize(width, height);
     await wait(`innerWidth===${width} && innerHeight===${height}`);
-    await window.webContents.executeJavaScript(`document.getElementById('shell-theme').value=${JSON.stringify(theme)}; document.getElementById('shell-theme').dispatchEvent(new Event('change')); for(const chart of Object.values(Chart.instances)){chart.stop();chart.options.animation=false;chart.update('none')} document.getElementById('shell-status').textContent='UI 미리보기 · 검증용 데이터'`);
+    await window.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent('gitviz-theme-select',{detail:${JSON.stringify(theme)}})); for(const chart of Object.values(Chart.instances)){chart.stop();chart.options.animation=false;chart.update('none')} document.getElementById('shell-status').textContent='UI 미리보기 · 검증용 데이터'`);
     if (theme === 'dark') {
       assert.equal(await window.webContents.executeJavaScript(`getComputedStyle(document.getElementById('tl-m-commits') || document.querySelector('#overview-kpis .m-val')).color`), 'rgb(230, 237, 245)');
       assert.equal(await window.webContents.executeJavaScript(`getComputedStyle(document.getElementById('analysis-context')).backgroundColor`), 'rgb(26, 34, 45)');

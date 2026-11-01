@@ -18,7 +18,7 @@
 .app-context { font-size: var(--ui-text-xs); color: var(--ui-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-menu { display: none; flex: 0 0 34px; padding: 4px; }
 .app-nav-close { display: none; }
-.app-theme select { max-width: 118px; }
+.app-theme { flex: 0 0 34px; display: inline-grid; place-items: center; width: 34px; min-height: 34px; padding: 0; }
 .shell-account { position: relative; flex: 0 0 auto; }
 .shell-account button { white-space: nowrap; }
 .shell-account .avatar { display: flex; overflow: hidden; background: var(--ui-accent-soft); color: var(--ui-accent); }
@@ -109,7 +109,6 @@
   .nav-open .app-sidebar { visibility: visible; }
   .app-toolbar { padding: 8px 16px; gap: 8px; min-height: 60px; }
   .app-toolbar > .ui-badge { display: none; }
-  .app-theme select { width: 104px; }
   .app-statusbar > span:first-child { display: none; }
   .app-status-text { max-width: 100%; }
   .app-main .body, .workspace-content { padding: 16px; }

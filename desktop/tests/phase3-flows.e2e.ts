@@ -1,19 +1,22 @@
 import './profile';
 /** Actual sandbox pages with an in-process server transport fixture. No external OAuth/API. */
 import assert from 'node:assert/strict';
-import { app } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DesktopAuth } from '../src/auth';
 import { Remote, type Http } from '../src/remote';
 import { RemoteContracts } from '../src/remote-contracts';
-import { registerDesktop } from '../src/desktop-ipc';
+import { registerCommunityLive, registerDesktop } from '../src/desktop-ipc';
+import { CommunityLive, type StreamHttp } from '../src/community-live';
 import { registerScheme, serveAssets } from '../src/app-protocol';
 import { createWindow } from '../src/window';
 import { registerHealth } from '../src/ipc';
 import { unavailable } from '../contracts/workspace';
 
 registerScheme(); app.on('window-all-closed', () => {});
+// A synthetic microphone so voice chat runs real getUserMedia/WebRTC; the permission still goes through the app's handler.
+app.commandLine.appendSwitch('use-fake-device-for-media-stream');
 let phase = 'startup';
 const deadline = setTimeout(() => { process.stderr.write(`FAIL Phase 3 renderer deadline (${phase})\n`); app.exit(1); }, 90000);
 const uid = '11111111-1111-4111-8111-111111111111';
@@ -30,7 +33,83 @@ const model = { provider: 'openai', profile_id: 'fixture-v1', model: 'fixture-mo
 let credential: { provider: string; key_hint: string; version: number; preferred_profile_id: string; validated_at: string; in_flight_jobs: number } | null = null;
 let inputSource: 'commit' | 'pr' = 'commit';
 let typeFailure = false;
-const files = Array.from({ length: 52 }, (_, i) => ({ file_id: 999 + i, path: i ? `src/module-${i}.ts` : 'src/fixture.ts', name: i ? `module-${i}.ts` : 'fixture.ts', observation_count: 100 - i, maintenance_priority: 0.5, risk_score: 0.5, evidence_status: 'observed', bus_factor: 1, coupling_score: 0.5, coupling_support: 3, coupled_file_count: 1 }));
+// Community fixture: the fixture user starts as admin of repository 2 with one other member.
+const peer = { id: '66666666-6666-4666-8666-666666666666', github_login: 'peer', display_name: null, avatar_url: null };
+const author = { id: uid, github_login: 'fixture', display_name: 'P03 Fixture', avatar_url: null };
+const communityPosts: { id: number; title: string; body: string; comments: { id: number; body: string }[] }[] = [];
+const communityBodies: unknown[] = [];
+const goodInvite = 'i'.repeat(43);
+let communityAdmin = uid;
+let inviteCount = 0;
+// Chat fixture: history over the allowlisted Remote, live events written into a fake stream by the test.
+const chatMessages: { id: number; author: typeof author; author_id: string; body: string; created_at: string }[] = [];
+const chatStreams: { path: string; write: (text: string) => void; cancelled: () => boolean }[] = [];
+const chatStream: StreamHttp = async path => {
+  let control!: ReadableStreamDefaultController<Uint8Array>; let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({ start: c => { control = c; }, cancel: () => { cancelled = true; } });
+  chatStreams.push({ path, write: text => { if (!cancelled) control.enqueue(new TextEncoder().encode(text)); }, cancelled: () => cancelled });
+  return { status: 200, contentType: 'text/event-stream', body };
+};
+// Voice fixture: the app takes seat A; a second Chromium peer in its own partition holds seat B and answers over real WebRTC.
+const seatA = 'A'.repeat(22); const seatB = 'B'.repeat(22);
+let voiceJoined = false; let voiceFull = false; let voiceLeft = 0;
+const voiceSignals: Record<string, unknown>[] = [];
+let voicePeer: BrowserWindow | null = null;
+const voiceSeats = () => ({ participants: [{ session_id: seatB, user: peer }, ...(voiceJoined ? [{ session_id: seatA, user: author }] : [])], capacity: 3 });
+const sse = (type: string, data: unknown) => `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
+function communityFixture(p: string, method: string, payload: Record<string, unknown>): { status: number; body: unknown } {
+  if (method !== 'GET') communityBodies.push(payload);
+  const base = '/api/community/v1/repositories/2';
+  const view = () => ({ repository: { id: 2, url: repo.url, name: repo.name }, me: { role: communityAdmin === uid ? 'admin' : 'member', joined_via: 'analyzer' },
+    admin: communityAdmin === uid ? author : peer, member_count: 2 });
+  const comments = (post: typeof communityPosts[number]) => post.comments.map(c => ({ id: c.id, author, author_id: uid, body: c.body, deleted: false, created_at: snapshot.analyzed_at, updated_at: null }));
+  const postView = (post: typeof communityPosts[number], full: boolean) => ({ id: post.id, author, author_id: uid, title: post.title, body: post.body,
+    created_at: snapshot.analyzed_at, updated_at: null, deleted: false, ...(full ? { comments: comments(post) } : { comment_count: post.comments.length }) });
+  const invite = { id: '77777777-7777-4777-8777-777777777777', expires_at: '2026-12-01T00:00:00Z', max_uses: 5, use_count: 0, revoked: false };
+  if (p === '/api/community/v1/communities') return { status: 200, body: { communities: [{ repository: view().repository, role: view().me.role, joined: true }] } };
+  if (p === '/api/community/v1/invites/redeem') return payload.token === goodInvite ? { status: 200, body: { repository_id: 2 } }
+    : { status: 410, body: { detail: { code: 'INVITE_INVALID', message: '만료됐거나 취소된 초대 링크입니다.' } } };
+  if (p === base) return { status: 200, body: view() };
+  if (p === `${base}/members`) return { status: 200, body: { members: [
+    { user: communityAdmin === uid ? author : peer, role: 'admin', status: 'active', joined_via: 'analyzer', joined_at: snapshot.analyzed_at },
+    { user: communityAdmin === uid ? peer : author, role: 'member', status: 'active', joined_via: 'contributor', joined_at: snapshot.analyzed_at }] } };
+  if (p === `${base}/admin`) { communityAdmin = String(payload.user_id); return { status: 200, body: { ok: true } }; }
+  if (p === `${base}/invites` && method === 'POST') { inviteCount++; return { status: 201, body: { invite, url: `https://fixture.test/pages/community.html#invite=${goodInvite}` } }; }
+  if (p === `${base}/invites`) return { status: 200, body: { invites: Array.from({ length: inviteCount }, () => invite) } };
+  if (p === `${base}/posts` && method === 'POST') {
+    const post = { id: communityPosts.length + 1, title: String(payload.title), body: String(payload.body), comments: [] };
+    communityPosts.push(post); return { status: 201, body: { id: post.id } };
+  }
+  if (p === `${base}/chat/messages` && method === 'POST') {
+    const message = { id: chatMessages.length + 1, author, author_id: uid, body: String(payload.body), created_at: snapshot.analyzed_at };
+    chatMessages.push(message);
+    // The server also publishes it to every open stream, the sender's included.
+    chatStreams.at(-1)?.write(sse('message', message));
+    return { status: 201, body: message };
+  }
+  if (p === `${base}/voice`) return { status: 200, body: voiceSeats() };
+  if (p === `${base}/voice/join`) {
+    if (voiceFull) return { status: 409, body: { detail: { code: 'VOICE_FULL', message: '음성 채팅은 한 번에 3명까지 참여할 수 있습니다.' } } };
+    voiceJoined = true;
+    chatStreams.at(-1)?.write(sse('voice', voiceSeats()));
+    return { status: 200, body: { session_id: seatA, ...voiceSeats(), heartbeat_seconds: 10, ice_servers: [] } };
+  }
+  if (p === `${base}/voice/heartbeat`) return { status: 200, body: voiceSeats() };
+  if (p === `${base}/voice/leave`) { voiceLeft++; voiceJoined = false; chatStreams.at(-1)?.write(sse('voice', voiceSeats())); return { status: 200, body: { ok: true } }; }
+  if (p === `${base}/voice/signal`) {
+    voiceSignals.push(payload);
+    void voicePeer?.webContents.executeJavaScript(`window.receive(${JSON.stringify(payload)})`);
+    return { status: 200, body: { ok: true } };
+  }
+  if (p === `${base}/chat/messages`) return { status: 200, body: { messages: chatMessages, next_before: null } };
+  if (p === `${base}/posts`) return { status: 200, body: { posts: [...communityPosts].reverse().map(post => postView(post, false)), next_before: null } };
+  const parts = p.slice(base.length).split('/');
+  const post = parts[1] === 'posts' ? communityPosts[Number(parts[2]) - 1] : undefined;
+  if (post && parts[3] === 'comments') { post.comments.push({ id: post.comments.length + 1, body: String(payload.body) }); return { status: 201, body: { id: post.comments.length } }; }
+  if (post && parts.length === 3) return { status: 200, body: postView(post, true) };
+  return { status: 403, body: { detail: { code: 'INVITE_REQUIRED', message: '이 저장소의 기여자가 아니면 초대 링크로만 참여할 수 있습니다.' } } };
+}
+const files =Array.from({ length: 52 }, (_, i) => ({ file_id: 999 + i, path: i ? `src/module-${i}.ts` : 'src/fixture.ts', name: i ? `module-${i}.ts` : 'fixture.ts', observation_count: 100 - i, maintenance_priority: 0.5, risk_score: 0.5, evidence_status: 'observed', bus_factor: 1, coupling_score: 0.5, coupling_support: 3, coupled_file_count: 1 }));
 const preview = () => ({ input_id: inputId, repository_id: 2, source_type: inputSource, pr_number: inputSource === 'pr' ? 1 : null, pr_title: 'Fixture change', base_sha: 'b'.repeat(40), head_sha: 'a'.repeat(40), status: 'ready', execution_valid: true, reviewable: true, manifest_hash: 'c'.repeat(64), policy_version: 'code-transfer-v1', files: [{ file_id: sourceId, path: 'src/fixture.ts', content_state: 'read', change_type: 'modified', byte_count: 50, hunks: [] }], coverage: { pr_total_files: 1, selected_files: 1, inventory_coverage: 'complete', selected_content_coverage: 'complete', analysis_coverage: 'complete', limitations: [] }, transfer: { ...model, external_transfer_allowed: true, credential_configured: !!credential, credential_version: credential?.version || 1, key_hint: 'fixture-masked' }, token_estimate: { input_tokens: 20, max_output_tokens: 100, within_limit: true, estimated_max_cost: '0.01' } });
 
 const http: Http = async (path, method, _body, givenToken) => {
@@ -40,6 +119,7 @@ const http: Http = async (path, method, _body, givenToken) => {
   const payload = _body ? JSON.parse(_body) as Record<string, unknown> : {};
   const url = new URL(path, 'https://fixture.test'); const p = url.pathname;
   let body: unknown = {};
+  if (p.startsWith('/api/community/v1/')) return { ...communityFixture(p, method, payload), headers: {} };
   if (p === '/api/desktop/v1/session') body = issued;
   else if (p === '/api/auth/me') body = user;
   else if (p === '/repositories' && method === 'POST') body = { repository_id: 2 };
@@ -89,6 +169,10 @@ const http: Http = async (path, method, _body, givenToken) => {
   else if (p === '/api/ai/v1/shared/results') body = { results: [], next_cursor: null };
 
   else if (p === '/api/ai/v1/usage') body = { period_start: '2026-10-01', currency: 'USD', user_spent: '0', user_reserved: '0', user_limit: '20', user_remaining: '20', server_budget_enabled: true, uncertain_reservations: 0, daily_jobs_used: 0, daily_job_limit: 30 };
+  else if (p === '/search/github-repositories' && path.includes('q=paged')) {
+    const page = Number(new URL(path, 'https://fixture.test').searchParams.get('page'));
+    body = { query: 'paged', total_count: 45, page, per_page: 20, results: Array.from({ length: page === 3 ? 5 : 20 }, (_, i) => ({ owner: 'fixture', repo_name: `paged-${page}-${i}`, url: `https://github.com/fixture/paged-${page}-${i}`, description: null, stars: 0, forks: 0, is_registered: false })) };
+  }
   else if (p === '/search/github-repositories') body = { query: 'fixture', total_count: 1, results: [{ owner: 'fixture', repo_name: 'p03', url: repo.url, description: 'Search fixture', stars: 1, forks: 0, is_registered: true }] };
   return { status: 200, body, headers: {} };
 };
@@ -100,6 +184,8 @@ void app.whenReady().then(async () => {
   await auth.restore();
   const remote = new Remote(contracts, http, auth.identity, auth.invalidate);
   const window = createWindow(false); const unregister = registerDesktop(window, auth, remote);
+  const unregisterLive = registerCommunityLive(window, emit => new CommunityLive(chatStream, auth.identity, auth.invalidate, emit));
+  window.once('closed', unregisterLive);
   window.webContents.setBackgroundThrottling(false);
   const unregisterHealth = registerHealth(window, unavailable);
   const errors: string[] = [];
@@ -115,6 +201,20 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`(() => { const button = [...document.querySelectorAll('button,a')].find(e => e.textContent.trim() === ${JSON.stringify(text)} && e.getClientRects().length); if(!button) throw new Error('missing action'); button.click(); })()`);
   }
   try {
+    phase = 'search-paging';
+    await window.loadURL('gitviz://app/web/pages/search.html?q=paged');
+    await wait(`document.querySelectorAll('.search-card').length===20 && !document.getElementById('search-pager').hidden`);
+    assert.equal(await window.webContents.executeJavaScript(`[...document.querySelectorAll('#search-pager button')].map(b=>b.textContent+(b.disabled?'-':'')).join()`), '‹ 이전-,1-,2,3,다음 ›');
+    assert.equal(requests.filter(path => path.includes('q=paged')).at(-1)?.includes('page=1'), true);
+    await window.webContents.executeJavaScript(`document.querySelector('#search-pager [aria-label="다음 페이지"]').click()`);
+    await wait(`document.querySelector('.search-card')?.dataset.url.endsWith('paged-2-0') && document.getElementById('search-summary').textContent.includes('21–40번째') && location.search.includes('page=2')`);
+    await window.webContents.executeJavaScript(`document.querySelector('#search-pager [aria-label="3페이지"]').click()`);
+    await wait(`document.querySelectorAll('.search-card').length===5 && document.querySelector('#search-pager [aria-label="다음 페이지"]').disabled`);
+    // Reload restores the page from the URL; a new search starts again at page 1.
+    await window.loadURL('gitviz://app/web/pages/search.html?q=paged&page=2');
+    await wait(`document.querySelector('.search-card')?.dataset.url.endsWith('paged-2-0')`);
+    await window.webContents.executeJavaScript(`document.getElementById('search-btn').click()`);
+    await wait(`document.querySelector('.search-card')?.dataset.url.endsWith('paged-1-0') && !location.search.includes('page=')`);
     phase = 'search-to-overview';
     await window.loadURL('gitviz://app/web/pages/search.html');
     await wait(`!!document.querySelector('.app-shell') && document.getElementById('nav-username')?.textContent==='fixture'`);
@@ -223,8 +323,117 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`window.confirm=()=>true;void 0`); await clickText('key 삭제');
     await wait(`document.getElementById('ai-keys').textContent.includes('key 없음')`);
     assert.equal(credential, null);
+
+    phase = 'community';
+    const js = (code: string) => window.webContents.executeJavaScript(code);
+    await window.loadURL('gitviz://app/web/pages/community.html');
+    await wait(`[...document.querySelectorAll('.app-nav-link')].some(a=>a.getAttribute('aria-label')==='커뮤니티' && a.getAttribute('aria-current')==='page') && !!document.querySelector('.community-list-item')`);
+    assert.equal(await js(`document.querySelector('.community-list-item .community-badge').textContent`), '관리자');
+    await js(`document.querySelector('.community-list-item').click()`);
+    await wait(`location.search.includes('id=2') && document.querySelector('.community-head')?.textContent.includes('내 역할 관리자') && !!document.querySelector('[data-tab="invites"]')`);
+    await clickText('새 글 쓰기');
+    // User text is rendered as text, never as markup.
+    const markup = '<img src=x>\n둘째 줄';
+    await js(`(()=>{const f=document.querySelector('.community-form');f.querySelector('input').value='첫 글';f.querySelector('textarea').value=${JSON.stringify(markup)};f.requestSubmit();})()`);
+    await wait(`location.search.includes('post=1') && document.querySelector('.community-text')?.textContent===${JSON.stringify(markup)} && !document.querySelector('.community-text img')`);
+    await js(`(()=>{const f=document.querySelector('.community-comment-form');f.querySelector('textarea').value='댓글입니다';f.requestSubmit();})()`);
+    await wait(`[...document.querySelectorAll('.community-comment .community-text')].map(e=>e.textContent).join()==='댓글입니다'`);
+    await clickText('‹ 글 목록');
+    await wait(`document.querySelector('.community-post-card')?.textContent.includes('댓글 1')`);
+    await js(`document.querySelector('[data-tab="invites"]').click()`);
+    await wait(`!!document.querySelector('.community-invite-form')`);
+    await js(`(()=>{const f=document.querySelector('.community-invite-form');f.querySelectorAll('select')[1].value='5';f.requestSubmit();})()`);
+    await wait(`document.querySelector('.community-invite-url')?.value.endsWith('#invite=${goodInvite}') && document.querySelectorAll('.community-invites .community-member').length===1`);
+    // Group chat: history first, then live events from main; the sender's own echo shows once; markup stays text.
+    await js(`document.querySelector('[data-tab="chat"]').click()`);
+    await wait(`!document.querySelector('.community-chat-empty')?.hidden && document.querySelector('.community-chat-status')?.textContent==='연결하는 중…'`);
+    for (let i = 0; i < 100 && !chatStreams.length; i++) await new Promise(resolve => setTimeout(resolve, 20));
+    assert.deepEqual(chatStreams.map(stream => stream.path), ['/api/community/v1/repositories/2/chat/stream']);
+    chatStreams[0].write(sse('ready', { online: [author, peer] }));
+    await wait(`document.querySelector('.community-chat-status').textContent==='실시간 연결됨' && document.querySelector('.community-chat-online h3').textContent==='접속 중 2명'`);
+    const chatMarkup = '<img src=x onerror=alert(1)>\n둘째 줄';
+    await js(`(()=>{const t=document.querySelector('.community-chat-form textarea');t.value=${JSON.stringify(chatMarkup)};t.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));})()`);
+    await wait(`document.querySelectorAll('.community-chat-message').length===1 && document.querySelector('.community-chat-mine .community-text')?.textContent===${JSON.stringify(chatMarkup)} && !document.querySelector('.community-chat-log img') && document.querySelector('.community-chat-form textarea').value===''`);
+    // Shift+Enter is a line break, not a send.
+    await js(`(()=>{const t=document.querySelector('.community-chat-form textarea');t.value='x';t.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',shiftKey:true,bubbles:true,cancelable:true}));})()`);
+    chatStreams[0].write(sse('message', { id: 7, author: peer, author_id: peer.id, body: '안녕하세요', created_at: snapshot.analyzed_at }));
+    await wait(`document.querySelectorAll('.community-chat-message').length===2 && document.querySelector('.community-chat-message:last-child')?.textContent.includes('@peer') && !document.querySelector('.community-chat-message:last-child').classList.contains('community-chat-mine')`);
+    chatStreams[0].write(sse('deleted', { id: 7 }) + sse('presence', { online: [author] }) + sse('script', { online: [] }));
+    await wait(`document.querySelectorAll('.community-chat-message').length===1 && document.querySelector('.community-chat-online h3').textContent==='접속 중 1명'`);
+    assert.equal(chatMessages.length, 1, 'Shift+Enter did not send');
+    // Voice: one seat is taken by the peer; the camera stays denied while the microphone is allowed on this page.
+    phase = 'community-voice';
+    await wait(`document.querySelector('.community-voice h3')?.textContent==='음성 채팅 1/3' && document.querySelector('.community-voice-people').textContent.includes('@peer')`);
+    assert.equal(await js(`navigator.mediaDevices.getUserMedia({ video: true }).then(s => { s.getTracks().forEach(t => t.stop()); return 'allowed'; }, e => e.name)`), 'NotAllowedError');
+    voicePeer = new BrowserWindow({ show: false, webPreferences: { partition: 'voice-peer-fixture', sandbox: true, contextIsolation: true, nodeIntegration: false } });
+    await voicePeer.loadURL('about:blank');
+    await voicePeer.webContents.executeJavaScript(`(() => {
+      window.out = []; window.chain = Promise.resolve();
+      const ctx = new AudioContext(); const tone = ctx.createOscillator(); const sink = ctx.createMediaStreamDestination(); tone.connect(sink); tone.start();
+      const pc = window.pc = new RTCPeerConnection();
+      for (const track of sink.stream.getTracks()) pc.addTrack(track, sink.stream);
+      pc.ontrack = event => { window.heard = event.track.kind; };
+      pc.onicecandidate = event => { if (event.candidate) window.out.push({ kind: 'ice', candidate: event.candidate.candidate, sdp_mid: event.candidate.sdpMid, sdp_mline_index: event.candidate.sdpMLineIndex }); };
+      const handle = async m => {
+        if (m.kind === 'offer') { await pc.setRemoteDescription({ type: 'offer', sdp: m.sdp }); await pc.setLocalDescription(await pc.createAnswer()); window.out.push({ kind: 'answer', sdp: pc.localDescription.sdp }); }
+        else if (m.kind === 'ice') await pc.addIceCandidate({ candidate: m.candidate, sdpMid: m.sdp_mid, sdpMLineIndex: m.sdp_mline_index });
+      };
+      window.receive = m => { window.chain = window.chain.then(() => handle(m)).catch(e => { window.failed = String(e); }); };
+    })()`);
+    // Relay the peer's answer and candidates into the app's chat stream, addressed to seat A.
+    const pump = setInterval(() => {
+      void voicePeer?.webContents.executeJavaScript('window.out.splice(0)').then((out: Record<string, unknown>[]) => {
+        for (const message of out) chatStreams.at(-1)?.write(sse('voice-signal', { from: seatB, to: seatA, ...message }));
+      }).catch(() => {});
+    }, 25);
+    try {
+      await clickText('음성 참여');
+      await wait(`document.querySelector('.community-voice h3').textContent==='음성 채팅 2/3' && document.querySelector('.community-voice-people').textContent.includes('(나)')`);
+      for (let i = 0; i < 200 && !(await voicePeer.webContents.executeJavaScript(`window.pc.connectionState==='connected' && window.heard==='audio'`)); i++) await new Promise(resolve => setTimeout(resolve, 25));
+      assert.equal(await voicePeer.webContents.executeJavaScript('window.failed || window.pc.connectionState'), 'connected');
+      assert.equal(await voicePeer.webContents.executeJavaScript('window.heard'), 'audio', 'the peer receives the app microphone');
+      await wait(`[...document.querySelectorAll('.community-voice audio')].some(a => a.srcObject?.getAudioTracks()[0]?.readyState === 'live')`);
+      assert.deepEqual([voiceSignals[0].session_id, voiceSignals[0].to, voiceSignals[0].kind], [seatA, seatB, 'offer'], 'the newcomer calls the seats already there');
+      assert.ok(voiceSignals.some(signal => signal.kind === 'ice'));
+      await clickText('음소거');
+      await wait(`document.querySelector('.community-voice [aria-pressed="true"]')?.textContent==='음소거 해제'`);
+      await clickText('나가기');
+      await wait(`document.querySelector('.community-voice h3').textContent==='음성 채팅 1/3' && !document.querySelector('.community-voice audio') && document.querySelector('.community-voice-status').textContent==='음성 채팅에서 나왔습니다.'`);
+      assert.equal(voiceLeft, 1);
+      // A full room says so and keeps nothing open.
+      voiceFull = true;
+      await clickText('음성 참여');
+      await wait(`document.querySelector('.community-voice-status').textContent.includes('3명까지') && !!document.querySelector('.community-voice .btn-primary') && !document.querySelector('.community-voice audio')`);
+    } finally { clearInterval(pump); voicePeer.destroy(); voicePeer = null; }
+    phase = 'community';
+    await js(`document.querySelector('[data-tab="members"]').click()`);
+    await wait(`document.querySelectorAll('.community-member').length===2`);
+    // Leaving the chat tab closes the stream in main.
+    for (let i = 0; i < 100 && !chatStreams[0].cancelled(); i++) await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(chatStreams[0].cancelled(), true, 'the chat stream ends when the tab closes');
+    // Handing over the admin role takes two clicks; afterwards the admin-only invites tab is gone.
+    await clickText('관리자 넘기기');
+    assert.equal(communityAdmin, uid);
+    await clickText('관리자 넘기기 확인');
+    await wait(`document.querySelector('.community-head')?.textContent.includes('내 역할 멤버') && !document.querySelector('[data-tab="invites"]')`);
+    assert.equal(communityAdmin, peer.id);
+    // A pasted invite link joins and opens the community; a bad one explains itself.
+    const paste = (value: string) => js(`document.getElementById('community-invite-input').value=${JSON.stringify(value)};document.getElementById('community-join').requestSubmit()`);
+    await paste(`https://fixture.test/pages/community.html#invite=${'z'.repeat(43)}`);
+    await wait(`document.getElementById('community-join-message').textContent.includes('만료됐거나')`);
+    await paste(`https://fixture.test/pages/community.html#invite=${goodInvite}`);
+    await wait(`document.getElementById('community-join-message').textContent==='참여했습니다.' && location.search.includes('id=2')`);
+    // A gitviz-join link (main turns it into ?invite=) only fills the form: no request until the user presses 참여.
+    const joinsBefore = requests.filter(path => path.includes('/invites/redeem')).length;
+    await window.loadURL(`gitviz://app/web/pages/community.html?invite=${goodInvite}`);
+    await wait(`document.getElementById('community-invite-input')?.value===${JSON.stringify(goodInvite)} && document.getElementById('community-join-message').textContent.includes('참여를 누르면') && !location.search.includes('invite=')`);
+    assert.equal(requests.filter(path => path.includes('/invites/redeem')).length, joinsBefore);
+    assert.equal(await js(`document.getElementById('community-open-app').hidden`), true, 'the app never offers to open itself');
+    await js(`document.getElementById('community-join').requestSubmit()`);
+    await wait(`document.getElementById('community-join-message').textContent==='참여했습니다.'`);
+    assert.deepEqual(communityBodies.slice(0, 3),[{ title: '첫 글', body: markup }, { body: '댓글입니다' }, { expires_in_hours: 168, max_uses: 5 }]);
     assert.equal(errors.length, 0, `renderer errors: ${errors.join(',')}`);
-    process.stdout.write('PASS Phase 3 renderer: search/selection/overview, partial retry, contributor-file-back, monthly metric, graph zoom/filter/selection, file pagination/search/view restoration, credential save/erase, commit/PR selection, preview/fresh consent, review result/filter/code. Fixture transport only.\n');
+    process.stdout.write('PASS Phase 3 renderer: search/paging/selection/overview, community posts/comments/chat/voice (real WebRTC peer)/invites/admin handover, partial retry, contributor-file-back, monthly metric, graph zoom/filter/selection, file pagination/search/view restoration, credential save/erase, commit/PR selection, preview/fresh consent, review result/filter/code. Fixture transport only.\n');
   } finally { unregisterHealth(); unregister(); window.destroy(); clearTimeout(deadline); }
 }).then(() => app.exit(0)).catch(error => {
   if (process.env.GITVIZ_UI_REPORT) writeFileSync(process.env.GITVIZ_UI_REPORT, JSON.stringify({ status: 'failed', phase, message: error instanceof Error ? error.message : 'assertion' }));

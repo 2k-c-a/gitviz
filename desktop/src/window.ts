@@ -23,6 +23,17 @@ function rejectStateLinks(path: string): void {
   }
 }
 
+/** Microphone only, only for the top-level community page (voice chat, AD-28). Camera, screen and everything else stay denied. */
+export function microphoneAllowed(permission: string, details: { mediaTypes?: string[]; mediaType?: string; requestingUrl?: string; isMainFrame?: boolean }): boolean {
+  if (permission !== 'media' || details.isMainFrame === false) return false;
+  const types = details.mediaTypes ?? (details.mediaType ? [details.mediaType] : []);
+  if (!types.length || types.some(type => type !== 'audio')) return false;
+  try {
+    const url = new URL(details.requestingUrl ?? '');
+    return url.protocol === 'gitviz:' && url.host === 'app' && url.pathname === '/web/pages/community.html' && isAppDocument(url.href);
+  } catch { return false; }
+}
+
 export function createWindow(show = true, stateFile?: string): BrowserWindow {
   let bounds: { x?: number; y?: number; width: number; height: number } = { width: 900, height: 640 };
   let maximized = false;
@@ -53,8 +64,10 @@ export function createWindow(show = true, stateFile?: string): BrowserWindow {
   });
   window.webContents.on('will-navigate', (event, url) => { if (!isAppDocument(url)) event.preventDefault(); });
   window.webContents.on('will-attach-webview', event => event.preventDefault());
-  window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-  window.webContents.session.setPermissionCheckHandler(() => false);
+  window.webContents.session.setPermissionRequestHandler((contents, permission, callback, details) =>
+    callback(contents === window.webContents && microphoneAllowed(permission, details as Parameters<typeof microphoneAllowed>[1])));
+  window.webContents.session.setPermissionCheckHandler((contents, permission, _origin, details) =>
+    contents === window.webContents && microphoneAllowed(permission, details));
   if (maximized) window.maximize();
   if (stateFile) window.on('close', () => {
     try {

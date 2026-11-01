@@ -26,14 +26,20 @@ void app.whenReady().then(async () => {
   });
   const issued = { sessionToken: token, sessionId: uid, user: { id: uid, github_login: 'fixture', display_name: null }, expiresAt: new Date(Date.now() + 300000).toISOString(), capabilities: ['remote-v1'], apiCapabilities: { desktopProtocol: 1, aiContract: '1.9' } };
   let opened = 0, revoked = false;
-  const http: Http = async (path, method, _body, givenToken) => {
-    if (path.endsWith('transactions')) return { status: 201, body: { flowId: uid, pollSecret: 'p'.repeat(43), displayCode: 'AABBCCDD', browserUrl: `https://fixture.test/api/desktop/v1/auth/authorize?flow=${uid}`, expiresAt: new Date(Date.now() + 300000).toISOString(), pollAfterMs: 2000 }, headers: {} };
-    if (path.endsWith('exchange')) return { status: 200, body: issued, headers: {} };
+  let port = 0;
+  const http: Http = async (path, method, body, givenToken) => {
+    if (path.endsWith('transactions')) { port = (JSON.parse(body!) as { redirectPort: number }).redirectPort; return { status: 201, body: { flowId: uid, pollSecret: 'p'.repeat(43), displayCode: 'AABBCCDD', browserUrl: `https://fixture.test/api/desktop/v1/auth/authorize?flow=${uid}&port=${port}`, expiresAt: new Date(Date.now() + 300000).toISOString(), pollAfterMs: 2000 }, headers: {} }; }
+    // Like the server: no loopback code, no session.
+    if (path.endsWith('exchange')) return (JSON.parse(body!) as { callbackCode?: string }).callbackCode === 'c'.repeat(43) ? { status: 200, body: issued, headers: {} } : { status: 202, body: { state: 'pending' }, headers: {} };
     assert.equal(givenToken, token);
     if (method === 'DELETE') { revoked = true; return { status: 204, body: null, headers: {} }; }
     return { status: revoked ? 401 : 200, body: issued, headers: {} };
   };
-  const auth = new DesktopAuth('https://fixture.test', http, async url => { assert.equal(url, `https://fixture.test/api/desktop/v1/auth/authorize?flow=${uid}`); opened++; }, vault);
+  const auth = new DesktopAuth('https://fixture.test', http, async url => {
+    assert.equal(url, `https://fixture.test/api/desktop/v1/auth/authorize?flow=${uid}&port=${port}`); opened++;
+    // Stand-in for the system browser finishing GitHub sign-in and following the server's redirect.
+    setTimeout(() => { void fetch(`http://127.0.0.1:${port}/callback?flow=${uid}&code=${'c'.repeat(43)}`); }, 100);
+  }, vault);
   const remote = new Remote(new RemoteContracts(JSON.parse(await readFile(join(__dirname, '../schema/ai-bodies.json'), 'utf8')) as Record<string, Record<string, unknown>>), http, auth.identity, auth.invalidate);
   await serveAssets(join(__dirname, '../ui'));
   const window = createWindow(false); const unregister = registerDesktop(window, auth, remote);

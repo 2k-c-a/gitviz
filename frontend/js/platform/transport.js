@@ -62,7 +62,7 @@ export async function startLogin() {
   const state = await globalThis.desktop.auth.start();
   let notice = document.getElementById('desktop-auth-notice');
   if (!notice) { notice = document.createElement('p'); notice.id = 'desktop-auth-notice'; document.body.prepend(notice); }
-  notice.textContent = state.state === 'pending' ? `브라우저에서 계정과 확인 코드 ${state.displayCode}를 비교하고 승인하세요.` : '로그인 상태를 확인합니다.';
+  notice.textContent = state.state === 'pending' ? '브라우저에서 GitHub로 로그인하면 앱이 자동으로 로그인됩니다.' : '로그인 상태를 확인합니다.';
   while (state.state === 'pending') {
     await new Promise(resolve => setTimeout(resolve, Math.max(2000, state.pollAfterMs || 2000)));
     Object.assign(state, await globalThis.desktop.auth.status());

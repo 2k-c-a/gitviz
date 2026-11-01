@@ -56,7 +56,8 @@ export function registerProposals(window: BrowserWindow, agent: Pick<Agent, 'cal
       try {
         const current = await agent.call('workspace.proposals.get', { proposalId: value.proposalId }, { projectId: probe.options.projectId });
         if (current.version !== value.expectedVersion || current.patchHash !== value.patchHash || current.preconditionsHash !== value.preconditionsHash) throw new Error('PRECONDITION_FAILED');
-        if (!await native.confirm(window, '이 고정 제안을 원본 파일에 적용하도록 승인할까요?', `${String(current.purpose)}\npatch ${String(current.patchHash)}\npreconditions ${String(current.preconditionsHash)}\n${(current.changes as { path: string }[]).map(file => file.path).join('\n')}\n2단계 게시 중 원래 경로가 잠시 없을 수 있습니다. 실패 시 자동 원복하지 않고 명시 복구가 필요합니다. index·commit·push는 변경하지 않습니다.`)) return null;
+        // Owner decision (2026-11-01): the renderer's 적용 button is the approval; no native prompt. The capability stays main-only,
+        // and the agent still refuses a stale version, a changed patch or a source file whose hash moved.
         record = { project: String(value.projectId), proposal: String(value.proposalId), secret: randomBytes(32), expires: Date.now() + 300000, body, payload: { ...value } };
         intents.set(key, record);
       } finally { confirming = false; }

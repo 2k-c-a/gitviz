@@ -49,8 +49,18 @@ $guestTest = {
     $exited = $p.WaitForExit(240000); Start-Sleep -Seconds 12; Stop-App
     Step 'install' ($exited -and $p.ExitCode -eq 0 -and (Test-Path (Join-Path $install 'Update.exe'))) "exited=$exited code=$($p.ExitCode)"
     $exe = Get-ChildItem -LiteralPath $install -Directory -Filter 'app-*' | Select-Object -First 1 | ForEach-Object { Join-Path $_.FullName 'GitVizWorkspace.exe' }
-    $app = Start-Process $exe -PassThru; Start-Sleep -Seconds 25; $alive = -not $app.HasExited; Stop-App
-    Step 'launch' $alive "alive=$alive"
+    $app = Start-Process $exe -PassThru; Start-Sleep -Seconds 25; $alive = -not $app.HasExited
+    $agentUp = @(Get-Process -Name gitviz-workspace-agent -ErrorAction SilentlyContinue).Count -gt 0
+    $debugArgs = @(Get-CimInstance Win32_Process -Filter "Name='GitVizWorkspace.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'remote-debugging|inspect' }).Count
+    Stop-App
+    Step 'launch' ($alive -and $agentUp -and $debugArgs -eq 0) "alive=$alive agentProcess=$agentUp debugArgsInCommandLines=$debugArgs"
+    $vi = (Get-Item -LiteralPath $exe).VersionInfo
+    Step 'version-info' ($vi.ProductVersion -eq '0.7.0') "file=$($vi.FileVersion) product=$($vi.ProductVersion) name=$($vi.ProductName) signature=$((Get-AuthenticodeSignature -FilePath $exe).Status)"
+    # K-04: the installed exe must refuse a debugging switch before opening any port.
+    $dbg = Start-Process $exe -ArgumentList '--remote-debugging-port=9333' -PassThru; $dbgExited = $dbg.WaitForExit(20000)
+    $listening = @(Get-NetTCPConnection -State Listen -LocalPort 9333 -ErrorAction SilentlyContinue).Count
+    $dbgCode = if ($dbgExited) { $dbg.ExitCode } else { 'running' }; Stop-App
+    Step 'debug-port-blocked' ($dbgExited -and $dbgCode -eq 2 -and $listening -eq 0) "exited=$dbgExited code=$dbgCode listeningOn9333=$listening"
     Set-Content -LiteralPath (Join-Path $data 'p11-marker.txt') -Value 'user data must survive uninstall'
     $dataBefore = Hashes $data
     $otherBefore = @(Get-ChildItem -LiteralPath $env:LOCALAPPDATA -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'GitVizWorkspace' } | ForEach-Object { $_.Name })

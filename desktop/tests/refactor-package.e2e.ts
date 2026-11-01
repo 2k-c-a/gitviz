@@ -14,6 +14,7 @@ import { registerHealth } from '../src/ipc';
 import { registerProjects } from '../src/projects';
 import { registerProposals } from '../src/proposals';
 import { registerImpact } from '../src/impact';
+import { registerValidation } from '../src/validation';
 import { registerScheme, serveAssets, APP_URL } from '../src/app-protocol';
 import { createWindow } from '../src/window';
 import { loadKey } from '../src/secrets';
@@ -71,9 +72,10 @@ void app.whenReady().then(async () => {
   const window = createWindow(false);
   const health = registerHealth(window, () => agent.health());
   const projects = registerProjects(window, agent, contracts, { select: async () => root, confirm: async () => true });
-  let nativeConsent = false;
-  const proposals = registerProposals(window, agent, contracts, { confirm: async () => nativeConsent });
+  const proposals = registerProposals(window, agent, contracts, { confirm: async () => true });
   const impact = registerImpact(window, agent, contracts);
+  // Comparison lives with validation; no test tool is linked, so nothing executes.
+  const validation = registerValidation(window, agent, contracts, { confirm: async () => false });
   const evaluate = (source: string) => window.webContents.executeJavaScript(source);
   async function wait(source: string): Promise<void> {
     for (let i = 0; i < 200; i++) { if (await evaluate(source)) return; await new Promise(resolve => setTimeout(resolve, 30)); }
@@ -99,14 +101,11 @@ void app.whenReady().then(async () => {
     await wait(`document.getElementById('proposal-view').textContent.includes('pending')`);
     assert.deepEqual(await hashes(root), before);
     await assert.rejects(evaluate(`workspace.applyProposal({projectId:${JSON.stringify(project.id)},proposalId:crypto.randomUUID(),approvalId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID()})`), /APPROVAL_REQUIRED/);
-    phase = 'native-cancel'; await evaluate(`document.querySelectorAll('#proposal-view button')[0].click()`);
-    await new Promise(resolve => setTimeout(resolve, 100)); assert.deepEqual(await hashes(root), before);
-    assert.equal(await evaluate(`document.querySelectorAll('#proposal-view button')[1].disabled`), true);
-    nativeConsent = true; phase = 'native-approve';
-    await evaluate(`document.querySelectorAll('#proposal-view button')[0].click()`);
-    await wait(`document.querySelectorAll('#proposal-view button')[1].disabled===false`);
-    phase = 'apply'; await evaluate(`document.querySelectorAll('#proposal-view button')[1].click()`);
+    // Owner decision (2026-11-01): the single 적용 button approves and applies without a native prompt.
+    phase = 'apply'; await evaluate(`document.querySelectorAll('#proposal-view button')[0].click()`);
     await wait(`document.querySelector('#proposal-view h3')?.textContent.startsWith('applied')`);
+    phase = 'auto-compare';
+    await wait(`document.getElementById('proposal-message').textContent.includes('탭에서 확인') && document.getElementById('comparison-view').childElementCount>0`);
     const applied = await hashes(root); assert.equal(before['.git/index'], applied['.git/index']);
     assert.notEqual(before['app.py'], applied['app.py']); assert.notEqual(before['app.ts'], applied['app.ts']);
     phase = 'impact'; await evaluate(`document.getElementById('analyze-impact').click()`);
@@ -114,6 +113,6 @@ void app.whenReady().then(async () => {
     assert.equal(await evaluate(`document.getElementById('impact-view').textContent.includes('python-ast-v1')`), true);
     assert.equal(await evaluate(`document.getElementById('impact-view').textContent.includes('unavailable')`), true);
     process.stdout.write('PASS P06 frozen agent native approval/apply Python/TS evidence; owned-loopback-fake-only; no Python runtime\n');
-  } finally { const diagnostic = await readFile(join(directory, 'p06-fixture-apply-error.json'), 'utf8').catch(() => ''); if (diagnostic) process.stderr.write(diagnostic + '\n'); model.closeAllConnections(); model.close(); impact(); proposals(); health(); projects(); window.destroy(); await agent.stop(); clearTimeout(deadline); await rm(temporary, { recursive: true, force: true }); }
+  } finally { const diagnostic = await readFile(join(directory, 'p06-fixture-apply-error.json'), 'utf8').catch(() => ''); if (diagnostic) process.stderr.write(diagnostic + '\n'); model.closeAllConnections(); model.close(); validation(); impact(); proposals(); health(); projects(); window.destroy(); await agent.stop(); clearTimeout(deadline); await rm(temporary, { recursive: true, force: true }); }
 }).then(() => app.exit(0)).catch(error => { process.stderr.write(`FAIL P06 (${phase}): ${error instanceof Error ? error.message.slice(0, 120) : 'assertion'}\n`); app.exit(1); });
 

@@ -143,6 +143,53 @@
 .search-example-chip { cursor: pointer; }
 .search-summary { font-size: 12px; color: var(--text2); margin-bottom: 10px; }
 .search-results { display: flex; flex-direction: column; gap: 10px; }
+.search-pager { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; margin-top: 16px; }
+.search-pager button { min-width: 34px; }
+.search-pager button[aria-current="page"] { font-weight: 600; }
+.search-pager-gap { color: var(--text3); padding: 0 2px; }
+
+/* ── 커뮤니티 ── */
+.community-layout { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.community-side { display: flex; flex-direction: column; gap: 14px; }
+.community-main, .community-body, .community-posts { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.community-list { display: flex; flex-direction: column; gap: 4px; }
+.community-list-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.community-list-item:hover { background: var(--bg2); }
+.community-list-item[aria-current="true"] { border-color: var(--blue); background: var(--bg2); }
+.community-badge { flex: 0 0 auto; font-size: 11px; color: var(--text2); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+.community-join { display: flex; gap: 6px; }
+.community-join input { flex: 1; min-width: 0; }
+.community-tabs { margin-top: 8px; }
+.community-form, .community-comment-form { display: flex; flex-direction: column; gap: 8px; }
+.community-form input, .community-form textarea, .community-comment-form textarea { width: 100%; box-sizing: border-box; font: inherit; }
+.community-post-title { padding: 0; border: 0; background: none; color: var(--text); font-weight: 600; font-size: 14px; text-align: left; cursor: pointer; }
+.community-post-title:hover { color: var(--blue); }
+.community-post-snippet { margin: 4px 0; color: var(--text2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 4.5em; overflow: hidden; }
+.community-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; margin: 10px 0; }
+.community-comment { border-top: 1px solid var(--border); padding: 8px 0; }
+.community-members, .community-invites { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.community-member { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.community-member-name { font-weight: 600; }
+.community-invite-created { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; }
+.community-invite-url { flex: 1; min-width: 0; font-family: var(--mono, monospace); }
+.community-armed { border-color: var(--red); color: var(--red); }
+.community-chat-layout { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 12px; align-items: start; }
+.community-chat { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.community-chat-bar { justify-content: space-between; }
+.community-chat-status { margin: 0; }
+.community-chat-older { align-self: center; }
+.community-chat-log { height: min(60vh, 520px); overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg3); }
+.community-chat-message { padding: 6px 10px; border-radius: 8px; background: var(--bg); max-width: 85%; align-self: flex-start; }
+.community-chat-message .p-sub { margin: 0; font-size: 12px; }
+.community-chat-message .community-text { margin: 2px 0; }
+.community-chat-mine { align-self: flex-end; background: var(--blue-light); }
+.community-chat-form { display: flex; gap: 8px; align-items: flex-end; }
+.community-chat-form textarea { flex: 1; min-width: 0; resize: vertical; }
+.community-chat-people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.community-chat-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.community-voice .ui-toolbar { flex-wrap: wrap; margin-top: 8px; }
+.community-voice-status { margin: 6px 0 0; }
+@media (max-width: 760px) { .community-layout, .community-chat-layout { grid-template-columns: 1fr; } }
 
 .search-card { display: flex; align-items: center; gap: 16px; }
 .search-card[data-registered="1"] { cursor: pointer; }

@@ -16,10 +16,10 @@ system browser는 기존 OAuth 서버를 사용한다. app은 public client이�
 
 | method·예정 endpoint | 요청·응답·규칙 |
 |---|---|
-| `POST /api/desktop/v1/auth/transactions` | main이 난수 verifier를 만들고 `challenge=SHA256(verifier)`·deviceLabel 전달. 201 `{flowId,browserUrl,pollSecret,displayCode,expiresAt,pollAfterMs}`. 인증 전 endpoint이므로 IP/발급 수·크기 rate limit |
-| `GET /api/desktop/v1/auth/authorize?flow=<UUID>` | browser만 사용. 기존 로그인 필요 시 OAuth state에 server-side flow binding. 로그인 후 앱명·계정·displayCode를 보여주고 사용자가 승인. GET만으로 인가 확정 금지 |
-| `POST /api/desktop/v1/auth/authorize` | browser session+CSRF+flow binding 검사 후 authorized. 본문 `{flowId,displayCode,approve}`. 거절은 종료. main의 pollSecret·verifier는 browser에 전달하지 않음 |
-| `POST /api/desktop/v1/auth/exchange` | main이 `{flowId,pollSecret,verifier}`와 Idempotency-Key. pending은 202+Retry-After, authorized면 원자 소비 후 200 `{sessionToken,sessionId,user,capabilities,expiresAt,apiCapabilities}` |
+| `POST /api/desktop/v1/auth/transactions` | main이 난수 verifier를 만들고 `challenge=SHA256(verifier)`·deviceLabel·`redirectPort`(앱의 127.0.0.1 루프백 포트) 전달. 201 `{flowId,browserUrl(`&port=` 포함),pollSecret,displayCode,expiresAt,pollAfterMs}`. 인증 전 endpoint이므로 IP/발급 수·크기 rate limit |
+| `GET /api/desktop/v1/auth/authorize?flow=<UUID>&port=<N>` | browser만 사용. 로그인 필요 시 OAuth state에 server-side flow binding, port는 서명 세션에 보관. 로그인되면 authorized로 바꾸고 `http://127.0.0.1:<port>/callback?flow&code`로 303. 세션 발급은 이 code가 있어야만 한다(AD-24, 2026-11-01 개정) |
+| ~~`POST /api/desktop/v1/auth/authorize`~~ | 2026-11-01 삭제(AD-24). 코드 입력·승인 폼 대신 루프백 code |
+| `POST /api/desktop/v1/auth/exchange` | main이 `{flowId,pollSecret,verifier,callbackCode?}`와 Idempotency-Key. pending 또는 루프백 code가 없거나 틀리면 202+Retry-After, authorized이고 code가 맞으면 원자 소비 후 200 `{sessionToken,sessionId,user,capabilities,expiresAt,apiCapabilities}` |
 | `GET /api/desktop/v1/session` | bearer session·서버 capability/최소 protocol 검사. expired/revoked 401 |
 | `DELETE /api/desktop/v1/session` | bearer가 가리키는 세션 폐기, 204; 반복 폐기도 204. 웹 cookie 로그아웃과 별개 |
 

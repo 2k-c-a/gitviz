@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
-import { loadKey, type ProtectedStorage } from '../src/secrets';
+import { AiKeyVault, loadKey, type ProtectedStorage } from '../src/secrets';
 import { spawn } from 'node:child_process';
 
 const storage: ProtectedStorage = { available: async () => true, encrypt: async value => Buffer.from(value).reverse(), decrypt: async value => Buffer.from(value).reverse().toString() };
@@ -21,6 +21,26 @@ test('protected key survives restart; corruption never overwrites or regenerates
     assert.equal(dirname(resolve(directory)), resolve(tmpdir())); assert.ok(basename(directory).startsWith('gitviz-secret-'));
     await rm(directory, { recursive: true });
   }
+});
+test('AI key vault stores keys encrypted, reports only booleans and deletes the file when empty', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'gitviz-ai-keys-'));
+  const file = join(directory, 'ai-keys.dpapi');
+  const secret = 'sk-test-0123456789abcdef';
+  try {
+    const vault = new AiKeyVault(file, storage);
+    assert.deepEqual(await vault.status(), { anthropic: false, openai: false, gemini: false });
+    await vault.set('anthropic', secret);
+    assert.ok(!(await readFile(file, 'utf8')).includes(secret));
+    assert.deepEqual(await new AiKeyVault(file, storage).status(), { anthropic: true, openai: false, gemini: false });
+    assert.equal(await vault.get('anthropic'), secret); assert.equal(await vault.get('openai'), null);
+    await assert.rejects(vault.set('openai', 'short'), /INVALID_REQUEST/);
+    await assert.rejects(vault.set('other' as 'openai', secret), /INVALID_REQUEST/);
+    await vault.set('anthropic', null);
+    await assert.rejects(readFile(file), /ENOENT/);
+    await writeFile(file, 'corrupt');
+    await assert.rejects(vault.status(), /STORAGE_UNAVAILABLE/);
+    await assert.rejects(new AiKeyVault(join(directory, 'other'), { ...storage, available: async () => false }).set('gemini', secret), /STORAGE_UNAVAILABLE/);
+  } finally { await rm(directory, { recursive: true }); }
 });
 test('OS protection unavailable fails closed', async () => {
   await assert.rejects(loadKey('unused', { ...storage, available: async () => false }), /STORAGE_UNAVAILABLE/);

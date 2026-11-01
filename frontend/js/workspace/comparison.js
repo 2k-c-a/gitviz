@@ -29,11 +29,15 @@ document.getElementById('compare-snapshots').addEventListener('click', async () 
   if (!pending || pending.body !== encoded) pending = { body: encoded, key: crypto.randomUUID() };
   try {
     const value = await api.createComparison({ ...body, idempotencyKey: pending.key });
-    if (turn !== generation) return;
+    if (turn === generation) render(value);
+  } catch (error) { if (turn === generation) view.textContent = String(error?.message || error).replace(/^.*Error invoking remote method.*Error: /, ''); }
+});
+// The one-button apply (proposal.js) compares on its own; show its result here.
+window.addEventListener('workspace-comparison-ready', event => { if (event.detail?.projectId === picker.value) render(event.detail.value); });
+function render(value) {
     view.replaceChildren(node('h3', `검증 비교 ${value.validationStatus}`), node('p', value.reasons.join(', ')),
       node('p', `변경 파일 ${value.changedFiles} · 추가 ${value.additions ?? '미측정'} · 삭제 ${value.deletions ?? '미측정'}`),
       node('pre', JSON.stringify({ before: value.before, after: value.after }, null, 2)),
       node('h4', '목적'), node('p', value.purpose || '연결한 제안 없음'), node('h4', '기대효과 · 예측'), node('p', value.expectedEffects.join(', ')), node('h4', '관찰 결과 · 실행 상태'), node('pre', JSON.stringify(value.validationOutcomes, null, 2)), node('h4', '남은 위험'), node('p', value.remainingRisks.join(', ')), node('p', value.diffLimitations.join(', ')),
       node('p', '표시한 AST 지표는 선택 입력의 실측입니다. 품질·속도 개선이나 개별 테스트 전이는 자동 주장하지 않습니다.'));
-  } catch (error) { if (turn === generation) view.textContent = String(error?.message || error).replace(/^.*Error invoking remote method.*Error: /, ''); }
-});
+}

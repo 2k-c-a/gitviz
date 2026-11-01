@@ -34,6 +34,12 @@
 .ws-chip[data-tone='ok'] { background: var(--ui-success-soft); color: var(--ui-success); border-color: transparent; }
 .ws-chip[data-tone='error'] { background: var(--ui-error-soft); color: var(--ui-error); border-color: transparent; }
 .ws-chip-button { cursor: pointer; }
+.ws-account { position: relative; display: inline-flex; }
+.ws-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; display: flex; flex-direction: column; min-width: 160px; padding: 4px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); }
+.ws-menu[hidden] { display: none; }
+.ws-menu > button { justify-content: flex-start; min-height: 32px; padding: 4px 10px; border: 0; background: none; text-align: left; }
+.ws-menu > button:hover, .ws-menu > button:focus-visible { background: var(--ui-raised); }
+.ws-key-status { margin-left: 4px; }
 
 .ws-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 12px 0; padding: 10px 14px; border-radius: var(--ui-radius-md); }
 .ws-banner-warn { background: var(--ui-warning-soft); color: var(--ui-warning); }

@@ -5,6 +5,8 @@ import { Contracts } from './contracts';
 import { workspaceSender } from './ipc';
 import type { Operation } from '../contracts/workspace';
 import type { CloudReview } from './cloud-review';
+import { CLOUD } from './cloud-http';
+import { AI_PROVIDERS, type AiKeyVault, type AiProvider } from './secrets';
 
 export interface NativeProjectDialogs {
   select(window: BrowserWindow): Promise<string | null>;
@@ -73,7 +75,8 @@ export class ReviewConsent {
     } finally { this.confirming = false; }
   }
 }
-export function registerProjects(window: BrowserWindow, agent: Pick<Agent, 'call'>, contracts: Contracts, native: NativeProjectDialogs = nativeDialogs, cloud: CloudReview | null = null): () => void {
+export function registerProjects(window: BrowserWindow, agent: Pick<Agent, 'call'>, contracts: Contracts, native: NativeProjectDialogs = nativeDialogs, cloud: CloudReview | null = null,
+  keys: Pick<AiKeyVault, 'get' | 'set' | 'status'> | null = null): () => void {
   const channels: string[] = [];
   const consent = new ReviewConsent(() => window.isDestroyed());
   let selecting = false;
@@ -130,6 +133,11 @@ export function registerProjects(window: BrowserWindow, agent: Pick<Agent, 'call
       if ('credentialRef' in payload) throw new Error('INVALID_REQUEST');
       apiKey = payload.apiKey; delete payload.apiKey;
       if (payload.profileId === 'ollama-local-v1' && apiKey !== undefined) throw new Error('INVALID_REQUEST');
+      // A cloud preview without a typed key uses the key saved in settings.
+      if (payload.profileId !== 'ollama-local-v1' && (apiKey === undefined || apiKey === '') && Object.hasOwn(CLOUD, String(payload.profileId))) {
+        apiKey = await keys?.get(CLOUD[payload.profileId as keyof typeof CLOUD].provider) ?? null;
+        if (apiKey === null) throw new Error('API_KEY_REQUIRED');
+      }
     }
     const request = { protocolVersion: 1, requestId: randomUUID(), operation, payload, ...(projectId !== undefined ? { projectId } : {}), ...(idempotencyKey !== undefined ? { idempotencyKey } : {}) };
     contracts.request(request);
@@ -153,8 +161,30 @@ export function registerProjects(window: BrowserWindow, agent: Pick<Agent, 'call
     const request = { protocolVersion: 1, requestId: randomUUID(), operation: 'workspace.reviews.start', projectId, idempotencyKey, payload };
     contracts.request(request);
     const forward = () => agent.call('workspace.reviews.start', payload, { projectId: request.projectId, idempotencyKey: request.idempotencyKey });
-    return await consent.start(value, detail => native.confirm(window, '선택한 AI에 코드를 전송할까요?', detail),
-      () => cloud ? cloud.start(value, forward) : forward());
+    // Owner decision (2026-11-01): no native transfer prompt. The start must still match an unexpired agent preview.
+    return await consent.start(value, async () => true, () => cloud ? cloud.start(value, forward) : forward());
+  });
+  const provider = (value: unknown): AiProvider => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('INVALID_REQUEST');
+    const name = (value as Record<string, unknown>).provider;
+    if (!AI_PROVIDERS.includes(name as AiProvider)) throw new Error('INVALID_REQUEST');
+    return name as AiProvider;
+  };
+  handle('workspace:ai-keys-status', async (...args) => {
+    if (args.length) throw new Error('INVALID_REQUEST');
+    return keys ? await keys.status() : { anthropic: false, openai: false, gemini: false };
+  });
+  handle('workspace:ai-key-save', async (...args) => {
+    if (args.length !== 1 || Object.keys(args[0] as object).some(key => !['provider', 'apiKey'].includes(key))) throw new Error('INVALID_REQUEST');
+    if (!keys) throw new Error('STORAGE_UNAVAILABLE');
+    const apiKey = (args[0] as Record<string, unknown>).apiKey;
+    if (typeof apiKey !== 'string') throw new Error('INVALID_REQUEST');
+    await keys.set(provider(args[0]), apiKey.trim()); return await keys.status();
+  });
+  handle('workspace:ai-key-delete', async (...args) => {
+    if (args.length !== 1 || Object.keys(args[0] as object).some(key => key !== 'provider')) throw new Error('INVALID_REQUEST');
+    if (!keys) throw new Error('STORAGE_UNAVAILABLE');
+    await keys.set(provider(args[0]), null); return await keys.status();
   });
   return () => { cloud?.dispose(); consent.dispose(); for (const channel of channels) ipcMain.removeHandler(channel); };
 }

@@ -25,6 +25,7 @@ from app.api.snapshots import router as snapshots_router
 # ── feat/login 팀: 비동기 auth 라우터 ────────────────────────────────────────
 from app.api import auth as auth_router
 from app.api.desktop.repositories import router as desktop_repositories_router
+from app.api.community import router as community_router
 
 app = FastAPI(title="GitViz API", version="0.1.0")
 
@@ -88,6 +89,7 @@ app.include_router(ai_pulls_router)
 app.include_router(ai_history_router)
 app.include_router(ai_commits_router)
 app.include_router(ai_shared_router)
+app.include_router(community_router)
 
 # ── 프론트엔드 정적 파일 서빙 (API 라우터 이후 마지막에 위치) ─────────────────
 app.mount("/", NoCacheStaticFiles(directory="frontend", html=True), name="frontend")
