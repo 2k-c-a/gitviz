@@ -15,11 +15,16 @@ GitViz는 Windows 데스크톱 앱(Electron)이 기본 사용 방식이다. 앱�
 ```powershell
 git clone https://github.com/2k-c-a/gitviz.git
 cd gitviz
-pwsh tools/dev/bootstrap.ps1 -App -Run            # 앱 빌드 후 실행 (서버 없이)
-pwsh tools/dev/bootstrap.ps1 -App -Run -Staging   # 로컬 HTTPS 서버도 띄우고 앱을 연결해 실행
+pwsh tools/dev/bootstrap.ps1 -App -Run       # 앱 빌드 후 실행 (서버 없이: 프로젝트, AI 리뷰·리팩터링)
+pwsh tools/dev/bootstrap.ps1 -App -Staging   # 로컬 HTTPS 서버를 띄우고, 그 서버에 연결되는 앱을 빌드 (처음 한 번)
+pwsh tools/dev/bootstrap.ps1 -Staging        # 그다음부터: 서버만 켠다 (재부팅 뒤 등)
 ```
 
-`-App`은 아래 1단계(도구 확인, 앱 의존성, 작업 에이전트 빌드, 앱 빌드·패키징)를 한 번에 하고, `-Run`은 빌드한 앱을 실행한다. 앱 의존성은 `desktop\node_modules`가 `package-lock.json`과 맞으면 다시 설치하지 않는다. 앱이 열려 있으면 패키징 파일이 잠겨 있으므로 앱을 닫고 실행한다. `-Staging`은 3단계의 서버 준비·실행(`Prepare`, `Up`, `Worker`)과 연결 설정까지 한다. 서버가 이미 떠 있으면 그대로 쓰고, `staging.env`가 비어 있으면 GitHub OAuth 값을 적으라고 안내한 뒤 멈춘다. 서버와 worker는 각자 새 창에서 돌고, 끄려면 `pwsh tools/vm/staging_stack.ps1 -Mode Down`을 실행한다.
+`-App -Staging`으로 빌드한 앱은 서버 주소와 서버의 자체 서명 인증서가 들어 있어, 서버가 켜져 있으면 탐색기에서 `build-output\desktop\GitVizWorkspace-win32-x64\GitVizWorkspace.exe`를 더블클릭해도 로그인·저장소 탐색·커뮤니티·채팅·음성·공동 편집이 모두 된다. 어느 명령이든 `-Run`을 붙이면 앱 실행까지 한다. 이 PC에서 빌드한 앱은 이 PC의 서버에만 연결되므로, 다른 PC에서는 clone 후 그 PC에서 `-App -Staging`을 실행한다(빌드한 앱을 복사하지 않는다).
+
+- `-App`은 아래 1단계(도구 확인, 앱 의존성, 작업 에이전트 빌드, 앱 빌드·패키징)를 한 번에 한다. 앱 의존성은 `desktop\node_modules`가 `package-lock.json`과 맞으면 다시 설치하지 않는다. 앱이 열려 있으면 패키징 파일이 잠겨 있으므로 앱을 닫고 실행한다.
+- `-Staging`은 3단계의 서버 준비·실행(`Prepare`, `Up`, `Worker`)을 한다. 서버가 이미 떠 있으면 그대로 쓰고, `staging.env`가 비어 있으면 GitHub OAuth 값을 적으라고 안내한 뒤 멈춘다. 서버와 worker는 각자 새 창에서 돌고, 끄려면 `pwsh tools/vm/staging_stack.ps1 -Mode Down`을 실행한다. 재부팅하면 서버가 꺼지므로 앱을 쓰기 전에 다시 켠다.
+- 서버 인증서는 14일짜리라 만료 2일 전부터 서버를 켤 때 새로 만든다. 그러면 앱을 다시 빌드해야 하고(`-App -Staging`), `-Staging`이 그때 알려 준다.
 
 단계별로 직접 하려면 아래를 따른다.
 
@@ -82,15 +87,24 @@ GITHUB_CLIENT_SECRET=...
 pwsh tools/vm/staging_stack.ps1 -Mode Up       # https://localhost:8443
 pwsh tools/vm/staging_stack.ps1 -Mode Worker   # 저장소 분석 작업 처리
 
-# 앱을 이 서버에 연결해 실행 (자체 서명 인증서를 신뢰시킨다)
+# 서버 주소 없이 빌드한 앱(1단계)을 이 서버에 연결해 실행 (자체 서명 인증서를 신뢰시킨다)
 $env:GITVIZ_SERVER_ORIGIN = 'https://localhost:8443'
 $env:NODE_EXTRA_CA_CERTS = "$PWD\.validation\staging\tls\server.pem"
 .\build-output\desktop\GitVizWorkspace-win32-x64\GitVizWorkspace.exe
 ```
 
+환경변수 없이(탐색기 더블클릭으로) 쓰려면 서버 주소와 인증서를 넣어 빌드한다. 원클릭의 `-App -Staging`이 이것을 한다.
+
+```powershell
+$env:GITVIZ_BUILD_SERVER_ORIGIN = 'https://localhost:8443'
+$env:GITVIZ_BUILD_SERVER_CA = "$PWD\.validation\staging\tls\server.pem"
+npm --prefix desktop run build; npm --prefix desktop run package
+```
+
 앱 오른쪽 위 **로그인**을 누르면 브라우저에서 GitHub 로그인 후 앱으로 자동으로 돌아온다. 상태 확인은 `-Mode Status`, 종료는 `-Mode Down`.
 
 - `GITVIZ_SERVER_ORIGIN`은 빌드에 서버 주소를 넣지 않은 앱에서만 쓰인다. 배포용 앱은 `$env:GITVIZ_BUILD_SERVER_ORIGIN = 'https://<서버 주소>'`로 빌드하면 그 주소가 앱에 들어간다.
+- `GITVIZ_BUILD_SERVER_CA`(인증서 넣기)는 `localhost`·`127.0.0.1` 서버 주소에만 쓸 수 있고, 인증서가 그 주소를 가리켜야 한다. 배포용 앱에는 넣지 않는다.
 - 음성 채팅의 다른 네트워크 사이 연결은 서버 환경변수 `VOICE_STUN_URLS`의 STUN 서버로 한다. 예시 설정과 스테이징은 공개 STUN(`stun.l.google.com`)을 쓴다. 이때 STUN 제공자에게 참여자의 공인 IP 주소가 보이지만 음성은 가지 않는다. 회사·학교 방화벽처럼 직접 연결이 막힌 곳까지 되게 하려면 `VOICE_TURN_URLS`·`VOICE_TURN_SECRET`로 TURN 서버(coturn)를 더한다([.env.example](.env.example)). 비우면 같은 네트워크 안에서만 연결된다.
 - 공동 편집은 앱에서만 된다. 공유한 사람(호스트) PC의 파일 하나(100KB 이하 텍스트)를 3명까지 함께 고치고, 저장은 호스트 앱이 자기 파일에 한다. 서버는 변경분을 전달만 하고 파일 내용을 저장하지 않는다.
 

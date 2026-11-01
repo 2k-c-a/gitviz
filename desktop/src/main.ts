@@ -1,6 +1,7 @@
 import { app, dialog, safeStorage, shell, type BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { getCACertificates, setDefaultCACertificates } from 'node:tls';
 import { DesktopAuth, SessionVault } from './auth';
 import { Remote, httpsClient } from './remote';
 import { RemoteContracts } from './remote-contracts';
@@ -13,7 +14,7 @@ import { registerScheme, serveAssets, APP_URL } from './app-protocol';
 import { registerHealth } from './ipc';
 import { AiKeyVault, loadKey } from './secrets';
 import { createWindow } from './window';
-import { readEmbeddedOrigin, serverOrigin } from './server-origin';
+import { readEmbeddedCertificate, readEmbeddedOrigin, serverOrigin } from './server-origin';
 import { registerProjects } from './projects';
 import { registerProposals } from './proposals';
 import { registerImpact } from './impact';
@@ -77,7 +78,12 @@ else {
     window.once('closed', registerEditor(window, agent, contracts, directory));
     window.once('closed', registerNotifications(window, agent, contracts));
     // Deployment-controlled HTTPS origin only (embedded at build time, see server-origin.ts); never taken from renderer input.
-    const origin = serverOrigin(app.isPackaged, readEmbeddedOrigin(join(__dirname, '../config/server.json')), process.env.GITVIZ_SERVER_ORIGIN);
+    const serverConfig = join(__dirname, '../config/server.json');
+    const embeddedOrigin = readEmbeddedOrigin(serverConfig);
+    const origin = serverOrigin(app.isPackaged, embeddedOrigin, process.env.GITVIZ_SERVER_ORIGIN);
+    // A local staging build also trusts its own server's self-signed certificate, so it works when started from Explorer.
+    const certificate = origin && origin === embeddedOrigin ? readEmbeddedCertificate(serverConfig, origin) : null;
+    if (certificate) setDefaultCACertificates([...getCACertificates('default'), certificate]);
     let auth: DesktopAuth | null = null;
     let remote: Remote | null = null;
     if (origin) {

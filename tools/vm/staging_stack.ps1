@@ -92,7 +92,10 @@ switch ($Mode) {
         if (-not (Is-Listening $redisPort)) { [void](Start-Clean $redis @('--port', "$redisPort", '--bind', '127.0.0.1', '--save', '""', '--appendonly', 'no') @{} 'redis') ; Start-Sleep 2 }
         $code = Start-Clean $python @('-m', 'alembic', 'upgrade', 'head') (Server-Environment) 'alembic' -Wait
         if ($code -ne 0) { throw "alembic upgrade failed (exit $code); see $logs\alembic.err.log" }
-        if (-not (Test-Path (Join-Path $tls 'server.pem'))) {
+        # The certificate lives 14 days; renew it when missing or within 2 days of expiry (apps built with it must be rebuilt).
+        $cer = Join-Path $tls 'server.cer'
+        $renew = -not (Test-Path (Join-Path $tls 'server.pem')) -or -not (Test-Path $cer) -or ([Security.Cryptography.X509Certificates.X509Certificate2]::new($cer).NotAfter -lt (Get-Date).AddDays(2))
+        if ($renew) {
             $script = @'
 import datetime, ipaddress, sys
 from cryptography import x509

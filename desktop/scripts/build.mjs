@@ -10,8 +10,18 @@ if (serverOrigin) {
   const url = new URL(serverOrigin);
   if (url.protocol !== 'https:' || url.origin !== serverOrigin || url.username || url.password) throw new Error('GITVIZ_BUILD_SERVER_ORIGIN must be a bare https:// origin');
 }
+// Local staging builds (bootstrap -App -Staging) also embed that server's self-signed certificate. Loopback origins only.
+let certificate = null;
+if (process.env.GITVIZ_BUILD_SERVER_CA) {
+  const host = serverOrigin && new URL(serverOrigin).hostname;
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(host)) throw new Error('GITVIZ_BUILD_SERVER_CA needs a loopback GITVIZ_BUILD_SERVER_ORIGIN');
+  const { X509Certificate } = await import('node:crypto');
+  const parsed = new X509Certificate(await readFile(process.env.GITVIZ_BUILD_SERVER_CA));
+  if (!(host.startsWith('[') || /^\d/.test(host) ? parsed.checkIP(host.replace(/^\[|\]$/g, '')) : parsed.checkHost(host))) throw new Error(`GITVIZ_BUILD_SERVER_CA does not name ${host}`);
+  certificate = parsed.toString();
+}
 await mkdir(resolve(desktop, 'dist/config'), { recursive: true });
-await writeFile(resolve(desktop, 'dist/config/server.json'), JSON.stringify({ origin: serverOrigin }));
+await writeFile(resolve(desktop, 'dist/config/server.json'), JSON.stringify({ origin: serverOrigin, ...(certificate ? { certificate } : {}) }));
 await cp(resolve(desktop, '../contracts/workspace/v1'), resolve(desktop, 'dist/schema'), { recursive: true });
 await cp(resolve(desktop, 'ui'), resolve(desktop, 'dist/ui'), { recursive: true });
 await cp(resolve(desktop, '../frontend/pages/workspace.html'), resolve(desktop, 'dist/ui/index.html'));
