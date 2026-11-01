@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $root = Join-Path $repo '.validation\staging'
 $pgBin = 'C:\Program Files\PostgreSQL\18\bin'
-$python = Join-Path $repo 'venv\Scripts\python.exe'
+$python = Join-Path $repo '.venv\Scripts\python.exe'
 $pgPort = 55440; $redisPort = 56390; $httpsPort = 8443
 $origin = "https://localhost:$httpsPort"
 $cluster = Join-Path $root 'pg'; $tls = Join-Path $root 'tls'; $logs = Join-Path $root 'logs'; $pids = Join-Path $root 'pids'
@@ -60,6 +60,9 @@ function Server-Environment {
         SESSION_SECRET_KEY = $g.SESSION_SECRET_KEY; TOKEN_ENCRYPTION_KEY = $g.TOKEN_ENCRYPTION_KEY
         FRONTEND_URL = $origin; SESSION_COOKIE_SECURE = '1'; DESKTOP_AUTH_ENABLED = '1'; DESKTOP_PUBLIC_ORIGIN = $origin; DESKTOP_AUTH_RESPONSE_KEY = $g.DESKTOP_AUTH_RESPONSE_KEY
         GITHUB_CLIENT_ID = $u.GITHUB_CLIENT_ID; GITHUB_CLIENT_SECRET = $u.GITHUB_CLIENT_SECRET
+        # Voice chat across networks (AD-28): public STUN unless staging.env says otherwise; TURN only when staging.env sets it.
+        VOICE_STUN_URLS = $(if ($u.ContainsKey('VOICE_STUN_URLS')) { $u.VOICE_STUN_URLS } else { 'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302' })
+        VOICE_TURN_URLS = $u.VOICE_TURN_URLS; VOICE_TURN_SECRET = $u.VOICE_TURN_SECRET
     }
 }
 function Find-Redis { (Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter redis-server.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }

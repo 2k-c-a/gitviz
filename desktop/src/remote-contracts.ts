@@ -1,6 +1,6 @@
 import Ajv, { type ValidateFunction } from 'ajv';
 
-type Rule = 'id' | 'uuid' | 'sha' | 'provider' | 'text' | 'number' | 'boolean';
+type Rule = 'id' | 'uuid' | 'sha' | 'provider' | 'text' | 'token' | 'number' | 'boolean';
 interface Endpoint { method: string; template: string; path: Record<string, Rule>; query: Record<string, Rule>; body?: string; key?: boolean }
 const definition = (method: string, template: string, path: Record<string, Rule> = {}, query: Record<string, Rule> = {}, body?: string, key?: boolean): Endpoint => ({ method, template, path, query, ...(body ? { body } : {}), ...(key ? { key } : {}) });
 const analytics = (suffix: string, query: Record<string, Rule> = {}, path: Record<string, Rule> = {}) => definition('GET', `/repositories/{repositoryId}/analytics/${suffix}`, { repositoryId: 'id', ...path }, { snapshot_id: 'id', ...query });
@@ -88,6 +88,13 @@ Object.assign(endpoints, {
   heartbeatCommunityVoice: community('POST', 'repositories/{repositoryId}/voice/heartbeat', repo, {}, 'VoiceSessionRequest'),
   leaveCommunityVoice: community('POST', 'repositories/{repositoryId}/voice/leave', repo, {}, 'VoiceSessionRequest'),
   signalCommunityVoice: community('POST', 'repositories/{repositoryId}/voice/signal', repo, {}, 'VoiceSignalRequest'),
+  // Co-editing (AD-29): sessions and Yjs relay only; the shared file stays on the host's PC.
+  collabSessions: community('GET', 'repositories/{repositoryId}/collab', repo),
+  createCollab: community('POST', 'repositories/{repositoryId}/collab', repo, {}, 'CreateCollabSessionRequest'),
+  joinCollab: community('POST', 'repositories/{repositoryId}/collab/{sessionId}/join', { ...repo, sessionId: 'token' }),
+  heartbeatCollab: community('POST', 'repositories/{repositoryId}/collab/{sessionId}/heartbeat', { ...repo, sessionId: 'token' }, {}, 'CollabSeatRequest'),
+  leaveCollab: community('POST', 'repositories/{repositoryId}/collab/{sessionId}/leave', { ...repo, sessionId: 'token' }, {}, 'CollabSeatRequest'),
+  relayCollab: community('POST', 'repositories/{repositoryId}/collab/{sessionId}/relay', { ...repo, sessionId: 'token' }, {}, 'CollabRelayRequest'),
 });
 
 export const UUID_PATTERN = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
@@ -95,7 +102,7 @@ const property = (rule: Rule) => {
   if (rule === 'id') return { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER };
   if (rule === 'number') return { type: 'number', minimum: 0, maximum: 1000000 };
   if (rule === 'boolean') return { type: 'boolean' };
-  const patterns = { uuid: UUID_PATTERN, sha: '^(?:[0-9a-f]{40}|[0-9a-f]{64})$', provider: '^[a-z][a-z0-9_-]{1,31}$', text: '^[^\\u0000-\\u001f\\u007f]*$' };
+  const patterns = { uuid: UUID_PATTERN, sha: '^(?:[0-9a-f]{40}|[0-9a-f]{64})$', provider: '^[a-z][a-z0-9_-]{1,31}$', token: '^[A-Za-z0-9_-]{22}$', text: '^[^\\u0000-\\u001f\\u007f]*$' };
   return { type: 'string', maxLength: rule === 'text' ? 4096 : 128, pattern: patterns[rule] };
 };
 const object = (rules: Record<string, Rule>, required: string[] = []) => ({ type: 'object', additionalProperties: false, properties: Object.fromEntries(Object.entries(rules).map(([key, rule]) => [key, property(rule)])), required });

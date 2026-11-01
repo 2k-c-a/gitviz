@@ -272,5 +272,87 @@
     ],
     "title": "VoiceSignalRequest",
     "type": "object"
+  },
+  "CreateCollabSessionRequest": {
+    "additionalProperties": false,
+    "description": "The host shares one local file by name only; its content never goes to the server.",
+    "properties": {
+      "file_name": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x1f\\x7f/\\\\]*$",
+        "title": "File Name",
+        "type": "string"
+      },
+      "language": {
+        "default": "plain",
+        "pattern": "^(plain|javascript|typescript|jsx|tsx|python|json|markdown|css|html)$",
+        "title": "Language",
+        "type": "string"
+      }
+    },
+    "required": [
+      "file_name"
+    ],
+    "title": "CreateCollabSessionRequest",
+    "type": "object"
+  },
+  "CollabSeatRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "seat_id": {
+        "pattern": "^[A-Za-z0-9_-]{22}$",
+        "title": "Seat Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "seat_id"
+    ],
+    "title": "CollabSeatRequest",
+    "type": "object"
+  },
+  "CollabRelayRequest": {
+    "additionalProperties": false,
+    "description": "One Yjs message: a document update, a sync request/reply (state vector / diff) or a cursor (awareness) update.",
+    "properties": {
+      "seat_id": {
+        "pattern": "^[A-Za-z0-9_-]{22}$",
+        "title": "Seat Id",
+        "type": "string"
+      },
+      "to": {
+        "anyOf": [
+          {
+            "pattern": "^[A-Za-z0-9_-]{22}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "To"
+      },
+      "kind": {
+        "pattern": "^(update|sync-request|sync|awareness)$",
+        "title": "Kind",
+        "type": "string"
+      },
+      "data": {
+        "maxLength": 200000,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9+/]+={0,2}$",
+        "title": "Data",
+        "type": "string"
+      }
+    },
+    "required": [
+      "seat_id",
+      "kind",
+      "data"
+    ],
+    "title": "CollabRelayRequest",
+    "type": "object"
   }
 }

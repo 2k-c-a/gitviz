@@ -1,10 +1,11 @@
-import { app, safeStorage, shell, type BrowserWindow } from 'electron';
+import { app, dialog, safeStorage, shell, type BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { DesktopAuth, SessionVault } from './auth';
 import { Remote, httpsClient } from './remote';
 import { RemoteContracts } from './remote-contracts';
-import { registerCommunityLive, registerDesktop } from './desktop-ipc';
+import { registerCollabFiles, registerCommunityLive, registerDesktop } from './desktop-ipc';
+import { CollabFiles } from './collab-files';
 import { CommunityLive, streamClient } from './community-live';
 import { Agent } from './agent';
 import { Contracts } from './contracts';
@@ -90,6 +91,10 @@ else {
     }
     window.once('closed', registerDesktop(window, auth, remote, createUpdateService(app.getVersion(), DISABLED_UPDATE_POLICY)));
     const signedIn = auth;
+    window.once('closed', registerCollabFiles(window, new CollabFiles(
+      async () => { const picked = await dialog.showOpenDialog(window!, { title: '공동 편집할 파일 선택', properties: ['openFile'] }); return picked.canceled ? null : picked.filePaths[0] ?? null; },
+      async name => (await dialog.showMessageBox(window!, { type: 'warning', title: '파일이 바뀌었습니다', message: `${name} 파일이 공유한 뒤 다른 곳에서 바뀌었습니다. 공동 편집한 내용으로 덮어쓸까요?`,
+        buttons: ['취소', '덮어쓰기'], defaultId: 0, cancelId: 0 })).response === 1)));
     window.once('closed', registerCommunityLive(window, signedIn && origin
       ? emit => new CommunityLive(streamClient(origin), signedIn.identity, signedIn.invalidate, emit) : null));
     const remoteWorkspace = auth && remote && origin ? new RemoteWorkspace(agent, auth, remote, origin, detail => confirmRemote(window!, detail)) : null;

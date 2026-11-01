@@ -25,7 +25,12 @@ test('the parser keeps only known events with an object payload, across chunk bo
   assert.deepEqual(parser.push(bytes.slice(30)), [{ type: 'message', data: { id: 1, body: '안녕' } }]);
   assert.deepEqual(parser.push(encode('event: script\ndata: {}\n\nevent: deleted\ndata: [1]\n\nevent: deleted\ndata: nope\n\n')), []);
   assert.deepEqual(parser.push(encode('event: presence\r\ndata: {"online":\r\ndata: []}\r\n\r\n')), [{ type: 'presence', data: { online: [] } }]);
-  assert.throws(() => new EventParser().push(encode('data: ' + 'x'.repeat(70 * 1024))), /OUTPUT_LIMIT/);
+  // Co-editing events carry a Yjs sync message of up to 200,000 base64 characters; anything far past that is cut off.
+  const sync = 'A'.repeat(200000);
+  assert.deepEqual(new EventParser().push(encode(`event: collab\ndata: {"data":"${sync}"}\n\n`)), [{ type: 'collab', data: { data: sync } }]);
+  assert.deepEqual(new EventParser().push(encode('event: collab-sessions\ndata: {"sessions":[],"ended":[]}\n\n')),
+    [{ type: 'collab-sessions', data: { sessions: [], ended: [] } }]);
+  assert.throws(() => new EventParser().push(encode('data: ' + 'x'.repeat(300 * 1024))), /OUTPUT_LIMIT/);
 });
 
 test('the stream client sends only the bearer token to the chat stream path', async () => {

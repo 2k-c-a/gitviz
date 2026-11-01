@@ -47,10 +47,12 @@ def _local(live):
 
 
 @contextmanager
-def _room(repository_id):
-    """Read-modify-write one room under a lock; changes are written only if the block finishes."""
+def locked(key, ttl=TTL):
+    """Read-modify-write one Redis hash (or its in-memory copy) under a lock; changes are written only if the block finishes.
+
+    Shared by voice seats and co-editing sessions (community_collab).
+    """
     live = chat.bus()
-    key = room_key(repository_id)
     if isinstance(live, chat.RedisBus):
         client = live.sync
         try:
@@ -59,10 +61,10 @@ def _room(repository_id):
         except Exception:
             acquired = False
         if not acquired:
-            raise rules.fail(503, 'VOICE_UNAVAILABLE', '음성 채팅 서버가 바쁩니다. 잠시 후 다시 시도하세요.')
+            raise rules.fail(503, 'ROOM_BUSY', '서버가 바쁩니다. 잠시 후 다시 시도하세요.')
         try:
             entries = {k.decode() if isinstance(k, bytes) else k: json.loads(v) for k, v in client.hgetall(key).items()}
-            before = {s: list(v) for s, v in entries.items()}
+            before = {s: json.loads(json.dumps(v)) for s, v in entries.items()}
             yield entries
             gone = [s for s in before if s not in entries]
             if gone:
@@ -70,7 +72,7 @@ def _room(repository_id):
             changed = {s: json.dumps(v) for s, v in entries.items() if before.get(s) != v}
             if changed:
                 client.hset(key, mapping=changed)
-            client.expire(key, TTL * 4)
+            client.expire(key, ttl * 4)
         finally:
             try:
                 lock.release()
@@ -80,10 +82,14 @@ def _room(repository_id):
         store = _local(live)
         with store.lock:
             entries = store.rooms.setdefault(key, {})
-            work = {s: list(v) for s, v in entries.items()}
+            work = {s: json.loads(json.dumps(v)) for s, v in entries.items()}
             yield work
             entries.clear()
             entries.update(work)
+
+
+def _room(repository_id):
+    return locked(room_key(repository_id))
 
 
 def _prune(entries, now):
@@ -93,7 +99,7 @@ def _prune(entries, now):
     return bool(stale)
 
 
-def _hit(name, limit):
+def hit(name, limit):
     """Count one call in the current minute; raise 429 past the limit."""
     live = chat.bus()
     minute = int(time.time() // 60)
@@ -154,7 +160,7 @@ def room(db, repository_id, user_id):
 
 def join(db, repository_id, user_id):
     rules.membership(db, repository_id, user_id)
-    _hit(f'join:{user_id}', JOIN_LIMIT)
+    hit(f'join:{user_id}', JOIN_LIMIT)
     session = secrets.token_urlsafe(16)
     with _room(repository_id) as entries:
         now = time.time()
@@ -215,7 +221,7 @@ def drop_user(db, repository_id, user_id):
 
 def signal(db, repository_id, user_id, body):
     rules.membership(db, repository_id, user_id)
-    _hit(f'signal:{user_id}', SIGNAL_LIMIT)
+    hit(f'signal:{user_id}', SIGNAL_LIMIT)
     with _room(repository_id) as entries:
         _prune(entries, time.time())
         mine, target = entries.get(body.session_id), entries.get(body.to)

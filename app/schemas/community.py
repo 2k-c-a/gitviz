@@ -80,3 +80,27 @@ class VoiceSignalRequest(BaseModel):
         elif self.sdp is None or self.candidate is not None or self.sdp_mid is not None or self.sdp_mline_index is not None:
             raise ValueError('offer and answer carry an sdp only')
         return self
+
+
+_LANGUAGE = r'^(plain|javascript|typescript|jsx|tsx|python|json|markdown|css|html)$'
+
+
+class CreateCollabSessionRequest(BaseModel):
+    """The host shares one local file by name only; its content never goes to the server."""
+    model_config = ConfigDict(extra='forbid')
+    file_name: str = Field(min_length=1, max_length=200, pattern=r'^[^\x00-\x1f\x7f/\\]*$')
+    language: str = Field(default='plain', pattern=_LANGUAGE)
+
+
+class CollabSeatRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    seat_id: str = Field(pattern=_SESSION)
+
+
+class CollabRelayRequest(BaseModel):
+    """One Yjs message: a document update, a sync request/reply (state vector / diff) or a cursor (awareness) update."""
+    model_config = ConfigDict(extra='forbid')
+    seat_id: str = Field(pattern=_SESSION)
+    to: str | None = Field(default=None, pattern=_SESSION)
+    kind: str = Field(pattern=r'^(update|sync-request|sync|awareness)$')
+    data: str = Field(min_length=1, max_length=200000, pattern=r'^[A-Za-z0-9+/]+={0,2}$')

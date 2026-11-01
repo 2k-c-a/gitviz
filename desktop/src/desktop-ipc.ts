@@ -1,6 +1,7 @@
-import { ipcMain, type BrowserWindow } from 'electron';
+import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { trustedSender } from './ipc';
 import type { DesktopAuth } from './auth';
+import type { CollabFiles } from './collab-files';
 import type { CommunityLive, LiveEvent } from './community-live';
 import type { Remote } from './remote';
 import type { UpdateService } from './update';
@@ -43,5 +44,34 @@ export function registerCommunityLive(window: BrowserWindow, create: ((emit: (ev
     live?.unsubscribe();
     if (!window.isDestroyed()) window.webContents.off('did-start-navigation', navigate);
     ipcMain.removeHandler('desktop:community-subscribe'); ipcMain.removeHandler('desktop:community-unsubscribe');
+  };
+}
+
+/** Co-editing file access (AD-29) for the community page only. Any navigation or closing the window forgets every open file. */
+export function registerCollabFiles(window: BrowserWindow, files: CollabFiles): () => void {
+  const fromCommunity = (event: IpcMainInvokeEvent) => {
+    if (!trustedSender(event, window)) return false;
+    try { return new URL(event.senderFrame?.url ?? '').pathname === '/web/pages/community.html'; } catch { return false; }
+  };
+  const channels: Record<string, (args: unknown[]) => unknown> = {
+    'desktop:collab-open': args => { if (args.length) throw new Error('ACCESS_DENIED'); return files.open(); },
+    'desktop:collab-save': args => { if (args.length !== 1) throw new Error('ACCESS_DENIED'); return files.save(args[0]); },
+    'desktop:collab-close': args => { if (args.length !== 1) throw new Error('ACCESS_DENIED'); return files.close(args[0]); },
+  };
+  for (const [channel, run] of Object.entries(channels)) ipcMain.handle(channel, async (event, ...args: unknown[]) => {
+    if (!fromCommunity(event)) throw new Error('ACCESS_DENIED');
+    try { return await run(args); }
+    catch (error) {
+      const allowed = /^(?:ACCESS_DENIED|INVALID_REQUEST|INVALID_FILE|FILE_TOO_LARGE|NOT_TEXT|NOT_OPEN|FILE_CHANGED|SAVE_FAILED)$/;
+      // eslint-disable-next-line preserve-caught-error -- Never expose OS paths or raw file system errors.
+      throw new Error(error instanceof Error && allowed.test(error.message) ? error.message : channel === 'desktop:collab-open' ? 'INVALID_FILE' : 'SAVE_FAILED');
+    }
+  });
+  const navigate = (details: { isMainFrame: boolean; isSameDocument: boolean }) => { if (details.isMainFrame && !details.isSameDocument) files.closeAll(); };
+  window.webContents.on('did-start-navigation', navigate);
+  return () => {
+    files.closeAll();
+    if (!window.isDestroyed()) window.webContents.off('did-start-navigation', navigate);
+    for (const channel of Object.keys(channels)) ipcMain.removeHandler(channel);
   };
 }

@@ -2,12 +2,14 @@ import './profile';
 /** Actual sandbox pages with an in-process server transport fixture. No external OAuth/API. */
 import assert from 'node:assert/strict';
 import { app, BrowserWindow } from 'electron';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DesktopAuth } from '../src/auth';
 import { Remote, type Http } from '../src/remote';
 import { RemoteContracts } from '../src/remote-contracts';
-import { registerCommunityLive, registerDesktop } from '../src/desktop-ipc';
+import { registerCollabFiles, registerCommunityLive, registerDesktop } from '../src/desktop-ipc';
+import { CollabFiles } from '../src/collab-files';
 import { CommunityLive, type StreamHttp } from '../src/community-live';
 import { registerScheme, serveAssets } from '../src/app-protocol';
 import { createWindow } from '../src/window';
@@ -56,6 +58,14 @@ let voiceJoined = false; let voiceFull = false; let voiceLeft = 0;
 const voiceSignals: Record<string, unknown>[] = [];
 let voicePeer: BrowserWindow | null = null;
 const voiceSeats = () => ({ participants: [{ session_id: seatB, user: peer }, ...(voiceJoined ? [{ session_id: seatA, user: author }] : [])], capacity: 3 });
+// Co-editing fixture: the peer is the real editor bundle in its own window; the fixture relays Yjs messages like the server does.
+const collabSid = 'S'.repeat(22);
+let collabSessions: Record<string, unknown>[] = [];
+const collabRelays: Record<string, unknown>[] = [];
+let collabPeer: BrowserWindow | null = null;
+let collabLeft = 0;
+const collabSession = (appHosts: boolean, seats: string[]) => ({ session_id: collabSid, file_name: 'app.py', language: 'python', host: appHosts ? author : peer,
+  seats: seats.map(seat => ({ seat_id: seat, user: seat === seatA ? author : peer, host: (seat === seatA) === appHosts })), capacity: 3, created_at: 1 });
 const sse = (type: string, data: unknown) => `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
 function communityFixture(p: string, method: string, payload: Record<string, unknown>): { status: number; body: unknown } {
   if (method !== 'GET') communityBodies.push(payload);
@@ -99,6 +109,28 @@ function communityFixture(p: string, method: string, payload: Record<string, unk
   if (p === `${base}/voice/signal`) {
     voiceSignals.push(payload);
     void voicePeer?.webContents.executeJavaScript(`window.receive(${JSON.stringify(payload)})`);
+    return { status: 200, body: { ok: true } };
+  }
+  if (p === `${base}/collab` && method === 'POST') {
+    collabSessions = [collabSession(true, [seatA])];
+    chatStreams.at(-1)?.write(sse('collab-sessions', { sessions: collabSessions, ended: [] }));
+    return { status: 201, body: { session_id: collabSid, seat_id: seatA, session: collabSessions[0], heartbeat_seconds: 10 } };
+  }
+  if (p === `${base}/collab`) return { status: 200, body: { sessions: collabSessions, capacity: 3 } };
+  if (p === `${base}/collab/${collabSid}/join`) {
+    collabSessions = [collabSession(false, [seatB, seatA])];
+    chatStreams.at(-1)?.write(sse('collab-sessions', { sessions: collabSessions, ended: [] }));
+    return { status: 200, body: { session_id: collabSid, seat_id: seatA, session: collabSessions[0], heartbeat_seconds: 10 } };
+  }
+  if (p === `${base}/collab/${collabSid}/heartbeat`) return { status: 200, body: { session_id: collabSid, seat_id: seatA, session: collabSessions[0], heartbeat_seconds: 10 } };
+  if (p === `${base}/collab/${collabSid}/leave`) {
+    collabLeft++; collabSessions = [];
+    chatStreams.at(-1)?.write(sse('collab-sessions', { sessions: [], ended: [collabSid] }));
+    return { status: 200, body: { ok: true } };
+  }
+  if (p === `${base}/collab/${collabSid}/relay`) {
+    collabRelays.push(payload);
+    if (!payload.to || payload.to === seatB) void collabPeer?.webContents.executeJavaScript(`window.receive(${JSON.stringify({ ...payload, from: seatA })})`);
     return { status: 200, body: { ok: true } };
   }
   if (p === `${base}/chat/messages`) return { status: 200, body: { messages: chatMessages, next_before: null } };
@@ -186,6 +218,10 @@ void app.whenReady().then(async () => {
   const window = createWindow(false); const unregister = registerDesktop(window, auth, remote);
   const unregisterLive = registerCommunityLive(window, emit => new CommunityLive(chatStream, auth.identity, auth.invalidate, emit));
   window.once('closed', unregisterLive);
+  const collabDir = mkdtempSync(join(tmpdir(), 'gitviz-collab-e2e-')); const collabFile = join(collabDir, 'app.py');
+  writeFileSync(collabFile, 'def a():\r\n    return 1\r\n');
+  let overwrite = false;
+  const unregisterCollab = registerCollabFiles(window, new CollabFiles(async () => collabFile, async () => overwrite));
   window.webContents.setBackgroundThrottling(false);
   const unregisterHealth = registerHealth(window, unavailable);
   const errors: string[] = [];
@@ -405,12 +441,101 @@ void app.whenReady().then(async () => {
       await clickText('음성 참여');
       await wait(`document.querySelector('.community-voice-status').textContent.includes('3명까지') && !!document.querySelector('.community-voice .btn-primary') && !document.querySelector('.community-voice audio')`);
     } finally { clearInterval(pump); voicePeer.destroy(); voicePeer = null; }
+    // Co-editing: the app shares a local file and edits it with a real second editor; then it joins the peer's file as a guest.
+    phase = 'community-collab';
+    await js(`document.querySelector('[data-tab="collab"]').click()`);
+    for (let i = 0; i < 100 && chatStreams.length < 2; i++) await new Promise(resolve => setTimeout(resolve, 20));
+    chatStreams[1].write(sse('ready', { online: [author, peer] }));
+    await wait(`document.querySelector('.community-collab-list')?.textContent==='진행 중인 공동 편집이 없습니다.'`);
+    collabPeer = new BrowserWindow({ show: false, webPreferences: { partition: 'collab-peer-fixture', sandbox: true, contextIsolation: true, nodeIntegration: false } });
+    await collabPeer.loadURL('about:blank');
+    // The bundle's last statement evaluates to the module object, which cannot cross back; end with undefined.
+    await collabPeer.webContents.executeJavaScript(`${readFileSync(join(__dirname, '../ui/web/js/collab-editor.bundle.js'), 'utf8')}\n;void 0`);
+    await collabPeer.webContents.executeJavaScript(`(() => {
+      const lib = window.GitVizCollab; window.out = [];
+      const b64 = bytes => btoa(String.fromCharCode(...bytes)); const raw = text => Uint8Array.from(atob(text), c => c.charCodeAt(0));
+      window.start = text => {
+        window.ed?.destroy();
+        const ed = window.ed = lib.createCollabEditor({ parent: document.body.appendChild(document.createElement('div')), text, language: 'python', user: { name: '@peer', color: '#db2777' } });
+        ed.doc.on('update', (update, origin) => { if (origin !== lib.REMOTE) window.out.push({ kind: 'update', data: b64(update) }); });
+      };
+      window.receive = m => {
+        const ed = window.ed; const bytes = raw(m.data);
+        if (m.kind === 'update' || m.kind === 'sync') lib.applyUpdate(ed.doc, bytes);
+        else if (m.kind === 'awareness') lib.applyAwareness(ed.awareness, bytes);
+        else if (m.kind === 'sync-request') window.out.push({ kind: 'sync', to: m.from, data: b64(lib.encodeStateAsUpdate(ed.doc, bytes)) });
+      };
+      window.request = to => window.out.push({ kind: 'sync-request', to, data: b64(lib.encodeStateVector(window.ed.doc)) });
+      window.text = () => window.ed.ytext.toString();
+      window.names = () => [...window.ed.awareness.getStates().values()].map(s => s.user && s.user.name).filter(Boolean).sort().join();
+    })()`);
+    const peerJs = (code: string) => collabPeer!.webContents.executeJavaScript(code);
+    async function peerWait(expression: string, expected: unknown): Promise<void> {
+      for (let i = 0; i < 150 && (await peerJs(expression)) !== expected; i++) await new Promise(resolve => setTimeout(resolve, 20));
+      assert.equal(await peerJs(expression), expected, `peer ${expression}`);
+    }
+    const collabPump = setInterval(() => {
+      void collabPeer?.webContents.executeJavaScript('window.out.splice(0)').then((out: { kind: string; data: string; to?: string }[]) => {
+        for (const m of out) chatStreams.at(-1)?.write(sse('collab', { session_id: collabSid, from: seatB, to: m.to ?? null, kind: m.kind, data: m.data }));
+      }).catch(() => {});
+    }, 25);
+    const appText = `[...document.querySelectorAll('.community-collab-editor .cm-line')].map(line => line.textContent).join('\\n')`;
+    try {
+      await peerJs('window.start(null)');
+      await clickText('내 파일 공유하기');
+      await wait(`document.querySelector('.community-collab-status')?.textContent.startsWith('파일을 공유했습니다') && ${appText}==='def a():\\n    return 1\\n'`);
+      // The peer joins and asks the host (the app) for the document; the reply goes only to the peer's seat.
+      collabSessions = [collabSession(true, [seatA, seatB])];
+      chatStreams[1].write(sse('collab-sessions', { sessions: collabSessions, ended: [] }));
+      await wait(`document.querySelector('.community-collab-people')?.textContent.includes('@peer')`);
+      await peerJs(`window.request(${JSON.stringify(seatA)})`);
+      await peerWait('window.text()', 'def a():\n    return 1\n');
+      await peerWait('window.names()', '@fixture,@peer');
+      await peerJs(`window.ed.view.dispatch({ changes: { from: window.ed.view.state.doc.length, insert: '# peer\\n' } })`);
+      await wait(`${appText}.endsWith('# peer\\n')`);
+      await js(`(() => { const content = document.querySelector('.community-collab-editor .cm-content'); content.focus(); document.execCommand('insertText', false, '#'); })()`);
+      const merged = '#def a():\n    return 1\n# peer\n';
+      await peerWait('window.text()', merged);
+      // Save writes the host's own file with its CRLF line endings; a file changed on disk is kept unless the host confirms.
+      await clickText('저장');
+      await wait(`document.querySelector('.community-collab-status').textContent.startsWith('저장했습니다')`);
+      assert.equal(readFileSync(collabFile, 'utf8'), merged.replace(/\n/g, '\r\n'));
+      writeFileSync(collabFile, 'changed\r\n');
+      await clickText('저장');
+      await wait(`document.querySelector('.community-collab-status').textContent.includes('다른 곳에서 바뀌어')`);
+      assert.equal(readFileSync(collabFile, 'utf8'), 'changed\r\n');
+      overwrite = true;
+      await clickText('저장');
+      await wait(`document.querySelector('.community-collab-status').textContent.startsWith('저장했습니다')`);
+      assert.equal(readFileSync(collabFile, 'utf8'), merged.replace(/\n/g, '\r\n'));
+      assert.ok(collabRelays.length > 0 && collabRelays.every(relay => relay.seat_id === seatA && !JSON.stringify(relay).includes('gitviz-collab-e2e')));
+      assert.deepEqual(collabRelays.filter(relay => relay.kind === 'sync').map(relay => relay.to), [seatB]);
+      assert.ok(communityBodies.some(body => JSON.stringify(body) === JSON.stringify({ file_name: 'app.py', language: 'python' })), 'only the file name goes to the server');
+      await clickText('공유 끝내기');
+      await clickText('공유 끝내기 확인');
+      await wait(`document.querySelector('.community-collab-status')?.textContent==='공유를 끝냈습니다.' && !document.querySelector('.community-collab-editor') && document.querySelector('.community-collab-list').textContent==='진행 중인 공동 편집이 없습니다.'`);
+      assert.equal(collabLeft, 1);
+      // As a guest the editor stays read-only until the host's state arrives; the host ending the share keeps the text, read-only.
+      await peerJs(`window.start('x = 1\\n')`);
+      collabSessions = [collabSession(false, [seatB])];
+      chatStreams[1].write(sse('collab-sessions', { sessions: collabSessions, ended: [] }));
+      await wait(`document.querySelector('.community-collab-card')?.textContent.includes('@peer 공유 · 1/3명')`);
+      await js(`document.querySelector('.community-collab-card button').click()`);
+      await wait(`document.querySelector('.community-collab-status')?.textContent.startsWith('함께 편집하는 중') && ${appText}==='x = 1\\n' && document.querySelector('.community-collab-editor .cm-content').contentEditable==='true'`);
+      assert.deepEqual(collabRelays.filter(relay => relay.kind === 'sync-request').map(relay => relay.to), [seatB]);
+      await peerWait('window.names()', '@fixture,@peer');
+      collabSessions = [];
+      chatStreams[1].write(sse('collab-sessions', { sessions: [], ended: [collabSid] }));
+      await wait(`document.querySelector('.community-collab-status')?.textContent.startsWith('호스트가 공유를 끝냈습니다') && document.querySelector('.community-collab-editor .cm-content').contentEditable==='false' && ${appText}==='x = 1\\n'`);
+      await clickText('목록으로');
+      await wait(`!document.querySelector('.community-collab-editor') && !!document.querySelector('.community-collab-list')`);
+    } finally { clearInterval(collabPump); collabPeer.destroy(); collabPeer = null; }
     phase = 'community';
     await js(`document.querySelector('[data-tab="members"]').click()`);
     await wait(`document.querySelectorAll('.community-member').length===2`);
-    // Leaving the chat tab closes the stream in main.
-    for (let i = 0; i < 100 && !chatStreams[0].cancelled(); i++) await new Promise(resolve => setTimeout(resolve, 20));
-    assert.equal(chatStreams[0].cancelled(), true, 'the chat stream ends when the tab closes');
+    // Leaving the chat and co-editing tabs closes their streams in main.
+    for (let i = 0; i < 100 && !chatStreams.every(stream => stream.cancelled()); i++) await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(chatStreams.every(stream => stream.cancelled()), true, 'the chat stream ends when the tab closes');
     // Handing over the admin role takes two clicks; afterwards the admin-only invites tab is gone.
     await clickText('관리자 넘기기');
     assert.equal(communityAdmin, uid);
@@ -433,8 +558,8 @@ void app.whenReady().then(async () => {
     await wait(`document.getElementById('community-join-message').textContent==='참여했습니다.'`);
     assert.deepEqual(communityBodies.slice(0, 3),[{ title: '첫 글', body: markup }, { body: '댓글입니다' }, { expires_in_hours: 168, max_uses: 5 }]);
     assert.equal(errors.length, 0, `renderer errors: ${errors.join(',')}`);
-    process.stdout.write('PASS Phase 3 renderer: search/paging/selection/overview, community posts/comments/chat/voice (real WebRTC peer)/invites/admin handover, partial retry, contributor-file-back, monthly metric, graph zoom/filter/selection, file pagination/search/view restoration, credential save/erase, commit/PR selection, preview/fresh consent, review result/filter/code. Fixture transport only.\n');
-  } finally { unregisterHealth(); unregister(); window.destroy(); clearTimeout(deadline); }
+    process.stdout.write('PASS Phase 3 renderer: search/paging/selection/overview, community posts/comments/chat/voice (real WebRTC peer)/co-editing (real Yjs peer, host save, guest sync)/invites/admin handover, partial retry, contributor-file-back, monthly metric, graph zoom/filter/selection, file pagination/search/view restoration, credential save/erase, commit/PR selection, preview/fresh consent, review result/filter/code. Fixture transport only.\n');
+  } finally { unregisterCollab(); unregisterHealth(); unregister(); window.destroy(); rmSync(collabDir, { recursive: true, force: true }); clearTimeout(deadline); }
 }).then(() => app.exit(0)).catch(error => {
   if (process.env.GITVIZ_UI_REPORT) writeFileSync(process.env.GITVIZ_UI_REPORT, JSON.stringify({ status: 'failed', phase, message: error instanceof Error ? error.message : 'assertion' }));
   process.stderr.write(`FAIL Phase 3 renderer (${phase}): ${error instanceof Error ? error.message.slice(0, 160) : 'assertion'}\n`); app.exit(1);

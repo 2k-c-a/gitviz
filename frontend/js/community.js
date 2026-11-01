@@ -2,9 +2,9 @@ import { request, isDesktop } from './platform/transport.js';
 import { githubLogin } from './login.js';
 import { createState, element } from './ui/components.js';
 import { fmtDateTime } from './fmt.js';
-/* ── 커뮤니티 페이지: 저장소별 글·댓글, 실시간 채팅·음성 채팅, 멤버, 초대 링크 ──
+/* ── 커뮤니티 페이지: 저장소별 글·댓글, 실시간 채팅·음성 채팅·공동 편집(앱), 멤버, 초대 링크 ──
    community-main이 있을 때(=커뮤니티 페이지)만 동작한다. 사용자 글은 모두 textContent로만 그린다.
-   주소: ?id=<저장소 ID>&tab=posts|chat|members|invites&post=<글 ID>, 초대 링크는 #invite=<토큰>. */
+   주소: ?id=<저장소 ID>&tab=posts|chat|collab|members|invites&post=<글 ID>, 초대 링크는 #invite=<토큰>. */
 
 const mainEl = document.getElementById('community-main');
 const listEl = document.getElementById('community-list');
@@ -110,7 +110,7 @@ async function loadList() {
 
 async function route() {
   const run = ++generation;
-  stopLive(); stopVoice();
+  stopLive(); stopVoice(); stopCollab();
   const id = Number(params().get('id'));
   if (!id) {
     view = null;
@@ -138,7 +138,7 @@ function renderCommunity() {
   const title = element('h2', 'ui-panel-title', view.repository.name || view.repository.url);
   const meta = element('p', 'p-sub', `멤버 ${view.member_count}명 · 관리자 ${who(view.admin)} · 내 역할 ${admin ? '관리자' : '멤버'}`);
   const tabs = element('div', 'ui-toolbar community-tabs'); tabs.setAttribute('role', 'tablist');
-  for (const [key, label] of [['posts', '글'], ['chat', '채팅'], ['members', '멤버'], ...(admin ? [['invites', '초대 링크']] : [])]) {
+  for (const [key, label] of [['posts', '글'], ['chat', '채팅'], ...(collabAvailable() ? [['collab', '공동 편집']] : []), ['members', '멤버'], ...(admin ? [['invites', '초대 링크']] : [])]) {
     const t = button(label, key === tab ? 'btn-primary' : 'btn-secondary', () => go({ tab: key === 'posts' ? null : key, post: null }));
     t.setAttribute('role', 'tab'); t.setAttribute('aria-selected', String(key === tab)); t.dataset.tab = key;
     tabs.append(t);
@@ -146,9 +146,10 @@ function renderCommunity() {
   head.append(title, meta, tabs);
   const body = element('div', 'community-body');
   mainEl.replaceChildren(head, body);
-  stopLive(); stopVoice();
+  stopLive(); stopVoice(); stopCollab();
   const post = Number(params().get('post'));
   if (tab === 'chat') void renderChat(body);
+  else if (tab === 'collab' && collabAvailable()) void renderCollab(body);
   else if (tab === 'members') void renderMembers(body);
   else if (tab === 'invites' && admin) void renderInvites(body);
   else if (post) void renderPost(body, post);
@@ -368,7 +369,7 @@ async function renderInvites(target) {
 /* ── 실시간 단체 채팅 (AD-27) ──
    보내기는 일반 요청, 받기는 서버 전송 이벤트다. 앱은 main이 로그인 토큰으로 스트림을 받아 desktop.community로 넘기고,
    웹은 같은 출처 EventSource(세션 쿠키)를 쓴다. 어느 쪽이든 이 화면에는 { type, data } 객체만 들어온다. */
-const LIVE_TYPES = ['ready', 'message', 'deleted', 'presence', 'removed', 'voice', 'voice-signal'];
+const LIVE_TYPES = ['ready', 'message', 'deleted', 'presence', 'removed', 'voice', 'voice-signal', 'collab-sessions', 'collab'];
 let closeLive = null;
 function stopLive() { const close = closeLive; closeLive = null; close?.(); }
 
@@ -525,6 +526,248 @@ async function renderChat(target) {
   await loadPage();
   if (run !== generation) return;
   connect();
+}
+
+/* ── 실시간 공동 편집 (AD-29, 앱 전용) ──
+   호스트가 내 PC의 파일 하나를 공유하면 3명까지 함께 고친다. 편집기는 CodeMirror 6, 동시 편집은 Yjs(CRDT).
+   파일은 호스트 PC에만 있고 저장도 호스트 앱만 한다. 서버는 자리와 Yjs 변경분만 전달하고 내용을 저장하지 않는다.
+   새로 들어온 사람은 호스트에게 상태를 요청해 받고(sync), 이후 변경분(update)과 커서(awareness)를 주고받는다. */
+let closeCollab = null;
+function stopCollab() { const close = closeCollab; closeCollab = null; close?.(); }
+const COLLAB_COLORS = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed', '#0891b2'];
+const collabAvailable = () => isDesktop() && !!globalThis.desktop?.collab;
+let collabLib = null;
+async function loadCollabLib() {
+  if (!collabLib) { await import(new URL('./collab-editor.bundle.js', import.meta.url).href); collabLib = globalThis.GitVizCollab; }
+  if (!collabLib?.createCollabEditor) throw new Error('편집기를 불러오지 못했습니다.');
+  return collabLib;
+}
+function toBase64(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+function fromBase64(text) { const binary = atob(text); const bytes = new Uint8Array(binary.length); for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i); return bytes; }
+function seatColor(seat) { let h = 0; for (const c of seat) h = (h * 31 + c.charCodeAt(0)) >>> 0; return COLLAB_COLORS[h % COLLAB_COLORS.length]; }
+const FILE_ERRORS = {
+  FILE_TOO_LARGE: '100KB보다 큰 파일은 공유할 수 없습니다.', NOT_TEXT: 'UTF-8 텍스트 파일만 공유할 수 있습니다.', INVALID_FILE: '일반 파일만 공유할 수 있습니다.',
+  FILE_CHANGED: '파일이 공유한 뒤 다른 곳에서 바뀌어 저장하지 않았습니다.', SAVE_FAILED: '파일을 저장하지 못했습니다.', NOT_OPEN: '공유한 파일이 닫혔습니다.',
+};
+const fileError = error => FILE_ERRORS[(error?.message || '').replace(/^.*Error: /, '')] || error?.message || '파일을 다루지 못했습니다.';
+
+async function renderCollab(target) {
+  const run = generation;
+  const repositoryId = view.repository.id;
+  const layout = element('div', 'community-chat-layout');
+  const main = element('section', 'panel community-collab');
+  const side = element('aside', 'community-chat-side');
+  const voicePanel = element('section', 'panel community-voice');
+  side.append(voicePanel);
+  layout.append(main, side);
+  target.replaceChildren(layout);
+  const voice = createVoice({ panel: voicePanel, path: repoPath });
+
+  const status = element('p', 'p-sub community-collab-status'); status.setAttribute('role', 'status');
+  let sessions = [];
+  let current = null; // { sid, seat, host, handle, editor, synced, timer, flush, pending, outbox, ended }
+
+  function send(kind, data, to) {
+    const mine = current;
+    if (!mine) return Promise.resolve();
+    mine.outbox = mine.outbox.then(() => current === mine && !mine.ended
+      ? api('POST', repoPath(`/collab/${mine.sid}/relay`), { seat_id: mine.seat, kind, data: toBase64(data), ...(to ? { to } : {}) }) : null)
+      .catch(error => { if (current === mine && error.code === 'COLLAB_ENDED') end('공동 편집이 끝났습니다.'); });
+    return mine.outbox;
+  }
+  function sessionOf(sid) { return sessions.find(s => s.session_id === sid) ?? null; }
+  function others() { const s = current && sessionOf(current.sid); return s ? s.seats.filter(seat => seat.seat_id !== current.seat) : []; }
+  function requestSync() {
+    // 다른 자리 모두에게 내가 가진 상태(state vector)를 보내 빠진 변경분을 받는다. 처음 들어온 손님은 호스트에게서 전체를 받는다.
+    if (!current || current.ended) return;
+    const vector = collabLib.encodeStateVector(current.editor.doc);
+    for (const seat of others()) void send('sync-request', vector, seat.seat_id);
+  }
+
+  function renderList() {
+    if (current) return;
+    const share = button('내 파일 공유하기', 'btn-primary', () => void startHost());
+    const intro = element('p', 'p-sub', '내 PC의 파일 하나를 공유하면 최대 3명이 함께 고칩니다. 파일은 공유한 사람 PC에만 있고, 저장도 공유한 사람만 합니다(100KB 이하 UTF-8 텍스트).');
+    const list = element('div', 'community-collab-list');
+    if (!sessions.length) list.append(element('p', 'p-sub', '진행 중인 공동 편집이 없습니다.'));
+    for (const session of sessions) {
+      const card = element('div', 'community-collab-card');
+      const full = session.seats.length >= session.capacity;
+      const mine = session.seats.some(seat => seat.host && seat.user?.id === myId());
+      card.append(element('span', 'community-member-name', session.file_name),
+        element('span', 'p-sub', `${who(session.host)} 공유 · ${session.seats.length}/${session.capacity}명`));
+      const join = button(full ? '가득 참' : '참여', 'btn-secondary', () => void startGuest(session.session_id));
+      join.disabled = full || mine;
+      card.append(join);
+      list.append(card);
+    }
+    main.replaceChildren(element('h3', 'ui-panel-title', '공동 편집'), intro, share, list, status);
+  }
+
+  function renderSession() {
+    const session = sessionOf(current.sid);
+    const head = element('div', 'ui-toolbar community-collab-head');
+    head.append(element('span', 'community-member-name', session?.file_name ?? current.fileName));
+    const people = element('span', 'community-collab-people');
+    for (const seat of session?.seats ?? []) {
+      const chip = element('span', 'community-collab-chip', `${who(seat.user)}${seat.host ? ' · 호스트' : ''}${seat.seat_id === current.seat ? ' (나)' : ''}`);
+      chip.style.borderColor = seatColor(seat.seat_id);
+      people.append(chip);
+    }
+    head.append(people);
+    const actions = element('div', 'ui-toolbar');
+    if (current.ended) actions.append(button('목록으로', 'btn-secondary', () => { closeSession(); renderList(); }));
+    else if (current.host) actions.append(button('저장', 'btn-primary', () => void save()), confirmButton('공유 끝내기', () => leave()));
+    else actions.append(button('나가기', 'btn-secondary', () => void leave()));
+    main.replaceChildren(head, actions, status, current.mount);
+  }
+
+  async function begin(reply, { host, text, language, handle, fileName }) {
+    const lib = await loadCollabLib();
+    if (run !== generation) return;
+    const mount = element('div', 'community-collab-editor');
+    const editor = lib.createCollabEditor({ parent: mount, text: host ? text : null, language, readOnly: !host,
+      user: { name: me?.github_login ? `@${me.github_login}` : '나', color: seatColor(reply.seat_id) } });
+    current = { sid: reply.session_id, seat: reply.seat_id, host, handle, fileName, editor, mount, synced: host, pending: [], flush: null,
+      outbox: Promise.resolve(), ended: false, timer: null, retry: null };
+    const mine = current;
+    editor.doc.on('update', (update, origin) => {
+      if (origin === lib.REMOTE || mine.ended) return;
+      // 타자 몇 번을 한 메시지로 묶어 보낸다.
+      mine.pending.push(update);
+      mine.flush ??= setTimeout(() => { mine.flush = null; const merged = lib.mergeUpdates(mine.pending.splice(0)); void send('update', merged); }, 50);
+    });
+    let cursorTimer = null;
+    editor.awareness.on('update', (_change, origin) => {
+      if (origin === lib.REMOTE || mine.ended || cursorTimer) return;
+      cursorTimer = setTimeout(() => { cursorTimer = null; void send('awareness', lib.encodeAwareness(editor.awareness, [editor.doc.clientID])); }, 100);
+    });
+    const every = Math.max(5, Number(reply.heartbeat_seconds) || 10) * 1000;
+    mine.timer = setInterval(async () => {
+      try { const value = await api('POST', repoPath(`/collab/${mine.sid}/heartbeat`), { seat_id: mine.seat }); if (current === mine) updateSessions(value.session); }
+      catch (error) { if (current === mine && ['COLLAB_ENDED', 'MEMBER_REMOVED', 'AUTH_REQUIRED'].includes(error.code)) end('공동 편집이 끝났습니다.'); }
+    }, every);
+    updateSessions(reply.session);
+    status.textContent = host ? '파일을 공유했습니다. 다른 멤버가 참여하면 함께 편집됩니다.' : '호스트와 동기화하는 중…';
+    renderSession();
+    if (!host) {
+      requestSync();
+      // 호스트 응답이 늦으면 다시 요청한다.
+      mine.retry = setInterval(() => { if (mine.synced || mine.ended) clearInterval(mine.retry); else requestSync(); }, 4000);
+    }
+  }
+
+  function updateSessions(session) {
+    if (!session) return;
+    sessions = [...sessions.filter(s => s.session_id !== session.session_id), session].sort((a, b) => a.created_at - b.created_at);
+    if (current && !current.ended && current.sid === session.session_id) renderSession();
+  }
+
+  function onCollab(data) {
+    if (!current || current.ended || data.session_id !== current.sid || (data.to && data.to !== current.seat) || typeof data.data !== 'string') return;
+    let bytes; try { bytes = fromBase64(data.data); } catch { return; }
+    const { editor } = current;
+    try {
+      if (data.kind === 'update') collabLib.applyUpdate(editor.doc, bytes);
+      else if (data.kind === 'awareness') collabLib.applyAwareness(editor.awareness, bytes);
+      else if (data.kind === 'sync-request') {
+        void send('sync', collabLib.encodeStateAsUpdate(editor.doc, bytes), data.from);
+        void send('awareness', collabLib.encodeAwareness(editor.awareness, [editor.doc.clientID]), data.from);
+      } else if (data.kind === 'sync') {
+        collabLib.applyUpdate(editor.doc, bytes);
+        if (!current.synced) {
+          current.synced = true; editor.setReadOnly(false); status.textContent = '함께 편집하는 중입니다. 저장은 호스트가 합니다.';
+          void send('awareness', collabLib.encodeAwareness(editor.awareness, [editor.doc.clientID]));
+        }
+      }
+    } catch { status.textContent = '받은 변경을 적용하지 못했습니다.'; }
+  }
+
+  function onSessions(data) {
+    if (!Array.isArray(data.sessions)) return;
+    sessions = data.sessions;
+    if (current && !current.ended && (data.ended || []).includes(current.sid)) end(current.host ? '공유가 끝났습니다.' : '호스트가 공유를 끝냈습니다. 내용은 복사해 둘 수 있습니다.');
+    else if (current && !current.ended) renderSession();
+    else renderList();
+  }
+
+  function end(text) {
+    if (!current || current.ended) return;
+    current.ended = true;
+    clearInterval(current.timer); clearInterval(current.retry); clearTimeout(current.flush);
+    current.editor.setReadOnly(true);
+    status.textContent = text;
+    renderSession();
+  }
+  function closeSession() {
+    if (!current) return;
+    const mine = current; current = null;
+    clearInterval(mine.timer); clearInterval(mine.retry); clearTimeout(mine.flush);
+    mine.editor.destroy();
+    if (mine.handle) void globalThis.desktop.collab.close({ handle: mine.handle }).catch(() => {});
+  }
+  async function leave() {
+    const mine = current;
+    if (!mine) return;
+    closeSession();
+    if (!mine.ended) await api('POST', repoPath(`/collab/${mine.sid}/leave`), { seat_id: mine.seat }).catch(() => {});
+    status.textContent = mine.host ? '공유를 끝냈습니다.' : '공동 편집에서 나왔습니다.';
+    renderList();
+  }
+  async function save() {
+    if (!current?.host) return;
+    const mine = current;
+    status.textContent = '저장하는 중…';
+    try {
+      await globalThis.desktop.collab.save({ handle: mine.handle, text: mine.editor.ytext.toString() });
+      status.textContent = `저장했습니다 (${new Date().toLocaleTimeString()}).`;
+    } catch (error) { status.textContent = fileError(error); }
+  }
+
+  async function startHost() {
+    if (current) return;
+    let opened;
+    try { opened = await globalThis.desktop.collab.open(); } catch (error) { status.textContent = fileError(error); return; }
+    if (!opened || opened.cancelled) return;
+    let reply;
+    try { reply = await api('POST', repoPath('/collab'), { file_name: opened.name, language: opened.language }); }
+    catch (error) { void globalThis.desktop.collab.close({ handle: opened.handle }).catch(() => {}); status.textContent = error.message; return; }
+    await begin(reply, { host: true, text: opened.text, language: opened.language, handle: opened.handle, fileName: opened.name });
+  }
+  async function startGuest(sid) {
+    if (current) return;
+    let reply;
+    try { reply = await api('POST', repoPath(`/collab/${sid}/join`)); }
+    catch (error) { status.textContent = error.message; return; }
+    await begin(reply, { host: false, language: reply.session.language, fileName: reply.session.file_name });
+  }
+  async function refresh() {
+    try { const value = await api('GET', repoPath('/collab')); if (run === generation) onSessions({ sessions: value.sessions, ended: [] }); }
+    catch (error) { status.textContent = error.message; }
+  }
+
+  let ready = false;
+  function onEvent({ type, data }) {
+    if (run !== generation) return;
+    if (type === 'ready') { void voice.refresh(); void refresh(); if (ready && current?.synced) requestSync(); ready = true; }
+    else if (type === 'collab-sessions') onSessions(data);
+    else if (type === 'collab') onCollab(data);
+    else if (type === 'voice') voice.update(data);
+    else if (type === 'voice-signal') voice.signal(data);
+    else if (type === 'status' && data.state === 'stopped') {
+      status.textContent = CHAT_STOPPED[data.code] || '연결이 끊겼습니다.';
+      if (CHAT_FINAL.includes(data.code)) { end(status.textContent); if (voice.joined) void voice.leave(status.textContent); }
+      closeLive = null;
+    } else if (type === 'status' && data.state === 'reconnecting') status.textContent = '연결이 끊겨 다시 연결하는 중…';
+  }
+
+  closeCollab = () => { const mine = current; closeSession(); if (mine && !mine.ended) void api('POST', repoPath(`/collab/${mine.sid}/leave`), { seat_id: mine.seat }).catch(() => {}); };
+  renderList();
+  openLive(repositoryId, onEvent);
 }
 
 /* ── 음성 채팅 (AD-28) ──
@@ -721,7 +964,7 @@ function offerInvite(token) {
 async function init() {
   joinForm.addEventListener('submit', event => { event.preventDefault(); void redeem(joinInput.value); });
   window.addEventListener('popstate', () => { void route(); });
-  window.addEventListener('pagehide', () => { stopVoice(); stopLive(); });
+  window.addEventListener('pagehide', () => { stopCollab(); stopVoice(); stopLive(); });
   // 웹은 주소의 # 뒤(서버 로그에 남지 않음), 앱은 gitviz-join 링크를 main이 ?invite=로 넘긴다. 읽은 즉시 주소에서 지운다.
   const query = params().get('invite');
   const offered = TOKEN.exec(location.hash.startsWith('#invite=') ? location.hash : query || '')?.[1] ?? null;

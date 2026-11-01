@@ -254,6 +254,13 @@ async def stream(repository_id, user_id, is_disconnected, ping=PING_SECONDS):
                     continue
                 yield sse('voice-signal', data)
                 continue
+            if event['type'] == 'collab':
+                # Co-editing updates reach only the people seated in that session.
+                data = dict(event['data'])
+                if str(user_id) not in data.pop('to_users', ()):
+                    continue
+                yield sse('collab', data)
+                continue
             yield sse(event['type'], event['data'])
     finally:
         await subscription.close()

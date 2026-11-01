@@ -2,7 +2,7 @@
 import os
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, Path, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -10,7 +10,10 @@ from app.api.ai.dependencies import require_csrf
 from app.api.auth import _get_session_user_id
 from app.core.database import get_db
 from app.schemas.community import (
+    CollabRelayRequest,
+    CollabSeatRequest,
     CreateChatMessageRequest,
+    CreateCollabSessionRequest,
     CreateCommentRequest,
     CreateInviteRequest,
     CreatePostRequest,
@@ -24,6 +27,7 @@ from app.schemas.community import (
 )
 from app.services import community as service
 from app.services import community_chat as chat
+from app.services import community_collab as collab
 from app.services import community_voice as voice
 
 router = APIRouter(prefix='/api/community/v1', tags=['community'], dependencies=[Depends(require_csrf)])
@@ -67,6 +71,7 @@ def update_member(repository_id: int, user_id: UUID, body: UpdateMemberRequest, 
         # Their open chat stream ends now instead of on the next reconnect.
         chat.publish(repository_id, 'removed', {'user_id': str(user_id)})
         voice.drop_user(db, repository_id, user_id)
+        collab.drop_user(db, repository_id, user_id)
     return result
 
 
@@ -200,9 +205,45 @@ def voice_signal(repository_id: int, body: VoiceSignalRequest, request: Request,
     return done(db, response, voice.signal(db, repository_id, _get_session_user_id(request), body))
 
 
+SEAT = Path(pattern=r'^[A-Za-z0-9_-]{22}$')
+
+
+@router.get('/repositories/{repository_id}/collab')
+def collab_sessions(repository_id: int, request: Request, response: Response, db=Depends(get_db)):
+    return done(db, response, collab.listing(db, repository_id, _get_session_user_id(request)))
+
+
+@router.post('/repositories/{repository_id}/collab', status_code=201)
+def create_collab(repository_id: int, body: CreateCollabSessionRequest, request: Request, response: Response, db=Depends(get_db)):
+    return done(db, response, collab.create(db, repository_id, _get_session_user_id(request), body))
+
+
+@router.post('/repositories/{repository_id}/collab/{session_id}/join')
+def join_collab(repository_id: int, request: Request, response: Response, session_id: str = SEAT, db=Depends(get_db)):
+    return done(db, response, collab.join(db, repository_id, _get_session_user_id(request), session_id))
+
+
+@router.post('/repositories/{repository_id}/collab/{session_id}/heartbeat')
+def collab_heartbeat(repository_id: int, body: CollabSeatRequest, request: Request, response: Response, session_id: str = SEAT,
+                     db=Depends(get_db)):
+    return done(db, response, collab.heartbeat(db, repository_id, _get_session_user_id(request), session_id, body.seat_id))
+
+
+@router.post('/repositories/{repository_id}/collab/{session_id}/leave')
+def leave_collab(repository_id: int, body: CollabSeatRequest, request: Request, response: Response, session_id: str = SEAT,
+                 db=Depends(get_db)):
+    return done(db, response, collab.leave(db, repository_id, _get_session_user_id(request), session_id, body.seat_id))
+
+
+@router.post('/repositories/{repository_id}/collab/{session_id}/relay')
+def relay_collab(repository_id: int, body: CollabRelayRequest, request: Request, response: Response, session_id: str = SEAT,
+                 db=Depends(get_db)):
+    return done(db, response, collab.relay(db, repository_id, _get_session_user_id(request), session_id, body))
+
+
 @router.get('/repositories/{repository_id}/chat/stream')
 async def chat_stream(repository_id: int, request: Request):
-    """Server-sent events: ready, message, deleted, presence, voice, voice-signal (own seat only), removed. Membership is checked before the first byte."""
+    """Server-sent events: ready, message, deleted, presence, voice, voice-signal (own seat only), collab-sessions, collab (own seats only), removed. Membership is checked before the first byte."""
     user_id = _get_session_user_id(request)
     await run_in_threadpool(chat.check_member, repository_id, user_id)
     return StreamingResponse(chat.stream(repository_id, user_id, request.is_disconnected), media_type='text/event-stream',

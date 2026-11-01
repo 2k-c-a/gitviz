@@ -33,6 +33,7 @@ test('sandbox preload imports only electron and exposes named capabilities witho
   assert.match(preload, /desktop:update-status/);
   assert.match(preload, /desktop:community-subscribe/);
   assert.match(preload, /desktop:community-unsubscribe/);
+  for (const channel of ['desktop:collab-open', 'desktop:collab-save', 'desktop:collab-close']) assert.match(preload, new RegExp(channel));
   for (const name of ['selectAndRegister', 'listProjects', 'getProject', 'updateSettings', 'unregisterProject', 'getGitStatus', 'captureChanges', 'previewFile', 'detectValidation', 'planValidation', 'previewReview', 'startReview', 'getReview', 'listReviews', 'cancelReview', 'feedbackReview', 'createProposal', 'getProposal', 'rejectProposal', 'requestProposalRevision', 'approveProposal', 'applyProposal', 'recoverProposal', 'listRecoveryProposals', 'analyzeImpact', 'getImpact', 'listNotifications', 'markNotificationRead', 'subscribeEvents', 'unsubscribeEvents', 'getAiKeyStatus', 'saveAiKey', 'deleteAiKey', 'isValidationTrusted']) assert.match(preload, new RegExp(name));
   assert.doesNotMatch(preload, /getAiKey\b|readAiKey/);
   assert.doesNotMatch(preload, /\binvoke\s*:\s*/);

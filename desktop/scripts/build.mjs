@@ -34,6 +34,11 @@ await writeFile(resolve(desktop, 'dist/schema/ai-bodies.json'), JSON.stringify(b
 const { endpoints } = createRequire(import.meta.url)('../dist/src/remote-contracts.js');
 await writeFile(resolve(desktop, 'dist/ui/desktop-endpoints.json'), JSON.stringify(endpoints));
 await cp(resolve(desktop, '../frontend'), resolve(desktop, 'dist/ui/web'), { recursive: true, filter: source => !source.endsWith('workspace.html') });
+// Co-editing editor (AD-29): CodeMirror 6 + Yjs bundled for the app only; the web server never serves it.
+await (await import('esbuild')).build({ entryPoints: [resolve(desktop, 'scripts/collab-editor.entry.mjs')], outfile: resolve(desktop, 'dist/ui/web/js/collab-editor.bundle.js'),
+  bundle: true, format: 'iife', globalName: 'GitVizCollab', target: 'es2022', minify: true, legalComments: 'eof', logLevel: 'warning',
+  // The page loads it with import(), where a top-level var stays module-scoped; publish the API on globalThis explicitly.
+  footer: { js: 'globalThis.GitVizCollab = GitVizCollab;' } });
 const manifest = { '/desktop-endpoints.json': { file: 'desktop-endpoints.json', mime: 'application/json' } };
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.png': 'image/png', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.json': 'application/json' };
 async function inventory(relative) {

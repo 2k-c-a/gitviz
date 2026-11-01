@@ -41,6 +41,7 @@ from app.models.repository import Repository  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.services import community as service  # noqa: E402
 from app.services import community_chat as chat  # noqa: E402
+from app.services import community_collab as collab  # noqa: E402
 from app.services import community_voice as voice  # noqa: E402
 
 
@@ -455,6 +456,96 @@ class CommunityTests(unittest.TestCase):
         self.assertNotIn('s3cret', str(turn))
         with patch.dict(os.environ, {'VOICE_TURN_URLS': 'turn:turn.example', 'VOICE_TURN_SECRET': ''}):
             self.assertEqual(voice.ice_servers('u1'), [])
+
+    def test_collab_session_seats_three_with_the_host_and_ends_when_the_host_leaves(self):
+        self.voice_members()
+        base = '/api/community/v1/repositories/1/collab'
+        self.assertEqual(self.as_('owner').post(base, json={'file_name': 'src/app.py'}).status_code, 422)
+        self.assertEqual(self.as_('owner').post(base, json={'file_name': 'app.py', 'language': 'cobol'}).status_code, 422)
+        self.assertEqual(self.code(self.as_('later').post(base, json={'file_name': 'app.py'})), 'INVITE_REQUIRED')
+        created = self.as_('owner').post(base, json={'file_name': 'app.py', 'language': 'python'})
+        self.assertEqual(created.status_code, 201, created.text)
+        sid, host = created.json()['session_id'], created.json()['seat_id']
+        self.assertEqual(created.json()['session']['host']['github_login'], 'Owner')
+        self.assertEqual(self.code(self.as_('owner').post(f'{base}/{sid}/join')), 'INVALID_STATE')
+        seats = {}
+        for name in ('contrib', 'outsider'):
+            joined = self.as_(name).post(f'{base}/{sid}/join')
+            self.assertEqual(joined.status_code, 200, joined.text)
+            seats[name] = joined.json()['seat_id']
+        listed = self.as_('guest').get(base).json()['sessions']
+        self.assertEqual([(s['file_name'], len(s['seats'])) for s in listed], [('app.py', 3)])
+        self.assertEqual([s['host'] for s in listed[0]['seats']], [True, False, False])
+        self.assertEqual(self.code(self.as_('guest').post(f'{base}/{sid}/join')), 'COLLAB_FULL')
+        # Someone else's seat cannot be given up; a guest leaving frees a seat.
+        self.as_('contrib').post(f'{base}/{sid}/leave', json={'seat_id': host})
+        self.assertEqual(len(self.as_('guest').get(base).json()['sessions']), 1)
+        self.as_('contrib').post(f'{base}/{sid}/leave', json={'seat_id': seats['contrib']})
+        self.assertEqual(self.as_('guest').post(f'{base}/{sid}/join').status_code, 200)
+        self.assertEqual(self.code(self.as_('contrib').post(f'{base}/{sid}/heartbeat', json={'seat_id': seats['contrib']})), 'COLLAB_ENDED')
+        self.assertEqual(self.as_('owner').post(f'{base}/{sid}/heartbeat', json={'seat_id': host}).status_code, 200)
+        # The host leaving ends the session for everyone.
+        self.as_('owner').post(f'{base}/{sid}/leave', json={'seat_id': host})
+        self.assertEqual(self.as_('guest').get(base).json()['sessions'], [])
+        self.assertEqual(self.code(self.as_('outsider').post(f'{base}/{sid}/heartbeat', json={'seat_id': seats['outsider']})), 'COLLAB_ENDED')
+        # A host whose heartbeats stop ends the session too; sharing another file replaces the previous one.
+        first = self.as_('owner').post(base, json={'file_name': 'a.py'}).json()['session_id']
+        second = self.as_('owner').post(base, json={'file_name': 'b.py'}).json()['session_id']
+        self.assertEqual([s['session_id'] for s in self.as_('guest').get(base).json()['sessions']], [second])
+        self.assertNotEqual(first, second)
+        with patch.object(collab.time, 'time', return_value=collab.time.time() + collab.TTL + 1):
+            self.assertEqual(self.as_('guest').get(base).json()['sessions'], [])
+
+    def test_collab_updates_reach_only_seated_people_and_removal_ends_hosted_sessions(self):
+        import asyncio
+        import json
+        self.voice_members()
+        base = '/api/community/v1/repositories/1/collab'
+        made = self.as_('owner').post(base, json={'file_name': 'app.py'}).json()
+        sid, host = made['session_id'], made['seat_id']
+        guest = self.as_('contrib').post(f'{base}/{sid}/join').json()['seat_id']
+        update = {'seat_id': host, 'kind': 'update', 'data': 'AQID'}
+        for bad in ({**update, 'kind': 'patch'}, {**update, 'data': 'not base64!'}, {**update, 'data': ''},
+                    {**update, 'data': 'A' * 200004}):
+            self.assertEqual(self.as_('owner').post(f'{base}/{sid}/relay', json=bad).status_code, 422)
+        self.assertEqual(self.code(self.as_('contrib').post(f'{base}/{sid}/relay', json=update)), 'COLLAB_ENDED')
+        self.assertEqual(self.code(self.as_('owner').post(f'{base}/{sid}/relay', json={**update, 'to': 'z' * 22})), 'NOT_FOUND')
+
+        async def connected():
+            return False
+
+        def parse(chunk):
+            fields = dict(line.split(': ', 1) for line in chunk.strip().splitlines() if not line.startswith(':'))
+            return fields.get('event'), json.loads(fields['data']) if 'data' in fields else None
+
+        async def scenario():
+            streams = {name: chat.stream(1, self.users[name], connected, ping=0.05) for name in ('contrib', 'outsider')}
+            for stream in streams.values():
+                await anext(stream)
+                await anext(stream)
+
+            async def next_event(name, kinds):
+                while True:
+                    kind, data = parse(await anext(streams[name]))
+                    if kind in kinds:
+                        return kind, data
+
+            await asyncio.to_thread(self.as_('owner').post, f'{base}/{sid}/relay', json=update)
+            await asyncio.to_thread(self.as_('contrib').post, f'{base}/{sid}/relay',
+                                    json={'seat_id': guest, 'to': host, 'kind': 'sync-request', 'data': 'AA=='})
+            kind, data = await next_event('contrib', {'collab'})
+            self.assertEqual(data, {'session_id': sid, 'from': host, 'to': None, 'kind': 'update', 'data': 'AQID'})
+            # The bystander (a member without a seat) sees no document traffic, only the session list change below.
+            # The host hands the admin role over and is then removed: their session ends for everyone.
+            await asyncio.to_thread(self.as_('owner').post, '/api/community/v1/repositories/1/admin', json={'user_id': str(self.users['contrib'])})
+            await asyncio.to_thread(self.as_('contrib').patch, f"/api/community/v1/repositories/1/members/{self.users['owner']}",
+                                    json={'status': 'removed'})
+            kind, data = await next_event('outsider', {'collab', 'collab-sessions'})
+            self.assertEqual((kind, data['sessions'], data['ended']), ('collab-sessions', [], [sid]))
+            for stream in streams.values():
+                await stream.aclose()
+
+        asyncio.run(scenario())
 
     def test_changes_require_csrf_outside_the_desktop_session(self):
         del self.app.dependency_overrides[require_csrf]

@@ -1,12 +1,13 @@
 // Community chat live events (AD-27). Main process only: the bearer token never reaches the renderer.
 // The server pushes server-sent events; sending stays an allowlisted Remote request.
 
-export interface LiveEvent { type: 'ready' | 'message' | 'deleted' | 'presence' | 'removed' | 'voice' | 'voice-signal' | 'status'; data: Record<string, unknown> }
+export interface LiveEvent { type: 'ready' | 'message' | 'deleted' | 'presence' | 'removed' | 'voice' | 'voice-signal' | 'collab-sessions' | 'collab' | 'status'; data: Record<string, unknown> }
 export type StreamResponse = { status: number; contentType: string; body: ReadableStream<Uint8Array> | null };
 export type StreamHttp = (path: string, token: string, signal: AbortSignal) => Promise<StreamResponse>;
 
-const EVENTS = new Set(['ready', 'message', 'deleted', 'presence', 'removed', 'voice', 'voice-signal']);
-const MAX_EVENT = 64 * 1024;
+const EVENTS = new Set(['ready', 'message', 'deleted', 'presence', 'removed', 'voice', 'voice-signal', 'collab-sessions', 'collab']);
+// A co-editing sync carries a whole shared file (at most 100 KB) as base64.
+const MAX_EVENT = 256 * 1024;
 
 export function streamClient(origin: string, transport: typeof fetch = fetch): StreamHttp {
   const base = new URL(origin);

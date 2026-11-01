@@ -1,14 +1,27 @@
 # GitViz
 
-GitHub 저장소의 개발 이력을 수집하고 수정 집중도·공동 변경·협업 관계를 분석한다. 결과는 기준 SHA와 기간을 가진 불변 스냅샷으로 저장한다. 선택 기능인 AI 리뷰는 PR·커밋의 변경 설명과 코드 검토를 돕는다. Windows 데스크톱 앱에서 내 Git 프로젝트의 AI 리뷰·리팩터링과, 저장소별 커뮤니티(글·실시간 채팅·3인 음성 채팅)를 쓸 수 있다.
+GitHub 저장소의 개발 이력을 수집하고 수정 집중도·공동 변경·협업 관계를 분석한다. 결과는 기준 SHA와 기간을 가진 불변 스냅샷으로 저장한다. 선택 기능인 AI 리뷰는 PR·커밋의 변경 설명과 코드 검토를 돕는다. Windows 데스크톱 앱에서 내 Git 프로젝트의 AI 리뷰·리팩터링과, 저장소별 커뮤니티(글·실시간 채팅·3인 음성 채팅·3인 실시간 공동 편집)를 쓸 수 있다.
 
 **[전체 문서 안내](docs/index.md)** · [현재 기능 범위](docs/product/current-scope.md) · [검증 상태](docs/validation/current-status.md)
 
 ## 데스크톱 앱 실행 (Windows)
 
-GitViz는 Windows 데스크톱 앱(Electron)이 기본 사용 방식이다. 앱은 내 PC의 Git 저장소를 다루는 로컬 기능(프로젝트, AI 리뷰·리팩터링 — 내 AI 키 사용)과 서버에 연결해서 쓰는 기능(GitHub 로그인, 저장소 탐색·분석, 커뮤니티 글·채팅·음성 채팅)으로 나뉜다.
+GitViz는 Windows 데스크톱 앱(Electron)이 기본 사용 방식이다. 앱은 내 PC의 Git 저장소를 다루는 로컬 기능(프로젝트, AI 리뷰·리팩터링 — 내 AI 키 사용)과 서버에 연결해서 쓰는 기능(GitHub 로그인, 저장소 탐색·분석, 커뮤니티 글·채팅·음성 채팅·공동 편집)으로 나뉜다.
 
 준비물: Windows 10/11 x64, Node.js 24.20 이상 25 미만, Python 3.12, Git.
+
+### 원클릭
+
+```powershell
+git clone https://github.com/2k-c-a/gitviz.git
+cd gitviz
+pwsh tools/dev/bootstrap.ps1 -App -Run            # 앱 빌드 후 실행 (서버 없이)
+pwsh tools/dev/bootstrap.ps1 -App -Run -Staging   # 로컬 HTTPS 서버도 띄우고 앱을 연결해 실행
+```
+
+`-App`은 아래 1단계(도구 확인, 앱 의존성, 작업 에이전트 빌드, 앱 빌드·패키징)를 한 번에 하고, `-Run`은 빌드한 앱을 실행한다. 앱 의존성은 `desktop\node_modules`가 `package-lock.json`과 맞으면 다시 설치하지 않는다. 앱이 열려 있으면 패키징 파일이 잠겨 있으므로 앱을 닫고 실행한다. `-Staging`은 3단계의 서버 준비·실행(`Prepare`, `Up`, `Worker`)과 연결 설정까지 한다. 서버가 이미 떠 있으면 그대로 쓰고, `staging.env`가 비어 있으면 GitHub OAuth 값을 적으라고 안내한 뒤 멈춘다. 서버와 worker는 각자 새 창에서 돌고, 끄려면 `pwsh tools/vm/staging_stack.ps1 -Mode Down`을 실행한다.
+
+단계별로 직접 하려면 아래를 따른다.
 
 ### 1. 앱 빌드
 
@@ -78,7 +91,8 @@ $env:NODE_EXTRA_CA_CERTS = "$PWD\.validation\staging\tls\server.pem"
 앱 오른쪽 위 **로그인**을 누르면 브라우저에서 GitHub 로그인 후 앱으로 자동으로 돌아온다. 상태 확인은 `-Mode Status`, 종료는 `-Mode Down`.
 
 - `GITVIZ_SERVER_ORIGIN`은 빌드에 서버 주소를 넣지 않은 앱에서만 쓰인다. 배포용 앱은 `$env:GITVIZ_BUILD_SERVER_ORIGIN = 'https://<서버 주소>'`로 빌드하면 그 주소가 앱에 들어간다.
-- 음성 채팅은 같은 네트워크 안에서는 바로 연결된다. 다른 네트워크 사이 연결은 서버 환경변수 `VOICE_STUN_URLS`·`VOICE_TURN_URLS`·`VOICE_TURN_SECRET`로 STUN/TURN 서버를 지정해야 한다([.env.example](.env.example)).
+- 음성 채팅의 다른 네트워크 사이 연결은 서버 환경변수 `VOICE_STUN_URLS`의 STUN 서버로 한다. 예시 설정과 스테이징은 공개 STUN(`stun.l.google.com`)을 쓴다. 이때 STUN 제공자에게 참여자의 공인 IP 주소가 보이지만 음성은 가지 않는다. 회사·학교 방화벽처럼 직접 연결이 막힌 곳까지 되게 하려면 `VOICE_TURN_URLS`·`VOICE_TURN_SECRET`로 TURN 서버(coturn)를 더한다([.env.example](.env.example)). 비우면 같은 네트워크 안에서만 연결된다.
+- 공동 편집은 앱에서만 된다. 공유한 사람(호스트) PC의 파일 하나(100KB 이하 텍스트)를 3명까지 함께 고치고, 저장은 호스트 앱이 자기 파일에 한다. 서버는 변경분을 전달만 하고 파일 내용을 저장하지 않는다.
 
 ### 4. 설치 파일 만들기 (선택)
 
@@ -100,7 +114,7 @@ cd desktop; npx electron dist/tests/phase3-flows.e2e.js   # E2E 예시 (dist/tes
 
 앱 없이 웹 화면(`http://localhost:8000`)으로 서버를 개발할 때 쓴다. Python 3.12, Git, Docker(Docker Desktop 실행 중)를 준비한다.
 
-### 원클릭
+### 원클릭 (웹 서버)
 
 ```powershell
 git clone https://github.com/2k-c-a/gitviz.git

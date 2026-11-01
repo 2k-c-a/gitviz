@@ -14,6 +14,12 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
     },
     unsubscribe: () => { ipcRenderer.removeAllListeners('desktop:community-event'); return ipcRenderer.invoke('desktop:community-unsubscribe'); },
   }),
+  // Co-editing (AD-29): the host's file is picked in a native dialog; the page sees a handle and text, never a path.
+  collab: Object.freeze({
+    open: () => ipcRenderer.invoke('desktop:collab-open'),
+    save: (options: unknown) => ipcRenderer.invoke('desktop:collab-save', options),
+    close: (options: unknown) => ipcRenderer.invoke('desktop:collab-close', options),
+  }),
 }));
 if (location.protocol === 'gitviz:' && location.host === 'app' && location.pathname === '/index.html') contextBridge.exposeInMainWorld('workspace', Object.freeze({
   exportDiagnostics: () => ipcRenderer.invoke('workspace:export-diagnostics'),

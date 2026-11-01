@@ -45,7 +45,7 @@ docker compose up -d db redis
 
 주의: 이 PC의 기존 가상환경은 `venv/`(README는 `.venv`)이고, `.claude/launch.json`이 `venv\Scripts\python.exe`를 절대 경로로 가리킨다. 새 클론에서는 README의 `.venv`를 따른다.
 
-**[현재 · 원클릭]** 위 단계는 `pwsh tools/dev/bootstrap.ps1 -LocalDefaults -Run`으로 묶여 있다(Python 3.12·Git·Docker 확인, `.venv`, 의존성, `.env`, db/redis 기동, `alembic upgrade head`, 서버·worker 실행). 이미 있는 `.env`는 읽거나 고치지 않는다. **[제안, 미구현]** `.env`의 운영 호스트 검사와 개발 DB 컨테이너 상태 점검은 아직 없다.
+**[현재 · 원클릭]** 위 단계는 `pwsh tools/dev/bootstrap.ps1 -LocalDefaults -Run`으로 묶여 있다(Python 3.12·Git·Docker 확인, `.venv`, 의존성, `.env`, db/redis 기동, `alembic upgrade head`, 서버·worker 실행). 이미 있는 `.env`는 읽거나 고치지 않는다. 데스크톱 앱은 `pwsh tools/dev/bootstrap.ps1 -App -Run`(작업 에이전트·앱 빌드·패키징 후 실행)으로, 로컬 HTTPS 스테이징 서버에 연결해 실행하려면 `-Staging`을 더한다(README "데스크톱 앱 실행"). **[제안, 미구현]** `.env`의 운영 호스트 검사와 개발 DB 컨테이너 상태 점검은 아직 없다.
 
 ## 4. 환경 변수
 
@@ -59,7 +59,7 @@ docker compose up -d db redis
 | `REDIS_URL` | Celery 브로커·백엔드 |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `FRONTEND_URL`, `TOKEN_ENCRYPTION_KEY` | GitHub 로그인·토큰 보관 |
 
-선택: `AI_ENABLED`와 `AI_*`(기본 꺼짐), `DESKTOP_AUTH_ENABLED`·`DESKTOP_PUBLIC_ORIGIN`·`DESKTOP_AUTH_RESPONSE_KEY`(데스크톱 로그인), `SESSION_COOKIE_SECURE`(개발은 0), `VOICE_STUN_URLS`·`VOICE_TURN_URLS`·`VOICE_TURN_SECRET`(커뮤니티 음성 채팅, 비우면 같은 네트워크 안에서만 연결).
+선택: `AI_ENABLED`와 `AI_*`(기본 꺼짐), `DESKTOP_AUTH_ENABLED`·`DESKTOP_PUBLIC_ORIGIN`·`DESKTOP_AUTH_RESPONSE_KEY`(데스크톱 로그인), `SESSION_COOKIE_SECURE`(개발은 0), `VOICE_STUN_URLS`·`VOICE_TURN_URLS`·`VOICE_TURN_SECRET`(커뮤니티 음성 채팅. 예시와 스테이징은 공개 STUN, 비우면 같은 네트워크 안에서만 연결).
 
 **[제안] 환경별 파일:**
 
