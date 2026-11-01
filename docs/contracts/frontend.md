@@ -1,6 +1,6 @@
 # 프론트 상태·표현 계약 안내
 
-검토일: 2026-10-23 · 코드 기준: `a8351f0` · [문서 안내](../index.md)
+검토일: 2026-11-02 · 코드 기준: `bdbf01c` · [문서 안내](../index.md)
 
 확인: [S9 설계 원본](../archive/originals/docs/AI_S9_UI_DESIGN.md)과 [시각화 전달 원본](../archive/originals/docs/VISUALIZATION_HANDOFF.md)은 유용한 상세 기준과 과거 과제를 함께 담는다. S9의 v1.4 및 `/ai/v1` 표기는 현재 DTO 1.9·`/api/ai/v1`과 구분해서 읽는다.
 
@@ -12,12 +12,14 @@
 | 분석 repo fallback | 일반 분석 API에는 query → localStorage → 기본 1이 남아 있음 | [api.js](../../frontend/js/api.js) |
 | AI | 명시한 repo·pr/commit·input·job·shared로 상태 결정. repo 없는 기본 저장소 fallback 금지 | [ai-state](../../frontend/js/ai-state.js), [ai-review](../../frontend/js/ai-review.js) |
 | AI 비동기 | navigation guard·abort·직렬 polling·429/backoff·종료 중단 | [ai-poll](../../frontend/js/ai-poll.js), [AI 프론트 검사](../../tests/frontend/test_ai_frontend.cjs) |
+| 검색 | `?q=&page=`로 페이지를 URL에 유지(GitHub 검색 상위 1,000건까지). 새 검색은 1페이지 | [search](../../frontend/js/search.js) |
+| 커뮤니티 | `?id=&tab=posts\|chat\|collab\|members\|invites&post=`, 초대는 `#invite=`(서버 로그에 남지 않음). 사용자 글은 textContent로만 그림. 실시간 이벤트는 앱 main 브리지 또는 웹 EventSource에서 `{type,data}`만 받음. 공동 편집 탭은 앱에서만 보임 | [community.js](../../frontend/js/community.js) |
 
 AI의 엄격한 URL 규칙을 일반 분석 화면에도 이미 동일하게 적용됐다고 설명하지 않는다. 현재 공유 조회는 `?repo=<id>&shared=<result UUID>`를 사용하며 개인 job 조회와 분리한다.
 
 ## 사용자 표현
 
-- 실행 전 read는 ‘코드 확보됨/전송 예정’이며 ‘전송됨’이 아니다. profile 변경은 미리보기·동의를 다시 확인한다.
+- 실행 전 read는 ‘코드 확보됨/전송 예정’이며 ‘전송됨’이 아니다. 웹은 profile 변경 시 미리보기·동의를 다시 확인한다. 앱의 로컬 리뷰는 동의 체크박스 없이 실행 버튼이 승인이다([AD-23](../architecture/ARCHITECTURE_DECISIONS.md)).
 - local provider는 key가 필요 없고 외부 전송 비활성에서도 실행 가능하다. 클라우드 버튼 규칙을 로컬에 일괄 적용하지 않는다.
 - 지적 0건은 오류 없음이 아니고 사람 검증 전 상태와 실제 선택·분석·전체 분모를 표시한다.
 - 구조·파일·줄·인용 검증과 내용 정확도는 구분한다. 코드·모델 문자열은 실행 가능한 HTML로 다루지 않는다.

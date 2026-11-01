@@ -52,7 +52,7 @@
 ### 2.4 Production (클라이언트)
 
 - **확인:** Squirrel.Windows, per-user, 관리자 권한 불필요, 설치 폴더 `%LOCALAPPDATA%\GitVizWorkspace\`(`Update.exe`, `app-x.y.z\`, `packages\`), 시작 메뉴·바탕화면 바로가기, `HKCU\…\Uninstall\GitVizWorkspace`. 사용자 데이터 `%APPDATA%\gitviz-workspace\`(Electron userData, 하위 `workspace\`에 SQLite와 DPAPI 키). 자동 업데이트 없음(수동 검증 정책만 있음). 제거 시 사용자 데이터는 보존, 설치 폴더 잔여물은 일회성 예약 작업이 삭제(대화형 로그온 세션에서만 동작 — 커밋 `65f1b62`).
-- **확인 (2026-11-01 변경):** 서버 접속 원점(HTTPS)은 빌드할 때 `GITVIZ_BUILD_SERVER_ORIGIN`으로 앱에 내장한다(`desktop/scripts/build.mjs` → `dist/config/server.json`, 비밀 아님). 결정 규칙은 `desktop/src/server-origin.ts`에 있다.
+- **확인 (2026-11-01 변경):** 서버 접속 원점(HTTPS)은 빌드할 때 `GITVIZ_BUILD_SERVER_ORIGIN`으로 앱에 내장한다(`desktop/scripts/build.mjs` → `dist/config/server.json`, 비밀 아님). 결정 규칙은 `desktop/src/server-origin.ts`에 있다. 로컬 스테이징 빌드(`bootstrap -App -Staging`)는 `GITVIZ_BUILD_SERVER_CA`로 스테이징 서버의 자체 서명 인증서도 같은 파일에 넣는다. loopback 원점에서만 허용되며 배포 빌드에는 넣을 수 없다(2026-11-02, AD-30).
   - 내장 원점이 있는 설치본은 그 원점만 쓴다. 환경변수 `GITVIZ_SERVER_ORIGIN`으로 바꿀 수 없다.
   - 개발 실행(`app.isPackaged === false`)에서는 환경변수가 내장 원점보다 우선한다.
   - 원점 없이 빌드한 설치본은 기존처럼 환경변수만 따른다(스테이징 VM 시험용). 환경변수도 없으면 서버 기능이 **꺼진 상태**다.

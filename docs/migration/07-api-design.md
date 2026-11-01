@@ -159,7 +159,7 @@ files.locate는 snapshot/file/line/column을 확인하고 main에만 실제 경�
 
 ## 실제 계약과의 차이 — 2026-10-28
 
-공통 스키마 `contracts/workspace/v1/*.schema.json`이 local RPC의 권위 원본이다. 현재 operation은 44개다. 위 표와의 차이는 다음과 같다.
+공통 스키마 `contracts/workspace/v1/*.schema.json`이 local RPC의 권위 원본이다. 이 시점(P07)의 operation은 44개다(이후 개수는 [현재 상태](#현재-상태--2026-11-02)). 위 표와의 차이는 다음과 같다.
 
 - 에디터: `workspace.editors.list/open/configure` 대신 main 프로세스 IPC(`configure-editor`, `open-editor`, `copy-location`)와 agent의 `workspace.files.locate`·`workspace.projects.setEditor`로 구현했다. 실행 파일 경로는 main 전용 설정에만 둔다.
 - 미구현: `workspace.projects.connectRemote`, `workspace.notifications.list/markRead`, `workspace.events.subscribe/unsubscribe`. notifications·events는 P08a, connectRemote는 P08b 범위다.
@@ -183,3 +183,11 @@ protocol1·schema8의 정확한 계약은 공통 JSON schema와 Python/TS operat
 `GET /api/desktop/v1/repositories/{id}/identity`는 기존 read 권한/인증을 재사용하고 accountId·repositoryId·githubId·canonicalUrl·visibility를 no-store로 반환한다. visibility는 GitHub 확인 strict boolean에서만 public/private로 만든다. 기존 HTTP DTO·권한 정책·서버 DB schema는 유지한다. 실제 배포/호출 인수는 미실행이다.
 
 reviews.cloudContext는 main-only 공개 proof·credentialRef/버전만 받고 API key를 거부한다. reviews.cloudExchange(take/complete)는 승인된 요청 bytes/hash와 bounded provider 응답을 교환한다. take는 한 번만 가능하고 key는 main에서 고정 HTTPS header에만 사용한다. native 동의 후 fresh 공개 증명과 exact bytes를 재검사한다. 원격 credential 저장·모델 호출·재전송을 preview에서 하지 않는다. [구현·검증 기록](validation/p08b-p09-2026-10-28.md)에 비용·만료·실패·미검증을 명시한다.
+
+## 현재 상태 — 2026-11-02
+
+local RPC는 54개다(P07 44 → P08a 47 → P08b·cloud 54). 위 기록 이후 소유자 결정으로 바뀐 점:
+
+- [AD-23](../architecture/ARCHITECTURE_DECISIONS.md): 리뷰 전송·제안 적용의 native 확인과 동의 체크박스를 없앴다. 화면 버튼이 승인이고, 미리보기 해시 일치·일회 capability는 그대로다. `reviews.cloudContext`에 `authorize-local`을 더해 로그인·공개 저장소 증명 없이 DPAPI에 저장한 내 키로 클라우드 리뷰를 허용한다.
+- [AD-24](../architecture/ARCHITECTURE_DECISIONS.md): 데스크톱 로그인은 루프백 방식이다. `POST /api/desktop/v1/auth/authorize`는 없앴고 transactions에 `redirectPort`, exchange에 `callbackCode`를 더했다.
+- 커뮤니티 API(`/api/community/v1`, 32개)는 local RPC가 아니라 main의 허용 목록(`endpointKey`)과 SSE 연결(`community-live.ts`)로 쓴다([AD-25~29](../architecture/ARCHITECTURE_DECISIONS.md)).
