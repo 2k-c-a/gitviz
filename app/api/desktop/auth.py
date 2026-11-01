@@ -63,7 +63,8 @@ def authorize_page(flow: UUID, request: Request, port: int | None = Query(defaul
     request.session['desktop_flow'] = str(flow)
     request.session['desktop_port'] = port
     db.commit()
-    if not request.session.get('user_id'):
+    # Every app sign-in goes through GitHub once, even with a browser session, so the stored GitHub token is fresh.
+    if not request.session.get('user_id') or request.session.get('desktop_github_flow') != str(flow):
         return RedirectResponse('/api/auth/github', status_code=303, headers=NO_STORE)
     user = db.get(User, UUID(request.session['user_id']))
     if not user:
@@ -72,7 +73,7 @@ def authorize_page(flow: UUID, request: Request, port: int | None = Query(defaul
     # needs the code below, which only this browser carries, and only to its own machine's loopback address.
     service.authorize(db, flow, binding, user.id)
     db.commit()
-    for name in ('desktop_flow', 'desktop_port', 'desktop_binding'):
+    for name in ('desktop_flow', 'desktop_port', 'desktop_binding', 'desktop_github_flow'):
         request.session.pop(name, None)
     target = f'http://127.0.0.1:{port}/callback?flow={flow}&code={service.callback_code(flow)}'
     return RedirectResponse(target, status_code=303, headers=NO_STORE)

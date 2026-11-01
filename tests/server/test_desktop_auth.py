@@ -150,11 +150,24 @@ class DesktopAuthTests(unittest.TestCase):
 
     def approve(self, flow, browser=None):
         """Sign in and follow the server back to the app's loopback address; returns the callback code."""
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from urllib.parse import parse_qs, urlsplit
+
         browser = browser or self.browser
         browser.get("/fixture/login")
         response = browser.get(flow["browserUrl"].removeprefix("https://desktop.test"))
+        # An existing browser session still goes through GitHub so the stored GitHub token is renewed.
+        self.assertEqual((response.status_code, response.headers["location"]), (303, "/api/auth/github"))
+        state = parse_qs(urlsplit(browser.get("/api/auth/github").headers["location"]).query)["state"][0]
+        with (
+            patch("app.api.auth.exchange_code_for_token", AsyncMock(return_value="fixture-github-token")),
+            patch("app.api.auth.fetch_github_user", AsyncMock(return_value={})),
+            patch("app.api.auth.upsert_user", AsyncMock(return_value=SimpleNamespace(id=self.user_id))),
+        ):
+            response = browser.get("/api/auth/callback", params={"code": "fixture", "state": state})
+        response = browser.get(response.headers["location"])
         self.assertEqual(response.status_code, 303)
-        from urllib.parse import parse_qs, urlsplit
 
         target = urlsplit(response.headers["location"])
         self.assertEqual((target.scheme, target.netloc, target.path), ("http", "127.0.0.1:49152", "/callback"))

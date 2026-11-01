@@ -126,6 +126,8 @@ async def github_callback(
     # ⑤ 세션 기록 → 프론트로 이동
     request.session["user_id"] = str(user.id)
     request.session.pop("csrf_token", None)  # 로그인 시 CSRF 토큰 재발급
+    if desktop_flow and desktop_flow == request.session.get('desktop_flow'):
+        request.session['desktop_github_flow'] = desktop_flow
     return RedirectResponse(
         url=(f'/api/desktop/v1/auth/authorize?{urlencode({"flow": desktop_flow})}'
              if desktop_flow and desktop_flow == request.session.get('desktop_flow') else f"{FRONTEND_URL}/"),

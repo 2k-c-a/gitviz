@@ -1,3 +1,4 @@
+import logging
 import os
 import statistics
 from datetime import datetime, timezone
@@ -280,6 +281,8 @@ def create_repository(github_url: str, request: Request, analysis_start: str | N
     return {"message":"Repository analysis queued", "repository_id":repository.id,"job_id":job_id}
 
 
+logger = logging.getLogger('gitviz.search')
+
 _GITHUB_SEARCH_URL = "https://api.github.com/search/repositories"
 _SEARCH_TIMEOUT_SECONDS = 8
 _SEARCH_RESULT_LIMIT = 1000
@@ -324,12 +327,15 @@ def search_github_repositories(
         response = requests.get(
             _GITHUB_SEARCH_URL, params=params, headers=headers, timeout=_SEARCH_TIMEOUT_SECONDS,
         )
-    except RequestException:
+    except RequestException as exc:
+        logger.warning("GitHub search request failed: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="GitHub에 연결할 수 없습니다.")
 
     if response.status_code in (403, 429):
         raise HTTPException(status_code=429, detail="GitHub 검색 API 한도에 도달했습니다.")
     if not response.ok:
+        logger.warning("GitHub search returned %s (personal token: %s): %s",
+                       response.status_code, bool(personal), response.text[:300])
         raise HTTPException(status_code=502, detail=f"GitHub 검색에 실패했습니다 ({response.status_code}).")
 
     payload = response.json()
