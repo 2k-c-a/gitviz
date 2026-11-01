@@ -263,7 +263,7 @@ test('동의: 미리보기 값을 그대로 쓰고 하나라도 막히면 만들
     [{ execution_valid: false }, /유효기간/],
     [{ reviewable: false }, /보낼 수 있는 파일이 없습니다/],
     [{ transfer: { ...p.transfer, external_transfer_allowed: false } }, /외부 전송을 허용하지 않습니다/],
-    [{ transfer: { ...p.transfer, credential_configured: false } }, /API key를 먼저 등록/],
+    [{ transfer: { ...p.transfer, credential_configured: false } }, /API 키를 먼저 등록/],
     [{ transfer: null }, /전송 대상/],
     [{ token_estimate: { within_limit: false } }, /토큰 한도/],
   ];

@@ -16,22 +16,22 @@
     <div class="dash-head">
       <div>
         <div class="dash-title">저장소 검색</div>
-        <div class="dash-sub">GitHub 레포지토리를 검색하고, 클론 없이 예비 점수로 먼저 훑어보세요</div>
+        <div class="dash-sub">GitHub 저장소를 검색하고, 내려받지 않고 예비 점수로 먼저 훑어보세요</div>
       </div>
     </div>
 
     <div class="body">
       <div class="panel" style="margin-bottom:14px;">
         <div class="search-bar ui-toolbar">
-          <input type="search" id="search-input" aria-label="저장소 이름 또는 검색어" placeholder="레포지토리 이름 또는 키워드로 검색 (예: fastapi)">
+          <input type="search" id="search-input" aria-label="저장소 이름 또는 검색어" placeholder="저장소 이름이나 키워드로 검색 (예: fastapi)">
           <select class="ui-filter" id="search-sort" aria-label="검색 결과 정렬">
-            <option value="stars">Stars 많은순</option>
+            <option value="stars">별 많은순</option>
             <option value="updated">최근 업데이트순</option>
           </select>
           <button class="btn-primary" id="search-btn">검색</button>
         </div>
         <div class="p-note" style="margin-top:10px;margin-bottom:0;">
-          점수 배지는 GitHub 메타데이터(최근 활동·이슈 비율)만으로 계산한 <strong>예비 점수</strong>입니다. 클론 후 커밋·PR 이력까지 분석하는 상세 분석(점검 우선순위 등)과는 다른 척도이니 참고용으로만 사용해 주세요.
+          점수 배지는 GitHub 메타데이터(최근 활동·이슈 비율)만으로 계산한 <strong>예비 점수</strong>입니다. 저장소를 내려받아 커밋·PR 이력까지 살펴보는 상세 분석(점검 우선순위 등)과는 다른 척도이니 참고용으로만 사용해 주세요.
         </div>
         <div class="search-examples" id="search-examples">
           <span style="font-size:var(--ui-text-xs);color:var(--text3);">예시:</span>
@@ -41,7 +41,6 @@
         </div>
       </div>
 
-      <section id="search-selection" class="panel search-selection" aria-label="선택한 분석 대상" hidden></section>
       <div id="search-summary" class="search-summary" style="display:none;" role="status"></div>
       <div id="search-results" class="search-results">
         <div class="panel" style="padding:40px 20px;text-align:center;color:var(--text3);font-size:13px;">

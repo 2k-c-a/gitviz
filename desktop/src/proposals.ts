@@ -90,7 +90,7 @@ export function registerProposals(window: BrowserWindow, agent: Pick<Agent, 'cal
       try {
         const plan = await agent.call('workspace.proposals.recoveryPlan', get.payload, get.options);
         if (plan.version !== value.expectedVersion) throw new Error('CONFLICT');
-        if (!await native.confirm(window, '앱이 변경한 내용만 원복하도록 승인할까요?', `${JSON.stringify(plan.files, null, 2)}\n복구 ${String(plan.recoveryHash)}\n현재 identity/hash가 다르면 원복하지 않습니다. index는 보존하며 2단계 복구가 중단되면 다시 확인해야 합니다.`)) return null;
+        if (!await native.confirm(window, '앱이 변경한 내용만 원복하도록 승인할까요?', `${JSON.stringify(plan.files, null, 2)}\n복구 ${String(plan.recoveryHash)}\n현재 파일의 식별 정보·해시가 다르면 되돌리지 않습니다. Git index는 그대로 두며, 2단계 복구가 중간에 멈추면 다시 확인해야 합니다.`)) return null;
         record = { project: String(value.projectId), proposal: String(value.proposalId), secret: randomBytes(32), expires: Date.now() + 300000, body,
           payload: { projectId: value.projectId, proposalId: value.proposalId, recoveryHash: plan.recoveryHash, idempotencyKey: value.idempotencyKey } };
         intents.set(key, record);

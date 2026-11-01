@@ -1,102 +1,10 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <script src="../js/ui/theme.js"></script>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="../vendor/chart-4.4.1/chart.umd.min.js"></script>
-    <link rel="stylesheet" href="../css/index.css">
-    <title>GitViz</title>
+    <title>GitViz · 분석 개요</title>
+    <!-- 개발 활동은 분석 개요로 합쳐졌다. 예전 주소는 같은 repo·snapshot으로 분석 개요를 연다. -->
+    <script src="../js/timeline-redirect.js"></script>
 </head>
-<body>
-    <div id="navbar-container"></div>
-    <div id="modal-container"></div>
-    <!-- ═══════════ TIMELINE ═══════════ -->
-<div class="page active" id="page-timeline">
-  <div class="dash-head">
-    <div>
-      <div class="dash-title"><span id="tl-repo-name">—</span> <span class="badge badge-blue" id="tl-branch">main</span></div>
-      <div class="dash-sub" id="tl-dash-sub">불러오는 중…</div>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;">
-      <div style="display:flex;align-items:center;gap:7px;">
-        <div class="status-dot" style="background:#639922;"></div>
-        <span style="font-size:12px;color:var(--text2);">분석 완료</span>
-      </div>
-      <button class="btn-secondary" data-auth="1" id="btn-reanalyze" data-action="openReanalyzeToast">재분석</button>
-    </div>
-  </div>
-  <div class="sub-tabs">
-    <div class="sub-tab active">타임라인</div>
-    <div class="sub-tab" data-action="goPage" data-args="%5B%22network%22%5D">협업 네트워크</div>
-    <div class="sub-tab" data-action="goPage" data-args="%5B%22code-analysis%22%5D">코드분석</div>
-    <div class="sub-tab" data-action="goPage" data-args="%5B%22history%22%5D">분석 이력·비교</div>
-  </div>
-  <div class="body">
-    <div class="metrics-4">
-      <div class="metric-card"><div class="m-label">관측 구간 커밋</div><div class="m-val" id="tl-m-commits">—</div><div class="m-sub m-up" id="tl-m-commits-sub">&nbsp;</div></div>
-      <div class="metric-card"><div class="m-label">활성 기여자</div><div class="m-val" id="tl-m-contributors">—</div><div class="m-sub">종료 기준 최근 90일</div></div>
-      <div class="metric-card"><div class="m-label">관측 구간 릴리즈</div><div class="m-val" id="tl-m-releases">—</div><div class="m-sub" id="tl-m-releases-sub">&nbsp;</div></div>
-      <div class="metric-card"><div class="m-label">버그 수정 분류 비율</div><div class="m-val" id="tl-m-bugfix">—</div><div class="m-sub">관측 구간 커밋 기준</div></div>
-    </div>
-
-    <!-- 커밋 타임라인 차트 -->
-    <div class="panel" style="margin-bottom:14px;">
-      <div class="p-head">
-        <div class="p-title">커밋 활동량 타임라인</div>
-      </div>
-      <div class="p-note" id="tl-window-note">월별 커밋 수 · 활성 기여자 수 · 버그 픽스 비율. 관측 구간 안의 기록만 보여주며 전체 누적 수가 아닙니다.</div>
-      <div class="activity-chart">
-        <canvas id="chart-timeline"></canvas>
-      </div>
-      <div class="legend">
-        <div class="leg-item"><div class="leg-line" style="background:var(--chart-1);"></div>커밋 수</div>
-        <div class="leg-item"><div class="leg-line" style="background:var(--chart-2);"></div>활성 기여자 수</div>
-        <div class="leg-item"><div class="leg-line" style="background:var(--chart-4);border-top:2px dashed var(--chart-4);height:0;"></div>버그 픽스 비율</div>
-        <div class="leg-item"><div class="leg-dot" style="background:var(--red);"></div>릴리즈</div>
-      </div>
-    </div>
-
-    <div class="col-2-1">
-      <div class="stack">
-        <!-- 기여자 히트맵 -->
-        <div class="panel">
-          <div class="p-head" style="margin-bottom:10px;">
-            <div class="p-title">기여자별 활동 히트맵</div>
-            <div style="font-size:var(--ui-text-xs);color:var(--text2);">분석 종료 시점 기준 최근 16주</div>
-          </div>
-          <div class="act-hm" id="act-heatmap">
-            <div style="font-size:12px;color:var(--text3);text-align:center;padding:24px 8px;">불러오는 중…</div>
-          </div>
-        </div>
-        <!-- 상위 기여자 -->
-        <div class="panel">
-          <div class="p-head" style="margin-bottom:14px;">
-            <div class="p-title">상위 기여자</div>
-            <div style="font-size:var(--ui-text-xs);color:var(--text2);">관측 구간 커밋 수 기준</div>
-          </div>
-          <div class="contrib-list" id="tl-contrib-list"></div>
-        </div>
-      </div>
-      <div class="stack">
-        <!-- 릴리즈 히스토리 -->
-        <div class="panel">
-          <div class="p-head" style="margin-bottom:14px;"><div class="p-title">릴리즈 히스토리</div></div>
-          <div class="release-list" id="tl-release-list"></div>
-        </div>
-        <!-- 커밋 유형 도넛 -->
-        <div class="panel">
-          <div class="p-title" style="margin-bottom:12px;">커밋 유형 분포</div>
-          <div class="donut-wrap">
-            <canvas id="chart-donut" width="80" height="80" style="width:80px;height:80px;flex-shrink:0;"></canvas>
-            <div class="donut-legend" id="tl-donut-legend"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-</body>
-
-<script type="module" src="../js/main.js"></script>
+<body></body>
 </html>

@@ -51,7 +51,7 @@ test('only main binds observation account; config and account changes stop track
 test('opening an analysis builds only a fixed app URL after fresh server identity validation', async () => {
   const h = fixture();
   try {
-    assert.equal(await h.service.open('p', 'a'), 'gitviz://app/web/pages/timeline.html?repo=2&snapshot=9');
+    assert.equal(await h.service.open('p', 'a'), 'gitviz://app/web/pages/overview.html?repo=2&snapshot=9');
     h.changeAccount(); await h.service.poll();
     assert.equal(h.calls.filter(c => c.operation === 'workspace.remote.observeAnalysis').length, 0);
   } finally { h.service.dispose(); }

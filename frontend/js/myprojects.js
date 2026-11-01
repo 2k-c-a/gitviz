@@ -89,7 +89,7 @@ function statusCallout(repo) {
   }
 
   if (repo.status === 'cancelled') {
-    return `<div class="rec-box" style="font-size:12px;">이전 분석이 새 분석 요청으로 교체되었습니다. 새 작업의 진행 상황을 확인하세요.</div>`;
+    return `<div class="rec-box" style="font-size:12px;">이전 분석을 새 분석 요청으로 바꿨습니다. 새 작업의 진행 상황을 확인하세요.</div>`;
   }
 
   return '';
@@ -158,7 +158,7 @@ function renderSummary(repos) {
   const metricsEl = document.getElementById('myproj-metrics');
   if (!metricsEl) return;
   metricsEl.innerHTML = `
-    <div class="metric-card"><div class="m-label">총 분석 프로젝트</div><div class="m-val">${num(total)}</div><div class="m-sub">내 레포지토리 목록</div></div>
+    <div class="metric-card"><div class="m-label">총 분석 프로젝트</div><div class="m-val">${num(total)}</div><div class="m-sub">내 저장소 목록</div></div>
     <div class="metric-card"><div class="m-label">검토 신호가 있는 프로젝트</div><div class="m-val${highRisk ? ' m-dn' : ''}">${num(highRisk)}</div><div class="m-sub">한 명 집중 파일 또는 점수 표시 임계값(≥0.7) 이상 파일 보유</div></div>
     <div class="metric-card"><div class="m-label">분석 중</div><div class="m-val" style="color:var(--blue);">${num(inProgress)}</div><div class="m-sub">작업 진행 중</div></div>
     <div class="metric-card"><div class="m-label">분석 실패</div><div class="m-val${failed ? ' m-dn' : ''}">${num(failed)}</div><div class="m-sub">재시도 필요</div></div>`;
@@ -168,8 +168,8 @@ function renderList(repos) {
   if (!repos.length) {
     listEl.innerHTML = `
       <div class="panel" style="padding:40px 20px;text-align:center;">
-        <div style="font-size:13px;color:var(--text2);margin-bottom:14px;">아직 분석 요청한 레포지토리가 없습니다.</div>
-        <button class="btn-primary" data-action="goHome">새 레포지토리 분석하기</button>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:14px;">아직 분석을 요청한 저장소가 없습니다.</div>
+        <button class="btn-primary" data-action="goHome">새 저장소 분석하기</button>
       </div>`;
     return;
   }

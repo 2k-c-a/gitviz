@@ -20,7 +20,7 @@ window.addEventListener('workspace-validation-finished', event => { const value 
 window.addEventListener('workspace-proposal-selected', event => { if (event.detail?.projectId === picker.value) proposalId = event.detail.proposalId; });
 document.getElementById('compare-snapshots').addEventListener('click', async () => {
   const turn = generation; const projectId = picker.value;
-  if (!snapshots.has(before.value) || !snapshots.has(after.value)) { view.textContent = '전후 snapshot을 각각 캡처하세요. baseline 검증은 변경 전에 명시 실행해야 합니다.'; return; }
+  if (!snapshots.has(before.value) || !snapshots.has(after.value)) { view.textContent = '변경 전과 후를 각각 담으세요. 기준(baseline) 검증은 변경하기 전에 직접 실행해야 합니다.'; return; }
   const body = { projectId, beforeSnapshotId: before.value, afterSnapshotId: after.value, proposalId: null,
     beforeRunId: runs.get(before.value) || null, afterRunId: runs.get(after.value) || null };
   // A selected proposal may belong to a different baseline; explicit pairing is optional.

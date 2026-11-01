@@ -52,8 +52,8 @@
 
 <div class="ws-tab-panel" role="tabpanel" id="ws-panel-changes" data-tab-panel="changes" aria-labelledby="ws-tab-changes" tabindex="-1" hidden>
 <h1>변경</h1>
-<p class="ws-note">파일을 고른 뒤 &lsquo;AI 리뷰&rsquo; 또는 &lsquo;AI 리팩토링&rsquo;을 누르면 바로 실행됩니다. 모델과 목적은 설정에서 바꿉니다. 고른 변경은 스냅샷(그 시점의 고정된 사본)으로 저장되어 점검·검증·비교의 기준이 됩니다. 바이너리, 큰 파일, 비밀 값이 들어 있는 것으로 보이는 내용은 제외됩니다.</p>
-<div class="ws-panel"><div class="ws-toolbar"><button type="button" id="reload-changes" data-risk="read">변경 목록 새로고침</button><label class="ws-inline"><input id="include-untracked" type="checkbox"> 선택한 untracked 파일 포함</label></div>
+<p class="ws-note">파일을 고른 뒤 &lsquo;AI 리뷰&rsquo; 또는 &lsquo;AI 리팩토링&rsquo;을 누르면 바로 실행됩니다. 모델과 목적은 설정에서 바꿉니다. 고른 변경은 그 시점의 사본으로 저장돼 점검·검증·비교의 기준이 됩니다. 바이너리, 큰 파일, 비밀 값이 들어 있는 것으로 보이는 내용은 제외됩니다.</p>
+<div class="ws-panel"><div class="ws-toolbar"><button type="button" id="reload-changes" data-risk="read">변경 목록 새로고침</button><label class="ws-inline"><input id="include-untracked" type="checkbox"> 선택한 새 파일(Git 미추적) 포함</label></div>
 <div id="change-selection"></div>
 <div class="ws-actionbar"><button type="button" id="quick-review" class="btn-primary" data-risk="send">AI 리뷰</button><button type="button" id="quick-refactor" class="btn-primary" data-risk="send">AI 리팩토링</button><button type="button" id="capture-changes" data-risk="read">점검 대상으로만 담기</button><span id="capture-message" class="ws-message" role="status"></span></div>
 <div id="capture-result"></div><pre id="fixed-preview"></pre></div>
@@ -178,7 +178,7 @@
 <p id="status" role="status" aria-live="polite">로컬 구성 요소를 확인하고 있습니다.</p>
 <div class="ws-toolbar"><button id="refresh" type="button" data-risk="read">구성 요소 상태 확인</button><button id="export-diagnostics" type="button" data-risk="read">진단 정보 저장 (최소한의 정보만)</button></div>
 <span id="diagnostics-message" role="status"></span>
-<p class="ws-note">업데이트 상태는 읽기 전용으로만 확인하며, 자동으로 내려받거나 설치하지 않습니다.</p></div>
+<p class="ws-note">업데이트는 확인만 하며, 자동으로 내려받거나 설치하지 않습니다.</p></div>
 <div class="ws-panel"><h2>화면 테마</h2><p class="ws-note">화면 위쪽의 해·달 버튼으로 라이트·다크 테마를 바꿀 수 있습니다. 누르기 전에는 Windows 설정을 따릅니다.</p></div>
 </section>
 </main></body>

@@ -120,7 +120,7 @@ export function isAcceptedFor(out, idField, repo) {
 /* 접수 요청(POST /inputs·/jobs·/retry) 한 번.
    - key는 요청 내용으로 정한다(같은 내용 = 같은 key).
    - 응답을 검증하기 전에는 key를 버리지 않는다. 202인데 JSON이 깨졌거나 `{}`처럼 틀린 응답, 네트워크·5xx 오류는
-     "접수됐는지 모른다"이므로 key를 유지해 같은 key로 다시 보낸다(서버가 같은 작업을 돌려준다 — 새 작업·비용이 생기지 않는다).
+     "접수됐는지 모른다"이므로 키를 유지해 같은 키로 다시 보낸다(서버가 같은 작업을 돌려준다 — 새 작업·비용이 생기지 않는다).
    - 서버가 분명히 거절했을 때(4xx 오류 응답)와 검증된 접수 응답을 받았을 때만 key를 끝낸다. */
 export async function submitWithIntent(intent, payload, send, validate) {
   const key = intent.keyFor(payload);
@@ -128,12 +128,12 @@ export async function submitWithIntent(intent, payload, send, validate) {
   try {
     out = await send(key);
   } catch (err) {
-    if (err?.name === 'AbortError') throw err;                         // 취소는 서버 결과를 모른다: key 유지
+    if (err?.name === 'AbortError') throw err;                         // 취소는 서버 결과를 모른다: 키 유지
     intent.settle(isAmbiguousError(err) ? 0 : err.status);
     throw err;
   }
   if (!validate(out)) {
-    throw Object.assign(new Error('접수 응답을 확인할 수 없습니다.'), { status: 0, code: 'BAD_RESPONSE', details: {} });   // key 유지
+    throw Object.assign(new Error('접수 응답을 확인할 수 없습니다.'), { status: 0, code: 'BAD_RESPONSE', details: {} });   // 키 유지
   }
   intent.settle(200);
   return out;
@@ -231,7 +231,7 @@ export function consentBlockers(preview) {
   if (!t) out.push('전송 대상(제공자·모델)을 확인할 수 없습니다.');
   else {
     if (t.execution_location !== 'local' && !t.external_transfer_allowed) out.push('이 서버는 코드의 외부 전송을 허용하지 않습니다.');
-    if (t.requires_api_key !== false && !t.credential_configured) out.push(`${t.provider} API key를 먼저 등록해야 합니다.`);
+    if (t.requires_api_key !== false && !t.credential_configured) out.push(`${t.provider} API 키를 먼저 등록해야 합니다.`);
   }
   if (preview.token_estimate && preview.token_estimate.within_limit === false) {
     out.push('선택한 모델의 입력 토큰 한도를 넘습니다. 파일을 줄이거나 다른 모델을 고르세요.');
@@ -255,7 +255,7 @@ export function consentStatement(preview) {
   if (!t) return '';
   const files = (preview.files || []).filter((f) => f.content_state === 'read').length;
   if (t.execution_location === 'local') return `선택한 ${files}개 파일의 코드와 변경 제목·설명을 같은 PC의 ${t.model}에서 처리하는 데 동의합니다. 외부 AI 제공자에게 전송하지 않으며 API 요금은 없습니다(전력·하드웨어 비용 별도). ${t.model_digest ? `모델 digest: ${t.model_digest}.` : '모델 ID를 고정합니다. 이 런타임의 모델 파일 해시는 검증하지 않습니다.'}`;
-  return `선택한 ${files}개 파일의 코드(변경 diff와 주변 줄)와 변경 제목·설명이 ${t.provider} / ${t.model}(으)로 전송되는 것에 동의합니다. `
+  return `선택한 ${files}개 파일의 코드(변경 diff와 주변 줄)와 변경 제목·설명이 ${t.provider} / ${t.model}(으)로 보내는 데 동의합니다. `
     + `사용할 키: ${t.key_hint || '—'} (v${t.credential_version ?? '?'}), 전송 정책 ${preview.policy_version}.`;
 }
 
@@ -276,16 +276,16 @@ export function describeError(err) {
       return out('열 수 없습니다', '접근 권한이 없거나, 삭제됐거나, 이 서버에서 AI 기능을 쓸 수 없습니다. 어느 쪽인지는 알려 드리지 않습니다.', 'home');
     case 'TRANSFER_NOT_ALLOWED': return out('코드를 외부로 보낼 수 없습니다', '서버 설정, 비공개 저장소, 또는 전송 정책 때문에 허용되지 않았습니다.', null);
     case 'PR_CHANGED': return out('PR이 바뀌었습니다', '선택한 시점 이후 PR의 SHA가 달라졌습니다. 파일을 새 SHA로 다시 선택하세요.', 'reselect');
-    case 'PREVIEW_CHANGED': return out('확인한 내용과 달라졌습니다', '코드 범위·모델·API key 중 하나가 바뀌었습니다. 미리보기를 다시 확인하고 다시 동의해 주세요.', 'reload_preview', 'warn');
+    case 'PREVIEW_CHANGED': return out('확인한 내용과 달라졌습니다', '코드 범위·모델·API 키 중 하나가 바뀌었습니다. 미리보기를 다시 확인하고 다시 동의해 주세요.', 'reload_preview', 'warn');
     case 'VERSION_CONFLICT': return out('다른 곳에서 먼저 바뀌었습니다', '최신 내용을 다시 불러왔습니다. 확인 후 다시 저장해 주세요.', 'reload_findings', 'warn');
     case 'IDEMPOTENCY_CONFLICT': return out('같은 요청 번호로 다른 요청을 보냈습니다', '화면을 새로고침한 뒤 다시 시도해 주세요.', 'reload');
     case 'INPUT_EXPIRED': return out('입력이 만료됐거나 삭제됐습니다', '원문 코드가 더 이상 없어 이 입력으로는 실행할 수 없습니다. 파일을 다시 선택해 새로 준비하세요.', 'reselect');
     case 'RESULT_EXPIRED': return out('결과 보관 기간이 지났습니다', '이 결과는 더 이상 열 수 없습니다. 필요하면 다시 실행해 주세요.', 'home');
     case 'INPUT_TOO_LARGE': return out('너무 큽니다', '선택한 파일이 많거나 커서 처리할 수 없습니다. 파일 수를 줄이거나 더 큰 한도의 모델을 고르세요.', null);
-    case 'CREDENTIAL_REQUIRED': return out('API key가 필요합니다', '제공자 API key를 등록한 뒤 다시 시도해 주세요.', 'keys');
-    case 'CREDENTIAL_INVALID': return out('API key를 쓸 수 없습니다', reason === 'model_unavailable'
-      ? '이 key로는 선택한 모델을 쓸 수 없습니다. 다른 모델을 고르거나 key를 확인하세요.'
-      : '제공자가 key를 거부했습니다. key와 결제 상태를 확인해 주세요.', 'keys');
+    case 'CREDENTIAL_REQUIRED': return out('API 키가 필요합니다', '제공자 API 키를 등록한 뒤 다시 시도해 주세요.', 'keys');
+    case 'CREDENTIAL_INVALID': return out('API 키를 쓸 수 없습니다', reason === 'model_unavailable'
+      ? '이 키로는 선택한 모델을 쓸 수 없습니다. 다른 모델을 고르거나 키를 확인하세요.'
+      : '제공자가 키를 거부했습니다. 키와 결제 상태를 확인해 주세요.', 'keys');
     case 'INVALID_SELECTION': return out('요청 내용이 올바르지 않습니다', '선택한 값을 확인해 주세요.', null);
     case 'INVALID_STATE':
       if (reason === 'NO_REVIEWABLE_CONTENT') return out('AI에 보낼 파일이 없습니다', '선택한 파일이 모두 제외돼 보낼 코드가 없습니다. 다른 파일을 선택하세요.', 'reselect');
@@ -316,17 +316,17 @@ export const JOB_ERRORS = {
   OUTCOME_UNCERTAIN: { title: '결과를 알 수 없습니다', body: '제공자가 요청을 처리했는지 확인하지 못했습니다. 비용이 이미 발생했을 수 있습니다. 자동으로 다시 실행하지 않았습니다. 다시 실행하면 비용이 또 들 수 있습니다.', retry: true, costRisk: true },
   PROVIDER_TIMEOUT: { title: '제공자 응답을 받지 못했습니다', body: '요청이 처리됐는지 알 수 없어 자동으로 다시 실행하지 않았습니다. 비용이 발생했을 수 있습니다.', retry: true, costRisk: true },
   RESULT_LOST: { title: '결과를 저장하지 못했습니다', body: '모델 호출은 처리·정산됐지만 처리 도중 결과를 저장하지 못했습니다. 같은 요청을 다시 실행하면 비용이 다시 듭니다.', retry: true, costRisk: true },
-  RESULT_STORAGE_FAILED: { title: '결과 저장에 실패했습니다', body: '모델 호출은 끝났지만 결과를 저장하지 못했습니다. 다시 실행하면 비용이 다시 듭니다.', retry: true, costRisk: true },
+  RESULT_STORAGE_FAILED: { title: '결과를 저장하지 못했습니다', body: '모델 호출은 끝났지만 결과를 저장하지 못했습니다. 다시 실행하면 비용이 다시 듭니다.', retry: true, costRisk: true },
   PROVIDER_ERROR: { title: '제공자 호출 결과를 알 수 없습니다', body: '분류할 수 없는 오류가 났고 비용이 발생했을 수 있습니다.', retry: true, costRisk: true },
   OUTPUT_VALIDATION_FAILED: { title: '모델 출력이 검증을 통과하지 못했습니다', body: '파일·줄 참조나 형식이 맞지 않아 결과를 저장하지 않았습니다. 호출 비용은 발생했습니다.', retry: true, costRisk: true },
   OUTPUT_INVALID: { title: '모델 출력을 쓸 수 없습니다', body: '출력이 비었거나 형식이 올바르지 않아 저장하지 않았습니다. 호출 비용은 발생했습니다.', retry: true, costRisk: true },
   OUTPUT_TRUNCATED: { title: '모델 출력이 잘렸습니다', body: '출력 한도에 걸려 결과를 쓸 수 없습니다. 호출 비용은 발생했습니다. 파일을 줄여 다시 시도해 보세요.', retry: true, costRisk: true },
   PROVIDER_REFUSED: { title: '모델이 요청을 거절했습니다', body: '안전 정책에 따라 거절됐습니다. 호출 비용은 발생했을 수 있습니다. 다른 모델을 고르면 새로 동의해야 합니다.', retry: true, costRisk: true },
-  PROVIDER_AUTH: { title: 'API key가 거부됐습니다', body: '제공자가 key를 거부했습니다. key를 교체한 뒤 다시 실행해 주세요.', retry: true, action: 'keys' },
+  PROVIDER_AUTH: { title: 'API 키가 거부됐습니다', body: '제공자가 키를 거부했습니다. 키를 교체한 뒤 다시 실행해 주세요.', retry: true, action: 'keys' },
   PROVIDER_REJECTED: { title: '제공자가 요청을 거절했습니다', body: '모델을 쓸 수 없거나 요청이 허용되지 않았습니다. 비용은 발생하지 않았습니다.', retry: true },
   PROVIDER_RATE_LIMITED: { title: '제공자 요청 한도에 걸렸습니다', body: '재시도 한도를 넘었습니다. 잠시 후 다시 실행해 주세요. 비용은 발생하지 않았습니다.', retry: true },
   PROVIDER_UNAVAILABLE: { title: '제공자가 응답하지 않습니다', body: '재시도 한도를 넘었습니다. 잠시 후 다시 실행해 주세요. 비용은 발생하지 않았습니다.', retry: true },
-  CREDENTIAL_UNAVAILABLE: { title: '사용할 API key가 없습니다', body: '이 작업에 고정된 key가 삭제됐거나 파기됐습니다. key를 다시 등록한 뒤 새로 실행해 주세요.', retry: true, action: 'keys' },
+  CREDENTIAL_UNAVAILABLE: { title: '사용할 API 키가 없습니다', body: '이 작업에 고정된 키가 삭제됐거나 파기됐습니다. 키를 다시 등록한 뒤 새로 실행해 주세요.', retry: true, action: 'keys' },
   PROFILE_CHANGED: { title: '모델 설정이 바뀌었습니다', body: '동의했을 때와 모델의 가격·한도가 달라져 실행하지 않았습니다. 새로 확인하고 동의해 주세요.', retry: true },
   PROFILE_NOT_ALLOWED: { title: '허용되지 않은 모델입니다', body: '관리자가 이 모델을 더 이상 허용하지 않습니다. 다른 모델을 선택해 다시 동의해 주세요.', retry: true },
   ACCESS_REVOKED: { title: '저장소 접근 권한을 잃었습니다', body: '실행 도중 권한이 없어져 결과를 공개하지 않았습니다. 호출 비용은 발생했을 수 있습니다.', retry: false, costRisk: true },
@@ -334,7 +334,7 @@ export const JOB_ERRORS = {
   TRANSFER_NOT_ALLOWED: { title: '코드를 외부로 보낼 수 없습니다', body: '서버 설정·비공개 저장소·정책 때문에 전송이 허용되지 않아 보내지 않았습니다.', retry: false },
   INPUT_EXPIRED: { title: '입력이 만료됐습니다', body: '실행 유효기간이 지나 보내지 않았습니다. 파일을 다시 선택해 새로 준비하세요.', retry: false, action: 'reselect' },
   PREVIEW_CHANGED: { title: '동의한 내용과 달라졌습니다', body: '동의한 코드 범위와 달라 보내지 않았습니다. 다시 확인하고 동의해 주세요.', retry: false, action: 'reselect' },
-  INPUT_INTEGRITY: { title: '보관된 코드를 확인할 수 없습니다', body: '무결성 확인에 실패해 보내지 않았습니다. 새로 준비해 주세요.', retry: false, action: 'reselect' },
+  INPUT_INTEGRITY: { title: '보관된 코드를 확인할 수 없습니다', body: '무결성을 확인하지 못해 보내지 않았습니다. 새로 준비해 주세요.', retry: false, action: 'reselect' },
   NO_REVIEWABLE_CONTENT: { title: 'AI에 보낼 파일이 없습니다', body: '선택한 파일이 모두 제외돼 보낼 코드가 없습니다.', retry: false, action: 'reselect' },
   INPUT_TOO_LARGE: { title: '모델 입력 한도를 넘습니다', body: '파일을 줄이거나 더 큰 한도의 모델을 고르세요. 비용은 발생하지 않았습니다.', retry: false, action: 'reselect' },
   BUDGET_LIMIT: { title: '사용 예산 한도에 걸렸습니다', body: '호출하지 않았고 비용은 발생하지 않았습니다. 사용량을 확인해 주세요.', retry: true, action: 'usage' },
@@ -342,7 +342,7 @@ export const JOB_ERRORS = {
   INTERNAL_ERROR: { title: '내부 오류로 중단됐습니다', body: '예상하지 못한 오류가 났습니다. 잠시 후 다시 시도해 주세요.', retry: true },
   ATTEMPTS_EXHAUSTED: { title: '재시도 횟수를 모두 썼습니다', body: '일시적 오류가 계속돼 중단했습니다. 잠시 후 다시 실행해 주세요.', retry: true },
   QUEUE_TIMEOUT: { title: '대기 시간이 너무 길었습니다', body: '대기열에서 제한 시간을 넘겨 시작하지 못했습니다. 비용은 발생하지 않았습니다.', retry: true },
-  NO_HANDLER: { title: '처리할 수 있는 worker가 없습니다', body: '서버 설정 문제입니다. 관리자에게 알려 주세요.', retry: true },
+  NO_HANDLER: { title: '작업을 처리할 worker가 없습니다', body: '서버 설정 문제입니다. 관리자에게 알려 주세요.', retry: true },
 };
 const UNKNOWN_JOB_ERROR = { title: '작업이 실패했습니다', body: '알 수 없는 오류 코드입니다. 비용이 발생했는지 확인할 수 없으니 사용량을 확인하세요.', retry: true, costRisk: true };
 
@@ -381,7 +381,7 @@ export function usageStatement(usage) {
 export function selectableProviders(providers = []) {
   const local = providers.filter((p) => p.models.some((m) => m.execution_location === 'local'));
   const external = providers.filter((p) => !local.includes(p));
-  return local.length ? [...external, { id: 'local', display_name: '로컬 AI', key_format: 'API key 불필요',
+  return local.length ? [...external, { id: 'local', display_name: '로컬 AI', key_format: 'API 키 불필요',
     models: local.flatMap((p) => p.models.map((m) => ({ ...m,
       display_name: `${p.display_name.replace(' (같은 PC)', '')} · ${m.model || '모델 설정 필요'}` }))) }] : external;
 }
@@ -452,8 +452,8 @@ export function locationText(loc) {
 }
 
 /* ── GitViz 이력 근거(S11): 분석 snapshot에서 옮긴 값만 보여 준다. 코드 지적과 섞지 않고, 누락·오류로 단정하지 않는다. ── */
-export const HISTORY_NOTE = '아래는 GitViz 분석 snapshot에 저장된 이력 통계입니다. AI가 만든 지적이 아니며 코드가 틀렸다는 근거도 아닙니다.';
-export const HISTORY_STATUS_LABEL = { observed: '이력 관측됨', low_support: '관측 적음', no_history: '이력 없음', no_observations: '관측 기간 내 변경 없음', not_in_snapshot: 'snapshot에 없음' };
+export const HISTORY_NOTE = '아래는 GitViz 분석 결과에 저장된 이력 통계입니다. AI가 만든 지적이 아니며 코드가 틀렸다는 근거도 아닙니다.';
+export const HISTORY_STATUS_LABEL = { observed: '이력 관측됨', low_support: '관측 적음', no_history: '이력 없음', no_observations: '관측 기간 내 변경 없음', not_in_snapshot: '분석 결과에 없음' };
 
 export function historyEvidenceSummary(row) {
   const ev = row.evidence || {};

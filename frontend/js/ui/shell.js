@@ -3,8 +3,8 @@ import { parseState, nextQuery } from '../viz-state.js';
 import { element, createIcon, enhanceTooltips, observeActions } from './components.js';
 
 const webRoot = new URL('../../', import.meta.url);
-const pages = { overview: '분석 개요', timeline: '개발 활동', network: '협업 네트워크', 'code-analysis': '파일 분석', history: '분석 이력', 'ai-review': 'AI 리뷰' };
-const glyphs = { overview: '▦', timeline: '▥', network: '◎', 'code-analysis': '▤', history: '◷', 'ai-review': '◇' };
+const pages = { overview: '분석 개요', network: '협업 네트워크', 'code-analysis': '파일 분석', history: '분석 이력', 'ai-review': 'AI 리뷰' };
+const glyphs = { overview: '▦', network: '◎', 'code-analysis': '▤', history: '◷', 'ai-review': '◇' };
 export function pageUrl(page, search = location.search) {
   const url = new URL(`pages/${page}.html`, webRoot);
   const state = parseState(search);

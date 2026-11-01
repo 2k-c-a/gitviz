@@ -30,7 +30,7 @@ async function load() {
       row.append(checkbox, document.createTextNode(`${facet} · ${file.path}`));
       list.append(row, node('br'));
     }
-    if (!list.childNodes.length) list.append(node('p', '캡처할 변경이 없습니다.'));
+    if (!list.childNodes.length) list.append(node('p', '담을 변경이 없습니다.'));
   } catch (error) { if (turn === generation) fail(error); }
 }
 function showSnapshot(value, turn) {
@@ -104,13 +104,13 @@ document.getElementById('detect-validation').addEventListener('click', async () 
       const row = node('div'); row.append(node('p', `${candidate.name} · ${candidate.packageManager}${candidate.available ? '' : ' · 실행 도구 설정 필요'}`), node('pre', JSON.stringify(candidate.scripts, null, 2)));
       const button = node('button', '고정 입력에 명령 계획 연결'); button.disabled = !candidate.available;
       button.addEventListener('click', async () => {
-        if (!snapshot || snapshot.projectId !== projectId) { fail('변경 입력을 먼저 캡처하세요.'); return; }
+        if (!snapshot || snapshot.projectId !== projectId) { fail('변경을 먼저 담으세요.'); return; }
         const snapshotId = snapshot.snapshotId; const key = `${snapshotId}:${candidate.candidateId}`;
         if (!planKeys.has(key)) planKeys.set(key, crypto.randomUUID());
         try {
           const plan = await api.planValidation({ projectId, snapshotId, candidateId: candidate.candidateId, idempotencyKey: planKeys.get(key) });
           if (generation === turn && snapshot?.snapshotId === snapshotId) {
-            row.append(node('pre', JSON.stringify(plan, null, 2)), node('p', '계획을 저장했습니다. 아래 검증 실행에서 native 승인하세요.'));
+            row.append(node('pre', JSON.stringify(plan, null, 2)), node('p', '계획을 저장했습니다. 아래 검증 실행에서 확인 창으로 승인하세요.'));
             window.dispatchEvent(new CustomEvent('workspace-validation-plan', { detail: plan }));
             window.dispatchEvent(new CustomEvent('workspace-validation-candidate', { detail: { projectId, candidateId: candidate.candidateId } }));
           }

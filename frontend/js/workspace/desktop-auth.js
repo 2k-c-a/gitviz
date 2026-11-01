@@ -6,7 +6,7 @@ async function refresh() {
     const state = await window.desktop.auth.status();
     notice.textContent = state.state === 'authenticated' ? `원격 계정: ${state.user.github_login}`
       : state.state === 'pending' ? '브라우저에서 GitHub로 로그인하면 앱이 자동으로 로그인됩니다.'
-      : state.state === 'revoke-pending' ? '로컬 로그아웃 완료. 서버 세션 폐기를 다시 시도하세요.' : '원격 계정에 로그인하지 않았습니다.';
+      : state.state === 'revoke-pending' ? '이 PC에서는 로그아웃했습니다. 서버 세션 종료는 다시 시도하세요.' : '원격 계정에 로그인하지 않았습니다.';
     logout.disabled = !['authenticated', 'revoke-pending', 'pending'].includes(state.state);
     login.disabled = false;
   } catch (error) {

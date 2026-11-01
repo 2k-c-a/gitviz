@@ -12,8 +12,8 @@ async function update(automatic = false) {
   refresh.disabled = true;
   try {
     const health = await window.workspace.getHealth();
-    if (health.state === 'ready') status.textContent = '로컬 워크스페이스 기반이 준비되었습니다.';
-    else if (['RECOVERY_REQUIRED', 'UNSUPPORTED_PROTOCOL'].includes(health.errorCode)) status.textContent = '저장된 상태를 확인하거나 복구해야 합니다. 기존 자료는 보존되어 있습니다.';
+    if (health.state === 'ready') status.textContent = '로컬 작업 공간이 준비됐습니다.';
+    else if (['RECOVERY_REQUIRED', 'UNSUPPORTED_PROTOCOL'].includes(health.errorCode)) status.textContent = '저장된 상태를 확인하거나 복구해야 합니다. 기존 자료는 그대로 있습니다.';
     else if (automatic && !health.errorCode && attempts++ < POLL_LIMIT) {
       status.textContent = '로컬 구성을 확인하는 중입니다.';
       timer = window.setTimeout(() => void update(true), POLL_MS);

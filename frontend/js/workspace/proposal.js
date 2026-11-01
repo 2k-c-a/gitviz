@@ -13,7 +13,7 @@ function node(tag, text) { const element = document.createElement(tag); if (text
 function fail(error) {
   const code = String(error?.message || error).replace(/^.*Error invoking remote method.*Error: /, '');
   message.textContent = code;
-  if (code === 'RECOVERY_CONFLICT') message.textContent = '현재 파일 또는 임시 보존 파일의 identity/hash가 달라 복구하지 않았습니다. 원본과 journal을 보존했습니다. 표시된 파일을 직접 확인한 뒤 복구 범위를 다시 결정하세요.';
+  if (code === 'RECOVERY_CONFLICT') message.textContent = '현재 파일이나 임시 보존 파일의 식별 정보·해시가 달라 복구하지 않았습니다. 원본과 작업 기록은 그대로 두었습니다. 표시된 파일을 직접 확인한 뒤 복구 범위를 다시 결정하세요.';
 }
 function show(value) {
   current = value; view.replaceChildren(node('h3', `${value.status} · 제안 ${value.proposalId}`), node('p', value.purpose),

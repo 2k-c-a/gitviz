@@ -64,8 +64,8 @@ export class ReviewConsent {
       const detail = `${String(preview.executionLocation)} · ${String(preview.destination)}\n${String(preview.kind)}\n` +
         preview.files.slice(0, 20).join('\n') + (preview.files.length > 20 ? `\n외 ${preview.files.length - 20}개` : '') +
         `\n전송 ${String(preview.requestBytes)} bytes · SHA256 ${preview.requestHash.slice(0, 16)}\n최대 비용 예약 추정 USD ${String(preview.maxEstimatedCost)}` +
-        (preview.executionLocation === 'cloud-provider' ? '\n이 앱의 월 USD20 한도에 미정산 예약도 포함됩니다. 제공자의 실제 청구가 기준입니다.' : '') +
-        '\n취소해도 이미 보낸 내용은 회수할 수 없습니다.';
+        (preview.executionLocation === 'cloud-provider' ? '\n이 앱의 월 한도(USD 20)에는 아직 정산되지 않은 예약도 포함됩니다. 실제 청구액은 제공자 기준입니다.' : '') +
+        '\n취소해도 이미 보낸 내용은 되돌릴 수 없습니다.';
       const accepted = await confirm(detail);
       if (this.disposed || this.closed()) throw new Error('ACCESS_DENIED');
       if (!accepted) return null;
@@ -108,7 +108,7 @@ export function registerProjects(window: BrowserWindow, agent: Pick<Agent, 'call
           return await agent.call('workspace.projects.selectAndRegister', { phase: 'register', selectionId: inspected.selectionId }, { idempotencyKey: randomUUID() });
         }
         const confirmation = inspected.confirmation as { kind: string; path: string };
-        const accepted = await native.confirm(window, confirmation.kind === 'ROOT_GRANT_REQUIRED' ? '저장소 최상위 폴더로 범위를 확대할까요?' : confirmation.kind === 'PROJECT_RECONNECT_REQUIRED' ? '이동한 프로젝트를 새 위치에 재연결할까요?' : '외부 Git 메타데이터 접근을 허용할까요?', `${confirmation.path}\n파일 본문 접근은 선택한 프로젝트 root로 제한됩니다.`);
+        const accepted = await native.confirm(window, confirmation.kind === 'ROOT_GRANT_REQUIRED' ? '저장소 최상위 폴더로 범위를 확대할까요?' : confirmation.kind === 'PROJECT_RECONNECT_REQUIRED' ? '이동한 프로젝트를 새 위치에 재연결할까요?' : '외부 Git 메타데이터 접근을 허용할까요?', `${confirmation.path}\n파일 내용은 선택한 프로젝트 폴더 안에서만 읽습니다.`);
         if (!accepted) return null;
         if (confirmation.kind === 'ROOT_GRANT_REQUIRED') { selectedRoot = confirmation.path; expandedRoot = true; }
         else if (confirmation.kind === 'PROJECT_RECONNECT_REQUIRED') reconnectApproved = true;

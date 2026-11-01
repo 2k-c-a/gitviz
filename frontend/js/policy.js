@@ -159,7 +159,7 @@ export const FALLBACK_LABELS = {
 export const FALLBACK_DETAILS = {
   no_merged_prs: '관측 구간에 병합된 PR이 없어 커밋 단위로 대체했습니다.',
   pr_details_missing: '병합 PR은 있으나 변경 파일 상세가 수집되지 않아 커밋 단위로 대체했습니다.',
-  all_collected_prs_filtered: '파일 상세가 있는 PR이 모두 대규모 변경으로 제외되어 커밋 단위로 대체했습니다.',
+  all_collected_prs_filtered: '파일 상세가 있는 PR이 모두 대규모 변경으로 제외돼 커밋 단위로 대체했습니다.',
 };
 
 export function couplingUnitText(meta) {

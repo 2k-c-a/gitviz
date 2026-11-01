@@ -17,8 +17,8 @@ const API_BASE = '';
 
 const ERROR_CONFIGS = {
   'error-rate-limit':  { title: '분석 실패 — GitHub API 한도 초과', body: 'GitHub API 요청 한도에 도달했습니다. 잠시 후 재시도해 주세요.', time: '재시도 가능 시각: 약 13분 후 (25:00)', retry: true },
-  'error-not-found':   { title: '분석 실패 — 레포지토리를 찾을 수 없음', body: '레포지토리가 존재하지 않거나 비공개 상태입니다. URL을 확인해 주세요.', time: '', retry: false },
-  'error-unreachable': { title: '분석 실패 — 서버 연결 오류', body: '분석 서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인하고 잠시 후 다시 시도해 주세요.', time: '', retry: true },
+  'error-not-found':   { title: '분석 실패 — 저장소를 찾을 수 없음', body: '저장소가 없거나 비공개입니다. URL을 확인해 주세요.', time: '', retry: false },
+  'error-unreachable': { title: '분석 실패 — 서버 연결 오류', body: '분석 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하고 잠시 후 다시 시도해 주세요.', time: '', retry: true },
 };
 
 /* 폴링 상태 — 요청 스케줄링·재시도·중단은 poll.js(createStatusPoller)가 맡는다 */
@@ -37,7 +37,7 @@ const PIPE_STEPS = [
   { key: 'collect',  num: '1', defaultSub: '대기 중...' },
   { key: 'identity', num: '2', defaultSub: '-' },
   { key: 'derived',  num: '3', defaultSub: '점검 우선순위 · 주요 수정자 수 · 협업 중심성' },
-  { key: 'snapshot', num: '4', defaultSub: '분석 결과 스냅샷 저장' },
+  { key: 'snapshot', num: '4', defaultSub: '분석 결과 저장' },
 ];
 const PIPE_STAGE_ORDER = [...PIPE_STEPS.map(p => p.key), 'done'];
 
@@ -71,7 +71,7 @@ function _markPipelineAllDone(s) {
   _setPipeState('collect', 'done', parts.length ? parts.join(' · ') : '완료');
   _setPipeState('identity', 'done', contTotal ? `기여자 ${contTotal.toLocaleString()}명` : '완료');
   _setPipeState('derived', 'done', '점검 우선순위 · 주요 수정자 수 · 협업 중심성');
-  _setPipeState('snapshot', 'done', '분석 결과 스냅샷 저장');
+  _setPipeState('snapshot', 'done', '분석 결과 저장');
 }
 
 export function openJobModal(mode, repoId) {
@@ -85,7 +85,7 @@ export function openJobModal(mode, repoId) {
   _pollRepoId = null;
 
   const repoName =
-    (mode === 'new' && urlInput && urlInput.value) ? parseRepoName(urlInput.value) : '레포지토리';
+    (mode === 'new' && urlInput && urlInput.value) ? parseRepoName(urlInput.value) : '저장소';
 
   // 모달 초기화
   document.getElementById('modal-title').textContent = '분석 진행 중';
@@ -155,25 +155,25 @@ async function _showStartFailure(res) {
   const status = res.status;
 
   if (status === 401) {
-    return _showError({ heading: '로그인이 필요합니다', title: '분석을 요청하려면 로그인해 주세요', body: detail || '로그인이 만료되었거나 로그인하지 않은 상태입니다.',
+    return _showError({ heading: '로그인이 필요합니다', title: '분석을 요청하려면 로그인해 주세요', body: detail || '로그인이 만료됐거나 로그인하지 않았습니다.',
       label: '요청하지 못했습니다', actions: [['다시 로그인', 'reloginFromJob', true]] });
   }
   if (status === 404) {
-    return _showError({ heading: '분석 요청 실패', title: '레포지토리를 찾을 수 없거나 접근할 수 없습니다', body: 'URL을 확인해 주세요. 존재하지 않거나 접근 권한이 없는 저장소는 구분해서 안내하지 않습니다.',
+    return _showError({ heading: '분석 요청 실패', title: '저장소를 찾을 수 없거나 접근할 수 없습니다', body: 'URL을 확인해 주세요. 저장소가 없는 것인지 접근 권한이 없는 것인지는 따로 알려 드리지 않습니다.',
       label: '요청하지 못했습니다' });
   }
   if (status === 409) {
     // 실행 중인 작업과 충돌 — 네트워크 오류가 아니다. 이미 진행 중이라면 그 진행 상황을 볼 수 있다.
     const actions = _currentRepoId ? [['진행 상황 보기', 'resumePolling', true]] : [];
     return _showError({ heading: '이미 진행 중인 분석이 있습니다', title: '실행 중인 분석 작업과 충돌했습니다',
-      body: detail || '같은 저장소의 분석이 아직 실행 중입니다. 끝난 뒤 다시 요청해 주세요.', label: '요청이 거부되었습니다', actions });
+      body: detail || '같은 저장소의 분석이 아직 실행 중입니다. 끝난 뒤 다시 요청해 주세요.', label: '요청이 거부됐습니다', actions });
   }
   if (status === 422) {
     return _showError({ heading: '분석 요청 실패', title: '요청을 처리할 수 없습니다', body: detail || '입력한 값을 확인해 주세요.', label: '요청하지 못했습니다' });
   }
   if (status === 429) {
     return _showError({ heading: '잠시 후 다시 시도해 주세요', title: 'GitHub 확인 한도에 도달했습니다', body: detail || 'GitHub API 요청 한도에 도달했습니다.',
-      label: '요청이 제한되었습니다', actions: [retry] });
+      label: '요청이 제한됐습니다', actions: [retry] });
   }
   return _showError({ heading: '분석 요청 실패', title: '서버가 요청을 처리하지 못했습니다', body: detail || `요청 실패 (HTTP ${status}). 잠시 후 다시 시도해 주세요.`,
     label: '요청하지 못했습니다', actions: [retry] });
@@ -188,7 +188,7 @@ async function _postAndStartPolling(path) {
       credentials: 'include',
     });
   } catch {
-    _showError({ heading: '서버에 연결할 수 없습니다', title: '분석 서버에 연결할 수 없습니다', body: '네트워크 상태와 백엔드 실행 여부를 확인한 뒤 다시 시도해 주세요.',
+    _showError({ heading: '서버에 연결할 수 없습니다', title: '분석 서버에 연결할 수 없습니다', body: '네트워크 상태와 분석 서버 실행 여부를 확인한 뒤 다시 시도해 주세요.',
       label: '요청하지 못했습니다', actions: [['다시 시도', 'retryJob', true]] });
     return;
   }
@@ -280,7 +280,7 @@ function _onPollStop({ reason, status, message }) {
   _clearRetryNotice();
   const again = ['다시 확인', 'resumePolling', true];
   if (reason === 'auth') {
-    return _showError({ heading: '로그인이 필요합니다', title: '로그인이 만료되었습니다', label: '진행 상황을 확인하지 못했습니다',
+    return _showError({ heading: '로그인이 필요합니다', title: '로그인이 만료됐습니다', label: '진행 상황을 확인하지 못했습니다',
       body: '다시 로그인한 뒤 진행 상황을 확인해 주세요. 분석 작업은 계속 진행 중일 수 있습니다.', actions: [['다시 로그인', 'reloginFromJob', true]] });
   }
   if (reason === 'not_found') {
@@ -290,7 +290,7 @@ function _onPollStop({ reason, status, message }) {
   }
   if (reason === 'rate_limit') {
     return _showError({ heading: '잠시 후 다시 확인해 주세요', title: '요청이 계속 제한되고 있습니다', label: '진행 상황을 확인하지 못했습니다',
-      body: message || '조회 요청이 계속 제한되어 자동 확인을 멈췄습니다. 분석 작업은 계속 진행 중일 수 있습니다.', actions: [again] });
+      body: message || '조회 요청이 계속 제한돼 자동 확인을 멈췄습니다. 분석 작업은 계속 진행 중일 수 있습니다.', actions: [again] });
   }
   if (reason === 'unreachable') {
     return _showError({ heading: '진행 상황을 확인할 수 없습니다', title: '서버 응답이 없습니다', label: '진행 상황을 확인하지 못했습니다',
@@ -343,8 +343,8 @@ function _renderStatus(s) {
   }
   if (status === 'cancelled') {
     // 서버가 멈춘 작업을 새 분석 요청으로 안전하게 교체한 상태 — 실패가 아니다
-    _showError({ heading: '이전 분석이 교체되었습니다', title: '새 분석 요청으로 교체되었습니다', label: '이 작업은 교체되었습니다',
-      body: s.error_message || '응답이 없던 분석 작업이 새 분석 요청으로 교체되었습니다. 새 작업의 진행 상황을 확인하세요.',
+    _showError({ heading: '이전 분석이 새 분석으로 바뀌었습니다', title: '새 분석 요청으로 바뀌었습니다', label: '이 작업은 새 작업으로 바뀌었습니다',
+      body: s.error_message || '응답이 없던 분석 작업을 새 분석 요청으로 바꿨습니다. 새 작업의 진행 상황을 확인하세요.',
       actions: [['새 작업 확인', 'resumePolling', true]] });
     return 'stop';
   }
@@ -385,7 +385,7 @@ function _renderStatus(s) {
     collect: collectParts.length ? collectParts.join(' · ') : '수집 중...',
     identity: contTotal ? `기여자 ${contTotal.toLocaleString()}명` : '-',
     derived: '점검 우선순위 · 주요 수정자 수 · 협업 중심성',
-    snapshot: '분석 결과 스냅샷 저장',
+    snapshot: '분석 결과 저장',
   };
   PIPE_STEPS.forEach(({ key }, idx) => {
     const state = idx < curStageIdx ? 'done' : idx === curStageIdx ? 'active' : 'wait';
@@ -439,7 +439,7 @@ async function _restartStaleJob() {
     // 같은 안내가 반복되지 않도록 stale 경고는 다시 띄우지 않고, 진행 상황을 계속 확인한다.
     _staleHandled = true;
     document.getElementById('modal-title').textContent = '분석 진행 중';
-    document.getElementById('modal-error-title').textContent = '재시작이 거부되었습니다';
+    document.getElementById('modal-error-title').textContent = '재시작이 거부됐습니다';
     document.getElementById('modal-error-body').textContent =
       '수집 작업이 아직 실행 중일 수 있어 서버가 재시작을 허용하지 않았습니다. 진행 상황을 계속 확인합니다.';
     document.getElementById('modal-error-time').textContent = '';

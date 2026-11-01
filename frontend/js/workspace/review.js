@@ -24,7 +24,7 @@ function fail(error) {
   const reason = String(error?.message || error).replace(/^.*Error invoking remote method.*Error: /, '');
   const guidance = {
     CLOUD_MAPPING_REQUIRED: '클라우드 모델 준비가 끝나지 않았습니다. 앱을 다시 시작한 뒤 시도하세요. 이 PC의 Ollama는 계속 쓸 수 있습니다.',
-    BUDGET_EXCEEDED: '이 앱의 월 USD20 예약·사용 한도를 넘습니다. 미정산·결과 불명 예약도 포함하므로 제공자 사용량과 기록을 확인하세요.',
+    BUDGET_EXCEEDED: '이 앱의 월 사용 한도(USD 20)를 넘습니다. 아직 정산되지 않았거나 결과를 알 수 없는 예약도 포함되니 제공자 사용량과 기록을 확인하세요.',
     ACCOUNT_CHANGED: '계정이 바뀌어 전송을 중단했습니다. 새 계정에서 미리보기와 동의를 다시 진행하세요.',
     AUTH_REQUIRED: '원격 계정에 로그인한 뒤 저장소 연결을 확인하세요.',
     API_KEY_REQUIRED: '이 모델의 API 키가 없습니다. 오른쪽 위 내 계정 → 설정에서 키를 저장하거나 다른 모델을 고르세요.',
@@ -52,7 +52,7 @@ for (const id of ['review-purpose', 'review-generation', 'review-kind', 'review-
 /** Builds the exact request; returns the preview, or null when it failed or became stale. */
 async function prepare() {
   invalidate(); const turn = generation; const epoch = previewEpoch; const selected = snapshot;
-  if (!selected || selected.projectId !== picker.value) { message.textContent = '먼저 변경 입력을 캡처하세요.'; return null; }
+  if (!selected || selected.projectId !== picker.value) { message.textContent = '먼저 변경을 담으세요.'; return null; }
   try {
     const options = { projectId: picker.value, snapshotId: selected.snapshotId, kind: document.getElementById('review-kind').value,
       purpose: document.getElementById('review-purpose').value, profileId: document.getElementById('review-profile').value,
@@ -63,7 +63,7 @@ async function prepare() {
     const value = await pending;
     if (generation !== turn || previewEpoch !== epoch || snapshot?.snapshotId !== selected.snapshotId) return null;
     approved = value; startKey = crypto.randomUUID(); start.disabled = false;
-    meta.textContent = `실행 위치 ${value.executionLocation} · 대상 ${value.destination} · 모델 ${value.profile.model} · 입력 추정 ${value.estimatedInputTokens} tokens · provider 요금 추정 USD ${value.maxEstimatedCost}\n입력 ${value.inputHash}\n전송 ${value.manifestHash}\nprofile ${value.profileFingerprint}\n정책 ${value.policyVersion}\n선택 ${value.coverage.selected} / 읽음 ${value.coverage.read} / 제외 ${value.coverage.excluded}`;
+    meta.textContent = `실행 위치 ${value.executionLocation} · 대상 ${value.destination} · 모델 ${value.profile.model} · 입력 추정 ${value.estimatedInputTokens} tokens · 제공자 요금 추정 USD ${value.maxEstimatedCost}\n입력 ${value.inputHash}\n전송 ${value.manifestHash}\nprofile ${value.profileFingerprint}\n정책 ${value.policyVersion}\n선택 ${value.coverage.selected} / 읽음 ${value.coverage.read} / 제외 ${value.coverage.excluded}`;
     bytes.textContent = `SYSTEM\n${value.system}\n\nUSER\n${value.user}`;
     meta.append(document.createTextNode(`\n실제 요청 ${value.requestBytes} bytes · SHA256 ${value.requestHash}`));
     message.textContent = '위 내용이 실제 전송 범위입니다. 미리보기는 5분 동안 유효합니다.';
@@ -76,7 +76,7 @@ document.getElementById('review-preview').addEventListener('click', () => { void
 function show(value) {
   current = value; result.replaceChildren(node('p', `작업 ${value.runId} · ${value.status} · 시도 ${value.attemptCount} · 예약 USD ${value.budgetReserved}${value.errorCode ? ` · ${value.errorCode}` : ''}`));
   cancel.disabled = !['running', 'queued'].includes(value.status);
-  if (value.outcomeUncertain) result.append(node('p', '요청 처리·과금 여부가 불명확합니다. 예약을 유지하며 자동 재송신하지 않습니다.'));
+  if (value.outcomeUncertain) result.append(node('p', '요청이 처리됐는지, 요금이 청구됐는지 알 수 없습니다. 예약은 그대로 두고 자동으로 다시 보내지 않습니다.'));
   for (const finding of value.findings) {
     const section = node('article');
     section.append(node('h3', `${finding.category} · ${finding.priority} · ${finding.severity}`),

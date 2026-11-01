@@ -65,7 +65,7 @@ void app.whenReady().then(async () => {
       ok('while the agent is still starting the status says it is checking', await evaluate(`document.getElementById('status').textContent==='로컬 구성을 확인하는 중입니다.'`) === true);
       ok('and no warning banner is shown', await evaluate(`document.getElementById('ws-health').hidden`) === true);
       await started;
-      await wait(evaluate, `document.getElementById('status').textContent==='로컬 워크스페이스 기반이 준비되었습니다.'`, 15000);
+      await wait(evaluate, `document.getElementById('status').textContent==='로컬 작업 공간이 준비됐습니다.'`, 15000);
       ok('once the agent is ready the status says so without any user action', true);
       ok('the warning text and banner were never shown during a healthy start', ![...seen].some(text => text.includes(WARNING) || text.endsWith('|banner')));
       ok('the checking state was actually observed', [...seen].some(text => text.startsWith('로컬 구성을 확인하는 중입니다.')));

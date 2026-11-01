@@ -165,7 +165,7 @@ function _buildBadge(status, isStale) {
     done:         ['badge-green', 'var(--green)',  '완료'],
     running:      ['badge-blue',  'var(--blue)',   '수집 중'],
     pending:      ['badge-blue',  'var(--blue)',   '대기 중'],
-    rate_limited: ['badge-blue',  'var(--blue)',   'Rate Limit 대기'],
+    rate_limited: ['badge-blue',  'var(--blue)',   'GitHub 한도 대기'],
     failed:       ['badge-red',   'var(--red)',    '실패'],
     cancelled:    ['badge-gray',  'var(--text3)',  '교체됨'],
     unknown:      ['badge-gray',  'var(--text3)',  '알 수 없음'],

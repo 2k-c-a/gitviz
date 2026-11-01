@@ -164,7 +164,7 @@ export class RemoteWorkspace {
     if (proof.githubId !== saved.githubId || proof.canonicalUrl !== saved.canonicalUrl) throw new Error('REMOTE_IDENTITY_MISMATCH');
     await this.agent.call('workspace.remote.getAnalysis', { analysisId, accountId: account.accountId, serverOrigin: this.origin }, { projectId });
     this.check(account.generation);
-    return `gitviz://app/web/pages/timeline.html?repo=${proof.repositoryId}${id(saved.snapshotId) ? `&snapshot=${saved.snapshotId}` : ''}`;
+    return `gitviz://app/web/pages/overview.html?repo=${proof.repositoryId}${id(saved.snapshotId) ? `&snapshot=${saved.snapshotId}` : ''}`;
   }
   async readProof(projectId: string): Promise<Record<string, unknown>> {
     const account = await this.account();

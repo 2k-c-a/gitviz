@@ -89,7 +89,7 @@ async function remoteAction(connect) {
     if (turn !== generation || picker.value !== projectId) return;
     remoteNote.textContent = result.connected ? `연결됨: ${result.canonicalUrl} · GitHub #${result.githubId} · 서버 #${result.repositoryId}. 이 앱에서 추적한 상태 전환만 알립니다.` : '현재 계정으로 확인된 연결이 없습니다.';
     if (connect) await selected();
-  } catch (error) { if (turn === generation) { const reason = String(error?.message ?? error).replace(/^.*Error invoking remote method.*Error: /, ''); remoteNote.textContent = reason === 'BUSY' ? '동시 추적 상한16개 또는 확인 중인 작업 때문에 새 연결을 보류했습니다. 기존 연결과 기록은 보존됩니다.' : reason; } }
+  } catch (error) { if (turn === generation) { const reason = String(error?.message ?? error).replace(/^.*Error invoking remote method.*Error: /, ''); remoteNote.textContent = reason === 'BUSY' ? '동시 추적 한도(16개) 또는 확인 중인 작업 때문에 새 연결을 보류했습니다. 기존 연결과 기록은 보존됩니다.' : reason; } }
 }
 if (api?.connectRemote) {
   document.getElementById('connect-remote').addEventListener('click', () => { void remoteAction(true); });

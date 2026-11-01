@@ -127,11 +127,11 @@ void app.whenReady().then(async () => {
     await assert.rejects(evaluate('workspace.exportDiagnostics()'), /DIAGNOSTICS_UNAVAILABLE/); assert.equal(await readFile(diagnosticPath, 'utf8'), exported);
     phase = 'permission-recheck'; denied = true; await assert.rejects(coordinator.open(project.id, analysisId), /REMOTE_ACCESS_DENIED/); denied = false;
     phase = 'identity-recheck'; githubId = 124; await assert.rejects(coordinator.open(project.id, analysisId), /REMOTE_IDENTITY_MISMATCH/); githubId = 123;
-    phase = 'navigation-proof'; assert.equal(await coordinator.open(project.id, analysisId), 'gitviz://app/web/pages/timeline.html?repo=2&snapshot=7');
+    phase = 'navigation-proof'; assert.equal(await coordinator.open(project.id, analysisId), 'gitviz://app/web/pages/overview.html?repo=2&snapshot=7');
     phase = 'navigate';
     await evaluate(`void workspace.openRemoteAnalysis({projectId:${JSON.stringify(project.id)},analysisId:${JSON.stringify(analysisId)}}).catch(()=>{});true`);
-    for (let i = 0; i < 200 && window.webContents.getURL() !== 'gitviz://app/web/pages/timeline.html?repo=2&snapshot=7'; i++) await new Promise(resolve => setTimeout(resolve, 25));
-    assert.equal(window.webContents.getURL(), 'gitviz://app/web/pages/timeline.html?repo=2&snapshot=7');
+    for (let i = 0; i < 200 && window.webContents.getURL() !== 'gitviz://app/web/pages/overview.html?repo=2&snapshot=7'; i++) await new Promise(resolve => setTimeout(resolve, 25));
+    assert.equal(window.webContents.getURL(), 'gitviz://app/web/pages/overview.html?repo=2&snapshot=7');
     phase = 'config-change'; git('remote', 'set-url', 'origin', 'https://github.com/other/repo');
     await assert.rejects(coordinator.open(project.id, analysisId), /PRECONDITION_FAILED/);
     phase = 'cloud-process-recovery'; await cloudRecovery(executable, contracts, temporary);

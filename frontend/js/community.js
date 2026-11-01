@@ -342,7 +342,7 @@ async function renderInvites(target) {
       const status = element('span', 'p-sub');
       const copy = button('복사', 'btn-secondary', async () => {
         try { await navigator.clipboard.writeText(result.url); status.textContent = '복사했습니다.'; }
-        catch { field.select(); status.textContent = '선택된 링크를 직접 복사하세요.'; }
+        catch { field.select(); status.textContent = '링크를 선택해 두었으니 직접 복사하세요.'; }
       });
       created.replaceChildren(field, copy, status);
       await listInvites();

@@ -100,7 +100,7 @@ export function renderLoadError(err) {
 
   if (err?.status === 404) {
     title = st.snapshot != null ? `저장 결과 #${st.snapshot}을(를) 열 수 없습니다` : '분석 결과를 찾을 수 없습니다';
-    body = '이 저장소의 결과가 아니거나 삭제되었거나 접근 권한이 없을 수 있습니다.';
+    body = '이 저장소의 결과가 아니거나, 삭제됐거나, 접근 권한이 없을 수 있습니다.';
     if (st.snapshot != null) {
       const latest = buildQuery({ repo: st.repo });
       actions = `<a class="btn-secondary" href="#" data-action="latestResult" data-args="${encodeURIComponent(JSON.stringify([latest]))}">최신 결과 보기</a>`;

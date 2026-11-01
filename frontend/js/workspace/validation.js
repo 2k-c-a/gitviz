@@ -10,7 +10,7 @@ function node(tag, text) { const element = document.createElement(tag); if (text
 function fail(error) {
   const code = String(error?.message || error).replace(/^.*Error invoking remote method.*Error: /, '');
   message.textContent = code;
-  if (code === 'PRECONDITION_FAILED') message.textContent = '입력·설정·환경 조건이 달라 실행하지 않았습니다. 변경을 새로 캡처하고 도구·계획을 다시 준비하세요.';
+  if (code === 'PRECONDITION_FAILED') message.textContent = '입력·설정·환경 조건이 달라 실행하지 않았습니다. 변경을 다시 담고 도구·계획을 다시 준비하세요.';
   if (code === 'COMMAND_NOT_ALLOWED') message.textContent = '도구·환경을 확인하고 설치·수정 모드가 없는 검증 계획을 다시 준비하세요.';
   if (code === 'EDITOR_UNAVAILABLE_OR_STALE') message.textContent = '에디터 실행 파일을 다시 선택해 설정하거나 파일 위치를 복사하세요.';
 }

@@ -13,13 +13,11 @@ const summaryEl  = document.getElementById('search-summary');
 const inputEl    = document.getElementById('search-input');
 const sortEl     = document.getElementById('search-sort');
 const btnEl      = document.getElementById('search-btn');
-const selectionEl = document.getElementById('search-selection');
 const pagerEl    = document.getElementById('search-pager');
 const PER_PAGE = 20;
 const MAX_RESULTS = 1000; // GitHub Search serves only the first 1,000 matches.
 let searchGeneration = 0;
 let currentPage = 1;
-let resultRepos = [];
 let registeredReady;
 
 const num = (n) => (n ?? 0).toLocaleString('en-US');
@@ -93,7 +91,9 @@ function buildCard(repo) {
   const pushedRel = fmtRelative(repo.pushed_at);
   const registeredId = repo.is_registered ? (registeredMap.get(normalizeUrl(repo.url)) ?? '') : '';
 
-  const actionHtml = '<button class="btn-secondary search-select-btn" type="button">분석 대상 선택</button>';
+  // The start button queues an analysis right away; a saved result opens without creating one.
+  const actionHtml = (repo.is_registered ? '<button class="btn-secondary search-result-btn" type="button">저장된 결과 확인</button>' : '')
+    + '<button class="btn-primary search-start-btn" type="button">저장소 분석 시작</button>';
 
   return `
     <div class="panel search-card" data-url="${esc(repo.url)}" data-registered="${repo.is_registered ? '1' : '0'}" data-repo-id="${registeredId}">
@@ -140,7 +140,6 @@ function showEmpty(query) {
 
 function renderResults(data) {
   const results = Array.isArray(data.results) ? data.results : [];
-  resultRepos = results;
   if (!results.length) {
     showEmpty(data.query ?? inputEl.value.trim());
     return;
@@ -185,23 +184,6 @@ function goToPage(page) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function selectRepository(repo) {
-  selectionEl.hidden = false;
-  selectionEl.replaceChildren();
-  selectionEl.append(element('h2', 'ui-panel-title', `선택한 저장소 · ${repo.owner}/${repo.repo_name}`));
-  selectionEl.append(element('p', 'p-sub', repo.description || '설명이 없습니다.'));
-  const actions = element('div', 'ui-toolbar');
-  if (repo.is_registered) {
-    const open = element('button', 'btn-primary', '저장된 결과 확인');
-    open.type = 'button'; open.addEventListener('click', () => goToDetail(repo.url)); actions.append(open);
-  }
-  const start = element('button', repo.is_registered ? 'btn-secondary' : 'btn-primary', repo.is_registered ? '새 분석 요청' : '선택한 저장소 분석 시작');
-  start.type = 'button'; start.addEventListener('click', () => startAnalysis(repo.url));
-  actions.append(start); selectionEl.append(actions);
-  const notice = element('p', 'p-sub', '대상 선택만으로 분석을 시작하지 않습니다. 저장된 결과 확인은 새 분석을 만들지 않습니다.');
-  selectionEl.append(notice); selectionEl.tabIndex = -1; selectionEl.focus({ preventScroll: true }); selectionEl.scrollIntoView({ block: 'nearest' });
-}
-
 /* 홈 화면의 "분석 시작" 흐름(main.js/modal.js의 openJobModal('new'))을 그대로 재사용한다.
    그 흐름은 #url-input의 값을 읽어 POST /repositories 를 호출하고 진행 모달을 띄운다. */
 function startAnalysis(url) {
@@ -225,7 +207,6 @@ async function runSearch(page = 1) {
   if (!q) { inputEl.focus(); return; }
   const generation = ++searchGeneration;
   currentPage = Number.isInteger(page) && page > 0 ? page : 1;
-  selectionEl.hidden = true;
   const url = new URL(location.href); url.searchParams.set('q', q); url.searchParams.set('order', sortEl.value);
   if (currentPage > 1) url.searchParams.set('page', String(currentPage)); else url.searchParams.delete('page');
   history.replaceState(null, '', url);
@@ -238,7 +219,7 @@ async function runSearch(page = 1) {
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) showError('저장소를 검색할 권한이 없습니다. 로그인한 계정을 확인한 뒤 다시 시도하세요.');
       else if (res.status === 429) showError('GitHub 검색 API 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.');
-      else showError(`검색에 실패했습니다 (HTTP ${res.status}).`);
+      else showError(`검색하지 못했습니다 (HTTP ${res.status}).`);
       return;
     }
     const data = await res.json();
@@ -273,10 +254,8 @@ function initSearchPage() {
   resultsEl.addEventListener('click', (e) => {
     const card = e.target.closest('.search-card');
     if (!card) return;
-    if (e.target.closest('.search-select-btn')) {
-      const repo = resultRepos.find(item => item.url === card.dataset.url);
-      if (repo) selectRepository(repo);
-    }
+    if (e.target.closest('.search-start-btn')) startAnalysis(card.dataset.url);
+    else if (e.target.closest('.search-result-btn')) void goToDetail(card.dataset.url, card.dataset.repoId);
   });
   if (inputEl.value) void runSearch(Number.parseInt(saved.get('page') || '1', 10) || 1);
 }
