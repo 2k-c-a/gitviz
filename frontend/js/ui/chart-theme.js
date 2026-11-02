@@ -19,6 +19,13 @@ function themeSeries(chart) {
 }
 
 if (typeof Chart !== 'undefined') {
+  // Quieter, rounder defaults: soft bars, thin lines, short entrance animation. Data and axes are untouched.
+  Chart.defaults.animation = { duration: 700, easing: 'easeOutQuart' };
+  Chart.defaults.elements.bar.borderRadius = 4;
+  Chart.defaults.elements.bar.borderSkipped = false;
+  Chart.defaults.elements.line.borderWidth = 2.5;
+  Chart.defaults.elements.point.hoverRadius = 5;
+  Object.assign(Chart.defaults.plugins.tooltip, { padding: 10, cornerRadius: 8, boxPadding: 4, titleMarginBottom: 6 });
   Chart.register({
     id: 'gitvizTheme',
     beforeUpdate(chart) {
@@ -27,10 +34,12 @@ if (typeof Chart !== 'undefined') {
       if (chart.options.plugins?.tooltip) {
         Object.assign(chart.options.plugins.tooltip, { backgroundColor: token('--ui-surface'), borderColor: token('--ui-border-strong'), titleColor: token('--ui-text'), bodyColor: token('--ui-text'), borderWidth: 1 });
       }
-      for (const scale of Object.values(chart.options.scales || {})) {
+      const cartesian = ['bar', 'line'].includes(chart.config.type);
+      for (const [axis, scale] of Object.entries(chart.options.scales || {})) {
         if (scale.ticks) scale.ticks.color = token('--ui-muted');
         if (scale.title) scale.title.color = token('--ui-muted');
-        if (scale.grid) scale.grid.color = token('--ui-border');
+        if (scale.grid) { scale.grid.color = token('--ui-border'); scale.grid.drawTicks = false; if (cartesian && axis.startsWith('x')) scale.grid.display = false; }
+        if (cartesian) scale.border = { ...scale.border, display: false };
       }
       themeSeries(chart);
     },

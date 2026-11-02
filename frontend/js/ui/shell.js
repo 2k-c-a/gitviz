@@ -1,6 +1,7 @@
 import { parseRoute as parseAiRoute, buildRoute as buildAiRoute } from '../ai-state.js';
 import { parseState, nextQuery } from '../viz-state.js';
 import { element, createIcon, enhanceTooltips, observeActions } from './components.js';
+import './motion.js';
 
 const webRoot = new URL('../../', import.meta.url);
 const pages = { overview: '분석 개요', network: '협업 네트워크', 'code-analysis': '파일 분석', history: '분석 이력', 'ai-review': 'AI 리뷰' };
@@ -27,9 +28,9 @@ export function mountShell({ local = false, account = null } = {}) {
   const nav = element('nav', 'app-nav'); nav.setAttribute('aria-label', '전역 내비게이션');
   sidebar.append(nav);
   const toolbar = element('header', 'app-toolbar');
-  const menu = element('button', 'app-menu', '☰'); menu.type = 'button'; menu.setAttribute('aria-label', '내비게이션 열기'); menu.setAttribute('aria-controls', sidebar.id); menu.setAttribute('aria-expanded', 'false');
+  const menu = element('button', 'app-menu'); menu.append(createIcon('menu', 20)); menu.type = 'button'; menu.setAttribute('aria-label', '내비게이션 열기'); menu.setAttribute('aria-controls', sidebar.id); menu.setAttribute('aria-expanded', 'false');
   const setNavOpen = open => { root.classList.toggle('nav-open', open); menu.setAttribute('aria-expanded', String(open)); menu.setAttribute('aria-label', open ? '내비게이션 닫기' : '내비게이션 열기'); };
-  const closeNav = element('button', 'app-nav-close', '×'); closeNav.type = 'button'; closeNav.setAttribute('aria-label', '내비게이션 닫기');
+  const closeNav = element('button', 'app-nav-close'); closeNav.append(createIcon('x', 18)); closeNav.type = 'button'; closeNav.setAttribute('aria-label', '내비게이션 닫기');
   closeNav.addEventListener('click', () => { setNavOpen(false); menu.focus(); }); sidebar.append(closeNav);
   menu.addEventListener('click', () => {
     const open = !root.classList.contains('nav-open'); setNavOpen(open);
