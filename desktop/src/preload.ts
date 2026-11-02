@@ -4,6 +4,22 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
   auth: Object.freeze({ start: () => ipcRenderer.invoke('desktop:auth-start'), status: () => ipcRenderer.invoke('desktop:auth-status'), logout: () => ipcRenderer.invoke('desktop:auth-logout') }),
   remote: Object.freeze({ request: (options: unknown) => ipcRenderer.invoke('desktop:remote', options) }),
   update: Object.freeze({ status: () => ipcRenderer.invoke('desktop:update-status') }),
+  // Community chat live events (AD-27). The listener gets only the cloned event object.
+  community: Object.freeze({
+    subscribe: (options: unknown, listener: unknown) => {
+      if (typeof listener !== 'function') return Promise.reject(new Error('INVALID_REQUEST'));
+      ipcRenderer.removeAllListeners('desktop:community-event');
+      ipcRenderer.on('desktop:community-event', (_event, value: unknown) => { (listener as (value: unknown) => void)(value); });
+      return ipcRenderer.invoke('desktop:community-subscribe', options);
+    },
+    unsubscribe: () => { ipcRenderer.removeAllListeners('desktop:community-event'); return ipcRenderer.invoke('desktop:community-unsubscribe'); },
+  }),
+  // Co-editing (AD-29): the host's file is picked in a native dialog; the page sees a handle and text, never a path.
+  collab: Object.freeze({
+    open: () => ipcRenderer.invoke('desktop:collab-open'),
+    save: (options: unknown) => ipcRenderer.invoke('desktop:collab-save', options),
+    close: (options: unknown) => ipcRenderer.invoke('desktop:collab-close', options),
+  }),
 }));
 if (location.protocol === 'gitviz:' && location.host === 'app' && location.pathname === '/index.html') contextBridge.exposeInMainWorld('workspace', Object.freeze({
   exportDiagnostics: () => ipcRenderer.invoke('workspace:export-diagnostics'),
@@ -23,6 +39,10 @@ if (location.protocol === 'gitviz:' && location.host === 'app' && location.pathn
   listReviews: (options: unknown) => ipcRenderer.invoke('workspace:review-list', options),
   cancelReview: (options: unknown) => ipcRenderer.invoke('workspace:review-cancel', options),
   feedbackReview: (options: unknown) => ipcRenderer.invoke('workspace:review-feedback', options),
+  // Saved keys are write-only from the renderer: status returns booleans, never key text.
+  getAiKeyStatus: () => ipcRenderer.invoke('workspace:ai-keys-status'),
+  saveAiKey: (options: unknown) => ipcRenderer.invoke('workspace:ai-key-save', options),
+  deleteAiKey: (options: unknown) => ipcRenderer.invoke('workspace:ai-key-delete', options),
   createProposal: (options: unknown) => ipcRenderer.invoke('workspace:proposal-create', options),
   getProposal: (options: unknown) => ipcRenderer.invoke('workspace:proposal-get', options),
   rejectProposal: (options: unknown) => ipcRenderer.invoke('workspace:proposal-reject', options),
@@ -39,6 +59,7 @@ if (location.protocol === 'gitviz:' && location.host === 'app' && location.pathn
   runValidation: (options: unknown) => ipcRenderer.invoke('workspace:run-validation', options),
   getValidation: (options: unknown) => ipcRenderer.invoke('workspace:get-validation', options),
   cancelValidation: (options: unknown) => ipcRenderer.invoke('workspace:cancel-validation', options),
+  isValidationTrusted: (options: unknown) => ipcRenderer.invoke('workspace:validation-trusted', options),
   createComparison: (options: unknown) => ipcRenderer.invoke('workspace:create-comparison', options),
   getComparison: (options: unknown) => ipcRenderer.invoke('workspace:get-comparison', options),
   setEditor: (options: unknown) => ipcRenderer.invoke('workspace:set-editor', options),

@@ -1,10 +1,102 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitViz · 개요</title><script src="../js/ui/theme.js"></script><script src="../vendor/chart-4.4.1/chart.umd.min.js"></script><link rel="stylesheet" href="../css/index.css"></head><body>
-<div id="navbar-container"></div><div id="modal-container"></div>
-<div class="page active" id="page-overview"><div class="dash-head"><div><div class="dash-title js-repo-title">—</div><div class="dash-sub">저장된 분석 결과 개요</div></div><button class="btn-secondary" data-auth="1" data-action="openReanalyzeToast">재분석</button></div>
-<div class="body"><div id="overview-kpis" class="metrics-4"></div>
-<div class="overview-grid"><section class="panel overview-trend"><div class="p-head"><h2 class="p-title">개발 활동 추이</h2><a id="overview-activity-link">개발 활동 열기</a></div><p class="p-note">월별 관측 커밋 수 · 저장 결과의 고정 기간 기준</p><div id="overview-trend"></div></section>
-<section class="panel"><h2 class="p-title">주요 기여자</h2><div id="overview-contributors"></div></section>
-<section class="panel"><h2 class="p-title">관측 구간 변경이 많은 파일</h2><p class="p-note">파일 변경 횟수순입니다. API는 마지막 변경 시각을 제공하지 않습니다.</p><div id="overview-files"></div></section>
-<section class="panel"><h2 class="p-title">커밋 유형 분포</h2><p class="p-note">커밋 메시지 분류이며 결함 발생률이 아닙니다.</p><div id="overview-types"></div></section>
-<section class="panel"><h2 class="p-title">협업 요약</h2><div id="overview-collaboration"></div></section></div></div></div>
-<script type="module" src="../js/main.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <script src="../js/ui/theme.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="../vendor/chart-4.4.1/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="../css/index.css">
+    <title>GitViz · 분석 개요</title>
+</head>
+<body>
+    <div id="navbar-container"></div>
+    <div id="modal-container"></div>
+    <!-- ═══════════ 분석 개요 (개발 활동 포함) ═══════════ -->
+<div class="page active" id="page-overview">
+  <div class="dash-head">
+    <div>
+      <div class="dash-title"><span id="tl-repo-name">—</span> <span class="badge badge-blue" id="tl-branch">main</span></div>
+      <div class="dash-sub" id="tl-dash-sub">불러오는 중…</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="display:flex;align-items:center;gap:7px;">
+        <div class="status-dot" style="background:#639922;"></div>
+        <span style="font-size:12px;color:var(--text2);">분석 완료</span>
+      </div>
+      <button class="btn-secondary" data-auth="1" id="btn-reanalyze" data-action="openReanalyzeToast">재분석</button>
+    </div>
+  </div>
+  <div class="body">
+    <div class="metrics-4">
+      <div class="metric-card"><div class="m-label">관측 구간 커밋</div><div class="m-val" id="tl-m-commits">—</div><div class="m-sub m-up" id="tl-m-commits-sub">&nbsp;</div></div>
+      <div class="metric-card"><div class="m-label">활성 기여자</div><div class="m-val" id="tl-m-contributors">—</div><div class="m-sub">종료 기준 최근 90일</div></div>
+      <div class="metric-card"><div class="m-label">관측 구간 릴리즈</div><div class="m-val" id="tl-m-releases">—</div><div class="m-sub" id="tl-m-releases-sub">&nbsp;</div></div>
+      <div class="metric-card"><div class="m-label">버그 수정 분류 비율</div><div class="m-val" id="tl-m-bugfix">—</div><div class="m-sub">관측 구간 커밋 기준</div></div>
+    </div>
+
+    <!-- 커밋 타임라인 차트 -->
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="p-head">
+        <div class="p-title">커밋 활동량 타임라인</div>
+      </div>
+      <div class="p-note" id="tl-window-note">월별 커밋 수 · 활성 기여자 수 · 버그 수정 비율. 관측 구간 안의 기록만 보여주며 전체 누적 수가 아닙니다.</div>
+      <div class="activity-chart">
+        <canvas id="chart-timeline"></canvas>
+      </div>
+      <div class="legend">
+        <div class="leg-item"><div class="leg-line" style="background:var(--chart-1);"></div>커밋 수</div>
+        <div class="leg-item"><div class="leg-line" style="background:var(--chart-2);"></div>활성 기여자 수</div>
+        <div class="leg-item"><div class="leg-line" style="background:var(--chart-4);border-top:2px dashed var(--chart-4);height:0;"></div>버그 수정 비율</div>
+        <div class="leg-item"><div class="leg-dot" style="background:var(--red);"></div>릴리즈</div>
+      </div>
+    </div>
+
+    <div class="col-2-1">
+      <div class="stack">
+        <!-- 기여자 히트맵 -->
+        <div class="panel">
+          <div class="p-head" style="margin-bottom:10px;">
+            <div class="p-title">기여자별 활동 히트맵</div>
+            <div style="font-size:var(--ui-text-xs);color:var(--text2);">분석 종료 시점 기준 최근 16주</div>
+          </div>
+          <div class="act-hm" id="act-heatmap">
+            <div style="font-size:12px;color:var(--text3);text-align:center;padding:24px 8px;">불러오는 중…</div>
+          </div>
+        </div>
+        <!-- 상위 기여자 -->
+        <div class="panel">
+          <div class="p-head" style="margin-bottom:14px;">
+            <div class="p-title">상위 기여자</div>
+            <div style="font-size:var(--ui-text-xs);color:var(--text2);">관측 구간 커밋 수 기준</div>
+          </div>
+          <div class="contrib-list" id="tl-contrib-list"></div>
+        </div>
+      </div>
+      <div class="stack">
+        <!-- 릴리즈 이력 -->
+        <div class="panel">
+          <div class="p-head" style="margin-bottom:14px;"><div class="p-title">릴리즈 이력</div></div>
+          <div class="release-list" id="tl-release-list"></div>
+        </div>
+        <!-- 커밋 유형 도넛 -->
+        <div class="panel" id="overview-types">
+          <div class="p-title" style="margin-bottom:6px;">커밋 유형 분포</div>
+          <p class="p-note" style="margin-bottom:12px;">커밋 메시지 분류이며 결함 발생률이 아닙니다.</p>
+          <div class="donut-wrap">
+            <canvas id="chart-donut" width="80" height="80" style="width:80px;height:80px;flex-shrink:0;"></canvas>
+            <div class="donut-legend" id="tl-donut-legend"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="overview-grid overview-more">
+      <section class="panel"><h2 class="p-title">관측 구간 변경이 많은 파일</h2><p class="p-note">파일 변경 횟수순입니다. API는 마지막 변경 시각을 제공하지 않습니다.</p><div id="overview-files"></div></section>
+      <section class="panel"><h2 class="p-title">협업 요약</h2><div id="overview-collaboration"></div></section>
+    </div>
+  </div>
+</div>
+</body>
+
+<script type="module" src="../js/main.js"></script>
+</html>

@@ -116,7 +116,7 @@ function syncReviewFields() {
 }
 
 /* ---------- decorations that need no change to the producing modules ---------- */
-const RISKS = [[/승인한 제안 적용|원본 쓰기 별도 승인|원복 범위/, 'write'], [/계획 검토.*실행/, 'exec']];
+const RISKS = [[/^적용$|원복 범위/, 'write'], [/계획 검토.*실행/, 'exec']];
 function tagRisks() {
   for (const button of main.querySelectorAll('#proposal-view button, #validation-plans button')) {
     if (button.dataset.risk) continue;
@@ -136,11 +136,11 @@ function tagEvidence() {
 function commands() {
   const out = [];
   if (ui.projectId) for (const [id, label] of TABS) out.push([`탭 이동: ${label}`, () => show('project', id, { focus: true })]);
-  out.push(['프로젝트 목록', () => show('projects', undefined, { focus: true })], ['알림', () => show('inbox', undefined, { focus: true })],
-    ['계정·연결', () => show('account', undefined, { focus: true })], ['설정', () => show('settings', undefined, { focus: true })],
+  // 알림 and 계정·연결 stay in the page but are hidden from navigation (owner decision 2026-11-01).
+  out.push(['프로젝트 목록', () => show('projects', undefined, { focus: true })], ['설정', () => show('settings', undefined, { focus: true })],
     ['프로젝트 폴더 등록', () => $('register-project').click()]);
   for (const option of picker.options) if (option.value) out.push([`프로젝트 전환: ${option.textContent}`, () => choose(option.value)]);
-  for (const [value, label] of [['system', '시스템'], ['light', '라이트'], ['dark', '다크']]) out.push([`테마: ${label}`, () => { const select = $('shell-theme'); if (select) { select.value = value; select.dispatchEvent(new Event('change')); } }]);
+  for (const [value, label] of [['light', '라이트'], ['dark', '다크']]) out.push([`테마: ${label}`, () => window.dispatchEvent(new CustomEvent('gitviz-theme-select', { detail: value }))]);
   return out;
 }
 let palette = null;
@@ -245,7 +245,7 @@ watch($('impact-view'), tagEvidence, { childList: true });
 watch($('project-message'), todo);
 watch($('desktop-account'), () => {
   const text = $('desktop-account').textContent;
-  $('ws-account-chip')?.replaceChildren(document.createTextNode(text.startsWith('원격 계정: ') ? text.slice('원격 계정: '.length) : '로그인하지 않음'));
+  $('ws-account-chip')?.replaceChildren(document.createTextNode(text.startsWith('원격 계정: ') ? text.slice('원격 계정: '.length) : '로그인'));
 });
 watch($('inbox-unread'), () => {
   const count = Number($('inbox-unread').textContent.match(/\d+/)?.[0] ?? 0);

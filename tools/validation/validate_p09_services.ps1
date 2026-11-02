@@ -32,7 +32,7 @@ function Control([string[]]$Arguments, [string]$Name) {
 }
 function Test-Step([string]$Script, [string[]]$Arguments = @()) {
     $info = [Diagnostics.ProcessStartInfo]::new()
-    $info.FileName = Join-Path $root 'venv/Scripts/python.exe'; $info.WorkingDirectory = $root
+    $info.FileName = Join-Path $root '.venv/Scripts/python.exe'; $info.WorkingDirectory = $root
     $info.UseShellExecute = $false; $info.CreateNoWindow = $true; $info.RedirectStandardOutput = $true; $info.RedirectStandardError = $true
     foreach ($name in @($info.Environment.Keys)) {
         if ($name -match '^(AI_|GITVIZ_|DATABASE_|CELERY_|REDIS_|GITHUB_TOKEN$|OPENAI_API_KEY$|ANTHROPIC_API_KEY$|GEMINI_API_KEY$|PYTHONPATH$)') { $info.Environment.Remove($name) | Out-Null }

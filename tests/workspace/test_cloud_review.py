@@ -60,6 +60,32 @@ class CloudReviewTests(WorkspaceFixture):
         with self.assertRaises(ScopeError):
             self.preview()
 
+    def test_local_key_authorization_needs_no_mapping_and_hands_off_without_key(self) -> None:
+        # Owner decision (2026-11-01): a saved BYOK key works without a server-attested public mapping.
+        self.git('remote', 'set-url', 'origin', 'https://github.com/other/private')
+        payload = {'phase': 'authorize-local', 'profileId': 'gpt-5.4-v1', 'credentialRef': self.reference, 'credentialVersion': 1}
+        request = {'protocolVersion': 1, 'requestId': str(uuid.uuid4()), 'projectId': self.project_id, 'operation': 'workspace.reviews.cloudContext'}
+        validate('request', request | {'payload': payload})
+        for extra in ({'apiKey': 'must-never-cross-stdio'}, {'proof': {}}):
+            with self.subTest(extra=extra), self.assertRaises(Exception):
+                validate('request', request | {'payload': payload | extra})
+        self.reviews.cloud.authorize(self.project_id, payload)
+        preview = self.preview()
+        self.assertNotIn('cloudMapping', preview)
+        self.assertEqual(preview['credentialRef'], self.reference)
+        start = {name: preview[name] for name in ('previewId', 'previewHash', 'manifestHash', 'maxEstimatedCost')}
+        start.update(acknowledged=True, duplicateRiskAcknowledged=False)
+        run = self.reviews.start(self.project_id, start, str(uuid.uuid4()))['runId']
+        taken: dict[str, object] = {}
+        for _ in range(100):
+            taken = self.reviews.cloud_exchange(self.project_id, {'phase': 'take', 'runId': run})
+            if taken['ready']:
+                break
+            time.sleep(.01)
+        self.assertTrue(taken['ready'])
+        self.assertEqual(taken['credentialRef'], self.reference)
+        self.assertNotIn('apiKey', json.dumps(taken))
+
     def test_agent_contract_rejects_api_keys_and_unapproved_proof_fields(self) -> None:
         payload = self.authorize()
         with self.assertRaises(Exception):

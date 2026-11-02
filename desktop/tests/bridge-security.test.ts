@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { workspaceSender } from '../src/ipc';
+import { microphoneAllowed } from '../src/window';
 
 test('workspace sender is restricted to the top-level workspace document', () => {
   const frame = { url: '' };
@@ -30,6 +31,23 @@ test('sandbox preload imports only electron and exposes named capabilities witho
   assert.doesNotMatch(preload, /exposeInMainWorld\(['"](?:ipcRenderer|fs|process)/);
   assert.match(preload, /getHealth/);
   assert.match(preload, /desktop:update-status/);
-  for (const name of ['selectAndRegister', 'listProjects', 'getProject', 'updateSettings', 'unregisterProject', 'getGitStatus', 'captureChanges', 'previewFile', 'detectValidation', 'planValidation', 'previewReview', 'startReview', 'getReview', 'listReviews', 'cancelReview', 'feedbackReview', 'createProposal', 'getProposal', 'rejectProposal', 'requestProposalRevision', 'approveProposal', 'applyProposal', 'recoverProposal', 'listRecoveryProposals', 'analyzeImpact', 'getImpact', 'listNotifications', 'markNotificationRead', 'subscribeEvents', 'unsubscribeEvents']) assert.match(preload, new RegExp(name));
+  assert.match(preload, /desktop:community-subscribe/);
+  assert.match(preload, /desktop:community-unsubscribe/);
+  for (const channel of ['desktop:collab-open', 'desktop:collab-save', 'desktop:collab-close']) assert.match(preload, new RegExp(channel));
+  for (const name of ['selectAndRegister', 'listProjects', 'getProject', 'updateSettings', 'unregisterProject', 'getGitStatus', 'captureChanges', 'previewFile', 'detectValidation', 'planValidation', 'previewReview', 'startReview', 'getReview', 'listReviews', 'cancelReview', 'feedbackReview', 'createProposal', 'getProposal', 'rejectProposal', 'requestProposalRevision', 'approveProposal', 'applyProposal', 'recoverProposal', 'listRecoveryProposals', 'analyzeImpact', 'getImpact', 'listNotifications', 'markNotificationRead', 'subscribeEvents', 'unsubscribeEvents', 'getAiKeyStatus', 'saveAiKey', 'deleteAiKey', 'isValidationTrusted']) assert.match(preload, new RegExp(name));
+  assert.doesNotMatch(preload, /getAiKey\b|readAiKey/);
   assert.doesNotMatch(preload, /\binvoke\s*:\s*/);
+});
+
+test('only the top-level community page may use the microphone, and nothing else', () => {
+  const page = 'gitviz://app/web/pages/community.html?id=2&tab=chat';
+  assert.equal(microphoneAllowed('media', { mediaTypes: ['audio'], requestingUrl: page, isMainFrame: true }), true);
+  assert.equal(microphoneAllowed('media', { mediaType: 'audio', requestingUrl: page }), true);
+  for (const [permission, details] of [
+    ['media', { mediaTypes: ['audio', 'video'], requestingUrl: page }], ['media', { mediaTypes: ['video'], requestingUrl: page }],
+    ['media', { mediaTypes: [], requestingUrl: page }], ['media', { mediaTypes: ['audio'], requestingUrl: page, isMainFrame: false }],
+    ['media', { mediaTypes: ['audio'], requestingUrl: 'gitviz://app/web/pages/timeline.html' }], ['media', { mediaTypes: ['audio'], requestingUrl: 'gitviz://app/index.html' }],
+    ['media', { mediaTypes: ['audio'], requestingUrl: 'https://evil.example/web/pages/community.html' }], ['media', { mediaTypes: ['audio'] }],
+    ['notifications', { requestingUrl: page }], ['display-capture', { requestingUrl: page }], ['geolocation', { requestingUrl: page }],
+  ] as const) assert.equal(microphoneAllowed(permission, details as Parameters<typeof microphoneAllowed>[1]), false, `${permission} ${JSON.stringify(details)}`);
 });

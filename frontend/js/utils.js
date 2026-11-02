@@ -41,7 +41,7 @@ export function validateUrl() {
   if (!isValidGithubUrl(val)) {
     urlInput.classList.add('input-error');
     urlInput.classList.remove('input-ok');
-    urlFeedback.textContent = 'GitHub 레포지토리 URL을 입력해 주세요 (예: https://github.com/owner/repo)';
+    urlFeedback.textContent = 'GitHub 저장소 URL을 입력해 주세요 (예: https://github.com/owner/repo)';
     urlFeedback.className = 'url-feedback error';
     return false;
   }

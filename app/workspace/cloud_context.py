@@ -27,20 +27,27 @@ class CloudContexts:
         if payload['phase'] == 'revoke':
             self.values.clear()
             return {'projectId': project, 'accepted': True}
-        proof = payload['proof']
-        if (payload['profileId'] not in CLOUD_PROFILES or proof['visibility'] != 'public'
-                or not now < proof['expiresAt'] <= now + 31):
+        if payload['profileId'] not in CLOUD_PROFILES:
             raise ScopeError('CLOUD_MAPPING_REQUIRED')
-        inspected = self.remote.inspect(project)
-        connection = inspected['connection']
-        names = ('connectionId', 'accountId', 'serverOrigin', 'repositoryId', 'githubId', 'canonicalUrl', 'configHash')
-        if (connection is None or inspected['configHash'] != proof['configHash']
-                or any(connection[name] != proof[name] for name in names)):
-            raise ScopeError('CLOUD_MAPPING_REQUIRED')
+        if payload['phase'] == 'authorize-local':
+            # Owner decision (2026-11-01): the user's own saved key may send a registered project's selected input
+            # without a server-attested public mapping. Main still holds the key; it never crosses stdio.
+            proof, expires = None, now + 300
+        else:
+            proof = payload['proof']
+            if proof['visibility'] != 'public' or not now < proof['expiresAt'] <= now + 31:
+                raise ScopeError('CLOUD_MAPPING_REQUIRED')
+            inspected = self.remote.inspect(project)
+            connection = inspected['connection']
+            names = ('connectionId', 'accountId', 'serverOrigin', 'repositoryId', 'githubId', 'canonicalUrl', 'configHash')
+            if (connection is None or inspected['configHash'] != proof['configHash']
+                    or any(connection[name] != proof[name] for name in names)):
+                raise ScopeError('CLOUD_MAPPING_REQUIRED')
+            expires = proof['expiresAt']
         if payload['credentialRef'] not in self.values and len(self.values) >= 16:
             raise ScopeError('BUSY')
-        self.values[payload['credentialRef']] = {name: payload[name] for name in ('profileId', 'credentialRef', 'credentialVersion', 'proof')}
-        self.values[payload['credentialRef']].update(projectId=project, expiresAt=proof['expiresAt'])
+        self.values[payload['credentialRef']] = {name: payload[name] for name in ('profileId', 'credentialRef', 'credentialVersion')}
+        self.values[payload['credentialRef']].update(proof=proof, projectId=project, expiresAt=expires)
         return {'projectId': project, 'accepted': True}
 
     def get(self, project: str, profile: str, reference: str | None = None) -> dict[str, Any]:
@@ -49,6 +56,8 @@ class CloudContexts:
         if len(candidates) != 1:
             raise ScopeError('CLOUD_MAPPING_REQUIRED')
         value = candidates[0]
+        if value['proof'] is None:
+            return value
         inspected = self.remote.inspect(project)
         if inspected['connection'] is None or inspected['connection']['connectionId'] != value['proof']['connectionId'] or inspected['configHash'] != value['proof']['configHash']:
             raise ScopeError('CLOUD_MAPPING_REQUIRED')

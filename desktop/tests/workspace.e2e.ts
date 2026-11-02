@@ -39,9 +39,11 @@ void app.whenReady().then(async () => {
   try {
     phase = 'web-navbar';
     await window.loadURL('gitviz://app/web/index.html?repo=2&snapshot=7');
-    await wait(`document.querySelector('[data-workspace-entry]')?.hidden===false`);
+    await wait(`!!document.querySelector('.app-nav [aria-label="프로젝트"]')`);
     assert.equal(await evaluate('typeof workspace'), 'undefined');
-    assert.equal(await evaluate(`document.querySelector('[data-workspace-entry]').href`), 'gitviz://app/index.html?view=inbox&remoteRepositoryId=2&remoteSnapshotId=7');
+    // The rail matches the workspace rail; its 프로젝트 entry opens the local project list.
+    assert.equal(await evaluate(`[...document.querySelectorAll('.app-nav > .app-nav-link')].map(a=>a.getAttribute('aria-label')).join()`), '저장소 탐색,최근·내 분석,URL로 분석 시작,AI 리뷰,커뮤니티,설정,프로젝트');
+    assert.equal(await evaluate(`document.querySelector('.app-nav [aria-label="프로젝트"]').href`), 'gitviz://app/index.html');
     phase = 'context-banner';
     await evaluate(`import('/web/js/page-context.js').then(m=>m.renderContextBanner({snapshot:{id:7,target_sha:'fixture',window_end:'2026-10-28T00:00:00Z',analyzed_at:'2026-10-28T00:00:00Z',formula_version:'fixture'},data_quality:{}}))`);
     assert.equal(await evaluate(`document.querySelector('#analysis-context [data-workspace-entry]').href`), 'gitviz://app/index.html?view=inbox&remoteRepositoryId=2&remoteSnapshotId=7');

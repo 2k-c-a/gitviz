@@ -15,6 +15,8 @@ const native: ValidationDialog = { async confirm(window, detail) {
 export function registerValidation(window: BrowserWindow, agent: Pick<Agent, 'call'>, contracts: Contracts, consent = native): () => void {
   const channels: string[] = [];
   const intents = new Map<string, { body: string; cap: Buffer; expires: number; approval?: string; busy: boolean }>();
+  // Projects the user trusted once in this window; later plans run without asking again until the app restarts.
+  const trusted = new Set<string>();
   let measuring = false;
   let disposed = false;
   function request(operation: Operation, value: Record<string, unknown>, extra: Record<string, unknown> = {}) {
@@ -55,7 +57,10 @@ export function registerValidation(window: BrowserWindow, agent: Pick<Agent, 'ca
     try {
       if (!intent.approval) {
         const prepared = await request('workspace.validation.prepare', { projectId, planId })();
-        if (!await consent.confirm(window, JSON.stringify(prepared, null, 2))) { intent.cap.fill(0); intents.delete(key); return null; }
+        if (!trusted.has(String(projectId))) {
+          if (!await consent.confirm(window, JSON.stringify(prepared, null, 2))) { intent.cap.fill(0); intents.delete(key); return null; }
+          trusted.add(String(projectId));
+        }
         if (disposed || window.isDestroyed()) throw new Error('ACCESS_DENIED');
         intent.expires = Date.now() + 300000;
         const approved = await request('workspace.validation.approve', { projectId, planId, idempotencyKey },
@@ -76,6 +81,10 @@ export function registerValidation(window: BrowserWindow, agent: Pick<Agent, 'ca
       const after = await collectMetrics(agent, String(value.projectId), String(value.afterSnapshotId));
       return await request('workspace.comparisons.create', value, { typescriptMeasurements: { before, after } })();
     } finally { measuring = false; }
+  });
+  handle('workspace:validation-trusted', async value => {
+    if (Object.keys(value).some(key => key !== 'projectId') || typeof value.projectId !== 'string') throw new Error('INVALID_REQUEST');
+    return trusted.has(value.projectId);
   });
   for (const [name, operation] of [
     ['get-validation', 'workspace.validation.get'], ['cancel-validation', 'workspace.validation.cancel'],

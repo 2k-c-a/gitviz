@@ -193,7 +193,7 @@ function drag(sim) {
   return d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended);
 }
 
-/* 협업 엣지 0개를 '협업이 없다'로 읽지 않게 한다.
+/* 협업 연결 0개를 '협업이 없다'로 읽지 않게 한다.
    엣지는 PR 파일 상세·PR↔커밋 연결·리뷰 기록이 있어야 만들어지므로, 수집 범위가 부족하면 0이 나올 수 있다. */
 function collectionHint(dq) {
   dq = dq || {};
@@ -217,7 +217,7 @@ function renderEmptyEdgeNote(metrics, dq) {
   const edges = metrics.total_edge_count;
   if (edges == null || edges > 0) { box.innerHTML = ''; return; }
   const { parts } = collectionHint(dq);
-  box.innerHTML = `<div class="cx-fallback"><b>협업 엣지 0개</b> — 협업이 없다는 뜻이 아닙니다. 공동 수정은 PR 파일 상세와 PR↔커밋 연결로, 리뷰는 리뷰 기록으로 계산하므로 수집 범위가 부족하면 0이 나올 수 있습니다.
+  box.innerHTML = `<div class="cx-fallback"><b>협업 연결 0개</b> — 협업이 없다는 뜻이 아닙니다. 공동 수정은 PR 파일 상세와 PR↔커밋 연결로, 리뷰는 리뷰 기록으로 계산하므로 수집 범위가 부족하면 0이 나올 수 있습니다.
     ${parts.length ? `현재 수집 범위: ${esc(parts.join(' · '))}.` : ''}</div>`;
 }
 

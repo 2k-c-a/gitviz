@@ -45,7 +45,7 @@ docker compose up -d db redis
 
 주의: 이 PC의 기존 가상환경은 `venv/`(README는 `.venv`)이고, `.claude/launch.json`이 `venv\Scripts\python.exe`를 절대 경로로 가리킨다. 새 클론에서는 README의 `.venv`를 따른다.
 
-**[현재 · 원클릭]** 위 단계는 `pwsh tools/dev/bootstrap.ps1 -LocalDefaults -Run`으로 묶여 있다(Python 3.12·Git·Docker 확인, `.venv`, 의존성, `.env`, db/redis 기동, `alembic upgrade head`, 서버·worker 실행). 이미 있는 `.env`는 읽거나 고치지 않는다. **[제안, 미구현]** `.env`의 운영 호스트 검사와 개발 DB 컨테이너 상태 점검은 아직 없다.
+**[현재 · 원클릭]** 위 단계는 `pwsh tools/dev/bootstrap.ps1 -LocalDefaults -Run`으로 묶여 있다(Python 3.12·Git·Docker 확인, `.venv`, 의존성, `.env`, db/redis 기동, `alembic upgrade head`, 서버·worker 실행). 이미 있는 `.env`는 읽거나 고치지 않는다. 데스크톱 앱은 `pwsh tools/dev/bootstrap.ps1 -App -Run`(작업 에이전트·앱 빌드·패키징 후 실행)으로, `-App -Staging`은 로컬 HTTPS 스테이징 서버를 준비·실행하고 그 서버 주소와 자체 서명 인증서를 넣어 앱을 빌드한다(탐색기에서 더블클릭해도 연결된다). 이후에는 `-Staging`만으로 서버를 켠다(README "데스크톱 앱 실행"). **[제안, 미구현]** `.env`의 운영 호스트 검사와 개발 DB 컨테이너 상태 점검은 아직 없다.
 
 ## 4. 환경 변수
 
@@ -59,7 +59,7 @@ docker compose up -d db redis
 | `REDIS_URL` | Celery 브로커·백엔드 |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `FRONTEND_URL`, `TOKEN_ENCRYPTION_KEY` | GitHub 로그인·토큰 보관 |
 
-선택: `AI_ENABLED`와 `AI_*`(기본 꺼짐), `DESKTOP_AUTH_ENABLED`·`DESKTOP_PUBLIC_ORIGIN`·`DESKTOP_AUTH_RESPONSE_KEY`(데스크톱 로그인), `SESSION_COOKIE_SECURE`(개발은 0).
+선택: `AI_ENABLED`와 `AI_*`(기본 꺼짐), `DESKTOP_AUTH_ENABLED`·`DESKTOP_PUBLIC_ORIGIN`·`DESKTOP_AUTH_RESPONSE_KEY`(데스크톱 로그인), `SESSION_COOKIE_SECURE`(개발은 0), `VOICE_STUN_URLS`·`VOICE_TURN_URLS`·`VOICE_TURN_SECRET`(커뮤니티 음성 채팅. 예시와 스테이징은 공개 STUN, 비우면 같은 네트워크 안에서만 연결).
 
 **[제안] 환경별 파일:**
 
@@ -167,7 +167,8 @@ npm --prefix desktop start          # = electron .
 |---|---|---|
 | `GITVIZ_USER_DATA_DIR` | `userData`/`sessionData`를 지정 폴더로. 기본값 `%LOCALAPPDATA%\GitViz-Dev\` | 무시 |
 | `GITVIZ_AGENT_COMMAND` | 에이전트를 `python -m app.workspace` 같은 명령으로 실행 | 무시 |
-| `GITVIZ_SERVER_ORIGIN` | 개발 서버의 HTTPS 원점 | 무시(내장 설정 사용) |
+| `GITVIZ_SERVER_ORIGIN` | 개발 서버의 HTTPS 원점 | 내장 원점이 있으면 무시, 없으면 사용(스테이징 VM) |
+| `GITVIZ_BUILD_SERVER_ORIGIN` | (빌드 시) 앱에 내장할 서버 HTTPS 원점. `https://도메인[:포트]` 형식만 허용 | 설치본이 이 값을 사용 |
 
 ## 8. 디버깅
 
@@ -176,10 +177,10 @@ npm --prefix desktop start          # = electron .
 | 서버 | `python -m uvicorn … --reload`(코드 변경 자동 재시작), 브라우저 개발자 도구, `.claude/launch.json`(로컬 도구 설정) | `--reload`는 [제안], 나머지 [현재] |
 | Celery | `--loglevel=debug` | [현재 옵션] |
 | 에이전트 | 단위 테스트(`unittest`)를 IDE에서 실행. 표준 입출력 프레임을 직접 보려면 테스트 하니스(`tests/workspace/fixture_*.py`)를 참고 | [현재] |
-| 데스크톱 렌더러 | 앱 창은 `devTools: false`(`window.ts`)라 개발자 도구가 열리지 않는다. 진단에는 Chromium 스위치 `--remote-debugging-port=<포트>`로 CDP에 붙였다(이번 프로젝트의 진단 세션에서 포장 앱에도 동작함을 확인) | [현재] |
+| 데스크톱 렌더러 | 앱 창은 `devTools: false`(`window.ts`)라 개발자 도구가 열리지 않는다. 개발(비포장) 실행(`electron .`)에서는 Chromium 스위치 `--remote-debugging-port=<포트>`로 CDP에 붙일 수 있다. **포장 앱은 이 스위치를 주면 즉시 종료한다**(K-04) | [현재] |
 | 로그 | 서버: 콘솔(`logging`을 쓰는 파일은 5개뿐, `print` 78회). 데스크톱: 로그 파일 없음 | 개선은 [제안] |
 
-**[제안]** 포장 빌드에서는 `--remote-debugging-port`·`--inspect`를 거부하도록 하고(Electron fuses 또는 시작 시 인자 검사), 개발 빌드에서만 허용한다. 현재 포장 앱이 이 스위치를 받아들이는 점은 [환경 분리 아키텍처](../architecture/ENVIRONMENT_ARCHITECTURE.md) §6의 검토 항목이다.
+**[현재]** 포장 빌드는 시작 시 인자 검사(`desktop/src/debug-guard.ts`)로 `--remote-debugging-*`·`--inspect*`를 거부하고, 개발 빌드에서만 허용한다. 포장 앱 검증은 렌더러 조사(CDP) 대신 프로세스·에이전트·데이터 파일 확인으로 해야 한다.
 
 ## 9. 테스트 실행 (시나리오 C)
 

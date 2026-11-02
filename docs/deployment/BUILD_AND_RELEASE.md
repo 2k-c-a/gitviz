@@ -115,11 +115,13 @@ CI는 `--ignore-scripts`로 설치하므로 `electron-winstaller`의 7-Zip 선�
 | 서버 | `app/main.py`의 `FastAPI(version="0.1.0")` | 데스크톱과 독립, 불일치 |
 | 에이전트 | 별도 버전 문자열 없음. `SCHEMA_VERSION = 8`(로컬 DB 스키마), 프로토콜 `protocolVersion: 1` | PyInstaller 버전 리소스 미설정 |
 | 계약 | `contracts/workspace/v1` | 경로가 버전 |
-| 서버 DB | Alembic 헤드 `b7e1d9c3a502` | 리비전 18개, 선형 |
+| 서버 DB | Alembic 헤드 `d4f6a8c0e2b3` (커뮤니티 채팅, AD-27) | 리비전 20개, 선형 |
 
 **[제안]** 릴리스 버전의 단일 소스는 `desktop/package.json`으로 유지한다(Squirrel이 사용). 빌드 시 `build-output/<버전>/build-info.json`에 커밋 SHA, 태그, 도구 버전, 에이전트 SHA-256, `SCHEMA_VERSION`, 서버 호환 범위를 기록한다. 서버와의 호환은 숫자 하나로 합치지 않고 "클라이언트 `protocolVersion` / 서버 지원 범위"로 협상한다(기존 `localSchemaRange` 방식을 따른다).
 
 ## 6. 코드 서명
+
+> **0.7.0 정책(2026-10-30):** 0.7.0은 **의도적으로 코드 서명 없이** 배포한다(소유자 결정). 서명 인증서를 새로 만들거나 구매하지 않고 Authenticode 서명을 하지 않는다. 서명되지 않은 설치 파일을 정상적인 Release Candidate로 취급하며, 서명 부재만으로 릴리스 판정을 막지 않는다. `forge.config.ts`는 서명 변수 두 개가 모두 있을 때만 서명하고 없으면 서명 설정 없이 정상 빌드한다(인증서 필수 조건 없음).
 
 - **[현재]** 서명 없음. `forge.config.ts`는 `GITVIZ_SIGN_PFX`와 `GITVIZ_SIGN_PFX_PASSWORD`가 **둘 다** 있을 때만 maker-squirrel의 `certificateFile`·`certificatePassword`를 설정한다. `update.ts`의 `publisher`는 인증서가 정해질 때까지 비워져 있고, 이 경우 설치 프로그램은 "서명 확인 불가(unsigned-not-trusted)"로 취급된다.
 - **미검증:** (1) maker-squirrel 서명이 Setup.exe뿐 아니라 앱 exe·`Update.exe`·에이전트 exe까지 서명하는지, (2) Smart App Control 강제 모드와 다운로드 표시(MOTW) 환경에서의 설치·실행.

@@ -1,3 +1,4 @@
+import logging
 import os
 import statistics
 from datetime import datetime, timezone
@@ -280,14 +281,17 @@ def create_repository(github_url: str, request: Request, analysis_start: str | N
     return {"message":"Repository analysis queued", "repository_id":repository.id,"job_id":job_id}
 
 
+logger = logging.getLogger('gitviz.search')
+
 _GITHUB_SEARCH_URL = "https://api.github.com/search/repositories"
 _SEARCH_TIMEOUT_SECONDS = 8
+_SEARCH_RESULT_LIMIT = 1000
 _SEARCH_SORT_VALUES = {"stars", "forks", "help-wanted-issues", "updated"}
 
 
 @router.get("/search/github-repositories")
 def search_github_repositories(
-    request: Request, q: str, sort: str = "", per_page: int = 20, db: Session = Depends(get_db),
+    request: Request, q: str, sort: str = "", per_page: int = 20, page: int = 1, db: Session = Depends(get_db),
 ):
     """GitHub Search API로 레포를 검색해 메타데이터 + is_registered만 반환한다.
     경량 예비 점수(scores)는 Track 02 몫이라 아직 없으면 null로 내려간다 — 프론트
@@ -301,7 +305,10 @@ def search_github_repositories(
     if not q:
         raise HTTPException(status_code=422, detail="검색어(q)가 필요합니다.")
 
-    params = {"q": q, "per_page": max(1, min(per_page, 100))}
+    per_page = max(1, min(per_page, 100))
+    # GitHub Search serves only the first 1,000 results; clamp instead of forwarding a page it rejects.
+    page = max(1, min(page, _SEARCH_RESULT_LIMIT // per_page))
+    params = {"q": q, "per_page": per_page, "page": page}
     if sort in _SEARCH_SORT_VALUES:
         params["sort"] = sort
 
@@ -320,12 +327,15 @@ def search_github_repositories(
         response = requests.get(
             _GITHUB_SEARCH_URL, params=params, headers=headers, timeout=_SEARCH_TIMEOUT_SECONDS,
         )
-    except RequestException:
+    except RequestException as exc:
+        logger.warning("GitHub search request failed: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="GitHub에 연결할 수 없습니다.")
 
     if response.status_code in (403, 429):
         raise HTTPException(status_code=429, detail="GitHub 검색 API 한도에 도달했습니다.")
     if not response.ok:
+        logger.warning("GitHub search returned %s (personal token: %s): %s",
+                       response.status_code, bool(personal), response.text[:300])
         raise HTTPException(status_code=502, detail=f"GitHub 검색에 실패했습니다 ({response.status_code}).")
 
     payload = response.json()
@@ -363,6 +373,8 @@ def search_github_repositories(
     return {
         "query": q,
         "total_count": payload.get("total_count", 0),
+        "page": page,
+        "per_page": per_page,
         "results": results,
     }
 

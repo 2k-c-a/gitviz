@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 os.environ["DATABASE_URL"] = "postgresql://gitviz_test:unused@localhost/gitviz_test"
 os.environ["DATABASE_URL_ASYNC"] = ""
-from app.schemas import ai
+from app.schemas import ai, community
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 
@@ -21,14 +21,22 @@ class Compatibility(unittest.TestCase):
         bodies = json.loads((ROOT / "contracts/desktop/v1/ai-bodies.json").read_text(encoding="utf8"))
         for name, schema in bodies.items():
             self.assertEqual(schema, getattr(ai, name).model_json_schema(), name)
+        bodies = json.loads((ROOT / "contracts/desktop/v1/community-bodies.json").read_text(encoding="utf8"))
+        for name, schema in bodies.items():
+            self.assertEqual(schema, getattr(community, name).model_json_schema(), name)
 
     def test_single_additive_head(self):
         directory = ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini")))
-        self.assertEqual(directory.get_heads(), ["b7e1d9c3a502"])
+        # 2026-11-01 (AD-25, AD-27): the community tables and then chat history sit on top of the desktop sessions.
+        self.assertEqual(directory.get_heads(), ["d4f6a8c0e2b3"])
+        self.assertEqual(directory.get_revision("d4f6a8c0e2b3").down_revision, "c3e5a7b9d1f2")
+        self.assertEqual(directory.get_revision("c3e5a7b9d1f2").down_revision, "b7e1d9c3a502")
         self.assertEqual(directory.get_revision("b7e1d9c3a502").down_revision, "a9d2f4c6e8b0")
-        migration = (ROOT / "migrations/versions/b7e1d9c3a502_desktop_sessions.py").read_text(encoding="utf8")
-        self.assertNotIn("ALTER TABLE", migration)
-        self.assertNotIn("DROP TABLE", migration)
+        for name in ("b7e1d9c3a502_desktop_sessions.py", "c3e5a7b9d1f2_community.py",
+                     "d4f6a8c0e2b3_community_chat.py"):
+            migration = (ROOT / "migrations/versions" / name).read_text(encoding="utf8")
+            self.assertNotIn("ALTER TABLE", migration)
+            self.assertNotIn("DROP TABLE", migration)
 
     def test_existing_pages_local_scripts_and_no_executable_attributes(self):
         for name in ["timeline", "network", "code-analysis", "search", "myprojects", "history", "ai-review"]:

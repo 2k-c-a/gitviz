@@ -13,7 +13,7 @@ function themeSeries(chart) {
     });
   }
   if (chart.canvas.id === 'chart-donut') {
-    const order = { '기능 추가': 1, '리팩토링': 4, '버그 픽스': 2, '문서': 5, '잡무': 3, '기타': 6 };
+    const order = { '기능 추가': 1, '리팩토링': 4, '버그 수정': 2, '문서': 5, '유지 작업': 3, '기타': 6 };
     chart.data.datasets[0].backgroundColor = chart.data.labels.map(label => chartColor(order[label] || 6));
   }
 }

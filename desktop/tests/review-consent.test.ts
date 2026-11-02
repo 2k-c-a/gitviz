@@ -31,7 +31,7 @@ test('native cancellation sends nothing; approval forwards unchanged payload and
   const forward = async () => { starts++; return input; };
   assert.equal(await consent.start(input, async detail => {
     prompts++;
-    for (const required of [preview.destination, '4338', 'src/example.py', 'cccccccccccccccc', '회수할 수 없습니다']) assert.ok(detail.includes(required));
+    for (const required of [preview.destination, '4338', 'src/example.py', 'cccccccccccccccc', '되돌릴 수 없습니다']) assert.ok(detail.includes(required));
     return false;
   }, forward), null);
   assert.equal(starts, 0);

@@ -36,8 +36,8 @@ function cause(item) {
   if (item.causeCode === 'ai-findings') return `AI 추론 지적 ${s.findings}건 · 최고 ${s.highestFindingSeverity ?? 'unknown'} · 실행으로 검증한 결함 아님`;
   if (item.causeCode === 'ai-no-findings') return 'AI 추론 지적 0건 · 결함 없음을 뜻하지 않음';
   if (item.causeCode === 'ai-refactor-ready') return '리팩토링 제안 생성 · 파일 쓰기는 별도 승인';
-  if (item.causeCode === 'command-nonzero-exit') return `결정적 명령 실패 · 종료 코드 ${s.exitCode ?? '없음'}`;
-  if (item.causeCode === 'command-exit-zero') return '결정적 명령 종료 코드 0';
+  if (item.causeCode === 'command-nonzero-exit') return `검증 명령 실패 · 종료 코드 ${s.exitCode ?? '없음'}`;
+  if (item.causeCode === 'command-exit-zero') return '검증 명령 성공 · 종료 코드 0';
   return `원인 코드 ${item.causeCode}`;
 }
 function filters() {

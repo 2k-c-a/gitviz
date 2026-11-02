@@ -68,6 +68,8 @@ $userScenario = {
         do { $h = Cdp $port $health 20; if ($h -match '"state":"ready"') { break }; Start-Sleep -Seconds 3 } while ((Get-Date) -lt $end)
         $h
     }
+    # NOTE: packaged builds with the debug-port block (desktop/src/debug-guard.ts) exit with code 2 on this switch, so this launcher
+    # only works against builds that predate K-04's fix. It must be reworked (process/agent/data-file checks) before the next VM run.
     function Launch-Debug($exe, [int]$port) { Start-Process $exe -ArgumentList "--remote-debugging-port=$port" -PassThru }
 
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)

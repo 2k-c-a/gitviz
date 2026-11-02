@@ -34,7 +34,7 @@ function summary(kind, value) {
 export async function openTarget(item, detail) {
   detail.replaceChildren();
   const target = item.target;
-  if (item.targetState !== 'available') return '대상 기록을 찾을 수 없습니다. 삭제·만료되었거나 접근할 수 없는 대상입니다.';
+  if (item.targetState !== 'available') return '대상 기록을 찾을 수 없습니다. 삭제·만료됐거나 접근할 수 없는 대상입니다.';
   if (![...picker.options].some(option => option.value === target.projectId)) return '이 알림의 프로젝트가 현재 목록에 없습니다. 프로젝트 목록을 새로고침하거나 다시 연결하세요.';
   if (picker.value !== target.projectId) {
     picker.value = target.projectId;

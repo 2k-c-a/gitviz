@@ -143,28 +143,42 @@ class DesktopAuthTests(unittest.TestCase):
     def create(self):
         response = self.client.post(
             "/api/desktop/v1/auth/transactions",
-            json={"challenge": service.digest(self.verifier), "deviceLabel": "Fixture"},
+            json={"challenge": service.digest(self.verifier), "deviceLabel": "Fixture", "redirectPort": 49152},
         )
         self.assertEqual(response.status_code, 201)
         return response.json()
 
-    def approve(self, flow, approve=True):
-        self.browser.get("/fixture/login")
-        response = self.browser.get("/api/desktop/v1/auth/authorize", params={"flow": flow["flowId"]})
-        self.assertEqual(response.status_code, 200)
-        import re
+    def approve(self, flow, browser=None):
+        """Sign in and follow the server back to the app's loopback address; returns the callback code."""
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from urllib.parse import parse_qs, urlsplit
 
-        csrf = re.search('name="csrf" value="([^"]+)"', response.text)[1]
-        return self.browser.post(
-            "/api/desktop/v1/auth/authorize",
-            headers={"Origin": "https://desktop.test"},
-            data={
-                "flowId": flow["flowId"],
-                "displayCode": flow["displayCode"],
-                "approve": str(approve).lower(),
-                "csrf": csrf,
-            },
-        )
+        browser = browser or self.browser
+        browser.get("/fixture/login")
+        response = browser.get(flow["browserUrl"].removeprefix("https://desktop.test"))
+        # An existing browser session still goes through GitHub so the stored GitHub token is renewed.
+        self.assertEqual((response.status_code, response.headers["location"]), (303, "/api/auth/github"))
+        state = parse_qs(urlsplit(browser.get("/api/auth/github").headers["location"]).query)["state"][0]
+        with (
+            patch("app.api.auth.exchange_code_for_token", AsyncMock(return_value="fixture-github-token")),
+            patch("app.api.auth.fetch_github_user", AsyncMock(return_value={})),
+            patch("app.api.auth.upsert_user", AsyncMock(return_value=SimpleNamespace(id=self.user_id))),
+        ):
+            response = browser.get("/api/auth/callback", params={"code": "fixture", "state": state})
+        response = browser.get(response.headers["location"])
+        self.assertEqual(response.status_code, 303)
+
+        target = urlsplit(response.headers["location"])
+        self.assertEqual((target.scheme, target.netloc, target.path), ("http", "127.0.0.1:49152", "/callback"))
+        query = parse_qs(target.query)
+        self.assertEqual(query["flow"], [flow["flowId"]])
+        return query["code"][0]
+
+    def ready(self, flow):
+        with self.db_factory.begin() as db:
+            row = db.get(DesktopAuthTransaction, __import__("uuid").UUID(flow["flowId"]))
+            row.next_poll_at = service.now() - timedelta(seconds=1)
 
     def exchange(self, flow, key=None, **over):
         body = {"flowId": flow["flowId"], "pollSecret": flow["pollSecret"], "verifier": self.verifier, **over}
@@ -179,12 +193,16 @@ class DesktopAuthTests(unittest.TestCase):
         self.assertEqual(self.exchange(flow, verifier="x" * 43).status_code, 401)
         self.assertEqual(self.exchange(flow).status_code, 202)
         self.assertEqual(self.exchange(flow).status_code, 429)
-        self.assertEqual(self.approve(flow).status_code, 200)
-        with self.db_factory.begin() as db:
-            row = db.get(DesktopAuthTransaction, __import__("uuid").UUID(flow["flowId"]))
-            row.next_poll_at = service.now() - timedelta(seconds=1)
+        self.assertTrue(flow["browserUrl"].endswith("&port=49152"))
+        code = self.approve(flow)
+        self.ready(flow)
+        # Authorized in the browser, but without the loopback code it is still pending.
+        self.assertEqual(self.exchange(flow).status_code, 202)
+        self.ready(flow)
+        self.assertEqual(self.exchange(flow, callbackCode="x" * 43).status_code, 202)
+        self.ready(flow)
         key = str(uuid4())
-        result = self.exchange(flow, key)
+        result = self.exchange(flow, key, callbackCode=code)
         self.assertEqual(result.status_code, 200)
         self.assertEqual(self.exchange(flow, key).json(), result.json())
         self.assertEqual(self.exchange(flow).status_code, 409)
@@ -196,8 +214,7 @@ class DesktopAuthTests(unittest.TestCase):
 
     def test_bearer_principal_csrf_mixed_cookie_revocation(self):
         flow = self.create()
-        self.assertEqual(self.approve(flow).status_code, 200)
-        issued = self.exchange(flow).json()
+        issued = self.exchange(flow, callbackCode=self.approve(flow)).json()
         headers = {"Authorization": "Bearer " + issued["sessionToken"]}
         self.assertEqual(self.client.get("/fixture/principal", headers=headers).json()["user"], str(self.user_id))
         self.assertEqual(self.client.post("/fixture/mutate", headers=headers).status_code, 200)
@@ -211,9 +228,6 @@ class DesktopAuthTests(unittest.TestCase):
         self.assertEqual(self.client.get("/fixture/principal", headers=headers).status_code, 401)
 
     def test_binding_csrf_denial_expiry_and_size(self):
-        flow = self.create()
-        self.assertEqual(self.approve(flow, False).status_code, 200)
-        self.assertEqual(self.exchange(flow).status_code, 401)
         self.assertEqual(self.client.post("/api/desktop/v1/auth/transactions", content=b"x" * 4097).status_code, 413)
         self.assertEqual(
             self.client.post(
@@ -222,30 +236,38 @@ class DesktopAuthTests(unittest.TestCase):
             422,
         )
         flow = self.create()
+        # The approve form is gone: nothing but the GET sign-in can authorize a flow.
         self.assertEqual(
-            self.browser.post("/api/desktop/v1/auth/authorize", json={"flowId": flow["flowId"]}).status_code, 401
+            self.browser.post("/api/desktop/v1/auth/authorize", json={"flowId": flow["flowId"]}).status_code, 405
         )
-        self.browser.get("/api/desktop/v1/auth/authorize", params={"flow": flow["flowId"]})
+        # Without a loopback port there is nowhere safe to deliver the code.
+        self.assertEqual(
+            self.browser.get("/api/desktop/v1/auth/authorize", params={"flow": flow["flowId"]}).status_code, 401
+        )
+        self.assertEqual(self.client.post("/api/desktop/v1/auth/transactions",
+            json={"challenge": "a" * 64, "deviceLabel": "x", "redirectPort": 80}).status_code, 422)
+        self.browser.get(flow["browserUrl"].removeprefix("https://desktop.test"))
         with self.db_factory.begin() as db:
             row = db.get(DesktopAuthTransaction, __import__("uuid").UUID(flow["flowId"]))
             row.expires_at = service.now() - timedelta(seconds=1)
         self.assertEqual(self.exchange(flow).status_code, 401)
 
-    def test_approval_page_lets_browsers_send_a_real_origin_and_null_is_rejected(self):
+    def test_forwarded_link_signs_in_nobody_but_the_app_that_opened_it(self):
         flow = self.create()
-        self.browser.get("/fixture/login")
-        page = self.browser.get("/api/desktop/v1/auth/authorize", params={"flow": flow["flowId"]})
-        # With no-referrer, browsers send `Origin: null` on the form's same-origin POST and approval always failed.
-        self.assertEqual(page.headers["referrer-policy"], "same-origin")
-        import re
-
-        csrf = re.search('name="csrf" value="([^"]+)"', page.text)[1]
-        denied = self.browser.post(
-            "/api/desktop/v1/auth/authorize",
-            headers={"Origin": "null"},
-            data={"flowId": flow["flowId"], "displayCode": flow["displayCode"], "approve": "true", "csrf": csrf},
-        )
-        self.assertEqual(denied.status_code, 401)
+        victim = TestClient(self.client.app, base_url="https://desktop.test", follow_redirects=False)
+        try:
+            # Someone else's browser completes the link; the code goes to that person's own 127.0.0.1.
+            code = self.approve(flow, victim)
+            self.ready(flow)
+            self.assertEqual(self.exchange(flow).status_code, 202)
+            # A second browser cannot take over a flow already bound to the first.
+            self.browser.get("/fixture/login")
+            self.assertEqual(
+                self.browser.get(flow["browserUrl"].removeprefix("https://desktop.test")).status_code, 401
+            )
+            self.assertEqual(len(code), 43)
+        finally:
+            victim.close()
 
     def test_disabled_authorization_preserves_public_responses(self):
         for path in ('/', '/pages/search.html'):
@@ -282,7 +304,9 @@ class DesktopAuthTests(unittest.TestCase):
     def test_issue_rate_limit(self):
         for _ in range(10):
             self.create()
-        result = self.client.post("/api/desktop/v1/auth/transactions", json={"challenge": "a" * 64, "deviceLabel": "x"})
+        result = self.client.post(
+            "/api/desktop/v1/auth/transactions", json={"challenge": "a" * 64, "deviceLabel": "x", "redirectPort": 49152}
+        )
         self.assertEqual(result.status_code, 429)
 
     def test_web_oauth_state_is_bound_to_desktop_flow_without_external_calls(self):
@@ -290,7 +314,7 @@ class DesktopAuthTests(unittest.TestCase):
         from types import SimpleNamespace
 
         flow = self.create()
-        response = self.browser.get("/api/desktop/v1/auth/authorize", params={"flow": flow["flowId"]})
+        response = self.browser.get(flow["browserUrl"].removeprefix("https://desktop.test"))
         self.assertEqual(response.status_code, 303)
         response = self.browser.get(response.headers["location"])
         from urllib.parse import urlsplit, parse_qs
@@ -310,8 +334,11 @@ class DesktopAuthTests(unittest.TestCase):
             result = self.browser.get("/api/auth/callback", params={"code": "fixture", "state": state})
         self.assertEqual(result.status_code, 302)
         self.assertEqual(result.headers["location"], "/api/desktop/v1/auth/authorize?flow=" + flow["flowId"])
-        self.assertEqual(self.browser.get(result.headers["location"]).status_code, 200)
-        # Merely opening the approval page never authorizes the main client.
+        # The GitHub round trip dropped the port from the URL; the signed session restores it.
+        back = self.browser.get(result.headers["location"])
+        self.assertEqual(back.status_code, 303)
+        self.assertTrue(back.headers["location"].startswith("http://127.0.0.1:49152/callback?flow=" + flow["flowId"]))
+        # Without the loopback code the app is still pending.
         self.assertEqual(self.exchange(flow).status_code, 202)
 
     @unittest.skipUnless(POSTGRES, "PostgreSQL row locking is required")
@@ -321,14 +348,14 @@ class DesktopAuthTests(unittest.TestCase):
         from uuid import UUID
 
         flow = self.create()
-        self.assertEqual(self.approve(flow).status_code, 200)
+        code = self.approve(flow)
         barrier = Barrier(2)
         key = str(uuid4())
 
         def exchange_in_transaction():
             with self.db_factory.begin() as db:
                 barrier.wait(timeout=5)
-                return service.exchange(db, UUID(flow["flowId"]), flow["pollSecret"], self.verifier, key)
+                return service.exchange(db, UUID(flow["flowId"]), flow["pollSecret"], self.verifier, key, code)
 
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(lambda _: exchange_in_transaction(), range(2)))

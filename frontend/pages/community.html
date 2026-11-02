@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <script src="../js/ui/theme.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../css/index.css">
+    <title>GitViz · 커뮤니티</title>
+</head>
+<body>
+  <div id="navbar-container"></div>
+  <div id="modal-container"></div>
+
+  <!-- ═══════════ PROJECT COMMUNITY ═══════════ -->
+  <div class="page active" id="page-community">
+    <div class="dash-head">
+      <div>
+        <div class="dash-title">커뮤니티</div>
+        <div class="dash-sub">분석한 저장소마다 기여자끼리 글과 댓글을 나눕니다. 기여자는 자동으로 참여하고, 다른 사람은 초대 링크로 들어옵니다.</div>
+      </div>
+    </div>
+
+    <div class="body community-layout">
+      <aside class="community-side">
+        <section class="panel">
+          <h2 class="ui-panel-title">내 커뮤니티</h2>
+          <div id="community-list" class="community-list" aria-live="polite"></div>
+        </section>
+        <section class="panel">
+          <h2 class="ui-panel-title">초대 링크로 참여</h2>
+          <form id="community-join" class="community-join">
+            <input id="community-invite-input" type="text" aria-label="초대 링크" placeholder="받은 초대 링크를 붙여 넣으세요" autocomplete="off">
+            <button class="btn-primary" type="submit">참여</button>
+          </form>
+          <p id="community-join-message" class="p-sub" role="status"></p>
+          <a id="community-open-app" class="btn-secondary" hidden>GitViz 앱에서 열기</a>
+        </section>
+      </aside>
+      <section id="community-main" class="community-main" aria-live="polite"></section>
+    </div>
+  </div>
+</body>
+
+<script type="module" src="../js/main.js"></script>
+</html>

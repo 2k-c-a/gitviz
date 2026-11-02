@@ -109,7 +109,7 @@ class Reviews:
             'estimatedInputTokens': estimated, 'coverage': snapshot['coverage'], 'excluded': [f for f in snapshot['files'] if f['state'] != 'read'],
             'system': system, 'user': user, 'files': files, 'requestHash': image_hash(wire), 'requestBytes': len(wire),
             'limitations': ['content-secret-detection-is-heuristic', 'model-inference-not-executed', 'retention-policy-pending']}
-        if cloud:
+        if cloud and cloud['proof'] is not None:
             manifest['cloudMapping'] = {name: cloud['proof'][name] for name in ('accountId', 'serverOrigin', 'repositoryId', 'githubId', 'canonicalUrl', 'connectionId', 'configHash', 'visibility')}
         manifest['manifestHash'] = fingerprint(manifest)
         return manifest

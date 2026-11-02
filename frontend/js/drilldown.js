@@ -159,7 +159,7 @@ function priorityBlock({ policy, score, ev, row, extra, detail }) {
     const why = ev === 'no_history'
       ? '관측 구간에 변경이 없어 점수가 없습니다. 0이 아니며 안전하다는 뜻도 아닙니다.'
       : ev === 'metrics_missing'
-        ? '점수 계산에 필요한 입력(수정량 등)이 누락되어 점수를 계산하지 못했습니다(자료 부족). 점수 순위에서는 뒤에 둡니다.'
+        ? '점수 계산에 필요한 입력(수정량 등)이 빠져 있어 점수를 계산하지 못했습니다(자료 부족). 점수 순위에서는 뒤에 둡니다.'
         : '점수가 없습니다. 이 결과에서는 이 파일의 근거 상태를 확인할 수 없어, 변경 이력이 없다고 단정하지 않습니다.';
     html += `<div class="dd-note">${esc(why)}</div>`;
   }
@@ -217,7 +217,7 @@ function contributionBlock({ policy, snap, detail, row, extra }) {
     : `이 결과는 구간 제한 없이 전체 이력을 대상으로 했습니다. 관측 구간은 파일의 마지막 refactor 분류 커밋 이후이며, 없으면 전체 이력입니다(이전 계산 버전).`;
   return `<div class="dd-sec-title">기여 분포 (주요 수정자 수)</div>
     <table class="dd-table"><tbody>${cells.join('')}</tbody></table>
-    <div class="dd-note">주요 수정자 수는 관측 구간의 파일 변경 커밋 중 80%를 차지하는 최소 기여자 수입니다. 1이면 한 명에게 관측 변경 기여가 집중되었다는 뜻이며, 실제 지식 보유 인원이 아닙니다. 작성자가 식별되지 않은 변경은 계산에서 제외합니다. ${esc(windowText)}</div>`;
+    <div class="dd-note">주요 수정자 수는 관측 구간의 파일 변경 커밋 중 80%를 차지하는 최소 기여자 수입니다. 1이면 한 명에게 관측 변경 기여가 집중됐다는 뜻이며, 실제 지식 보유 인원이 아닙니다. 작성자가 식별되지 않은 변경은 계산에서 제외합니다. ${esc(windowText)}</div>`;
 }
 
 /* ── 함께 변경된 파일 블록 ──

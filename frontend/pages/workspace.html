@@ -13,7 +13,6 @@
 <li><span class="ws-num" aria-hidden="true">1</span><span class="ws-grow"><strong>프로젝트 폴더 등록</strong><br><span class="ws-note">Git 저장소가 있는 폴더를 고르세요. 폴더는 읽기만 하며 파일을 바꾸지 않습니다.</span></span><button type="button" id="ws-start-register" class="btn-primary" data-risk="read">폴더 선택…</button></li>
 <li><span class="ws-num" aria-hidden="true">2</span><span class="ws-grow"><strong>변경 확인</strong><br><span class="ws-note">등록하면 바로 변경된 파일과 최근 커밋을 보여 드립니다.</span></span></li>
 <li><span class="ws-num" aria-hidden="true">3</span><span class="ws-grow"><strong>AI 점검</strong> <span class="ws-chip">선택</span><br><span class="ws-note">이 PC에 설치한 Ollama 모델이나 내 API 키가 있으면 사용할 수 있습니다. 모델은 자동으로 설치하지 않습니다.</span></span></li>
-<li><span class="ws-num" aria-hidden="true">4</span><span class="ws-grow"><strong>서버 연결</strong> <span class="ws-chip">선택</span><br><span class="ws-note">로그인하면 서버 분석과 함께 바뀐 이력을 볼 수 있습니다.</span></span><button type="button" data-go-view="account">계정·연결</button></li>
 </ol>
 <p class="ws-note">로그인이나 AI 없이도 Git 상태, 영향 범위, 테스트·린트 실행은 쓸 수 있습니다.</p>
 <details><summary>내 코드는 어디로 가나요?</summary><p class="ws-note">기본적으로 코드를 어디에도 보내지 않습니다. 이 PC의 모델은 PC 안에서만 처리하고, 클라우드 모델은 보낼 내용을 직접 확인하고 동의한 부분만 보냅니다. 선택한 변경과 점검 결과는 이 PC의 암호화 저장소에 보관합니다.</p></details>
@@ -53,10 +52,10 @@
 
 <div class="ws-tab-panel" role="tabpanel" id="ws-panel-changes" data-tab-panel="changes" aria-labelledby="ws-tab-changes" tabindex="-1" hidden>
 <h1>변경</h1>
-<p class="ws-note">점검할 파일을 고른 뒤 &lsquo;점검 대상으로 담기&rsquo;를 누르세요. 담은 변경은 스냅샷(그 시점의 고정된 사본)으로 저장되어, 이후 점검·검증·비교의 기준이 됩니다. 바이너리, 큰 파일, 비밀 값이 들어 있는 것으로 보이는 내용은 제외됩니다.</p>
-<div class="ws-panel"><div class="ws-toolbar"><button type="button" id="reload-changes" data-risk="read">변경 목록 새로고침</button><label class="ws-inline"><input id="include-untracked" type="checkbox"> 선택한 untracked 파일 포함</label></div>
+<p class="ws-note">파일을 고른 뒤 &lsquo;AI 리뷰&rsquo; 또는 &lsquo;AI 리팩토링&rsquo;을 누르면 바로 실행됩니다. 모델과 목적은 설정에서 바꿉니다. 고른 변경은 그 시점의 사본으로 저장돼 점검·검증·비교의 기준이 됩니다. 바이너리, 큰 파일, 비밀 값이 들어 있는 것으로 보이는 내용은 제외됩니다.</p>
+<div class="ws-panel"><div class="ws-toolbar"><button type="button" id="reload-changes" data-risk="read">변경 목록 새로고침</button><label class="ws-inline"><input id="include-untracked" type="checkbox"> 선택한 새 파일(Git 미추적) 포함</label></div>
 <div id="change-selection"></div>
-<div class="ws-actionbar"><button type="button" id="capture-changes" class="btn-primary" data-risk="read">점검 대상으로 담기</button><span id="capture-message" class="ws-message" role="status"></span></div>
+<div class="ws-actionbar"><button type="button" id="quick-review" class="btn-primary" data-risk="send">AI 리뷰</button><button type="button" id="quick-refactor" class="btn-primary" data-risk="send">AI 리팩토링</button><button type="button" id="capture-changes" data-risk="read">점검 대상으로만 담기</button><span id="capture-message" class="ws-message" role="status"></span></div>
 <div id="capture-result"></div><pre id="fixed-preview"></pre></div>
 <p class="ws-note">조회와 담기는 읽기 전용입니다. 파일 적용과 프로젝트 검증은 별도 승인 후에만 실행됩니다. 외부 Git 메타데이터는 확인 후에만 읽으며, 서브모듈 안쪽 상태는 보여 주지 않습니다.</p>
 </div>
@@ -73,16 +72,16 @@
 <p>이 PC의 Ollama 모델(qwen2.5-coder:7b, 127.0.0.1:11434)로만 보내거나, 내 API 키를 써서 클라우드 모델에 보낼 수 있습니다. 모델은 자동으로 설치하거나 실행하지 않습니다.</p>
 <label class="ws-field"><span>종류</span><select id="review-kind"><option value="review">코드 리뷰</option><option value="refactor">작은 개선 제안</option></select></label>
 <label class="ws-field"><span>모델</span><select id="review-profile"><option value="ollama-local-v1">이 PC의 Ollama</option><option value="claude-opus-5-5-v1">Anthropic Opus 5.5 (내 API 키)</option><option value="claude-sonnet-5-5-v1">Anthropic Sonnet 5.5 (내 API 키)</option><option value="gpt-5.4-v1">OpenAI GPT-5.4 (내 API 키)</option><option value="gemini-3.5-flash-lite-v1">Gemini 3.5 Flash-Lite (내 API 키)</option></select></label>
-<label class="ws-field ws-cloud-only"><span>API 키 (이번 점검 동안만 메모리에 두고 저장하지 않습니다)</span><input id="review-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false"></label>
-<p class="ws-note ws-cloud-only">클라우드 모델은 현재 계정으로 공개 저장소임을 확인한 연결에서만 쓸 수 있습니다. 앱의 월 사용 한도(USD 20)에는 아직 정산되지 않은 예약분도 포함됩니다.</p>
+<label class="ws-field ws-cloud-only"><span>API 키 (비워 두면 설정에 저장한 키를 씁니다. 여기 입력한 키는 이번 점검에만 쓰고 저장하지 않습니다)</span><input id="review-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false"></label>
+<p class="ws-note ws-cloud-only">클라우드 모델을 고르면 선택한 변경 내용이 그 제공자(Anthropic·OpenAI·Google) 서버로 전송되고, 요금은 내 API 키로 청구됩니다. 회사 코드처럼 외부로 보내면 안 되는 코드는 이 PC의 Ollama를 쓰세요. 앱의 월 사용 한도(USD 20)에는 아직 정산되지 않은 예약분도 포함됩니다.</p>
 <label class="ws-field"><span>점검 목적</span><textarea id="review-purpose" maxlength="1000">버그·보안·성능·품질·테스트 누락 검토</textarea></label>
 <details><summary>고급: 다시 실행 번호</summary><label class="ws-field"><span>같은 내용을 다시 점검할 때 올리는 번호</span><input id="review-generation" type="number" min="1" max="1000" value="1"></label></details>
 <div class="ws-actionbar"><button type="button" data-step-go="1">← 이전</button><button type="button" id="review-preview" class="btn-primary" data-risk="read">보낼 내용 미리보기 →</button></div></div>
 <div class="ws-panel ws-step" data-step="3" hidden><h2>③ 보낼 내용 확인</h2>
 <div id="review-preview-meta"></div><pre id="review-preview-bytes"></pre>
-<label class="ws-check"><input id="review-consent" type="checkbox"> 보낼 변경 내용, 목적, 파일 이름과 전송 범위를 확인했습니다.</label>
+<input id="review-consent" type="checkbox" hidden>
 <label class="ws-check ws-dup-only"><input id="review-duplicate-risk" type="checkbox"> 새 실행 번호로 보내면 이전 요청과 별개로 한 번 더 호출되어 비용이 중복될 수 있다는 점을 확인했습니다.</label>
-<div class="ws-actionbar"><button type="button" data-step-go="2">← 이전</button><button id="review-start" type="button" class="btn-primary" data-risk="send" disabled>동의하고 시작</button></div></div>
+<div class="ws-actionbar"><button type="button" data-step-go="2">← 이전</button><button id="review-start" type="button" class="btn-primary" data-risk="send" disabled>시작</button></div></div>
 <div class="ws-panel ws-step" data-step="4" hidden><h2>④ 결과</h2>
 <div class="ws-toolbar"><button id="review-cancel" type="button" disabled>취소 요청</button><button id="review-history" type="button" data-risk="read">점검 이력</button><button type="button" data-step-go="1">새 점검</button></div>
 <div id="review-history-list"></div><div id="review-result"></div>
@@ -91,7 +90,7 @@
 
 <div class="ws-tab-panel" role="tabpanel" id="ws-panel-proposals" data-tab-panel="proposals" aria-labelledby="ws-tab-proposals" tabindex="-1" hidden>
 <h1>개선 제안</h1>
-<p>제안을 만드는 데 동의한 것은 파일 수정을 승인한 것이 아닙니다. 적용은 별도의 확인과 일회 승인을 거치며, 다른 도구가 고친 내용은 덮어쓰지 않습니다. 적용 중에는 원래 경로가 잠시 없을 수 있으니, 중단되면 복구 상태를 확인하세요. 스테이징·커밋·푸시는 하지 않습니다.</p>
+<p>diff를 확인한 뒤 &lsquo;적용&rsquo;을 누르면 파일에 반영하고, 바뀐 파일을 다시 담아 전후 지표를 자동으로 비교합니다. 신뢰한 프로젝트에서 테스트 계획을 연결해 두었다면 적용 전후 테스트도 함께 실행합니다. 생성 이후 파일이 바뀌었으면 적용하지 않으며, 다른 도구가 고친 내용은 덮어쓰지 않습니다. 적용 중에는 원래 경로가 잠시 없을 수 있으니, 중단되면 복구 상태를 확인하세요. 스테이징·커밋·푸시는 하지 않습니다.</p>
 <div class="ws-panel"><h2>복구가 필요한 제안</h2><button type="button" id="reload-recovery" data-risk="read">복구 필요 목록 확인</button><div id="proposal-recovery-list"></div></div>
 <p id="proposal-message" class="ws-message" role="status"></p><div id="proposal-view"></div>
 <p class="ws-note" id="ws-proposal-empty">제안이 없습니다. AI 점검에서 &lsquo;작은 개선 제안&rsquo;을 선택해 만들 수 있습니다. <button type="button" data-go-tab="ai">AI 점검으로 이동</button></p>
@@ -160,6 +159,16 @@
 
 <section class="ws-view" data-view="settings" aria-labelledby="settings-title" tabindex="-1">
 <h1 id="settings-title">설정</h1>
+<div class="ws-panel"><h2>AI</h2>
+<p class="ws-note">변경 탭의 &lsquo;AI 리뷰&rsquo;, &lsquo;AI 리팩토링&rsquo; 버튼은 여기서 고른 모델과 목적으로 바로 실행됩니다.</p>
+<label class="ws-field"><span>기본 모델</span><select id="settings-ai-profile"><option value="ollama-local-v1">이 PC의 Ollama</option><option value="claude-opus-5-5-v1">Anthropic Opus 5.5 (내 API 키)</option><option value="claude-sonnet-5-5-v1">Anthropic Sonnet 5.5 (내 API 키)</option><option value="gpt-5.4-v1">OpenAI GPT-5.4 (내 API 키)</option><option value="gemini-3.5-flash-lite-v1">Gemini 3.5 Flash-Lite (내 API 키)</option></select></label>
+<label class="ws-field"><span>기본 점검 목적</span><textarea id="settings-ai-purpose" maxlength="1000">버그·보안·성능·품질·테스트 누락 검토</textarea></label>
+<h3>API 키</h3>
+<p class="ws-note">키는 Windows 계정 보호(DPAPI)로 암호화해 이 PC에만 저장합니다. 저장한 키는 화면에 다시 표시하지 않습니다. 로그인하지 않아도 저장한 키로 클라우드 모델을 쓸 수 있으며, 이때 선택한 변경 내용이 해당 제공자로 전송됩니다.</p>
+<label class="ws-field"><span>제공자</span><select id="settings-ai-provider"><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="gemini">Google Gemini</option></select><span id="settings-ai-key-status" class="ws-chip ws-key-status"></span></label>
+<label class="ws-field"><span>새 API 키</span><input id="settings-ai-key" type="password" maxlength="512" autocomplete="off" spellcheck="false"></label>
+<div class="ws-toolbar"><button type="button" id="settings-ai-key-save" class="btn-primary">키 저장</button><button type="button" id="settings-ai-key-delete">저장한 키 삭제</button></div>
+<p id="settings-ai-message" class="ws-message" role="status"></p></div>
 <div class="ws-panel"><h2>외부 에디터</h2>
 <label class="ws-field"><span>에디터</span><select id="editor-id"><option value="vscode">VS Code</option><option value="cursor">Cursor</option></select></label>
 <div class="ws-toolbar"><button type="button" id="save-editor">선택한 프로젝트의 기본 에디터로 저장</button><button type="button" id="configure-editor">실행 파일 선택·설정</button></div></div>
@@ -169,8 +178,8 @@
 <p id="status" role="status" aria-live="polite">로컬 구성 요소를 확인하고 있습니다.</p>
 <div class="ws-toolbar"><button id="refresh" type="button" data-risk="read">구성 요소 상태 확인</button><button id="export-diagnostics" type="button" data-risk="read">진단 정보 저장 (최소한의 정보만)</button></div>
 <span id="diagnostics-message" role="status"></span>
-<p class="ws-note">업데이트 상태는 읽기 전용으로만 확인하며, 자동으로 내려받거나 설치하지 않습니다.</p></div>
-<div class="ws-panel"><h2>화면 테마</h2><p class="ws-note">화면 위쪽의 테마 선택에서 시스템 설정, 라이트, 다크를 고를 수 있습니다.</p></div>
+<p class="ws-note">업데이트는 확인만 하며, 자동으로 내려받거나 설치하지 않습니다.</p></div>
+<div class="ws-panel"><h2>화면 테마</h2><p class="ws-note">화면 위쪽의 해·달 버튼으로 라이트·다크 테마를 바꿀 수 있습니다. 누르기 전에는 Windows 설정을 따릅니다.</p></div>
 </section>
 </main></body>
 </html>

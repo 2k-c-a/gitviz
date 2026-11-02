@@ -29,7 +29,7 @@ function showError(err) {
   if (!box) return;
   let title = '분석 이력을 불러오지 못했습니다';
   let body = err?.message || '알 수 없는 오류';
-  if (err?.status === 404) { title = '저장소를 찾을 수 없습니다'; body = '저장소가 삭제되었거나 접근 권한이 없습니다.'; }
+  if (err?.status === 404) { title = '저장소를 찾을 수 없습니다'; body = '저장소가 삭제됐거나 접근 권한이 없습니다.'; }
   else if (err?.status === 0) title = '서버에 연결할 수 없습니다';
   box.innerHTML = `<div class="ctx-error"><div class="ctx-error-title">${esc(title)}</div><div class="ctx-error-body">${esc(body)}</div></div>`;
 }

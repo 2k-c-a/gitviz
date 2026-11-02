@@ -66,7 +66,7 @@ void app.whenReady().then(async () => {
   async function capture(name: string, width: number, height: number, theme: string) {
     phase = name; window.setContentSize(width, height);
     await wait(`innerWidth===${width} && innerHeight===${height}`);
-    await window.webContents.executeJavaScript(`document.getElementById('shell-theme').value=${JSON.stringify(theme)}; document.getElementById('shell-theme').dispatchEvent(new Event('change')); for(const chart of Object.values(Chart.instances)){chart.stop();chart.options.animation=false;chart.update('none')} document.getElementById('shell-status').textContent='UI 미리보기 · 검증용 데이터'`);
+    await window.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent('gitviz-theme-select',{detail:${JSON.stringify(theme)}})); for(const chart of Object.values(Chart.instances)){chart.stop();chart.options.animation=false;chart.update('none')} document.getElementById('shell-status').textContent='UI 미리보기 · 검증용 데이터'`);
     if (theme === 'dark') {
       assert.equal(await window.webContents.executeJavaScript(`getComputedStyle(document.getElementById('tl-m-commits') || document.querySelector('#overview-kpis .m-val')).color`), 'rgb(230, 237, 245)');
       assert.equal(await window.webContents.executeJavaScript(`getComputedStyle(document.getElementById('analysis-context')).backgroundColor`), 'rgb(26, 34, 45)');
@@ -78,7 +78,7 @@ void app.whenReady().then(async () => {
     writeFileSync(join(output, name), frame!.toPNG());
   }
   try {
-    await window.loadURL('gitviz://app/web/pages/timeline.html?repo=2&snapshot=7');
+    await window.loadURL('gitviz://app/web/pages/overview.html?repo=2&snapshot=7');
     await wait(`!!document.querySelector('.app-detail') && document.getElementById('tl-m-commits').textContent==='240'`);
     await capture('activity-900-light.png', 900, 640, 'light');
     await capture('activity-900-dark.png', 900, 640, 'dark');
@@ -86,7 +86,7 @@ void app.whenReady().then(async () => {
     await wait(`document.getElementById('dd-title').textContent==='shell.ts'`);
     await capture('detail-1280-dark.png', 1280, 800, 'dark');
     await window.loadURL('gitviz://app/web/pages/overview.html?repo=2&snapshot=7');
-    await wait(`!!document.querySelector('#overview-trend canvas') && document.querySelectorAll('#overview-files button').length===5 && document.querySelectorAll('#overview-types progress').length===6 && !!document.querySelector('.app-detail')`);
+    await wait(`!!Chart.getChart('chart-timeline') && document.querySelectorAll('#overview-files button').length===5 && !!Chart.getChart('chart-donut') && !!document.querySelector('.app-detail')`);
     await capture('overview-1440-light.png', 1440, 1080, 'light');
     await capture('overview-1440-dark.png', 1440, 1080, 'dark');
     await capture('overview-900-light.png', 900, 640, 'light');

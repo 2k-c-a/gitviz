@@ -72,7 +72,7 @@ function showError(err, { onRetry = null } = {}) {
   const d = S.describeError(err);
   const actions = [];
   if (d.action === 'login') actions.push(button('GitHub로 로그인', () => (window.githubLogin ? window.githubLogin() : (location.href = '/api/auth/github')), { cls: 'btn-primary' }));
-  if (d.action === 'keys') actions.push(button('API key 설정 열기', () => openKeys()));
+  if (d.action === 'keys') actions.push(button('API 키 설정 열기', () => openKeys()));
   if (d.action === 'usage') actions.push(button('사용량 보기', () => { openKeys(); $('ai-usage')?.scrollIntoView?.({ block: 'center' }); }));
   if (d.action === 'reload') actions.push(button('새로고침', () => location.reload()));
   if (d.action === 'home' || d.action === 'reselect') actions.push(link('PR·커밋 선택으로', { repo: route.repo }, 'btn-secondary ai-btn'));
@@ -129,7 +129,7 @@ async function load() {
   if (settingsMode) {
     const returnState = S.parseRoute(new URLSearchParams(location.search).get('return') || S.buildRoute({ repo: route.repo }));
     const back = new URL('./ai-review.html', location.href); back.search = S.buildRoute(returnState);
-    mount($('ai-main'), h('section', { class: 'ai-card' }, h('h2', { text: '저장 위치와 적용 범위' }), h('p', { text: '이 화면에서 등록한 키는 연결된 GitViz 서버에 암호화해 저장됩니다. 원문은 다시 조회하지 않고 마스킹된 힌트만 표시합니다. 로컬 워크스페이스의 일회성 BYOK 키와는 별도입니다.' }), h('p', { class: 'ai-muted', text: '라이트·다크·시스템 테마는 상단의 화면 테마에서 변경할 수 있습니다.' }), h('a', { href: back.href, class: 'btn-secondary ai-btn', text: 'AI 리뷰로 돌아가기' })));
+    mount($('ai-main'), h('section', { class: 'ai-card' }, h('h2', { text: '저장 위치와 적용 범위' }), h('p', { text: '이 화면에서 등록한 키는 연결된 GitViz 서버에 암호화해 저장됩니다. 원문은 다시 보여 주지 않고 일부를 가린 힌트만 표시합니다. 로컬 워크스페이스의 일회성 BYOK 키와는 별도입니다.' }), h('p', { class: 'ai-muted', text: '라이트·다크 테마는 상단의 해·달 버튼으로 바꿀 수 있습니다.' }), h('a', { href: back.href, class: 'btn-secondary ai-btn', text: 'AI 리뷰로 돌아가기' })));
     return;
   }
   const views = {
@@ -151,7 +151,7 @@ function repoLabel() {
 function renderHeader() {
   const title = $('ai-title');
   title.dataset.repositoryLabel = repoLabel();
-  if (settingsMode) { title.textContent = '설정 · API key 관리'; $('ai-steps').hidden = true; return; }
+  if (settingsMode) { title.textContent = '설정 · API 키 관리'; $('ai-steps').hidden = true; return; }
   title.textContent = route.repo ? `AI 리뷰 · ${repoLabel()}` : 'AI 리뷰';
   const steps = [['home', 'PR·커밋 선택'], ['files', '파일 선택'], ['preview', '미리보기·동의'], ['job', '실행·결과']];
   const at = { [S.VIEWS.HOME]: 0, [S.VIEWS.FILES]: 1, [S.VIEWS.PREVIEW]: 2, [S.VIEWS.JOB]: 3 }[route.view];
@@ -231,7 +231,7 @@ function renderKeys() {
   const local = provider.models.every((m) => m.execution_location === 'local');
   const transferOk = local || shared.providers.external_transfer_allowed;
   const providerSelect = h('select', { 'aria-label': 'AI 제공자', onchange: (ev) => { shared.providerId = ev.target.value; shared.profileId = currentProvider().models.find((m) => m.allowed)?.profile_id || null; renderKeys(); ctx?.onCredentialsChanged?.(); } }, selectableProviders().map((p) => h('option', { value: p.id, selected: p.id === provider.id }, p.display_name)));
-  const keyInput = h('input', { type: 'password', id: 'ai-key-input', autocomplete: 'off', spellcheck: 'false', placeholder: provider.key_format, 'aria-label': 'API key', maxlength: 400 });
+  const keyInput = h('input', { type: 'password', id: 'ai-key-input', autocomplete: 'off', spellcheck: 'false', placeholder: provider.key_format, 'aria-label': 'API 키', maxlength: 400 });
   const preferred = shared.profileId || cred?.preferred_profile_id;
   const modelFamily = (id) => (id || '').replace(/-v\d+$/, '');
   let selected = provider.models.find((m) => m.allowed && m.profile_id === preferred)?.profile_id
@@ -248,47 +248,47 @@ function renderKeys() {
       h('span', { class: 'ai-model-meta' }, `입력 $${m.input_price_per_mtok} / 출력 $${m.output_price_per_mtok} (100만 토큰) · 입력 한도 ${S.fmtTokens(m.max_input_tokens)} · 출력 한도 ${S.fmtTokens(m.max_output_tokens)}`),
       m.allowed ? null : chip('관리자가 허용하지 않음', 'warn'));
   }));
-  const save = button(cred ? 'key 교체(확인 후 저장)' : 'key 확인 후 저장', async () => {
+  const save = button(cred ? '키 교체(확인 후 저장)' : '키 확인 후 저장', async () => {
     const value = keyInput.value;
     keyInput.value = '';                                        // 제출 즉시 화면에서 지운다
-    if (!value.trim()) { msg.textContent = 'API key를 입력하세요.'; return; }
+    if (!value.trim()) { msg.textContent = 'API 키를 입력하세요.'; return; }
     await run(save, msg, async () => {
       const out = await api.putCredential(provider.id, { apiKey: value, profileId: selected });
-      shared.keyMsg = out.changed ? `저장했습니다 (${out.credential.key_hint}, v${out.credential.version}).` : '같은 key입니다. 변경 없음.';
+      shared.keyMsg = out.changed ? `저장했습니다 (${out.credential.key_hint}, v${out.credential.version}).` : '같은 키입니다. 변경 없음.';
       await refreshCreds();
     });
   }, { cls: 'btn-primary', disabled: !transferOk });
   const setModel = button('기본 모델만 변경', async () => {
     await run(setModel, msg, async () => { await api.setPreferredProfile(provider.id, selected); shared.keyMsg = '기본 모델을 바꿨습니다.'; await refreshCreds(); });
   });
-  const del = button('key 삭제', async () => {
+  const del = button('키 삭제', async () => {
     const n = cred?.in_flight_jobs || 0;
-    if (!window.confirm(`API key를 삭제합니다. 이 key에 고정된 진행 중 작업 ${n}개가 취소됩니다. 계속할까요?`)) return;
+    if (!window.confirm(`API 키를 삭제합니다. 이 키에 고정된 진행 중 작업 ${n}개가 취소됩니다. 계속할까요?`)) return;
     await run(del, msg, async () => { const out = await api.deleteCredential(provider.id); shared.keyMsg = `삭제했습니다(취소된 작업 ${out.jobs_cancelled}개).`; await refreshCreds(); });
   }, { cls: 'btn-secondary danger' });
   function refreshButtons() { setModel.disabled = !cred || selected === cred.preferred_profile_id || !selected; }
   refreshButtons();
 
-  const status = local ? [chip('같은 PC · key 불필요', 'info')] : cred
-    ? [chip('key 등록됨', 'ok'), h('code', { text: cred.key_hint }), ` v${cred.version} · 기본 모델 ${preferredName || '—'} · 확인 ${cred.validated_at ? fmtTime(cred.validated_at) : '안 함'}`,
+  const status = local ? [chip('같은 PC · 키 불필요', 'info')] : cred
+    ? [chip('키 등록됨', 'ok'), h('code', { text: cred.key_hint }), ` v${cred.version} · 기본 모델 ${preferredName || '—'} · 확인 ${cred.validated_at ? fmtTime(cred.validated_at) : '안 함'}`,
       cred.in_flight_jobs ? chip(`진행 중 작업 ${cred.in_flight_jobs}개`, 'info') : null]
-    : [chip('key 없음', 'warn'), ' 코드를 보내기 전에 본인의 API key를 등록해야 합니다.'];
+    : [chip('키 없음', 'warn'), ' 코드를 보내기 전에 본인의 API 키를 등록해야 합니다.'];
   const usage = shared.usage;
   if (!settingsMode) {
     const modelSelect = h('select', { 'aria-label': '이번 리뷰 모델', onchange: ev => { shared.profileId = ev.target.value; ctx?.onCredentialsChanged?.(); } }, provider.models.filter(m => m.allowed).map(m => h('option', { value: m.profile_id, selected: m.profile_id === selected, text: m.display_name || m.model })));
-    return mount(root, h('section', { class: 'ai-card' }, h('div', { class: 'ai-row between' }, h('h2', { text: '리뷰 모델' }), button('API key·설정', openKeys)), h('div', { class: 'ai-row' }, providerSelect, modelSelect), h('p', { class: 'ai-muted' }, ...status), h('p', { class: 'ai-muted', id: 'ai-usage', text: usage ? S.usageStatement(usage) : '' })));
+    return mount(root, h('section', { class: 'ai-card' }, h('div', { class: 'ai-row between' }, h('h2', { text: '리뷰 모델' }), button('API 키·설정', openKeys)), h('div', { class: 'ai-row' }, providerSelect, modelSelect), h('p', { class: 'ai-muted' }, ...status), h('p', { class: 'ai-muted', id: 'ai-usage', text: usage ? S.usageStatement(usage) : '' })));
   }
   mount(root, h('details', { class: 'ai-card ai-keys', open: settingsMode || shared.keysOpen || !cred, ontoggle: (ev) => { shared.keysOpen = ev.target.open; } },
-    h('summary', {}, h('b', { text: 'API key·제공자·모델' }), ' ', ...status),
+    h('summary', {}, h('b', { text: 'API 키·제공자·모델' }), ' ', ...status),
     h('div', { class: 'ai-keys-body' },
       !transferOk ? h('div', { class: 'ai-banner warn' }, h('div', { class: 'ai-banner-title', text: '이 서버는 코드의 외부 전송을 허용하지 않습니다' }),
-        h('div', { class: 'ai-banner-body', text: 'key 등록과 AI 실행이 막혀 있습니다.' })) : null,
-      local ? null : h('p', { class: 'ai-muted', text: `제공자: ${provider.display_name || provider.id}. key는 암호화되어 저장되며 화면에는 마스킹된 힌트만 표시됩니다. key 확인은 코드를 보내지 않고 비용이 들지 않습니다. 사용한 만큼의 비용은 본인 key 계정에 청구됩니다.` }),
+        h('div', { class: 'ai-banner-body', text: '키 등록과 AI 실행이 막혀 있습니다.' })) : null,
+      local ? null : h('p', { class: 'ai-muted', text: `제공자: ${provider.display_name || provider.id}. 키는 암호화해 저장하고 화면에는 일부를 가린 힌트만 보여 줍니다. 키를 확인할 때는 코드를 보내지 않으며 비용도 들지 않습니다. 사용한 만큼 본인 키의 계정으로 청구됩니다.` }),
       providerSelect,
-      local ? h('p', { class: 'ai-muted', text: '서버가 지정한 설치 모델만 사용합니다. API 요금은 없으며 전력·하드웨어 비용은 별도입니다. GitViz backend·worker와 선택한 로컬 AI 서버(Ollama, LM Studio, KoboldCpp)를 같은 PC에서 실행하세요. 비활성 모델은 서버 설정이 필요합니다.' }) : null,
+      local ? h('p', { class: 'ai-muted', text: '서버가 지정한 설치 모델만 사용합니다. API 요금은 없으며 전력·하드웨어 비용은 별도입니다. GitViz 서버(backend·worker)와 선택한 로컬 AI 서버(Ollama, LM Studio, KoboldCpp)를 같은 PC에서 실행하세요. 꺼져 있는 모델은 서버에서 설정해야 합니다.' }) : null,
       provider.id === 'gemini' ? h('p', { class: 'ai-muted', text: 'Gemini 무료 등급은 입력·출력이 Google 제품 개선에 사용될 수 있습니다. 민감한 코드는 보내지 말고 계정의 데이터 처리 정책을 확인하세요.' }) : null,
       models,
-      local ? null : h('label', { class: 'ai-field' }, h('span', { text: cred ? '새 API key(교체할 때만)' : 'API key' }), keyInput),
+      local ? null : h('label', { class: 'ai-field' }, h('span', { text: cred ? '새 API 키(교체할 때만)' : 'API 키' }), keyInput),
       local ? null : h('div', { class: 'ai-row' }, save, cred ? setModel : null, cred ? del : null),
       msg,
       h('div', { class: 'ai-usage', id: 'ai-usage', role: 'status' },
@@ -603,7 +603,7 @@ async function renderFiles(token) {
   mount($('ai-main'), h('section', { class: 'ai-card' },
     h('div', { class: 'ai-row between' }, h('h2', { text: `${subject} 파일 선택` }), link('← PR·커밋 목록', { repo: route.repo })),
     info,
-    h('p', { class: 'ai-muted', text: 'AI에는 선택한 파일의 변경 diff(와 주변 줄)와 변경 제목·설명만 전송됩니다. 비밀로 의심되는 파일·바이너리·생성 파일 등은 다음 단계에서 제외 사유와 함께 표시됩니다.' }),
+    h('p', { class: 'ai-muted', text: 'AI에는 선택한 파일의 변경 diff(주변 줄 포함)와 변경 제목·설명만 보냅니다. 비밀로 의심되는 파일·바이너리·생성 파일 등은 다음 단계에서 제외 사유와 함께 표시됩니다.' }),
     h('div', { class: 'ai-row' }, filter,
       button('불러온 파일 모두 선택', () => { visible().forEach((f) => state.selected.add(f.path)); draw(); }),
       button('선택 해제', () => { state.selected.clear(); draw(); })),
@@ -737,7 +737,7 @@ async function renderPreview(token) {
     updateExecutionButtons();
     const consentBox = h('div', { class: 'ai-consent' },
       h('h3', { text: '전송 동의' }),
-      t ? dl([['제공자·모델', `${t.provider} / ${t.model}`], ['사용할 API key', t.requires_api_key === false ? '로컬 실행 · 불필요' : t.credential_configured ? `${t.key_hint} (v${t.credential_version})` : '등록되지 않음'],
+      t ? dl([['제공자·모델', `${t.provider} / ${t.model}`], ['사용할 API 키', t.requires_api_key === false ? '로컬 실행 · 불필요' : t.credential_configured ? `${t.key_hint} (v${t.credential_version})` : '등록되지 않음'],
         ['외부 전송', t.execution_location === 'local' ? '외부 AI 전송 없음' : t.external_transfer_allowed ? '이 서버에서 허용됨' : '이 서버에서 허용되지 않음']]) : null,
       shared.providers ? h('div', { class: 'ai-models compact' }, shared.providers.providers.flatMap((provider) => provider.models).map((m) => h('label', { class: `ai-model${m.allowed ? '' : ' disabled'}` },
         h('input', { type: 'radio', name: 'ai-consent-model', checked: t?.profile_id === m.profile_id, disabled: !m.allowed || st.busy,
@@ -750,13 +750,13 @@ async function renderPreview(token) {
         h('span', { text: S.consentStatement(p) })),
       h('div', { class: 'ai-row' },
         executionButtons),
-      h('p', { class: 'ai-muted', text: t?.execution_location === 'local' ? '설명과 리뷰는 독립된 실행입니다. 같은 PC에서 처리하며 API 요금은 없습니다. 취소해도 이미 시작된 연산은 끝날 수 있습니다.' : '설명과 리뷰는 서로 독립된 실행입니다(리뷰에 설명 결과를 넣지 않습니다). 실행하면 위 key의 계정에 비용이 청구됩니다. 취소해도 이미 시작된 호출의 비용은 발생할 수 있습니다.' }));
+      h('p', { class: 'ai-muted', text: t?.execution_location === 'local' ? '설명과 리뷰는 독립된 실행입니다. 같은 PC에서 처리하며 API 요금은 없습니다. 취소해도 이미 시작된 연산은 끝날 수 있습니다.' : '설명과 리뷰는 서로 독립된 실행입니다(리뷰에 설명 결과를 넣지 않습니다). 실행하면 위 키의 계정에 비용이 청구됩니다. 취소해도 이미 시작된 호출의 비용은 발생할 수 있습니다.' }));
     const prev = st.retryJob ? (() => { const g = S.describeJob(st.retryJob); return h('div', { class: 'ai-banner warn' }, h('div', { class: 'ai-banner-title', text: `이전 실행: ${g.title}` }), h('div', { class: 'ai-banner-body', text: `${g.body} 다시 실행하려면 아래에서 다시 동의해야 합니다.` })); })() : null;
     mount(body, prev,
       h('section', { class: 'ai-card' },
         h('div', { class: 'ai-row between' }, h('h2', { text: '전송 미리보기' }), chip({ building: '준비 중', ready: '준비 완료', failed: '준비 실패', expired: '만료·삭제됨' }[p.status] || p.status, p.status === 'ready' ? 'ok' : p.status === 'building' ? 'info' : 'warn')),
         p.status === 'building' ? h('p', { class: 'ai-muted', text: `코드를 고정하는 중입니다(${S.STAGE_LABEL[p.prepare_job?.stage] || '대기'}).` }) : null,
-        p.prepare_job?.status === 'failed' ? h('div', { class: 'ai-banner error' }, h('div', { class: 'ai-banner-title', text: '코드 준비에 실패했습니다' }), h('div', { class: 'ai-banner-body', text: `오류 코드: ${p.prepare_job.error_code || '알 수 없음'}. 파일을 다시 선택해 새로 준비하세요.` })) : null,
+        p.prepare_job?.status === 'failed' ? h('div', { class: 'ai-banner error' }, h('div', { class: 'ai-banner-title', text: '코드를 준비하지 못했습니다' }), h('div', { class: 'ai-banner-body', text: `오류 코드: ${p.prepare_job.error_code || '알 수 없음'}. 파일을 다시 선택해 새로 준비하세요.` })) : null,
         dl([['대상', S.sourceLabel(p)], ['제목', p.pr_title || '(없음)'],
           ['고정 SHA', h('span', { class: 'ai-shas' }, h('span', {}, 'base ', h('code', { text: p.base_sha })), h('span', {}, 'head ', h('code', { text: p.head_sha })), h('span', {}, 'merge-base ', h('code', { text: p.merge_base_sha || '—' })))],
           [p.source_type === 'commit' ? 'AI로 가는 커밋 메시지' : 'AI로 가는 PR 설명', p.pr_body ? h('details', {}, h('summary', { text: `${p.pr_body.length}자${p.pr_body_truncated ? ' (너무 길어 잘림)' : ''}` }), h('pre', { class: 'ai-pre', text: p.pr_body })) : '없음'],
@@ -804,7 +804,7 @@ async function renderJob(token) {
     const actions = [];
     if (g.canCancel) actions.push(button('취소', () => cancel(), { cls: 'btn-secondary danger' }));
     if (g.canRetry) actions.push(button('다시 실행(동의 다시 받음)', () => navigate({ repo: route.repo, input: job.input_id, retry: job.job_id }), { cls: 'btn-primary' }));
-    if (g.action === 'keys') actions.push(button('API key 설정 열기', () => openKeys()));
+    if (g.action === 'keys') actions.push(button('API 키 설정 열기', () => openKeys()));
     if (g.action === 'login') actions.push(button('GitHub로 로그인', () => (window.githubLogin ? window.githubLogin() : (location.href = '/api/auth/github')), { cls: 'btn-primary' }));
     if (g.action === 'reselect' || g.action === 'usage') actions.push(link('PR·커밋 선택으로', { repo: route.repo }, 'btn-secondary ai-btn'));
     if (S.isTerminalStatus(job.status)) actions.push(button('이 작업 삭제', () => removeJob(), { cls: 'btn-secondary danger' }));
@@ -901,7 +901,7 @@ async function renderResult(token, holder, job) {
     for (const row of rows) {
       const v = S.historyEvidenceSummary(row);
       const sha = row.evidence?.basis?.target_sha;
-      parts.push(h('h3', { text: `분석 snapshot #${row.snapshot_id}${sha ? ` · SHA ${S.shortSha(sha)}` : ''}` }));
+      parts.push(h('h3', { text: `분석 결과 #${row.snapshot_id}${sha ? ` · SHA ${S.shortSha(sha)}` : ''}` }));
       if (v.excluded) {
         parts.push(h('div', { class: 'ai-banner warn' }, h('div', { class: 'ai-banner-title', text: '검증하지 못해 근거로 쓰지 않았습니다' }),
           h('div', { class: 'ai-banner-body', text: (v.notes.length ? v.notes : v.reasons).join(' · ') })));
@@ -920,9 +920,9 @@ async function renderResult(token, holder, job) {
       let opts = [];
       try { opts = (await api.historyOptions(route.repo, token.signal)).snapshots.filter((o) => o.eligible); } catch (e) { if (e?.name === 'AbortError' || !token.current()) return; }
       if (!token.current()) return;
-      if (!opts.length) parts.push(h('p', { class: 'ai-muted', text: '사용할 수 있는 검증된 분석 snapshot이 없습니다.' }));
+      if (!opts.length) parts.push(h('p', { class: 'ai-muted', text: '사용할 수 있는 검증된 분석 결과가 없습니다.' }));
       else {
-        const sel = h('select', { class: 'ai-input', 'aria-label': '분석 snapshot' }, opts.map((o) => h('option', { value: String(o.snapshot_id), text: `#${o.snapshot_id} · SHA ${S.shortSha(o.target_sha)} · ${fmtTime(o.analyzed_at)}` })));
+        const sel = h('select', { class: 'ai-input', 'aria-label': '분석 결과' }, opts.map((o) => h('option', { value: String(o.snapshot_id), text: `#${o.snapshot_id} · SHA ${S.shortSha(o.target_sha)} · ${fmtTime(o.analyzed_at)}` })));
         const status = h('div', { class: 'ai-inline', role: 'status' });
         const attach = button('이력 근거 붙이기', async () => { await run(attach, status, async () => { await api.attachHistory(result.result_id, Number(sel.value), token.signal); await drawHistory(); }); });
         parts.push(h('div', { class: 'ai-row' }, sel, attach), status);

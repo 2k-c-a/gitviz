@@ -53,22 +53,31 @@ test('account generation drops a late response, 401 invalidates, mutations never
 test('auth holds secrets in main, lost exchange response reuses key, logout revokes only desktop session', async () => {
   const realNow = Date.now; let clock = realNow(); Date.now = () => clock;
   let exchanged = false; const exchangeKeys: (string | undefined)[] = []; let saved: unknown = null;
-  const urls: string[] = [];
+  const urls: string[] = []; const codes: (string | undefined)[] = [];
   const http: Http = async (path, method, body, _token, key) => {
     if (path.endsWith('transactions')) {
       const request = JSON.parse(body!) as Record<string, unknown>; assert.equal(typeof request.challenge, 'string');
-      assert.equal('clientSecret' in request, false);
-      return { status: 201, headers: {}, body: { flowId: uid, pollSecret: 'p'.repeat(43), displayCode: 'AABBCCDD', browserUrl: `https://server.test/api/desktop/v1/auth/authorize?flow=${uid}`, expiresAt: new Date(clock + 300000).toISOString(), pollAfterMs: 2000 } };
+      assert.equal('clientSecret' in request, false); assert.equal(typeof request.redirectPort, 'number');
+      return { status: 201, headers: {}, body: { flowId: uid, pollSecret: 'p'.repeat(43), displayCode: 'AABBCCDD', browserUrl: `https://server.test/api/desktop/v1/auth/authorize?flow=${uid}&port=${request.redirectPort}`, expiresAt: new Date(clock + 300000).toISOString(), pollAfterMs: 2000 } };
     }
-    if (path.endsWith('exchange')) { exchangeKeys.push(key); if (!exchanged) { exchanged = true; throw new Error('NETWORK_UNAVAILABLE'); } return { status: 200, body: issued(), headers: {} }; }
+    if (path.endsWith('exchange')) { exchangeKeys.push(key); codes.push((JSON.parse(body!) as { callbackCode?: string }).callbackCode); if (!exchanged) { exchanged = true; throw new Error('NETWORK_UNAVAILABLE'); } return { status: 200, body: issued(), headers: {} }; }
     assert.equal(path, '/api/desktop/v1/session'); assert.equal(method, 'DELETE'); return { status: 204, body: null, headers: {} };
   };
   const auth = new DesktopAuth('https://server.test', http, async url => { urls.push(url); }, { read: async () => null, write: async value => { saved = value; } });
   try {
     const started = await auth.start(); assert.equal(started.state, 'pending'); assert.equal('pollSecret' in started, false); assert.equal('verifier' in started, false);
+    // The browser returns to the app's loopback listener; only the right flow and a well-formed code are accepted.
+    const port = new URL(urls[0]!).searchParams.get('port');
+    const callback = (query: string) => fetch(`http://127.0.0.1:${port}/callback?${query}`);
+    assert.equal((await callback(`flow=${uid}&code=short`)).status, 404);
+    assert.equal((await callback(`flow=22222222-2222-4222-8222-222222222222&code=${'c'.repeat(43)}`)).status, 404);
+    const landed = await callback(`flow=${uid}&code=${'c'.repeat(43)}`);
+    assert.equal(landed.status, 200); assert.match(await landed.text(), /앱으로 돌아가세요/);
+    await assert.rejects(callback(`flow=${uid}&code=${'d'.repeat(43)}`));
     clock += 2001; await assert.rejects(auth.status(), /NETWORK_UNAVAILABLE/);
     clock += 2001; const complete = await auth.status(); assert.equal(complete.state, 'authenticated'); assert.equal('sessionToken' in complete, false);
     assert.equal(exchangeKeys[0], exchangeKeys[1]); assert.ok(saved); assert.equal(urls.length, 1);
+    assert.deepEqual(codes, ['c'.repeat(43), 'c'.repeat(43)]);
     assert.equal((await auth.logout()).state, 'signed-out'); assert.equal(saved, null); assert.equal(auth.identity(), null);
   } finally { Date.now = realNow; }
 });

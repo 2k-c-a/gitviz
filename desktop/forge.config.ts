@@ -7,13 +7,21 @@ const p06 = process.env.GITVIZ_VERIFY_P06 === '1';
 const p07 = process.env.GITVIZ_VERIFY_P07 === '1';
 const p08b = process.env.GITVIZ_VERIFY_P08B === '1';
 const p04 = process.env.GITVIZ_VERIFY_P04 === '1';
+// Release builds leave tests, source maps, type declarations, git metadata and package readmes out of app.asar. The verification variants
+// run dist/tests from inside the package, so they keep everything. TypeScript's own lib/*.d.ts stay: typescript is a runtime dependency (impact-worker).
+const release = !(verification || p03 || p04 || p05 || p06 || p07 || p08b);
+const notShipped = (path: string): boolean => release && (
+  /^\/dist\/tests(?:\/|$)/.test(path) || path === '/dist/forge.config.js' ||
+  /^\/node_modules\/(?:@[^/]+\/)?[^/]+\/(?:tests?|spec|__tests__)(?:\/|$)/.test(path) || /^\/node_modules\/.+\/\.github(?:\/|$)/.test(path) ||
+  /\.map$/.test(path) || (/\.d\.[cm]?ts$/.test(path) && !path.startsWith('/node_modules/typescript/')) ||
+  /\/\.git(?:ignore|attributes)$/.test(path) || /^\/node_modules\/.+\/(?:readme|changelog|history)(?:\.md)?$/i.test(path));
 // Forge validates this config at package time. Importing its umbrella types also
 // imports unrelated macOS signing declarations that require newer Node types.
 const config = {
   outDir: resolve(process.cwd(), '../build-output/desktop'),
   packagerConfig: { name: p05 ? 'GitVizWorkspaceP05Verify' : p04 ? 'GitVizWorkspaceP04Verify' : p03 ? 'GitVizWorkspaceP03Verify' : verification ? 'GitVizWorkspaceVerify' : 'GitVizWorkspace', executableName: p05 ? 'GitVizWorkspaceP05Verify' : p04 ? 'GitVizWorkspaceP04Verify' : p03 ? 'GitVizWorkspaceP03Verify' : verification ? 'GitVizWorkspaceVerify' : 'GitVizWorkspace', asar: true,
     extraResource: [resolve(process.cwd(), '../build-output/agent/dist/agent')],
-    ignore: (path: string) => path !== '' && !/^\/(?:dist(?:\/|$)|node_modules(?:\/|$)|package\.json$)/.test(path.replaceAll('\\', '/')),
+    ignore: (path: string) => path !== '' && (!/^\/(?:dist(?:\/|$)|node_modules(?:\/|$)|package\.json$)/.test(path.replaceAll('\\', '/')) || notShipped(path.replaceAll('\\', '/'))),
     afterCopy: (verification || p03 || p04 || p05) ? [async ({ buildPath }: { buildPath: string }) => {
       const path = resolve(buildPath, 'package.json');
       const manifest = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>;

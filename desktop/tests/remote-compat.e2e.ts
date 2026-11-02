@@ -79,8 +79,7 @@ void app.whenReady().then(async () => {
   try {
     for (const [page, ready] of [
       ['settings', `document.getElementById('ai-title')?.textContent.includes('설정') && document.getElementById('ai-main')?.textContent.includes('저장 위치')`],
-      ['overview', `document.getElementById('overview-kpis')?.textContent.includes('관측 구간 커밋') && !!document.querySelector('#overview-trend canvas')`],
-      ['timeline', `document.getElementById('tl-m-commits')?.textContent==='1' && typeof Chart==='function'`],
+      ['overview', `document.getElementById('tl-m-commits')?.textContent==='1' && !!Chart.getChart('chart-timeline') && document.getElementById('overview-collaboration')?.textContent.includes('전체 기여자 1명')`],
       ['network', `document.getElementById('net-status')?.textContent==='결과 조회 완료' && !!document.querySelector('#net-graph-svg circle')`],
       ['code-analysis', `document.getElementById('cx-status')?.textContent.includes('#7')`],
       ['history', `document.querySelector('#hist-tbody')?.textContent.includes('#7') || document.querySelector('#hist-tbody')?.textContent.includes('7')`],
@@ -100,31 +99,31 @@ void app.whenReady().then(async () => {
       assert.equal(await window.webContents.executeJavaScript(`typeof require`), 'undefined');
       assert.equal(errors.length, before, `renderer error in ${page}`);
     }
-    phase = 'search-selection';
+    phase = 'search-results';
     await window.loadURL('gitviz://app/web/pages/search.html');
     await wait(`!!document.querySelector('.app-shell') && document.getElementById('nav-username')?.textContent==='fixture'`);
     const beforeSelect = requestMethods.length;
     await window.webContents.executeJavaScript(`document.getElementById('search-input').value='fixture'; document.getElementById('search-btn').click()`);
-    await wait(`!!document.querySelector('.search-select-btn')`);
-    await window.webContents.executeJavaScript(`document.querySelector('.search-select-btn').click()`);
-    await wait(`!document.getElementById('search-selection').hidden && document.getElementById('search-selection').textContent.includes('fixture/p03')`);
-    assert.equal(requestMethods.slice(beforeSelect).some(method => method !== 'GET'), false, 'selection is read-only');
+    await wait(`!!document.querySelector('.search-start-btn') && document.getElementById('search-results').textContent.includes('fixture/p03')`);
+    assert.equal(requestMethods.slice(beforeSelect).some(method => method !== 'GET'), false, 'search is read-only');
     phase = 'delegated-navigation';
+    // The old activity address still lands on the merged overview with the same result.
     await window.loadURL('gitviz://app/web/pages/timeline.html?repo=2&snapshot=7');
-    await wait(`document.getElementById('tl-m-commits')?.textContent==='1'`);
+    await wait(`location.pathname.endsWith('/overview.html') && location.search.includes('snapshot=7') && document.getElementById('tl-m-commits')?.textContent==='1'`);
     await window.webContents.executeJavaScript(`document.querySelector('[data-shell-page="network"]').click()`);
     await wait(`location.pathname.endsWith('/network.html') && location.search.includes('snapshot=7') && document.getElementById('net-status')?.textContent==='결과 조회 완료'`);
     phase = 'shell-interactions';
     await wait(`document.querySelector('.app-nav-link[aria-current="page"]')?.textContent.includes('협업')`);
-    assert.match(await window.webContents.executeJavaScript(`document.querySelector('[data-shell-page="timeline"]').href`), /repo=2&snapshot=7/);
+    assert.match(await window.webContents.executeJavaScript(`document.querySelector('[data-shell-page="overview"]').href`), /repo=2&snapshot=7/);
     assert.match(await window.webContents.executeJavaScript(`document.getElementById('shell-context').textContent`), /#7/);
-    await window.webContents.executeJavaScript(`document.getElementById('shell-theme').value='dark'; document.getElementById('shell-theme').dispatchEvent(new Event('change'))`);
+    await window.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent('gitviz-theme-select',{detail:'dark'}))`);
     assert.equal(await window.webContents.executeJavaScript(`document.documentElement.dataset.theme`), 'dark');
     assert.equal(await window.webContents.executeJavaScript(`getComputedStyle(document.body).backgroundColor`), 'rgb(17, 22, 29)');
-    await window.webContents.executeJavaScript(`document.querySelector('[data-shell-page="timeline"]').click()`);
-    await wait(`location.pathname.endsWith('/timeline.html') && !!document.querySelector('.app-detail') && document.getElementById('tl-m-commits')?.textContent==='1'`);
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('[data-shell-page="timeline"]').length`), 0, 'activity merged into overview');
+    await window.webContents.executeJavaScript(`document.querySelector('[data-shell-page="overview"]').click()`);
+    await wait(`location.pathname.endsWith('/overview.html') && !!document.querySelector('.app-detail') && document.getElementById('tl-m-commits')?.textContent==='1'`);
     assert.equal(await window.webContents.executeJavaScript(`document.documentElement.dataset.theme`), 'dark', 'theme persists across documents');
-    await window.webContents.executeJavaScript(`document.getElementById('shell-theme').value='light'; document.getElementById('shell-theme').dispatchEvent(new Event('change'))`);
+    await window.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent('gitviz-theme-select',{detail:'light'}))`);
     assert.equal(await window.webContents.executeJavaScript(`Chart.getChart('chart-timeline').data.datasets[0].backgroundColor`), '#2563eb');
     for (const [width, height] of [[600, 400], [900, 640], [1280, 800], [1920, 1080]]) {
       phase = `layout-${width}`;
@@ -171,7 +170,7 @@ void app.whenReady().then(async () => {
     phase = 'tooltip-keyboard';
     // Hidden fixture windows may update activeElement without dispatching native focusin.
     await window.webContents.executeJavaScript(`document.getElementById('shell-theme').focus(); document.getElementById('shell-theme').dispatchEvent(new FocusEvent('focusin', {bubbles:true}))`);
-    await wait(`document.querySelector('[role="tooltip"]')?.textContent.includes('시스템')`);
+    await wait(`document.querySelector('[role="tooltip"]')?.textContent.includes('테마 전환')`);
     phase = 'boundaries';
     const state = await window.webContents.executeJavaScript(`desktop.auth.status()`);
     assert.equal(state.state, 'authenticated'); assert.equal('sessionToken' in state, false);
@@ -180,7 +179,7 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`window.__p03xss=false; const p=document.createElement('img');p.setAttribute('onerror','window.__p03xss=true');p.src='missing';document.body.append(p);`);
     assert.equal(await window.webContents.executeJavaScript('window.__p03xss'), false);
     phase = 'no-default-repository'; const before = requests.length;
-    await window.loadURL('gitviz://app/web/pages/timeline.html');
+    await window.loadURL('gitviz://app/web/pages/overview.html');
     await wait(`!!document.getElementById('load-error')`);
     await wait(`document.getElementById('nav-username')?.textContent==='fixture'`);
     assert.equal(requests.slice(before).some(path => /\/repositories\/1(?:\/|$)/.test(path)), false);
@@ -189,7 +188,7 @@ void app.whenReady().then(async () => {
     await wait(`location.pathname==='/index.html'`);
     assert.equal(auth.identity(), null);
     await wait(`!!document.querySelector('.workspace-content') && !!document.querySelector('.app-shell')`);
-    assert.equal(await window.webContents.executeJavaScript(`document.getElementById('shell-theme').value`), 'light');
+    assert.equal(await window.webContents.executeJavaScript(`document.getElementById('shell-theme').dataset.theme`), 'light');
     assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('#project-picker').length`), 1);
     assert.equal(await window.webContents.executeJavaScript(`getComputedStyle(document.querySelector('.app-shell')).display`), 'grid');
     if (process.env.GITVIZ_UI_REPORT) writeFileSync(process.env.GITVIZ_UI_REPORT, JSON.stringify({ status: 'passed', pages: 8, sizes: ['600x400', '900x640', '1280x800', '1920x1080'], fixtureOnly: true, checks: ['navigation-context', 'theme-chart-update', 'detail-responsive', 'modal-focus-escape-return', 'CSP-bridge', 'workspace-preserved'] }));

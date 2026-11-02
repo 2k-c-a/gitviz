@@ -52,7 +52,11 @@
 ### 2.4 Production (클라이언트)
 
 - **확인:** Squirrel.Windows, per-user, 관리자 권한 불필요, 설치 폴더 `%LOCALAPPDATA%\GitVizWorkspace\`(`Update.exe`, `app-x.y.z\`, `packages\`), 시작 메뉴·바탕화면 바로가기, `HKCU\…\Uninstall\GitVizWorkspace`. 사용자 데이터 `%APPDATA%\gitviz-workspace\`(Electron userData, 하위 `workspace\`에 SQLite와 DPAPI 키). 자동 업데이트 없음(수동 검증 정책만 있음). 제거 시 사용자 데이터는 보존, 설치 폴더 잔여물은 일회성 예약 작업이 삭제(대화형 로그온 세션에서만 동작 — 커밋 `65f1b62`).
-- **확인:** 서버 접속 원점은 프로세스 환경변수 `GITVIZ_SERVER_ORIGIN`(HTTPS)으로만 주어진다(`desktop/src/main.ts`). 설치 프로그램은 이 값을 설정하지 않으므로 일반 사용자 PC에서는 서버 기능이 **꺼진 상태**가 기본이다.
+- **확인 (2026-11-01 변경):** 서버 접속 원점(HTTPS)은 빌드할 때 `GITVIZ_BUILD_SERVER_ORIGIN`으로 앱에 내장한다(`desktop/scripts/build.mjs` → `dist/config/server.json`, 비밀 아님). 결정 규칙은 `desktop/src/server-origin.ts`에 있다. 로컬 스테이징 빌드(`bootstrap -App -Staging`)는 `GITVIZ_BUILD_SERVER_CA`로 스테이징 서버의 자체 서명 인증서도 같은 파일에 넣는다. loopback 원점에서만 허용되며 배포 빌드에는 넣을 수 없다(2026-11-02, AD-30).
+  - 내장 원점이 있는 설치본은 그 원점만 쓴다. 환경변수 `GITVIZ_SERVER_ORIGIN`으로 바꿀 수 없다.
+  - 개발 실행(`app.isPackaged === false`)에서는 환경변수가 내장 원점보다 우선한다.
+  - 원점 없이 빌드한 설치본은 기존처럼 환경변수만 따른다(스테이징 VM 시험용). 환경변수도 없으면 서버 기능이 **꺼진 상태**다.
+  - 처음 설치한 사용자가 바로 로그인하려면 운영 서버 원점을 내장해 빌드해야 한다.
 
 ### 2.5 Production (서버)
 
@@ -107,7 +111,7 @@ Roaming이 부적절한 이유:
 | 앱 버전, 업데이트 릴리스 URL 접두어, 서명 주체(publisher) | 가능 | 빌드 설정 |
 | JSON Schema, 엔드포인트 허용 목록 | 가능 | 번들(이미 그러함) |
 | `DATABASE_URL*`, DB 비밀번호 | **불가** | 서버 시크릿 저장소 |
-| `GITHUB_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `SESSION_SECRET_KEY`, `DESKTOP_AUTH_RESPONSE_KEY`, `AI_*_ENCRYPTION_KEYS` | **불가** | 서버 시크릿 저장소 |
+| `GITHUB_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `SESSION_SECRET_KEY`, `DESKTOP_AUTH_RESPONSE_KEY`, `VOICE_TURN_SECRET`, `AI_*_ENCRYPTION_KEYS` | **불가** | 서버 시크릿 저장소 |
 | 코드 서명 인증서와 비밀번호(`GITVIZ_SIGN_PFX*`) | **불가** | 빌드 환경 시크릿(CI 시크릿) |
 | 사용자의 AI 제공자 키 | 사용자 기기에서 DPAPI로 암호화해 저장 | `data\`의 보호 저장소 |
 
@@ -120,7 +124,7 @@ Roaming이 부적절한 이유:
 | DB | 로컬 compose Postgres `gitviz_dev` | `gitviz_test*` (CI 서비스 컨테이너 / 로컬 임시) | 서버: 관리형 Postgres(TLS 검증, `DATABASE_SSL_CA`) / 클라이언트: 로컬 SQLite |
 | API 원점 | `http://127.0.0.1:8000`(웹), 데스크톱은 개발 서버 HTTPS 원점 | 테스트 더블 / 로컬 | 빌드에 내장한 HTTPS 원점 |
 | 로그 수준 | DEBUG | WARNING 이상 | 서버: INFO / 클라이언트: INFO(민감정보 제외) |
-| 디버그 | 개발자 도구 허용 | 비허용 | 비허용(`--remote-debugging-port` 금지) |
+| 디버그 | 개발자 도구 허용 | 비허용 | 비허용(`--remote-debugging-port`·`--inspect` 등을 주면 패키지 실행이 즉시 종료, `desktop/src/debug-guard.ts`) |
 | 저장 경로 | 개발 전용 데이터 폴더(임시/`GitViz-Dev`) | 임시 폴더 | `%LOCALAPPDATA%\GitViz\Workspace\…` |
 | 세션 쿠키 | `SESSION_COOKIE_SECURE=0` 허용 | 테스트용 | 반드시 `1`, `https_only` |
 | AI | 기본 꺼짐, 필요 시 로컬 모델 | 가짜 제공자(`ai_fake_provider.py`) | 정책에 따름(`AI_ALLOW_EXTERNAL_TRANSFER` 명시) |

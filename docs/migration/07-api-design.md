@@ -16,10 +16,10 @@ system browser는 기존 OAuth 서버를 사용한다. app은 public client이�
 
 | method·예정 endpoint | 요청·응답·규칙 |
 |---|---|
-| `POST /api/desktop/v1/auth/transactions` | main이 난수 verifier를 만들고 `challenge=SHA256(verifier)`·deviceLabel 전달. 201 `{flowId,browserUrl,pollSecret,displayCode,expiresAt,pollAfterMs}`. 인증 전 endpoint이므로 IP/발급 수·크기 rate limit |
-| `GET /api/desktop/v1/auth/authorize?flow=<UUID>` | browser만 사용. 기존 로그인 필요 시 OAuth state에 server-side flow binding. 로그인 후 앱명·계정·displayCode를 보여주고 사용자가 승인. GET만으로 인가 확정 금지 |
-| `POST /api/desktop/v1/auth/authorize` | browser session+CSRF+flow binding 검사 후 authorized. 본문 `{flowId,displayCode,approve}`. 거절은 종료. main의 pollSecret·verifier는 browser에 전달하지 않음 |
-| `POST /api/desktop/v1/auth/exchange` | main이 `{flowId,pollSecret,verifier}`와 Idempotency-Key. pending은 202+Retry-After, authorized면 원자 소비 후 200 `{sessionToken,sessionId,user,capabilities,expiresAt,apiCapabilities}` |
+| `POST /api/desktop/v1/auth/transactions` | main이 난수 verifier를 만들고 `challenge=SHA256(verifier)`·deviceLabel·`redirectPort`(앱의 127.0.0.1 루프백 포트) 전달. 201 `{flowId,browserUrl(`&port=` 포함),pollSecret,displayCode,expiresAt,pollAfterMs}`. 인증 전 endpoint이므로 IP/발급 수·크기 rate limit |
+| `GET /api/desktop/v1/auth/authorize?flow=<UUID>&port=<N>` | browser만 사용. 로그인 필요 시 OAuth state에 server-side flow binding, port는 서명 세션에 보관. 로그인되면 authorized로 바꾸고 `http://127.0.0.1:<port>/callback?flow&code`로 303. 세션 발급은 이 code가 있어야만 한다(AD-24, 2026-11-01 개정) |
+| ~~`POST /api/desktop/v1/auth/authorize`~~ | 2026-11-01 삭제(AD-24). 코드 입력·승인 폼 대신 루프백 code |
+| `POST /api/desktop/v1/auth/exchange` | main이 `{flowId,pollSecret,verifier,callbackCode?}`와 Idempotency-Key. pending 또는 루프백 code가 없거나 틀리면 202+Retry-After, authorized이고 code가 맞으면 원자 소비 후 200 `{sessionToken,sessionId,user,capabilities,expiresAt,apiCapabilities}` |
 | `GET /api/desktop/v1/session` | bearer session·서버 capability/최소 protocol 검사. expired/revoked 401 |
 | `DELETE /api/desktop/v1/session` | bearer가 가리키는 세션 폐기, 204; 반복 폐기도 204. 웹 cookie 로그아웃과 별개 |
 
@@ -159,7 +159,7 @@ files.locate는 snapshot/file/line/column을 확인하고 main에만 실제 경�
 
 ## 실제 계약과의 차이 — 2026-10-28
 
-공통 스키마 `contracts/workspace/v1/*.schema.json`이 local RPC의 권위 원본이다. 현재 operation은 44개다. 위 표와의 차이는 다음과 같다.
+공통 스키마 `contracts/workspace/v1/*.schema.json`이 local RPC의 권위 원본이다. 이 시점(P07)의 operation은 44개다(이후 개수는 [현재 상태](#현재-상태--2026-11-02)). 위 표와의 차이는 다음과 같다.
 
 - 에디터: `workspace.editors.list/open/configure` 대신 main 프로세스 IPC(`configure-editor`, `open-editor`, `copy-location`)와 agent의 `workspace.files.locate`·`workspace.projects.setEditor`로 구현했다. 실행 파일 경로는 main 전용 설정에만 둔다.
 - 미구현: `workspace.projects.connectRemote`, `workspace.notifications.list/markRead`, `workspace.events.subscribe/unsubscribe`. notifications·events는 P08a, connectRemote는 P08b 범위다.
@@ -183,3 +183,11 @@ protocol1·schema8의 정확한 계약은 공통 JSON schema와 Python/TS operat
 `GET /api/desktop/v1/repositories/{id}/identity`는 기존 read 권한/인증을 재사용하고 accountId·repositoryId·githubId·canonicalUrl·visibility를 no-store로 반환한다. visibility는 GitHub 확인 strict boolean에서만 public/private로 만든다. 기존 HTTP DTO·권한 정책·서버 DB schema는 유지한다. 실제 배포/호출 인수는 미실행이다.
 
 reviews.cloudContext는 main-only 공개 proof·credentialRef/버전만 받고 API key를 거부한다. reviews.cloudExchange(take/complete)는 승인된 요청 bytes/hash와 bounded provider 응답을 교환한다. take는 한 번만 가능하고 key는 main에서 고정 HTTPS header에만 사용한다. native 동의 후 fresh 공개 증명과 exact bytes를 재검사한다. 원격 credential 저장·모델 호출·재전송을 preview에서 하지 않는다. [구현·검증 기록](validation/p08b-p09-2026-10-28.md)에 비용·만료·실패·미검증을 명시한다.
+
+## 현재 상태 — 2026-11-02
+
+local RPC는 54개다(P07 44 → P08a 47 → P08b·cloud 54). 위 기록 이후 소유자 결정으로 바뀐 점:
+
+- [AD-23](../architecture/ARCHITECTURE_DECISIONS.md): 리뷰 전송·제안 적용의 native 확인과 동의 체크박스를 없앴다. 화면 버튼이 승인이고, 미리보기 해시 일치·일회 capability는 그대로다. `reviews.cloudContext`에 `authorize-local`을 더해 로그인·공개 저장소 증명 없이 DPAPI에 저장한 내 키로 클라우드 리뷰를 허용한다.
+- [AD-24](../architecture/ARCHITECTURE_DECISIONS.md): 데스크톱 로그인은 루프백 방식이다. `POST /api/desktop/v1/auth/authorize`는 없앴고 transactions에 `redirectPort`, exchange에 `callbackCode`를 더했다.
+- 커뮤니티 API(`/api/community/v1`, 32개)는 local RPC가 아니라 main의 허용 목록(`endpointKey`)과 SSE 연결(`community-live.ts`)로 쓴다([AD-25~29](../architecture/ARCHITECTURE_DECISIONS.md)).

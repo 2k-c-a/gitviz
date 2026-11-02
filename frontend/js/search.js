@@ -13,9 +13,11 @@ const summaryEl  = document.getElementById('search-summary');
 const inputEl    = document.getElementById('search-input');
 const sortEl     = document.getElementById('search-sort');
 const btnEl      = document.getElementById('search-btn');
-const selectionEl = document.getElementById('search-selection');
+const pagerEl    = document.getElementById('search-pager');
+const PER_PAGE = 20;
+const MAX_RESULTS = 1000; // GitHub Search serves only the first 1,000 matches.
 let searchGeneration = 0;
-let resultRepos = [];
+let currentPage = 1;
 let registeredReady;
 
 const num = (n) => (n ?? 0).toLocaleString('en-US');
@@ -89,7 +91,9 @@ function buildCard(repo) {
   const pushedRel = fmtRelative(repo.pushed_at);
   const registeredId = repo.is_registered ? (registeredMap.get(normalizeUrl(repo.url)) ?? '') : '';
 
-  const actionHtml = '<button class="btn-secondary search-select-btn" type="button">분석 대상 선택</button>';
+  // The start button queues an analysis right away; a saved result opens without creating one.
+  const actionHtml = (repo.is_registered ? '<button class="btn-secondary search-result-btn" type="button">저장된 결과 확인</button>' : '')
+    + '<button class="btn-primary search-start-btn" type="button">저장소 분석 시작</button>';
 
   return `
     <div class="panel search-card" data-url="${esc(repo.url)}" data-registered="${repo.is_registered ? '1' : '0'}" data-repo-id="${registeredId}">
@@ -118,22 +122,24 @@ function buildCard(repo) {
 
 function showLoading() {
   summaryEl.style.display = 'none';
+  pagerEl.hidden = true;
   resultsEl.replaceChildren(createState({ kind: 'loading', title: '저장소를 검색하는 중' }));
 }
 
 function showError(msg) {
   summaryEl.style.display = 'none';
-  resultsEl.replaceChildren(createState({ kind: 'error', title: '검색하지 못했습니다', message: msg, retry: runSearch }));
+  pagerEl.hidden = true;
+  resultsEl.replaceChildren(createState({ kind: 'error', title: '검색하지 못했습니다', message: msg, retry: () => runSearch(currentPage) }));
 }
 
 function showEmpty(query) {
   summaryEl.style.display = 'none';
+  pagerEl.hidden = true;
   resultsEl.replaceChildren(createState({ kind: 'empty', title: '검색 결과가 없습니다', message: `'${query}' 대신 다른 키워드 또는 저장소 이름으로 검색하세요.` }));
 }
 
 function renderResults(data) {
   const results = Array.isArray(data.results) ? data.results : [];
-  resultRepos = results;
   if (!results.length) {
     showEmpty(data.query ?? inputEl.value.trim());
     return;
@@ -141,28 +147,41 @@ function renderResults(data) {
 
   summaryEl.style.display = 'block';
   const totalCount = data.total_count ?? results.length;
+  const page = data.page ?? currentPage;
+  const first = (page - 1) * PER_PAGE + 1;
   summaryEl.textContent = totalCount > results.length
-    ? `'${data.query}' 검색 결과 ${num(totalCount)}개 중 ${results.length}개 표시`
+    ? `'${data.query}' 검색 결과 ${num(totalCount)}개 중 ${num(first)}–${num(first + results.length - 1)}번째`
     : `'${data.query}' 검색 결과 ${num(totalCount)}개`;
 
   resultsEl.innerHTML = results.map(buildCard).join('');
+  renderPager(page, Math.max(1, Math.ceil(Math.min(totalCount, MAX_RESULTS) / PER_PAGE)));
 }
 
-function selectRepository(repo) {
-  selectionEl.hidden = false;
-  selectionEl.replaceChildren();
-  selectionEl.append(element('h2', 'ui-panel-title', `선택한 저장소 · ${repo.owner}/${repo.repo_name}`));
-  selectionEl.append(element('p', 'p-sub', repo.description || '설명이 없습니다.'));
-  const actions = element('div', 'ui-toolbar');
-  if (repo.is_registered) {
-    const open = element('button', 'btn-primary', '저장된 결과 확인');
-    open.type = 'button'; open.addEventListener('click', () => goToDetail(repo.url)); actions.append(open);
-  }
-  const start = element('button', repo.is_registered ? 'btn-secondary' : 'btn-primary', repo.is_registered ? '새 분석 요청' : '선택한 저장소 분석 시작');
-  start.type = 'button'; start.addEventListener('click', () => startAnalysis(repo.url));
-  actions.append(start); selectionEl.append(actions);
-  const notice = element('p', 'p-sub', '대상 선택만으로 분석을 시작하지 않습니다. 저장된 결과 확인은 새 분석을 만들지 않습니다.');
-  selectionEl.append(notice); selectionEl.tabIndex = -1; selectionEl.focus({ preventScroll: true }); selectionEl.scrollIntoView({ block: 'nearest' });
+/* 이전·다음과 현재 주변 페이지 번호. 첫·마지막 페이지는 항상 보이고 사이가 비면 …로 줄인다. */
+function renderPager(page, pages) {
+  pagerEl.replaceChildren();
+  pagerEl.hidden = pages <= 1;
+  if (pages <= 1) return;
+  const button = (label, target, aria) => {
+    const b = element('button', 'btn-secondary', label); b.type = 'button';
+    if (aria) b.setAttribute('aria-label', aria);
+    if (target === page) b.setAttribute('aria-current', 'page');
+    b.disabled = target < 1 || target > pages || target === page;
+    b.addEventListener('click', () => goToPage(target));
+    return b;
+  };
+  pagerEl.append(button('‹ 이전', page - 1, '이전 페이지'));
+  const shown = [...new Set([1, page - 2, page - 1, page, page + 1, page + 2, pages])].filter(n => n >= 1 && n <= pages).sort((a, b) => a - b);
+  shown.forEach((n, i) => {
+    if (i && n - shown[i - 1] > 1) pagerEl.append(element('span', 'search-pager-gap', '…'));
+    pagerEl.append(button(String(n), n, `${n}페이지`));
+  });
+  pagerEl.append(button('다음 ›', page + 1, '다음 페이지'));
+}
+
+function goToPage(page) {
+  void runSearch(page);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 /* 홈 화면의 "분석 시작" 흐름(main.js/modal.js의 openJobModal('new'))을 그대로 재사용한다.
@@ -183,22 +202,24 @@ async function goToDetail(url, repoId) {
   showError('기존 결과의 저장소 ID를 확인하지 못했습니다. 최근·내 분석에서 결과를 열거나 다시 검색하세요. 새 분석은 시작하지 않았습니다.');
 }
 
-async function runSearch() {
+async function runSearch(page = 1) {
   const q = inputEl.value.trim();
   if (!q) { inputEl.focus(); return; }
   const generation = ++searchGeneration;
-  selectionEl.hidden = true;
-  const url = new URL(location.href); url.searchParams.set('q', q); url.searchParams.set('order', sortEl.value); history.replaceState(null, '', url);
+  currentPage = Number.isInteger(page) && page > 0 ? page : 1;
+  const url = new URL(location.href); url.searchParams.set('q', q); url.searchParams.set('order', sortEl.value);
+  if (currentPage > 1) url.searchParams.set('page', String(currentPage)); else url.searchParams.delete('page');
+  history.replaceState(null, '', url);
 
   showLoading();
   btnEl.disabled = true;
   try {
-    const res = await request(`/search/github-repositories?q=${encodeURIComponent(q)}&sort=${encodeURIComponent(sortEl.value)}&per_page=20`);
+    const res = await request(`/search/github-repositories?q=${encodeURIComponent(q)}&sort=${encodeURIComponent(sortEl.value)}&per_page=${PER_PAGE}&page=${currentPage}`);
     if (generation !== searchGeneration) return;
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) showError('저장소를 검색할 권한이 없습니다. 로그인한 계정을 확인한 뒤 다시 시도하세요.');
       else if (res.status === 429) showError('GitHub 검색 API 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.');
-      else showError(`검색에 실패했습니다 (HTTP ${res.status}).`);
+      else showError(`검색하지 못했습니다 (HTTP ${res.status}).`);
       return;
     }
     const data = await res.json();
@@ -219,7 +240,7 @@ function initSearchPage() {
   inputEl.value = saved.get('q') || '';
   if (['stars', 'updated'].includes(saved.get('order'))) sortEl.value = saved.get('order');
 
-  btnEl.addEventListener('click', runSearch);
+  btnEl.addEventListener('click', () => runSearch());
   inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
   sortEl.addEventListener('change', () => { if (inputEl.value.trim()) runSearch(); });
 
@@ -233,12 +254,10 @@ function initSearchPage() {
   resultsEl.addEventListener('click', (e) => {
     const card = e.target.closest('.search-card');
     if (!card) return;
-    if (e.target.closest('.search-select-btn')) {
-      const repo = resultRepos.find(item => item.url === card.dataset.url);
-      if (repo) selectRepository(repo);
-    }
+    if (e.target.closest('.search-start-btn')) startAnalysis(card.dataset.url);
+    else if (e.target.closest('.search-result-btn')) void goToDetail(card.dataset.url, card.dataset.repoId);
   });
-  if (inputEl.value) void runSearch();
+  if (inputEl.value) void runSearch(Number.parseInt(saved.get('page') || '1', 10) || 1);
 }
 
 if (resultsEl) initSearchPage();
