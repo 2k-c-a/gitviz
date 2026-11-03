@@ -1,22 +1,6 @@
 import subprocess
-import os
 
-from app.utils.normalize import resolve_rename_path
-
-def normalize_hash(h: str) -> str:
-    if not h:
-        return ""
-    return h.strip().lower()
-
-def normalize_path(p: str) -> str:
-    if not p:
-        return ""
-    p = p.strip()
-    p = p.replace("\\", "/")
-    p = os.path.normpath(p).replace("\\", "/")
-    if p == ".":
-        return ""
-    return p
+from app.utils.normalize import normalize_hash, normalize_path, resolve_rename_path
 
 def collect_commit_file_changes(repo_path: str, since: str = None):
     """

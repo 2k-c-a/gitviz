@@ -71,6 +71,27 @@ def _merge_contributor(db: Session, canonical_id: int, dup_id: int, rule: str):
     db.execute(text("DELETE FROM contributors WHERE id = :d"), {"d": dup_id})
 
 
+def _link_login(db: Session, repository_id: int, cid: int, email, name, login: str,
+                source: str, rule: str) -> bool:
+    """찾은 login을 기여자에 연결한다. 같은 login의 기여자가 이미 있으면 그쪽(최소 id)으로
+    병합하고 True, 없으면 이 기여자에 login을 기록하고 False를 돌려준다."""
+    existing = db.execute(text("""
+        SELECT id FROM contributors
+        WHERE repository_id = :rid AND lower(github_login) = :login AND id <> :cid
+        ORDER BY id LIMIT 1
+    """), {"rid": repository_id, "login": login, "cid": cid}).fetchone()
+    if existing:
+        _add_alias(db, existing[0], email, name, source, rule)
+        _merge_contributor(db, existing[0], cid, rule)
+        return True
+    db.execute(text("""
+        UPDATE contributors SET github_login = :login, resolution_status = 'auto'
+        WHERE id = :cid
+    """), {"login": login, "cid": cid})
+    _add_alias(db, cid, email, name, source, rule)
+    return False
+
+
 def link_commits_by_email(db: Session, repository_id: int) -> int:
     """commits.contributor_id 기본 연결 (author_email = primary_email)"""
     result = db.execute(text("""
@@ -232,22 +253,8 @@ def stage2_email_search(db: Session, repository_id: int, client,
 
         if data.get("total_count") == 1 and data.get("items"):
             login = data["items"][0]["login"].lower()
-
-            existing = db.execute(text("""
-                SELECT id FROM contributors
-                WHERE repository_id = :rid AND lower(github_login) = :login AND id <> :cid
-            """), {"rid": repository_id, "login": login, "cid": cid}).fetchone()
-
-            if existing:
-                _add_alias(db, existing[0], email, name, "github", "github_api")
-                _merge_contributor(db, existing[0], cid, "github_api")
+            if _link_login(db, repository_id, cid, email, name, login, "github", "github_api"):
                 merged += 1
-            else:
-                db.execute(text("""
-                    UPDATE contributors SET github_login = :login, resolution_status = 'auto'
-                    WHERE id = :cid
-                """), {"login": login, "cid": cid})
-                _add_alias(db, cid, email, name, "github", "github_api")
             resolved += 1
 
         db.commit()
@@ -330,22 +337,8 @@ def stage_pr_authorship(db: Session, repository_id: int,
         if not accept:
             continue
 
-        existing = db.execute(text("""
-            SELECT id FROM contributors
-            WHERE repository_id = :rid AND lower(github_login) = :login AND id <> :cid
-            ORDER BY id LIMIT 1
-        """), {"rid": repository_id, "login": login, "cid": cid}).fetchone()
-
-        if existing:
-            _add_alias(db, existing[0], email, display_name, "git", "pr_authorship")
-            _merge_contributor(db, existing[0], cid, "pr_authorship")
+        if _link_login(db, repository_id, cid, email, display_name, login, "git", "pr_authorship"):
             merged += 1
-        else:
-            db.execute(text("""
-                UPDATE contributors SET github_login = :login, resolution_status = 'auto'
-                WHERE id = :cid
-            """), {"login": login, "cid": cid})
-            _add_alias(db, cid, email, display_name, "git", "pr_authorship")
         resolved += 1
 
     db.commit()
@@ -415,20 +408,8 @@ def stage_commit_author_login(db: Session, repository_id: int, client,
         author = data.get("author") or {}  # 커밋에 연결된 GitHub 계정 (없으면 null)
         login = author.get("login", "").lower() if author.get("login") else None
         if login:
-            existing = db.execute(text("""
-                SELECT id FROM contributors
-                WHERE repository_id = :rid AND lower(github_login) = :login AND id <> :cid
-            """), {"rid": repository_id, "login": login, "cid": cid}).fetchone()
-            if existing:
-                _add_alias(db, existing[0], email, name, "github", "commit_api")
-                _merge_contributor(db, existing[0], cid, "commit_api")
+            if _link_login(db, repository_id, cid, email, name, login, "github", "commit_api"):
                 merged += 1
-            else:
-                db.execute(text("""
-                    UPDATE contributors SET github_login = :login, resolution_status = 'auto'
-                    WHERE id = :cid
-                """), {"login": login, "cid": cid})
-                _add_alias(db, cid, email, name, "github", "commit_api")
             resolved += 1
         else:
             unmatched_ids.append(cid)
