@@ -3,7 +3,6 @@ from bisect import bisect_right
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional
 
-from cryptography.exceptions import InvalidTag
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 
@@ -42,28 +41,12 @@ from app.collectors.github.release_collector import collect_releases
 from app.collectors.identity.resolver import run_identity_resolution
 from app.tasks.progress import ProgressReporter
 from app.services.job_lifecycle import TERMINAL_STATUSES
+from app.utils.normalize import normalize_hash, normalize_path
 
 
 # -----------------------
-# 유틸: 정규화 및 헬퍼
+# 유틸: 헬퍼
 # -----------------------
-def normalize_hash(h: str) -> str:
-    if not h:
-        return ""
-    return h.strip().lower()
-
-
-def normalize_path(p: str) -> str:
-    if not p:
-        return ""
-    p = p.strip()
-    p = p.replace("\\", "/")
-    p = os.path.normpath(p).replace("\\", "/")
-    if p == ".":
-        return ""
-    return p
-
-
 def chunked(iterable: List, size: int):
     """Yield successive chunks from iterable."""
     for i in range(0, len(iterable), size):
@@ -179,7 +162,6 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
         github_token = _resolve_github_token(db, user_id, repository.is_private)
 
         # 2) Clone repo (private 이면 토큰으로 인증)
-        repo_name = repository.url.rstrip("/").split("/")[-1].removesuffix(".git")
         repo_path = clone_repository(repository.url, repository.id, token=github_token)
         print("📁 repo_path:", repo_path)
 
@@ -731,9 +713,6 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
         }
         print(f"  PRs already collected (skip): {len(prs_with_details)}")
 
-        def normalize_sha(h):
-            return h.strip().lower() if h else ""
-
         def _flush_pr_rows():
             nonlocal pr_commit_rows, pr_review_rows, pr_file_rows
             if pr_commit_rows:
@@ -761,7 +740,7 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
 
             # PR Commits
             for sha_raw in details["commits"]:
-                sha = normalize_sha(sha_raw)
+                sha = normalize_hash(sha_raw)
                 key = (pr_id, sha)
                 if key in existing_pr_commit_keys:
                     continue

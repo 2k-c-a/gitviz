@@ -11,7 +11,7 @@
 
 import re
 import time
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Sequence
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -69,6 +69,27 @@ def _merge_contributor(db: Session, canonical_id: int, dup_id: int, rule: str):
     db.execute(text("UPDATE pr_reviews SET reviewer_contributor_id = :c WHERE reviewer_contributor_id = :d"),
                {"c": canonical_id, "d": dup_id})
     db.execute(text("DELETE FROM contributors WHERE id = :d"), {"d": dup_id})
+
+
+def _link_login(db: Session, repository_id: int, cid: int, email, name, login: str,
+                source: str, rule: str) -> bool:
+    """찾은 login을 기여자에 연결한다. 같은 login의 기여자가 이미 있으면 그쪽(최소 id)으로
+    병합하고 True, 없으면 이 기여자에 login을 기록하고 False를 돌려준다."""
+    existing = db.execute(text("""
+        SELECT id FROM contributors
+        WHERE repository_id = :rid AND lower(github_login) = :login AND id <> :cid
+        ORDER BY id LIMIT 1
+    """), {"rid": repository_id, "login": login, "cid": cid}).fetchone()
+    if existing:
+        _add_alias(db, existing[0], email, name, source, rule)
+        _merge_contributor(db, existing[0], cid, rule)
+        return True
+    db.execute(text("""
+        UPDATE contributors SET github_login = :login, resolution_status = 'auto'
+        WHERE id = :cid
+    """), {"login": login, "cid": cid})
+    _add_alias(db, cid, email, name, source, rule)
+    return False
 
 
 def link_commits_by_email(db: Session, repository_id: int) -> int:
@@ -176,7 +197,8 @@ def stage1_noreply(db: Session, repository_id: int) -> Dict[str, int]:
 def stage2_email_search(db: Session, repository_id: int, client,
                         limit: Optional[int] = None,
                         sleep_seconds: float = 2.2,
-                        retry_cooldown_days: int = 30) -> Dict[str, int]:
+                        retry_cooldown_days: int = 30,
+                        retry_ids: Sequence[int] = ()) -> Dict[str, int]:
     """GitHub Search API로 일반 이메일 → 계정 매핑.
 
     Search API는 인증 시 30회/분 제한이라 호출 사이에 proactive sleep을 둔다
@@ -188,6 +210,9 @@ def stage2_email_search(db: Session, repository_id: int, client,
     시도 시각을 남기고, retry_cooldown_days 안에 이미 시도한 사람은 건너뛴다. 이게 없으면
     재분석할 때마다(신규 커밋이 몇 개뿐이어도) 커밋 수 상위 `limit`명이 매번 똑같이 뽑혀서
     지난번에 이미 실패했던 검색을 그대로 반복하며 몇 분씩 낭비하게 된다.
+
+    retry_ids: 같은 실행의 커밋 API 단계가 방금 시도 시각을 남겼지만 계정을 못 찾은 기여자.
+    그 시각 때문에 쿨다운에 걸리지 않도록 이들은 쿨다운과 관계없이 대상에 넣는다.
     """
     rows = db.execute(text("""
         SELECT c.id, c.primary_email, c.display_name, COUNT(cm.id) AS commit_count
@@ -200,10 +225,12 @@ def stage2_email_search(db: Session, repository_id: int, client,
           AND (
               c.identity_search_attempted_at IS NULL
               OR c.identity_search_attempted_at < NOW() - (:cooldown || ' days')::interval
+              OR c.id = ANY(CAST(:retry_ids AS integer[]))
           )
         GROUP BY c.id, c.primary_email, c.display_name, c.identity_search_attempted_at
         ORDER BY commit_count DESC, c.id
-    """), {"rid": repository_id, "cooldown": retry_cooldown_days}).fetchall()
+    """), {"rid": repository_id, "cooldown": retry_cooldown_days,
+           "retry_ids": list(retry_ids)}).fetchall()
 
     if limit is not None:
         rows = rows[:limit]
@@ -226,22 +253,8 @@ def stage2_email_search(db: Session, repository_id: int, client,
 
         if data.get("total_count") == 1 and data.get("items"):
             login = data["items"][0]["login"].lower()
-
-            existing = db.execute(text("""
-                SELECT id FROM contributors
-                WHERE repository_id = :rid AND lower(github_login) = :login AND id <> :cid
-            """), {"rid": repository_id, "login": login, "cid": cid}).fetchone()
-
-            if existing:
-                _add_alias(db, existing[0], email, name, "github", "github_api")
-                _merge_contributor(db, existing[0], cid, "github_api")
+            if _link_login(db, repository_id, cid, email, name, login, "github", "github_api"):
                 merged += 1
-            else:
-                db.execute(text("""
-                    UPDATE contributors SET github_login = :login, resolution_status = 'auto'
-                    WHERE id = :cid
-                """), {"login": login, "cid": cid})
-                _add_alias(db, cid, email, name, "github", "github_api")
             resolved += 1
 
         db.commit()
@@ -324,22 +337,8 @@ def stage_pr_authorship(db: Session, repository_id: int,
         if not accept:
             continue
 
-        existing = db.execute(text("""
-            SELECT id FROM contributors
-            WHERE repository_id = :rid AND lower(github_login) = :login AND id <> :cid
-            ORDER BY id LIMIT 1
-        """), {"rid": repository_id, "login": login, "cid": cid}).fetchone()
-
-        if existing:
-            _add_alias(db, existing[0], email, display_name, "git", "pr_authorship")
-            _merge_contributor(db, existing[0], cid, "pr_authorship")
+        if _link_login(db, repository_id, cid, email, display_name, login, "git", "pr_authorship"):
             merged += 1
-        else:
-            db.execute(text("""
-                UPDATE contributors SET github_login = :login, resolution_status = 'auto'
-                WHERE id = :cid
-            """), {"login": login, "cid": cid})
-            _add_alias(db, cid, email, display_name, "git", "pr_authorship")
         resolved += 1
 
     db.commit()
@@ -367,7 +366,10 @@ def stage_commit_author_login(db: Session, repository_id: int, client,
     """GitHub 커밋 API로 email→login 매핑. Search(30회/분) 대신 core 한도(5000회/시)를 써서
     훨씬 빠르다. 각 미해결 기여자의 커밋 SHA 하나를 조회해 GitHub 계정(author.login)을 얻는다.
     GitHub가 커밋을 계정에 연결해 둔 경우(대부분의 활성 기여자)에 잡히며, 못 잡은 소수만
-    이후 stage2 Search가 처리한다. identity_search_attempted_at로 재실행 시 재조회를 막는다."""
+    이후 stage2 Search가 처리한다. identity_search_attempted_at로 재실행 시 재조회를 막는다.
+
+    반환값의 unmatched_ids는 조회했지만 계정을 못 찾은 기여자다. 이들에게도 시도 시각을
+    남기므로 stage2_email_search(retry_ids=...)로 넘겨야 같은 실행에서 Search가 시도한다."""
     rows = db.execute(text("""
         SELECT c.id, c.primary_email, c.display_name,
                MIN(cm.sha) AS sample_sha, COUNT(cm.id) AS commit_count
@@ -387,6 +389,7 @@ def stage_commit_author_login(db: Session, repository_id: int, client,
         rows = rows[:limit]
 
     checked = resolved = merged = 0
+    unmatched_ids: List[int] = []
     for cid, email, name, sha, _count in rows:
         if not sha:
             continue
@@ -405,28 +408,19 @@ def stage_commit_author_login(db: Session, repository_id: int, client,
         author = data.get("author") or {}  # 커밋에 연결된 GitHub 계정 (없으면 null)
         login = author.get("login", "").lower() if author.get("login") else None
         if login:
-            existing = db.execute(text("""
-                SELECT id FROM contributors
-                WHERE repository_id = :rid AND lower(github_login) = :login AND id <> :cid
-            """), {"rid": repository_id, "login": login, "cid": cid}).fetchone()
-            if existing:
-                _add_alias(db, existing[0], email, name, "github", "commit_api")
-                _merge_contributor(db, existing[0], cid, "commit_api")
+            if _link_login(db, repository_id, cid, email, name, login, "github", "commit_api"):
                 merged += 1
-            else:
-                db.execute(text("""
-                    UPDATE contributors SET github_login = :login, resolution_status = 'auto'
-                    WHERE id = :cid
-                """), {"login": login, "cid": cid})
-                _add_alias(db, cid, email, name, "github", "commit_api")
             resolved += 1
+        else:
+            unmatched_ids.append(cid)
         db.commit()
 
         if checked % 100 == 0:
             print(f"  commit-login progress: {checked}/{len(rows)} (resolved={resolved})")
 
     db.commit()
-    return {"checked": checked, "resolved": resolved, "merged": merged}
+    return {"checked": checked, "resolved": resolved, "merged": merged,
+            "unmatched_ids": unmatched_ids}
 
 
 def run_identity_resolution(db: Session, repository_id: int, client=None,
@@ -439,11 +433,15 @@ def run_identity_resolution(db: Session, repository_id: int, client=None,
     out["commits_linked"] = link_commits_by_email(db, repository_id)
     out["stage1"] = stage1_noreply(db, repository_id)
     out["pr_authorship"] = stage_pr_authorship(db, repository_id)
+    retry_ids: List[int] = []
     if client is not None and owner and repo:
-        out["commit_login"] = stage_commit_author_login(
+        commit_login = stage_commit_author_login(
             db, repository_id, client, owner, repo, limit=commit_login_limit)
+        retry_ids = commit_login.pop("unmatched_ids")
+        out["commit_login"] = commit_login
     if client is not None and stage2_limit != 0:
-        out["stage2"] = stage2_email_search(db, repository_id, client, limit=stage2_limit)
+        out["stage2"] = stage2_email_search(db, repository_id, client, limit=stage2_limit,
+                                            retry_ids=retry_ids)
     out["commits_linked_by_alias"] = link_commits_by_alias(db, repository_id)
     out["pr_reviews_linked"] = link_pr_reviews_by_login(db, repository_id)
     out["pr_authors_linked"] = link_pr_authors_by_login(db, repository_id)
