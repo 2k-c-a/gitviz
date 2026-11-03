@@ -53,6 +53,14 @@ export const endpoints: Record<string, Endpoint> = {
   attachHistory: ai('POST', 'results/{resultId}/history', { resultId: 'uuid' }, {}, 'AttachHistoryRequest'),
   commits: ai('GET', 'commits', {}, { repository_id: 'id', cursor: 'text' }),
   commitFiles: ai('GET', 'commits/{sha}/files', { sha: 'sha' }, { repository_id: 'id', cursor: 'text' }),
+  insightReports: ai('GET', 'insights/reports', {}, { repository_id: 'id' }),
+  createInsightReport: ai('POST', 'insights/reports', {}, {}, 'CreateInsightReportRequest'),
+  insightReport: ai('GET', 'insights/reports/{reportId}', { reportId: 'uuid' }),
+  insightConversations: ai('GET', 'insights/conversations', {}, { repository_id: 'id' }),
+  createInsightConversation: ai('POST', 'insights/conversations', {}, {}, 'CreateInsightConversationRequest'),
+  insightConversation: ai('GET', 'insights/conversations/{conversationId}', { conversationId: 'uuid' }),
+  askInsight: ai('POST', 'insights/conversations/{conversationId}/messages', { conversationId: 'uuid' }, {}, 'AskInsightQuestionRequest'),
+  deleteInsightConversation: ai('DELETE', 'insights/conversations/{conversationId}', { conversationId: 'uuid' }),
   feedback: ai('PUT', 'findings/{findingId}/feedback', { findingId: 'uuid' }, {}, 'FeedbackRequest'),
 };
 endpoints.pullFiles = ai('GET', 'pulls/{pr}/files', { pr: 'id' }, { repository_id: 'id', ...page });

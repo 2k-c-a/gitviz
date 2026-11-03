@@ -18,6 +18,8 @@ from typing import Protocol
 from app.schemas.ai import JobKind, canonical_hash
 
 MAX_RAW_OUTPUT_BYTES = 262_144
+# AI 인사이트 작업 종류. profile 필드를 늘리면 기존 작업의 fingerprint가 바뀌므로 버전은 종류 이름에서 정한다.
+INSIGHT_KINDS = ('insight_report', 'insight_chat')
 
 # 작업 error_code(문자열). handler가 JobFailed/RetryableError에 싣는다.
 ERROR_CODES = {
@@ -56,9 +58,13 @@ class ProviderProfile:
     endpoint: str = ''
 
     def prompt_version(self, kind: str) -> str:
+        if kind in INSIGHT_KINDS:
+            return f'{kind}-v1'
         return {JobKind.summary.value: self.summary_prompt, JobKind.review.value: self.review_prompt}[kind]
 
     def schema_version(self, kind: str) -> str:
+        if kind in INSIGHT_KINDS:
+            return f'{kind}-output-v1'
         return {JobKind.summary.value: self.summary_schema, JobKind.review.value: self.review_schema}[kind]
 
     def fingerprint(self) -> str:

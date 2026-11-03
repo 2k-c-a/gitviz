@@ -7,6 +7,8 @@ import { pageUrl } from './ui/shell.js';
 // The activity panels (metrics, timeline, heatmap, contributors, releases, commit types) on this page belong to timeline.js.
 if (document.getElementById('page-overview')) void init().catch(renderLoadError);
 async function init() {
+  // 'AI 분석' keeps this page's repository and stored result (?repo=&snapshot=).
+  const insights = document.getElementById('btn-ai-insights'); if (insights) insights.href = pageUrl('ai-insights');
   const id = getRepoId(); await fetchSnapshotMeta(id);
   void loadPanel(document.getElementById('overview-files'), () => fetchRepoTree(id), (data, host) => {
     const rows = [...(data.files || [])].filter(row => row.observation_count > 0).sort((a, b) => b.observation_count - a.observation_count || a.path.localeCompare(b.path)).slice(0, 5);

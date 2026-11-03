@@ -24,6 +24,11 @@ test('the link is found among Chromium arguments, and nothing else is', () => {
   assert.equal(inviteFromArgv(['C:\\app\\GitVizWorkspace.exe']), null);
 });
 
+test('the app protocol serves the AI analysis page reached from the overview button', () => {
+  assert.equal(isAppDocument('gitviz://app/web/pages/ai-insights.html?repo=2&snapshot=5'), true);
+  assert.equal(isAppDocument('gitviz://app/web/pages/ai-insights-x.html'), false);
+});
+
 test('the link opens only the community page, which the app protocol accepts', () => {
   const url = communityJoinUrl(token);
   assert.equal(url, `gitviz://app/web/pages/community.html?invite=${token}`);

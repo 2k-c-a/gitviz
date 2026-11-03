@@ -4,8 +4,8 @@ import { element, createIcon, enhanceTooltips, observeActions } from './componen
 import './motion.js';
 
 const webRoot = new URL('../../', import.meta.url);
-const pages = { overview: '분석 개요', network: '협업 네트워크', 'code-analysis': '파일 분석', history: '분석 이력', 'ai-review': 'AI 리뷰' };
-const glyphs = { overview: '▦', network: '◎', 'code-analysis': '▤', history: '◷', 'ai-review': '◇' };
+const pages = { overview: '분석 개요', network: '협업 네트워크', 'code-analysis': '파일 분석', history: '분석 이력', 'ai-insights': 'AI 분석', 'ai-review': 'AI 리뷰' };
+const glyphs = { overview: '▦', network: '◎', 'code-analysis': '▤', history: '◷', 'ai-insights': '✦', 'ai-review': '◇' };
 export function pageUrl(page, search = location.search) {
   const url = new URL(`pages/${page}.html`, webRoot);
   const state = parseState(search);
@@ -121,9 +121,9 @@ export function mountShell({ local = false, account = null } = {}) {
     const state = parseState(location.search);
     if (!local) {
       if (state.repo !== repositoryId) buildRepositoryLinks();
-      const title = document.querySelector('#tl-repo-name, .js-repo-title, #hist-repo-title, #ai-title');
+      const title = document.querySelector('#tl-repo-name, .js-repo-title, #hist-repo-title, #ai-title, #insight-title');
       const name = title?.dataset.repositoryLabel || title?.textContent?.trim();
-      repo.textContent = state.repo ? (name && name !== '—' && name !== 'AI 리뷰' ? name : `저장소 #${state.repo}`) : '저장소를 선택하세요';
+      repo.textContent = state.repo ? (name && name !== '—' && name !== 'AI 리뷰' && name !== 'AI 분석' ? name : `저장소 #${state.repo}`) : '저장소를 선택하세요';
       const banner = document.getElementById('analysis-context');
       const period = banner?.querySelector('.ctx-item')?.textContent;
       context.textContent = state.snapshot ? `결과 #${state.snapshot}${period ? ` · ${period}` : ''}` : state.repo ? '저장소 맥락' : '검색 또는 최근 분석에서 선택';

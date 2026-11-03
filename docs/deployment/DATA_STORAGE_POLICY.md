@@ -79,7 +79,7 @@
 
 ## 7. 서버 측 데이터 (참고)
 
-서버 PostgreSQL은 사용자 클라이언트 데이터와 분리한다. 운영 DB는 Alembic 단일 head(`d4f6a8c0e2b3`, 2026-11-01 커뮤니티·채팅 추가)로만 변경하고, 마이그레이션은 배포 절차에서 사람이 실행한다. 개발/테스트 코드는 `assert_database_allowed`로 운영 DB 접속을 거부한다 ([환경 아키텍처 §3.3](../architecture/ENVIRONMENT_ARCHITECTURE.md)). 운영 비밀값(`SESSION_SECRET_KEY` 등)은 서버 환경에만 두고 클라이언트 빌드에 넣지 않는다.
+서버 PostgreSQL은 사용자 클라이언트 데이터와 분리한다. 운영 DB는 Alembic 단일 head(`f1b3d5e7a9c2`, 2026-11-01 커뮤니티·채팅, 2026-11-03 AI 분석 추가)로만 변경하고, 마이그레이션은 배포 절차에서 사람이 실행한다. 개발/테스트 코드는 `assert_database_allowed`로 운영 DB 접속을 거부한다 ([환경 아키텍처 §3.3](../architecture/ENVIRONMENT_ARCHITECTURE.md)). 운영 비밀값(`SESSION_SECRET_KEY` 등)은 서버 환경에만 두고 클라이언트 빌드에 넣지 않는다.
 
 ## 8. 권한과 보안
 

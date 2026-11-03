@@ -34,6 +34,8 @@ jobs:
       REDIS_URL: redis://localhost:6379/0
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # test_ai_insights_integration.py가 실제 main 이력을 수집한다
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -74,8 +76,13 @@ jobs:
       - run: python tests/server/test_ai_evaluation.py
       - run: python tests/server/test_ai_smoke.py
       - run: node tests/frontend/test_ai_frontend.cjs
+      - run: node tests/frontend/test_ai_insights_frontend.cjs
       - run: python tests/server/test_ai_output_validation.py
       - run: python tests/server/test_ai_output_limits.py
+      - run: python tests/server/test_ai_insights.py
+      - run: python tests/server/test_ai_insight_code.py
+      # 이 저장소의 실제 Git 이력 → 수집 task·스냅샷 → 인사이트 API·worker task → 가짜 제공자(HTTP). checkout에 fetch-depth: 0 필요
+      - run: python tests/server/test_ai_insights_integration.py
   ai-queue:
     # 실제 PostgreSQL·Redis와 별도 Celery worker 프로세스로 outbox → 큐 → worker 경로를 검증한다.
     runs-on: ubuntu-latest

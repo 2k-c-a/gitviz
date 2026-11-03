@@ -396,3 +396,33 @@ def provider_for_job(db: Session, job_id: UUID, **provider_kwargs):
         raise CredentialUnavailable('profile_changed')   # 고정한 모델·가격·한도가 달라졌다. 같은 동의로 보낼 수 없다
     secret = open_secret_for_job(db, job_id) if profile.requires_api_key else None
     return registry.create_provider(profile, api_key=secret, **provider_kwargs)
+
+
+def provider_for_owner(db: Session, owner_id: UUID, profile_id: str, **provider_kwargs):
+    """AI 인사이트용: 사용자 본인의 활성 key와 지금 허용된 profile로 provider를 만든다.
+
+    인사이트는 ai_jobs를 쓰지 않으므로 작업에 key 버전을 고정하지 않고, 호출하는 실행마다 활성 key를 연다.
+    삭제·파기된 key, 허용되지 않은 profile, 다른 사용자의 key로는 만들지 않는다. 평문 key는 provider 안에만 있다.
+    """
+    if not registry.is_allowed(profile_id):
+        raise CredentialUnavailable('profile_not_allowed')
+    try:
+        profile = registry.get_profile(profile_id)
+    except registry.UnknownProfile:
+        raise CredentialUnavailable('profile_unknown') from None
+    secret = None
+    if profile.requires_api_key:
+        found = get_active(db, owner_id, profile.provider)
+        if found is None:
+            raise CredentialUnavailable('no_credential')
+        credential, version = found
+        if version.owner_user_id != owner_id or credential.owner_user_id != owner_id:
+            raise CredentialUnavailable('owner_mismatch')
+        if version.encrypted_key is None:
+            raise CredentialUnavailable('purged')
+        try:
+            secret = decrypt_secret(bytes(version.encrypted_key), version.key_version,
+                                    _aad(owner_id, version.id)).decode()
+        except InputCryptoError:
+            raise CredentialUnavailable('decrypt_failed') from None
+    return registry.create_provider(profile, api_key=secret, **provider_kwargs)

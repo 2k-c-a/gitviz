@@ -369,5 +369,102 @@
     ],
     "title": "AttachHistoryRequest",
     "type": "object"
+  },
+  "CreateInsightReportRequest": {
+    "additionalProperties": false,
+    "description": "POST /insights/reports. snapshot_id가 없으면 저장소의 최신 분석 결과를 쓴다.",
+    "properties": {
+      "repository_id": {
+        "exclusiveMinimum": 0,
+        "title": "Repository Id",
+        "type": "integer"
+      },
+      "snapshot_id": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Snapshot Id"
+      },
+      "profile_id": {
+        "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$",
+        "title": "Profile Id",
+        "type": "string"
+      },
+      "include_code": {
+        "default": false,
+        "title": "Include Code",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "repository_id",
+      "profile_id"
+    ],
+    "title": "CreateInsightReportRequest",
+    "type": "object"
+  },
+  "CreateInsightConversationRequest": {
+    "additionalProperties": false,
+    "description": "POST /insights/conversations. 대화는 시작할 때의 분석 결과(스냅샷)와 모델에 묶인다.",
+    "properties": {
+      "repository_id": {
+        "exclusiveMinimum": 0,
+        "title": "Repository Id",
+        "type": "integer"
+      },
+      "snapshot_id": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Snapshot Id"
+      },
+      "profile_id": {
+        "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$",
+        "title": "Profile Id",
+        "type": "string"
+      },
+      "include_code": {
+        "default": false,
+        "title": "Include Code",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "repository_id",
+      "profile_id"
+    ],
+    "title": "CreateInsightConversationRequest",
+    "type": "object"
+  },
+  "AskInsightQuestionRequest": {
+    "additionalProperties": false,
+    "description": "POST /insights/conversations/{id}/messages.",
+    "properties": {
+      "question": {
+        "maxLength": 1000,
+        "minLength": 1,
+        "title": "Question",
+        "type": "string"
+      }
+    },
+    "required": [
+      "question"
+    ],
+    "title": "AskInsightQuestionRequest",
+    "type": "object"
   }
 }

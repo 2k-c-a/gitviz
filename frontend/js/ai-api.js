@@ -193,5 +193,18 @@ export function createAiClient({ fetchImpl = (u, o) => request(u, o), now = () =
     putFeedback: (findingId, { verdict, note, expectedVersion }, signal) =>
       send('PUT', `${BASE}/findings/${id(findingId)}/feedback`,
         { body: { verdict, note: note || null, expected_version: expectedVersion }, signal }),
+
+    /* AI 인사이트: 자동 분석 리포트와 대화형 분석(저장된 분석 결과를 읽기 전용 도구로 조회한다) */
+    insightReports: (repositoryId, signal) => get(`${BASE}/insights/reports`, { repository_id: repositoryId }, signal),
+    createInsightReport: ({ repositoryId, snapshotId = null, profileId, includeCode = false }, signal) =>
+      send('POST', `${BASE}/insights/reports`, { body: { repository_id: repositoryId, snapshot_id: snapshotId, profile_id: profileId, include_code: !!includeCode }, signal }),
+    insightReport: (reportId, signal) => get(`${BASE}/insights/reports/${id(reportId)}`, null, signal),
+    insightConversations: (repositoryId, signal) => get(`${BASE}/insights/conversations`, { repository_id: repositoryId }, signal),
+    createInsightConversation: ({ repositoryId, snapshotId = null, profileId, includeCode = false }, signal) =>
+      send('POST', `${BASE}/insights/conversations`, { body: { repository_id: repositoryId, snapshot_id: snapshotId, profile_id: profileId, include_code: !!includeCode }, signal }),
+    insightConversation: (conversationId, signal) => get(`${BASE}/insights/conversations/${id(conversationId)}`, null, signal),
+    askInsight: (conversationId, question, signal) =>
+      send('POST', `${BASE}/insights/conversations/${id(conversationId)}/messages`, { body: { question }, signal }),
+    deleteInsightConversation: (conversationId, signal) => send('DELETE', `${BASE}/insights/conversations/${id(conversationId)}`, { signal }),
   };
 }
