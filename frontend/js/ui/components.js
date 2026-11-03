@@ -8,6 +8,12 @@ export function element(tag, className, text) {
   return node;
 }
 
+/* Sets the text of the element with this id; a page that lacks the element is left alone. */
+export function setText(id, text) {
+  const node = document.getElementById(id);
+  if (node) node.textContent = text;
+}
+
 /* Accepts a legacy text glyph (⌕ ▦ ...) or a Lucide icon name. */
 export function createIcon(symbol, size = 19) {
   return lucideIcon(GLYPH_ICONS[symbol] || symbol, { size });
