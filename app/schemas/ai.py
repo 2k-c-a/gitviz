@@ -1021,3 +1021,28 @@ class HistoryEvidenceList(_Strict):
 HANDOVER_ITEM_KEYS = ("assignee", "description", "run_method", "verify_method", "joint_review", "receiver_run")
 
 InputManifest.model_rebuild()
+
+
+# ── AI 인사이트(자동 분석 리포트·대화형 분석) 요청 ─────────────────────────
+
+class CreateInsightReportRequest(_Strict):
+    """POST /insights/reports. snapshot_id가 없으면 저장소의 최신 분석 결과를 쓴다."""
+    repository_id: int = Field(gt=0)
+    snapshot_id: int | None = Field(default=None, gt=0)
+    profile_id: ProfileId
+    provider: str = Field(pattern=r'^[a-z][a-z0-9_-]{1,31}$')   # 모델의 제공자. 앱은 이 제공자의 저장된 key를 헤더로 붙인다
+    include_code: bool = False                # 기준 커밋의 소스 코드 일부를 AI가 읽도록 허용(클라우드는 공개 저장소만)
+
+
+class CreateInsightConversationRequest(_Strict):
+    """POST /insights/conversations. 대화는 시작할 때의 분석 결과(스냅샷)와 모델에 묶인다."""
+    repository_id: int = Field(gt=0)
+    snapshot_id: int | None = Field(default=None, gt=0)
+    profile_id: ProfileId
+    include_code: bool = False                # 기준 커밋의 소스 코드 일부를 AI가 읽도록 허용(클라우드는 공개 저장소만)
+
+
+class AskInsightQuestionRequest(_Strict):
+    """POST /insights/conversations/{id}/messages."""
+    question: str = Field(min_length=1, max_length=1000)
+    provider: str = Field(pattern=r'^[a-z][a-z0-9_-]{1,31}$')   # 대화 모델의 제공자(서버가 대화의 모델과 일치하는지 확인)

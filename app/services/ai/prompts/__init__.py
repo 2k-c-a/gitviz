@@ -28,6 +28,8 @@ PROMPT_DIGESTS = {
     'summary_v2.txt': 'a57aaccd4e04a215abcff9156281b21ee8ab6085800668e0c48d1e667adb7b29',
     'summary_v1.txt': 'c28f0c4a3bf56bfd576c30480bc3f463e2d01e25a30e3808bdff1fbca6ee3311',
     'review_v1.txt': '08e36f662a9e0eb6ee5691b903aaee67ab225cc110566e37ddfe481eab038841',
+    'insight_report_v1.txt': 'af7264ac6e46ca2308845969c3cd45474c54d7d48cac7a2f864a0ea25288e018',
+    'insight_chat_v1.txt': '38b2263c2b8144bf69853231df3c75e9c4b67b72b651e16caee8608393d5098f',
 }
 RENDER_EXPANSION = 1.5          # unified diff 바이트 → 렌더링된 줄 번호 표기까지 포함한 보수적 배율
 
@@ -194,7 +196,39 @@ SUMMARY_JSON_SCHEMA = _obj({
     'evidence_ids': {'type': 'array', 'items': _STR},
 })
 
-OUTPUT_SCHEMAS = {'summary': SUMMARY_JSON_SCHEMA, 'review': REVIEW_JSON_SCHEMA}
+# AI 인사이트(자동·대화형 분석). 값의 근거·참조 검증은 insight_service가 한다.
+_STRS = {'type': 'array', 'items': _STR}
+_EVIDENCE = {'type': 'array', 'items': _obj({'toolCallId': _STR, 'label': _STR, 'value': _STR})}
+_RELATED = {'relatedFiles': _STRS, 'relatedCommits': _STRS, 'relatedContributors': _STRS,
+            'relatedCode': {'type': 'array', 'items': _obj({'path': _STR, 'startLine': _INT, 'endLine': _INT})}}
+
+INSIGHT_REPORT_JSON_SCHEMA = _obj({
+    'schema_version': _STR,
+    'insights': {'type': 'array', 'items': _obj({
+        'title': _STR, 'summary': _STR,
+        'severity': {'type': 'string', 'enum': ['info', 'low', 'medium', 'high', 'critical']},
+        'confidence': {'type': 'string', 'enum': ['low', 'medium', 'high']},
+        'evidence': _EVIDENCE, 'interpretation': _STR, 'recommendation': _STR, **_RELATED})},
+    'limitations': _STRS,
+})
+
+INSIGHT_CHAT_JSON_SCHEMA = _obj({
+    'schema_version': _STR,
+    'action': {'type': 'string', 'enum': ['tools', 'answer']},
+    'calls': {'type': 'array', 'items': _obj({'tool': _STR, 'reason': _STR, 'args': _obj({
+        'path': _STR, 'directory': _STR, 'contributor': _STR, 'sha': _STR, 'commitType': _STR, 'sortBy': _STR,
+        'query': _STR, 'limit': _INT, 'recentMonths': _INT, 'baselineMonths': _INT, 'depth': _INT,
+        'startLine': _INT, 'endLine': _INT})})},
+    'answer': _obj({
+        'text': _STR,
+        'blocks': {'type': 'array', 'items': _obj({
+            'type': {'type': 'string', 'enum': ['table', 'list', 'stat']}, 'title': _STR, 'columns': _STRS,
+            'rows': {'type': 'array', 'items': _STRS}, 'items': _STRS, 'value': _STR, 'unit': _STR})},
+        'evidence': _EVIDENCE, **_RELATED, 'limitations': _STRS}),
+})
+
+OUTPUT_SCHEMAS = {'summary': SUMMARY_JSON_SCHEMA, 'review': REVIEW_JSON_SCHEMA,
+                  'insight_report': INSIGHT_REPORT_JSON_SCHEMA, 'insight_chat': INSIGHT_CHAT_JSON_SCHEMA}
 SCHEMA_VERSIONS = {'summary': SUMMARY_SCHEMA_VERSION, 'review': REVIEW_SCHEMA_VERSION}
 
 

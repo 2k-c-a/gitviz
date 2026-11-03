@@ -22,3 +22,4 @@ from app.models.ai_team import Team, TeamMember, TeamRepository, TeamResourceSha
 from app.models.ai_handover import HandoverTarget, HandoverPreparationVersion, HandoverGeneration, HandoverDocument, HandoverDocumentVersion
 from app.models.desktop_session import DesktopAuthTransaction, DesktopSession
 from app.models.community import CommunityMember, CommunityInvite, CommunityPost, CommunityComment, CommunityChatMessage
+from app.models.ai_insight import AIInsightReport, AIInsightConversation, AIInsightMessage

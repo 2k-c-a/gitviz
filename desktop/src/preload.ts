@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
   auth: Object.freeze({ start: () => ipcRenderer.invoke('desktop:auth-start'), status: () => ipcRenderer.invoke('desktop:auth-status'), logout: () => ipcRenderer.invoke('desktop:auth-logout') }),
   remote: Object.freeze({ request: (options: unknown) => ipcRenderer.invoke('desktop:remote', options) }),
   update: Object.freeze({ status: () => ipcRenderer.invoke('desktop:update-status') }),
+  // AI analysis (BYOK): which providers have a saved key. Booleans only; main attaches the key itself.
+  aiKeys: Object.freeze({ status: () => ipcRenderer.invoke('desktop:ai-key-status') }),
   // Community chat live events (AD-27). The listener gets only the cloned event object.
   community: Object.freeze({
     subscribe: (options: unknown, listener: unknown) => {

@@ -857,7 +857,7 @@ class Usage(ApiCase):
         self.assertEqual(float(body['user_spent']), float(self.expected_cost(USAGE)))
         self.assertEqual(float(body['user_reserved']), 0)
         self.assertAlmostEqual(float(body['user_remaining']), 20 - float(self.expected_cost(USAGE)), places=5)
-        self.assertEqual((body['daily_jobs_used'], body['daily_job_limit']), (1, 30))
+        self.assertEqual((body['daily_jobs_used'], body['daily_job_limit']), (1, 0))      # 기본은 하루 한도 없음(0)
         self.login(self.make_user())
         other = self.client.get('/api/ai/v1/usage').json()
         self.assertEqual((float(other['user_spent']), other['daily_jobs_used']), (0.0, 0))     # 다른 사용자의 사용량은 보이지 않는다

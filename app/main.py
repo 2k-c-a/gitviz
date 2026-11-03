@@ -43,6 +43,7 @@ from app.api.ai.pulls import router as ai_pulls_router
 from app.api.ai.history import router as ai_history_router
 from app.api.ai.commits import router as ai_commits_router
 from app.api.ai.shared import router as ai_shared_router
+from app.api.ai.insights import router as ai_insights_router
 from app.services.ai.access import AIError
 
 if get_ai_settings().enabled:
@@ -89,6 +90,7 @@ app.include_router(ai_pulls_router)
 app.include_router(ai_history_router)
 app.include_router(ai_commits_router)
 app.include_router(ai_shared_router)
+app.include_router(ai_insights_router)
 app.include_router(community_router)
 
 # ── 프론트엔드 정적 파일 서빙 (API 라우터 이후 마지막에 위치) ─────────────────

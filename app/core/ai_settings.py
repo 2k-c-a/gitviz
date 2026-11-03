@@ -57,6 +57,7 @@ def _origin(url: str) -> str | None:
 @dataclass(frozen=True)
 class AISettings:
     enabled: bool = False
+    insights_enabled: bool = True                     # AI 분석(앱 BYOK): 서버 비밀 없이 동작하므로 기본으로 켠다(AI_INSIGHTS_ENABLED=0으로 끔)
     allow_external_transfer: bool = False
     policy_versions: tuple[str, ...] = DEFAULT_POLICY_VERSIONS
     encryption_keys: dict = field(default_factory=dict, repr=False)
@@ -68,7 +69,7 @@ class AISettings:
     database_ssl_ca: str = ''
     max_files: int = 50
     max_input_bytes: int = 2_000_000
-    daily_job_limit: int = 30
+    daily_job_limit: int = 0                          # 0이면 하루 실행 한도 없음(2026-11-03 소유자 결정)
     lease_seconds: int = 120
     max_attempts: int = 3
     queue_deadline_seconds: int = 1800
@@ -108,6 +109,7 @@ def get_ai_settings() -> AISettings:
     policies = os.getenv('AI_POLICY_VERSIONS') or ','.join(DEFAULT_POLICY_VERSIONS)
     return AISettings(
         enabled=_flag('AI_ENABLED'),
+        insights_enabled=os.getenv('AI_INSIGHTS_ENABLED', '1').strip() != '0',
         allow_external_transfer=_flag('AI_ALLOW_EXTERNAL_TRANSFER'),
         policy_versions=tuple(p.strip() for p in policies.split(',') if p.strip()),
         encryption_keys=_parse_keys(os.getenv('AI_INPUT_ENCRYPTION_KEYS', '')),
@@ -119,7 +121,7 @@ def get_ai_settings() -> AISettings:
         database_ssl_ca=os.getenv('DATABASE_SSL_CA', '').strip(),
         max_files=_int('AI_MAX_FILES', 50),
         max_input_bytes=_int('AI_MAX_INPUT_BYTES', 2_000_000),
-        daily_job_limit=_int('AI_DAILY_JOB_LIMIT', 30, allow_zero=True),
+        daily_job_limit=_int('AI_DAILY_JOB_LIMIT', 0, allow_zero=True),
         lease_seconds=_int('AI_LEASE_SECONDS', 120),
         max_attempts=_int('AI_MAX_ATTEMPTS', 3),
         queue_deadline_seconds=_int('AI_QUEUE_DEADLINE_SECONDS', 1800),

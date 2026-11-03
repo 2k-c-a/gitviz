@@ -28,12 +28,14 @@ class Compatibility(unittest.TestCase):
     def test_single_additive_head(self):
         directory = ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini")))
         # 2026-11-01 (AD-25, AD-27): the community tables and then chat history sit on top of the desktop sessions.
-        self.assertEqual(directory.get_heads(), ["d4f6a8c0e2b3"])
+        # 2026-11-03 (AD-32): AI insight reports and conversations are added on top of chat history.
+        self.assertEqual(directory.get_heads(), ["f1b3d5e7a9c2"])
+        self.assertEqual(directory.get_revision("f1b3d5e7a9c2").down_revision, "d4f6a8c0e2b3")
         self.assertEqual(directory.get_revision("d4f6a8c0e2b3").down_revision, "c3e5a7b9d1f2")
         self.assertEqual(directory.get_revision("c3e5a7b9d1f2").down_revision, "b7e1d9c3a502")
         self.assertEqual(directory.get_revision("b7e1d9c3a502").down_revision, "a9d2f4c6e8b0")
         for name in ("b7e1d9c3a502_desktop_sessions.py", "c3e5a7b9d1f2_community.py",
-                     "d4f6a8c0e2b3_community_chat.py"):
+                     "d4f6a8c0e2b3_community_chat.py", "f1b3d5e7a9c2_ai_insights.py"):
             migration = (ROOT / "migrations/versions" / name).read_text(encoding="utf8")
             self.assertNotIn("ALTER TABLE", migration)
             self.assertNotIn("DROP TABLE", migration)
