@@ -115,7 +115,7 @@ CI는 `--ignore-scripts`로 설치하므로 `electron-winstaller`의 7-Zip 선�
 | 서버 | `app/main.py`의 `FastAPI(version="0.1.0")` | 데스크톱과 독립, 불일치 |
 | 에이전트 | 별도 버전 문자열 없음. `SCHEMA_VERSION = 8`(로컬 DB 스키마), 프로토콜 `protocolVersion: 1` | PyInstaller 버전 리소스 미설정 |
 | 계약 | `contracts/workspace/v1` | 경로가 버전 |
-| 서버 DB | Alembic 헤드 `f1b3d5e7a9c2` (AI 분석, AD-32) | 리비전 21개, 선형 |
+| 서버 DB | Alembic 헤드 `e7a9c1d3f5b4` (내 분석 프로젝트 숨김, 2026-11-03. 그 앞 `f1b3d5e7a9c2` AI 분석, AD-32) | 리비전 22개, 선형 |
 
 **[제안]** 릴리스 버전의 단일 소스는 `desktop/package.json`으로 유지한다(Squirrel이 사용). 빌드 시 `build-output/<버전>/build-info.json`에 커밋 SHA, 태그, 도구 버전, 에이전트 SHA-256, `SCHEMA_VERSION`, 서버 호환 범위를 기록한다. 서버와의 호환은 숫자 하나로 합치지 않고 "클라이언트 `protocolVersion` / 서버 지원 범위"로 협상한다(기존 `localSchemaRange` 방식을 따른다).
 

@@ -1,4 +1,4 @@
-import { request } from './platform/transport.js';
+import { request, isDesktop } from './platform/transport.js';
 
 import { isLoggedIn, openLoginModal } from './login.js';
 import { parseRepoName, urlInput, fmtDuration } from './utils.js';
@@ -558,23 +558,55 @@ export function startReanalyze() {
 
 /* ── 내 프로젝트 제거 모달 ── */
 let _removeRepoTarget = null;
-export function openRemoveRepoModal(name, cardId) {
-  _removeRepoTarget = cardId;
+let _removeCsrf = null;
+export function openRemoveRepoModal(name, cardId, repoId) {
+  _removeRepoTarget = { cardId, repoId: Number(repoId) };
   document.getElementById('remove-repo-name').textContent = name;
+  setRemoveRepoError('');
   document.getElementById('remove-repo-modal').classList.add('open');
 }
 export function closeRemoveRepoModal() {
   document.getElementById('remove-repo-modal').classList.remove('open');
   _removeRepoTarget = null;
 }
-export function confirmRemoveRepo() {
-  if (_removeRepoTarget) {
-    const card = document.getElementById(_removeRepoTarget);
-    if (card) {
-      card.style.transition = 'opacity 0.2s';
-      card.style.opacity = '0';
-      setTimeout(() => card.remove(), 200);
-    }
+function setRemoveRepoError(text) {
+  const box = document.getElementById('remove-repo-error');
+  if (!box) return;
+  box.textContent = text;
+  box.hidden = !text;
+}
+async function removeCsrfToken() {
+  const res = await request('/api/auth/csrf', { credentials: 'same-origin', cache: 'no-store' });
+  const body = res.ok ? await res.json().catch(() => null) : null;
+  if (!body?.token) throw new Error('로그인이 필요합니다.');
+  return body.token;
+}
+/* 서버의 '내 분석 프로젝트'에서 숨긴 뒤에만 카드를 지운다. 저장소·분석 결과는 남는다. */
+export async function confirmRemoveRepo(retried = false) {
+  const target = _removeRepoTarget;
+  if (!target || !Number.isInteger(target.repoId)) { closeRemoveRepoModal(); return; }
+  const headers = { Accept: 'application/json' };
+  let res;
+  try {
+    // 웹은 세션 쿠키라 CSRF 토큰을 붙인다. 데스크톱은 main의 bearer 세션이라 필요 없다.
+    if (!isDesktop()) headers['X-CSRF-Token'] = _removeCsrf ??= await removeCsrfToken();
+    res = await request(`/repositories/mine/${target.repoId}`, { method: 'DELETE', headers, credentials: 'same-origin', cache: 'no-store' });
+  } catch (error) {
+    setRemoveRepoError(error?.message === '로그인이 필요합니다.' ? '로그인이 필요합니다.' : '서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.');
+    return;
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    if (data?.error?.code === 'CSRF_FAILED' && retried !== true) { _removeCsrf = null; return confirmRemoveRepo(true); }
+    setRemoveRepoError(res.status === 401 ? '로그인이 필요합니다.'
+      : (typeof data?.detail === 'string' && data.detail) || data?.error?.message || '목록에서 제거하지 못했습니다.');
+    return;
+  }
+  const card = document.getElementById(target.cardId);
+  if (card) {
+    card.style.transition = 'opacity 0.2s';
+    card.style.opacity = '0';
+    setTimeout(() => card.remove(), 200);
   }
   closeRemoveRepoModal();
 }

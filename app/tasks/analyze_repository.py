@@ -40,7 +40,10 @@ from app.collectors.github.graphql_pr_collector import (
 from app.collectors.github.release_collector import collect_releases
 from app.collectors.identity.resolver import run_identity_resolution
 from app.tasks.progress import ProgressReporter
-from app.services.job_lifecycle import TERMINAL_STATUSES
+from celery.exceptions import SoftTimeLimitExceeded
+
+from app.services.job_lifecycle import (TERMINAL_STATUSES, ANALYSIS_TIME_LIMIT_SECONDS,
+                                        ANALYSIS_SOFT_TIME_LIMIT_SECONDS)
 from app.utils.normalize import normalize_hash, normalize_path
 
 
@@ -98,7 +101,7 @@ def _resolve_github_token(db, user_id: Optional[str], is_private=False) -> Optio
 # -----------------------
 # 메인 태스크
 # -----------------------
-@celery.task
+@celery.task(time_limit=ANALYSIS_TIME_LIMIT_SECONDS, soft_time_limit=ANALYSIS_SOFT_TIME_LIMIT_SECONDS)
 def analyze_repository(repository_id: int, user_id: str | None = None, job_id: int | None = None):
     """
     Repository 분석 태스크
@@ -141,7 +144,8 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
             return  # 완료/실패/교체된 작업의 지연 전달은 새 작업을 되살리지 않는다.
         if str(job.triggered_by_user_id or "") != str(user_id or ""):
             raise RuntimeError("작업 요청자와 수집 인증 사용자가 일치하지 않습니다.")
-        repository, metadata = verify_repository_access(db,repository_id,user_id)
+        # 수집 직전에는 저장된 공개 여부를 믿지 않고 GitHub에 확인해 저장값을 갱신한다.
+        repository, metadata = verify_repository_access(db,repository_id,user_id,live=True)
         remember_access(db,repository,metadata,job.triggered_by_user_id)
         existing_parameters = job.parameters or {}
         job.parameters = {**existing_parameters, **analysis_parameters(existing_parameters.get('window_start'), existing_parameters.get('window_end'))}
@@ -1003,7 +1007,9 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
             )
             if failed_job:
                 failed_job.status = "failed"
-                failed_job.error_message = str(e)
+                failed_job.error_message = (
+                    f"분석 시간 제한({ANALYSIS_TIME_LIMIT_SECONDS // 3600}시간)을 넘어 중단했습니다."
+                    if isinstance(e, SoftTimeLimitExceeded) else str(e))
                 failed_job.completed_at = datetime.now(timezone.utc)
             db.commit()
         except Exception:

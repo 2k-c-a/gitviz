@@ -30,4 +30,6 @@ class RepositoryAccess(Base):
     # users는 별도 async Base. 저장된 연결은 목록용이고 조회 권한은 GitHub에서 재검증한다.
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # 사용자가 '내 분석 프로젝트'에서 제거한 시각. 목록에서만 숨기고 접근 권한은 유지한다. 다시 분석하면 지운다.
+    hidden_at = Column(DateTime(timezone=True), nullable=True)
     __table_args__ = (UniqueConstraint("repository_id", "user_id", name="uq_repository_access_user"),)
