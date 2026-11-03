@@ -44,45 +44,6 @@
   box-shadow:0 8px 24px rgba(0,0,0,.08);
 }
 
-.dev-avatar{
-  width:110px;
-  height:110px;
-  border-radius:50%;
-  background:none;
-  color:white;
-  font-size:40px;
-  font-weight:bold;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  margin:0 auto 20px;
-}
-
-.dev-avatar{
-  width:140px;
-  height:180px;
-  border-radius:12px;
-  overflow:hidden;
-  margin:0 auto 20px;
-}
-
-.dev-avatar img{
-  width:100%;
-  height:100%;
-  object-fit:cover;
-}
-
-.jiseok-photo{
-    transform: scale(2.5);
-    object-fit: cover;
-}
-
-.doyeong-photo{
-    transform: scale(1.8);
-    object-fit: cover;
-}
-
-
 .dev-name{
   font-size:22px;
   font-weight:800;

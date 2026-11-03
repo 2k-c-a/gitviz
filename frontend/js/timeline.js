@@ -1,9 +1,9 @@
 import { bindPanel, chart, contributorList, action } from './ui/analytics-view.js';
-import { element } from './ui/components.js';
+import { element, setText } from './ui/components.js';
 /* ── 분석 개요의 개발 활동 영역: 결과 API → DOM/차트 연동 ──
    chart-timeline 캔버스가 있을 때(=분석 개요 페이지)만 동작한다. */
 import { textC, tooltipBg, tooltipBorder } from './utils.js';
-import { fmtWindow, windowDays } from './fmt.js';
+import { esc, num, fmtWindow, windowDays } from './fmt.js';
 import { renderLoadError } from './page-context.js';
 import {
   getRepoId,
@@ -26,8 +26,6 @@ if (timelineCanvas && typeof Chart !== 'undefined') {
 }
 
 /* ── helpers ── */
-const num = (n) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmtDate = (iso) => {
   if (!iso) return '';
   const d = new Date(iso);
@@ -216,7 +214,3 @@ function renderHeatmap(data) {
   wrap.append(details);
 }
 
-function setText(id, text) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = text;
-}

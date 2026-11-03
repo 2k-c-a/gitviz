@@ -19,6 +19,7 @@ const POPUPS = [
   ['.ws-menu', el => !el.hidden],
   ['.ws-palette-backdrop', () => true],
 ];
+const POPUP_SELECTOR = POPUPS.map(([selector]) => selector).join(',');
 
 let motionPromise;
 function loadMotion() {
@@ -41,7 +42,8 @@ function release(animation, element, properties) {
 }
 
 function onceVisible(element, motion, run) {
-  const root = document.querySelector('.app-main');
+  // The observer root must contain the element, or it never reports: outside .app-main the viewport is the root.
+  const root = element.closest('.app-main');
   const stop = motion.inView(element, () => { stop(); run(); }, { root: root || undefined, amount: 0.1 });
 }
 
@@ -60,15 +62,18 @@ function setup(motion) {
         release(animation, element, ['opacity', 'transform']);
       } catch { show(); }
     };
-    // Content must never stay hidden because an animation failed: the timer is the backstop.
-    const backstop = () => setTimeout(show, 2500);
+    // Content must never stay hidden because an animation failed or a scroll callback never came: the timer is the
+    // backstop, for cards below the fold too. Revealing a card re-arms it for the animation that then plays.
+    let timer;
+    const backstop = () => { clearTimeout(timer); timer = setTimeout(show, 2500); };
     const rect = element.getBoundingClientRect();
     element.style.opacity = '0'; // Hold the start state through the stagger delay.
     if (rect.top > innerHeight - 24) {
-      try { onceVisible(element, motion, () => { show(); play(); }); } catch { show(); }
+      try { onceVisible(element, motion, () => { show(); play(); backstop(); }); } catch { show(); return; }
     } else {
-      play(); backstop();
+      play();
     }
+    backstop();
   };
 
   const flush = () => {
@@ -94,7 +99,8 @@ function setup(motion) {
     for (const match of node.querySelectorAll?.(ENTER) ?? []) queue(match);
   };
 
-  /* Metric numbers: "—" → 1,284 counts up once. The final text is always the exact original string. */
+  /* Metric numbers: "—" → 1,284 counts up once. The final text is always the exact original string, unless the page
+     writes a new value into the element while it counts: then the count stops and the page's value stays. */
   const counted = new WeakSet();
   const countUp = element => {
     if (counted.has(element)) return;
@@ -111,7 +117,22 @@ function setup(motion) {
       const fixed = value.toFixed(decimals);
       return prefix + (grouped ? Number(fixed).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) : fixed) + suffix;
     };
-    animate(0, target, { duration: 0.9, ease: EASE_OUT, onUpdate: value => { element.textContent = format(value); }, onComplete: () => { element.textContent = text; } });
+    // `written` is what the count last put there; any other text means the page replaced the value mid-count.
+    let written = element.textContent;
+    let cancelled = false;
+    let controls;
+    const ours = () => !cancelled && element.textContent === written;
+    const cancel = () => { cancelled = true; try { controls?.stop?.(); } catch { /* the flag already ends the count */ } };
+    controls = animate(0, target, {
+      duration: 0.9,
+      ease: EASE_OUT,
+      onUpdate: value => {
+        if (!ours()) { cancel(); return; }
+        written = format(value);
+        element.textContent = written;
+      },
+      onComplete: () => { if (ours()) element.textContent = text; },
+    });
   };
   const scanCounters = node => {
     if (node.matches?.('.m-val, .bus-num')) countUp(node);
@@ -121,6 +142,7 @@ function setup(motion) {
   /* Popups: spring the panel in when the container turns visible. */
   const state = new WeakMap();
   const popup = element => {
+    if (!element.matches(POPUP_SELECTOR)) return; // Most class/style changes on a page are not popups: one check, no list walk.
     const entry = POPUPS.find(([selector]) => element.matches(selector));
     if (!entry) return;
     const open = Boolean(entry[1](element));
@@ -134,12 +156,14 @@ function setup(motion) {
   };
 
   const observer = new MutationObserver(records => {
+    const toggled = new Set(); // Charts and animations restyle the same element many times per batch; look at it once.
     for (const record of records) {
-      if (record.type === 'attributes') { popup(record.target); continue; }
+      if (record.type === 'attributes') { toggled.add(record.target); continue; }
       if (record.type === 'characterData') { const el = record.target.parentElement; if (el?.matches('.m-val, .bus-num')) countUp(el); continue; }
       if (record.target.matches?.('.m-val, .bus-num')) countUp(record.target);
       for (const node of record.addedNodes) if (node.nodeType === 1) { scan(node); scanCounters(node); }
     }
+    for (const element of toggled) popup(element);
   });
   observer.observe(document.body, {
     childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'],
