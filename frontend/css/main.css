@@ -105,9 +105,7 @@
   .pr-bar-fill.warn { background: var(--amber); }
   .pr-bar-fill.bad { background: var(--red); }
 
-  /* SELECT */
-  select { padding: 6px 10px; font-size: 13px; border: 0.5px solid var(--border2); border-radius: var(--r-md); background: var(--bg2); color: var(--text); cursor: pointer; }
-  select:focus { outline: none; border-color: var(--blue); }
+  /* SELECT: styled in components.css */
 
   /* MODAL OVERLAY */
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 500; align-items: center; justify-content: center; }

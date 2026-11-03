@@ -1,31 +1,35 @@
 .app-body { margin: 0; height: 100dvh; min-height: 0; overflow: hidden; }
 .app-shell { --nav-width: 208px; display: grid; grid-template-columns: var(--nav-width) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; width: 100%; height: 100dvh; overflow: hidden; }
 .app-shell.has-detail { grid-template-columns: var(--nav-width) minmax(0, 1fr) clamp(320px, 31vw, 440px); }
-.app-sidebar { grid-area: 1 / 1 / -1 / 2; display: flex; flex-direction: column; min-height: 0; background: var(--ui-surface); border-right: 1px solid var(--ui-border); z-index: 110; }
-.app-brand { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 12px 20px; color: var(--ui-text); font-size: 18px; font-weight: var(--ui-bold); text-decoration: none; }
-.app-brand-mark { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border-radius: 7px; background: var(--ui-primary); color: var(--ui-on-primary); font-size: 16px; }
+.app-sidebar { grid-area: 1 / 1 / -1 / 2; display: flex; flex-direction: column; min-height: 0; background: var(--sidebar); border-right: 1px solid var(--ui-border); z-index: 110; }
+.app-brand { display: flex; align-items: center; gap: 10px; min-height: 60px; padding: 12px 20px; color: var(--ui-text); font-size: 17px; font-weight: var(--ui-bold); letter-spacing: -0.02em; text-decoration: none; }
+.app-brand-mark { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, color-mix(in srgb, var(--ui-primary) 82%, #fff), var(--ui-primary) 55%, color-mix(in srgb, var(--ui-primary) 70%, #000)); color: var(--ui-on-primary); font-size: 15px; font-weight: var(--ui-bold); box-shadow: 0 1px 2px rgb(17 24 39 / 25%), inset 0 1px 0 rgb(255 255 255 / 30%); }
 .app-nav { overflow-y: auto; overflow-x: hidden; padding: 8px; scrollbar-width: thin; }
-.app-nav-group { margin: 20px 12px 6px; color: var(--ui-muted); font-size: var(--ui-text-xs); font-weight: var(--ui-semibold); }
-.app-nav-link { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 8px 12px; margin-bottom: 3px; color: var(--ui-muted); text-decoration: none; border-radius: var(--ui-radius-sm); font-size: var(--ui-text-sm); }
-.app-nav-icon { flex: 0 0 20px; text-align: center; font-size: 18px; }
+.app-nav-group { margin: 22px 12px 6px; color: var(--ui-muted); font-size: 11px; font-weight: var(--ui-semibold); letter-spacing: .06em; }
+.app-nav-link { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 8px 12px; margin-bottom: 2px; color: var(--ui-muted); text-decoration: none; border-radius: var(--ui-radius-sm); font-size: var(--ui-text-sm); font-weight: var(--ui-medium); transition: background var(--ui-fast) var(--ui-ease), color var(--ui-fast) var(--ui-ease); }
+.app-nav-icon { flex: 0 0 20px; text-align: center; font-size: 18px; transition: transform var(--ui-normal) var(--ui-ease); }
+.app-nav-link:hover .app-nav-icon { transform: scale(1.1); }
 .app-nav-icon svg { display: block; }
 .app-nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-nav-link:hover { color: var(--ui-text); background: var(--ui-raised); }
-.app-nav-link[aria-current] { color: var(--ui-accent); background: var(--ui-accent-soft); font-weight: var(--ui-semibold); box-shadow: inset 3px 0 var(--ui-accent); }
-.app-toolbar { grid-area: 1 / 2 / 2 / -1; min-width: 0; min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 8px 24px; background: var(--ui-surface); border-bottom: 1px solid var(--ui-border); z-index: 100; }
+.app-nav-link[aria-current] { color: var(--ui-accent); background: var(--ui-accent-soft); font-weight: var(--ui-semibold); }
+.app-toolbar { grid-area: 1 / 2 / 2 / -1; min-width: 0; min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 8px 24px; background: color-mix(in srgb, var(--ui-surface) 86%, transparent); backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--ui-border); z-index: 100; }
 .app-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.app-repository { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--ui-text-md); }
+.app-repository { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--ui-text-md); font-weight: var(--ui-semibold); letter-spacing: -0.01em; }
 .app-context { font-size: var(--ui-text-xs); color: var(--ui-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-menu { display: none; flex: 0 0 34px; padding: 4px; }
+.app-menu { display: none; flex: 0 0 36px; padding: 4px; }
 .app-nav-close { display: none; }
-.app-theme { flex: 0 0 34px; display: inline-grid; place-items: center; width: 34px; min-height: 34px; padding: 0; }
+.app-theme { flex: 0 0 36px; display: inline-grid; place-items: center; width: 36px; min-height: 36px; padding: 0; border-radius: 999px; }
+.app-theme svg { transition: transform 360ms var(--ui-ease); }
+.app-theme:hover svg { transform: rotate(18deg) scale(1.08); }
 .shell-account { position: relative; flex: 0 0 auto; }
 .shell-account button { white-space: nowrap; }
 .shell-account .avatar { display: flex; overflow: hidden; background: var(--ui-accent-soft); color: var(--ui-accent); }
 .shell-account .avatar img { max-width: 100%; }
 .app-account-trigger { display: flex; gap: 8px; align-items: center; }
-#user-dropdown { position: absolute; right: 0; top: calc(100% + 8px); width: 210px; padding: 8px; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); box-shadow: var(--ui-shadow); }
-#user-dropdown button { width: 100%; justify-content: flex-start; margin-top: 4px; }
+#user-dropdown { position: absolute; right: 0; top: calc(100% + 8px); width: 220px; padding: 6px; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); box-shadow: var(--ui-shadow); transform-origin: top right; }
+#user-dropdown button { width: 100%; justify-content: flex-start; margin-top: 2px; border-color: transparent; box-shadow: none; background: transparent; }
+#user-dropdown button:hover { background: var(--ui-raised); }
 #user-dropdown-name { padding: 8px; overflow-wrap: anywhere; }
 .app-main { grid-area: 2 / 2 / 3 / 3; min-width: 0; min-height: 0; max-width: none; width: 100%; margin: 0; padding: 0; overflow: auto; scrollbar-gutter: stable; scroll-padding: 16px; }
 .app-statusbar { grid-area: 3 / 2 / 4 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 5px 16px; background: var(--ui-surface); color: var(--ui-muted); border-top: 1px solid var(--ui-border); font-size: var(--ui-text-xs); }

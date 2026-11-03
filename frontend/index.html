@@ -23,8 +23,9 @@
 
     <!-- ═══════════ LANDING ═══════════ -->
     <div class="page active" id="page-landing">
-      <div class="landing-hero">
-        <h1>Git 프로젝트, 한눈에 파악하세요</h1>
+      <section class="landing-hero">
+        <span class="landing-eyebrow"><span data-icon="git-branch" data-icon-size="14"></span>Git 이력 시각화</span>
+        <h1>Git 프로젝트, <span class="landing-accent">한눈에</span> 파악하세요</h1>
 
         <p>
           GitHub 저장소 주소만 입력하면 누가 어떤 파일을 자주 고쳤는지,
@@ -37,6 +38,8 @@
               type="text"
               placeholder="https://github.com/owner/repo"
               id="url-input"
+              autocomplete="off"
+              spellcheck="false"
             />
 
             <button
@@ -44,13 +47,37 @@
               id="btn-analyze"
               data-action="handleAnalyze"
             >
-              분석 시작 →
+              분석 시작 <span data-icon="arrow-right" data-icon-size="16"></span>
             </button>
           </div>
 
           <div class="url-feedback" id="url-feedback"></div>
         </div>
-      </div>
+
+        <ul class="landing-cards mt-10 grid w-full max-w-4xl list-none gap-4 p-0 md:grid-cols-3">
+          <li class="landing-card group flex gap-3 rounded-xl border border-border bg-card p-4 text-left shadow-xs transition hover:-translate-y-0.5 hover:border-input hover:shadow-md">
+            <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-warning-soft text-warning"><span data-icon="flame" data-icon-size="18"></span></span>
+            <div>
+              <h2 class="text-base font-semibold text-foreground">자주 고친 파일</h2>
+              <p class="mt-1 text-sm text-muted-foreground">변경이 몰린 파일을 점수로 보여 먼저 읽을 곳을 정하게 돕습니다.</p>
+            </div>
+          </li>
+          <li class="landing-card group flex gap-3 rounded-xl border border-border bg-card p-4 text-left shadow-xs transition hover:-translate-y-0.5 hover:border-input hover:shadow-md">
+            <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-info-soft text-info"><span data-icon="git-compare" data-icon-size="18"></span></span>
+            <div>
+              <h2 class="text-base font-semibold text-foreground">함께 수정되는 파일</h2>
+              <p class="mt-1 text-sm text-muted-foreground">같은 커밋에서 자주 같이 바뀌는 파일 쌍을 찾아 숨은 의존 관계를 드러냅니다.</p>
+            </div>
+          </li>
+          <li class="landing-card group flex gap-3 rounded-xl border border-border bg-card p-4 text-left shadow-xs transition hover:-translate-y-0.5 hover:border-input hover:shadow-md">
+            <span class="grid size-9 shrink-0 place-items-center rounded-lg bg-success-soft text-success"><span data-icon="share-2" data-icon-size="18"></span></span>
+            <div>
+              <h2 class="text-base font-semibold text-foreground">협업 관계</h2>
+              <p class="mt-1 text-sm text-muted-foreground">누가 누구의 변경을 검토하는지 네트워크로 확인합니다.</p>
+            </div>
+          </li>
+        </ul>
+      </section>
 
       <!-- 최근 분석 요청된 레포지토리 -->
       <div class="recent-section">

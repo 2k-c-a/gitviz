@@ -2,7 +2,7 @@
 :root {
   color-scheme: light;
   --ui-canvas: #f5f7fa; --ui-surface: #fff; --ui-raised: #edf2f7;
-  --ui-text: #172033; --ui-muted: #4b5b70; --ui-border: #ccd5e0; --ui-border-strong: #8a9bb0;
+  --ui-text: #172033; --ui-muted: #4b5b70; --ui-border: #d9e0ea; --ui-border-strong: #8a9bb0;
   --ui-accent: #1d4ed8; --ui-accent-soft: #e8efff; --ui-primary: #1d4ed8; --ui-on-primary: #fff;
   --ui-success: #166534; --ui-success-soft: #e9f7ee; --ui-warning: #854d0e; --ui-warning-soft: #fff5d6;
   --ui-error: #b91c1c; --ui-error-soft: #ffeded; --ui-info: #1e40af; --ui-info-soft: #e8efff;
@@ -17,9 +17,21 @@
   --ui-text-xs: 12px; --ui-text-sm: 13px; --ui-text-md: 14px; --ui-text-lg: 16px; --ui-text-xl: 20px; --ui-text-metric: 28px;
   --ui-regular: 400; --ui-medium: 500; --ui-semibold: 600; --ui-bold: 700;
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px; --space-8: 32px;
-  --ui-radius-sm: 6px; --ui-radius-md: 8px; --ui-radius-pill: 999px;
-  --ui-shadow: 0 8px 28px rgb(17 24 39 / 14%); /* Overlays only; content panels use a border. */
-  --ui-fast: 120ms; --ui-normal: 180ms; --ui-ease: ease-out;
+  --ui-radius-sm: 8px; --ui-radius-md: 12px; --ui-radius-lg: 16px; --ui-radius-pill: 999px;
+  --ui-shadow: 0 12px 32px -8px rgb(17 24 39 / 22%), 0 2px 6px rgb(17 24 39 / 8%); /* Overlays only. */
+  --ui-shadow-xs: 0 1px 2px rgb(17 24 39 / 6%); --ui-shadow-sm: 0 1px 3px rgb(17 24 39 / 10%), 0 1px 2px -1px rgb(17 24 39 / 8%);
+  --ui-fast: 120ms; --ui-normal: 180ms; --ui-ease: cubic-bezier(.2, .8, .2, 1);
+  /* shadcn/ui semantic tokens: the names Tailwind utilities (bg-card, text-muted-foreground, ring-ring...) read. */
+  --background: var(--ui-canvas); --foreground: var(--ui-text);
+  --card: var(--ui-surface); --card-foreground: var(--ui-text);
+  --popover: var(--ui-surface); --popover-foreground: var(--ui-text);
+  --primary: var(--ui-primary); --primary-foreground: var(--ui-on-primary);
+  --secondary: var(--ui-raised); --secondary-foreground: var(--ui-text);
+  --muted: var(--ui-raised); --muted-foreground: var(--ui-muted);
+  --accent: var(--ui-accent-soft); --accent-foreground: var(--ui-accent);
+  --destructive: var(--ui-error); --destructive-foreground: var(--ui-error);
+  --input: var(--ui-border-strong); --ring: var(--ui-focus); --radius: var(--ui-radius-sm);
+  --sidebar: var(--ui-surface); --sidebar-accent: var(--ui-accent-soft);
   /* Compatibility aliases keep existing analytics components and metric meanings intact. */
   --bg: var(--ui-surface); --bg2: var(--ui-raised); --bg3: var(--ui-canvas);
   --text: var(--ui-text); --text2: var(--ui-muted); --text3: var(--ui-muted);
@@ -36,7 +48,8 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
   --ui-canvas: #11161d; --ui-surface: #1a222d; --ui-raised: #253142;
-  --ui-text: #e6edf5; --ui-muted: #b0bed0; --ui-border: #425269; --ui-border-strong: #637893;
+  --ui-text: #e6edf5; --ui-muted: #b0bed0; --ui-border: #34445a; --ui-border-strong: #637893;
+  --ui-shadow-xs: 0 1px 2px rgb(0 0 0 / 30%); --ui-shadow-sm: 0 1px 3px rgb(0 0 0 / 40%);
   --ui-accent: #8cb7ff; --ui-accent-soft: #20365b; --ui-primary: #2563eb;
   --ui-success: #86efac; --ui-success-soft: #123327; --ui-warning: #fde047; --ui-warning-soft: #3b3016;
   --ui-error: #fda4af; --ui-error-soft: #40222b; --ui-info: #a7c6ff; --ui-info-soft: #20365b;

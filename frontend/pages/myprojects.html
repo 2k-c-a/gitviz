@@ -14,14 +14,14 @@
     <!-- ═══════════ MY PROJECTS ═══════════ -->
 <div class="page active" id="page-myprojects">
   <div class="dash-head">
-    <div style="display:flex;align-items:center;gap:12px;">
+    <div class="flex items-center gap-3">
       <div class="avatar" id="myproj-avatar" style="width:36px;height:36px;font-size:16px;background:var(--blue-light);color:var(--blue-dark);">T</div>
       <div>
         <div class="dash-title"><span id="myproj-username">tiangolo</span>의 분석 프로젝트</div>
         <div class="dash-sub">내 GitHub 계정으로 분석한 저장소 목록</div>
       </div>
     </div>
-    <button class="btn-primary" style="display:flex;align-items:center;gap:7px;"   data-action="goHome">
+    <button class="btn-primary flex items-center gap-[7px]"   data-action="goHome">
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 1v10M1 6h10"/></svg>
       새 저장소 분석
     </button>
@@ -37,7 +37,7 @@
     </div>
 
     <!-- 레포 카드 목록 (실데이터는 myprojects.js가 채운다) -->
-    <div id="myproj-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <div id="myproj-list" class="flex flex-col gap-2"></div>
   </div>
 </div>
 </body>

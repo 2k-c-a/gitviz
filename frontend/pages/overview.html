@@ -18,10 +18,10 @@
       <div class="dash-title"><span id="tl-repo-name">—</span> <span class="badge badge-blue" id="tl-branch">main</span></div>
       <div class="dash-sub" id="tl-dash-sub">불러오는 중…</div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;">
-      <div style="display:flex;align-items:center;gap:7px;">
+    <div class="flex items-center gap-2.5">
+      <div class="flex items-center gap-[7px]">
         <div class="status-dot" style="background:#639922;"></div>
-        <span style="font-size:12px;color:var(--text2);">분석 완료</span>
+        <span class="text-xs text-muted-foreground">분석 완료</span>
       </div>
       <button class="btn-secondary" data-auth="1" id="btn-reanalyze" data-action="openReanalyzeToast">재분석</button>
     </div>
@@ -35,7 +35,7 @@
     </div>
 
     <!-- 커밋 타임라인 차트 -->
-    <div class="panel" style="margin-bottom:14px;">
+    <div class="panel mb-3.5">
       <div class="p-head">
         <div class="p-title">커밋 활동량 타임라인</div>
       </div>
@@ -55,9 +55,9 @@
       <div class="stack">
         <!-- 기여자 히트맵 -->
         <div class="panel">
-          <div class="p-head" style="margin-bottom:10px;">
+          <div class="p-head mb-2.5">
             <div class="p-title">기여자별 활동 히트맵</div>
-            <div style="font-size:var(--ui-text-xs);color:var(--text2);">분석 종료 시점 기준 최근 16주</div>
+            <div class="text-xs text-muted-foreground">분석 종료 시점 기준 최근 16주</div>
           </div>
           <div class="act-hm" id="act-heatmap">
             <div style="font-size:12px;color:var(--text3);text-align:center;padding:24px 8px;">불러오는 중…</div>
@@ -65,9 +65,9 @@
         </div>
         <!-- 상위 기여자 -->
         <div class="panel">
-          <div class="p-head" style="margin-bottom:14px;">
+          <div class="p-head mb-3.5">
             <div class="p-title">상위 기여자</div>
-            <div style="font-size:var(--ui-text-xs);color:var(--text2);">관측 구간 커밋 수 기준</div>
+            <div class="text-xs text-muted-foreground">관측 구간 커밋 수 기준</div>
           </div>
           <div class="contrib-list" id="tl-contrib-list"></div>
         </div>
@@ -75,13 +75,13 @@
       <div class="stack">
         <!-- 릴리즈 이력 -->
         <div class="panel">
-          <div class="p-head" style="margin-bottom:14px;"><div class="p-title">릴리즈 이력</div></div>
+          <div class="p-head mb-3.5"><div class="p-title">릴리즈 이력</div></div>
           <div class="release-list" id="tl-release-list"></div>
         </div>
         <!-- 커밋 유형 도넛 -->
         <div class="panel" id="overview-types">
-          <div class="p-title" style="margin-bottom:6px;">커밋 유형 분포</div>
-          <p class="p-note" style="margin-bottom:12px;">커밋 메시지 분류이며 결함 발생률이 아닙니다.</p>
+          <div class="p-title mb-1.5">커밋 유형 분포</div>
+          <p class="p-note mb-3">커밋 메시지 분류이며 결함 발생률이 아닙니다.</p>
           <div class="donut-wrap">
             <canvas id="chart-donut" width="80" height="80" style="width:80px;height:80px;flex-shrink:0;"></canvas>
             <div class="donut-legend" id="tl-donut-legend"></div>
