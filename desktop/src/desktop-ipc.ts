@@ -4,13 +4,20 @@ import type { DesktopAuth } from './auth';
 import type { CollabFiles } from './collab-files';
 import type { CommunityLive, LiveEvent } from './community-live';
 import type { Remote } from './remote';
+import type { AiKeyVault } from './secrets';
 import type { UpdateService } from './update';
 
-export function registerDesktop(window: BrowserWindow, auth: DesktopAuth | null, remote: Remote | null, update?: UpdateService): () => void {
-  const channels = ['desktop:auth-start', 'desktop:auth-status', 'desktop:auth-logout', 'desktop:remote', 'desktop:update-status'];
+export function registerDesktop(window: BrowserWindow, auth: DesktopAuth | null, remote: Remote | null, update?: UpdateService,
+  keys: Pick<AiKeyVault, 'status'> | null = null): () => void {
+  const channels = ['desktop:auth-start', 'desktop:auth-status', 'desktop:auth-logout', 'desktop:remote', 'desktop:update-status', 'desktop:ai-key-status'];
   for (const channel of channels) ipcMain.handle(channel, async (event, ...args: unknown[]) => {
     if (!trustedSender(event, window) || args.length !== (channel === 'desktop:remote' ? 1 : 0)) throw new Error('ACCESS_DENIED');
     if (channel === 'desktop:update-status') { if (!update) throw new Error('UPDATE_UNAVAILABLE'); return update.status(); }
+    // Booleans only: whether a key is saved per provider, never key text.
+    if (channel === 'desktop:ai-key-status') {
+      try { return keys ? await keys.status() : { anthropic: false, openai: false, gemini: false }; }
+      catch { throw new Error('STORAGE_UNAVAILABLE'); }
+    }
     if (!auth || !remote) throw new Error('SERVER_NOT_CONFIGURED');
     try {
       if (channel === 'desktop:remote') return await remote.request(args[0]);
@@ -18,7 +25,7 @@ export function registerDesktop(window: BrowserWindow, auth: DesktopAuth | null,
       if (channel === 'desktop:auth-logout') return await auth.logout();
       return await auth.status();
     } catch (error) {
-      const allowed = /^(?:INVALID_REQUEST|AUTH_REQUIRED|ACCOUNT_CHANGED|BAD_RESPONSE|UNSUPPORTED_SERVER|AUTH_UNAVAILABLE|BROWSER_UNAVAILABLE|RATE_LIMITED|NETWORK_UNAVAILABLE|REVOCATION_REQUIRED|STORAGE_UNAVAILABLE|BUSY)$/;
+      const allowed = /^(?:INVALID_REQUEST|AUTH_REQUIRED|ACCOUNT_CHANGED|BAD_RESPONSE|UNSUPPORTED_SERVER|AUTH_UNAVAILABLE|BROWSER_UNAVAILABLE|RATE_LIMITED|NETWORK_UNAVAILABLE|REVOCATION_REQUIRED|STORAGE_UNAVAILABLE|BUSY|AI_KEY_REQUIRED)$/;
       // eslint-disable-next-line preserve-caught-error -- Never expose credentials, raw HTTP exceptions or OS paths.
       throw new Error(error instanceof Error && allowed.test(error.message) ? error.message : 'REMOTE_UNAVAILABLE');
     }

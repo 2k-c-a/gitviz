@@ -32,7 +32,7 @@
 | 분석 지표 | 유지보수 점검 우선순위, BF80, 기여 분포, 공동 변경, 협업 관계 | [지표 정의](../contracts/metrics.md), [분석 계약](../contracts/analytics.md) |
 | AI 입력 | PR 또는 커밋을 선택하고 SHA·선택 파일·전송 자료를 고정 | [입력 서비스](../../app/services/ai/input_builder.py), [수집 계약](../contracts/collection.md) |
 | AI 생성 | summary/review 독립 실행, 전송·로컬 실행 확인, 결과·피드백·사용량 저장 | [생성 서비스](../../app/services/ai/generation_service.py), [AI API](../contracts/ai-api.md) |
-| AI 분석(인사이트) | 분석 개요의 [AI 분석] 버튼 → 자동 분석 리포트(6개 범주 카드)와 대화형 분석. 저장된 스냅샷을 읽기 전용 도구로 조회하고 근거를 서버가 검증한다. 실행마다 켜면 기준 커밋의 소스 코드도 읽고 줄 단위로 인용한다([AD-32](../architecture/ARCHITECTURE_DECISIONS.md)). 실제 모델 품질은 시험하지 않았다(가짜 제공자로만 통합 시험) | [인사이트 서비스](../../app/services/ai/insight_service.py), [AI API](../contracts/ai-api.md) |
+| AI 분석(인사이트) | 분석 개요의 [AI 분석] 버튼 → 자동 분석 리포트(6개 범주 카드)와 대화형 분석. 저장된 스냅샷을 읽기 전용 도구로 조회하고 근거를 서버가 검증한다. 실행마다 켜면 기준 커밋의 소스 코드도 읽고 줄 단위로 인용한다. 앱 전용이고, 앱 설정에 저장한 사용자 API key로 실행하며 서버는 key를 저장하지 않는다. 서버 `.env`의 AI 설정 없이 동작하고 하루 실행 한도가 없다([AD-32](../architecture/ARCHITECTURE_DECISIONS.md)). 실제 모델 품질은 시험하지 않았다(가짜 제공자로만 통합 시험) | [인사이트 서비스](../../app/services/ai/insight_service.py), [AI API](../contracts/ai-api.md) |
 | S11 | 전체 변경 파일의 추가 검토 후보. 코드 지적과 별개인 스냅샷 근거 | [이력 서비스](../../app/services/ai/history_context.py) |
 | 제공자 | Anthropic·OpenAI·Gemini BYOK 및 같은 PC의 Ollama·LM Studio·KoboldCpp | [현재 profile 안내](../operations/providers.md) |
 | 결과 공유 | 현재 저장소 접근 권한으로 다른 작성자의 결과·판단·메모를 읽는 별도 GET 경로. 쓰기는 작성자 전용 | [공유 API](../../app/api/ai/shared.py), [미확정 정책 D01](../decisions/index.md#d01) |

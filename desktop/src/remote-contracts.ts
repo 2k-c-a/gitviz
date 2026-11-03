@@ -1,7 +1,7 @@
 import Ajv, { type ValidateFunction } from 'ajv';
 
 type Rule = 'id' | 'uuid' | 'sha' | 'provider' | 'text' | 'token' | 'number' | 'boolean';
-interface Endpoint { method: string; template: string; path: Record<string, Rule>; query: Record<string, Rule>; body?: string; key?: boolean }
+interface Endpoint { method: string; template: string; path: Record<string, Rule>; query: Record<string, Rule>; body?: string; key?: boolean; aiKey?: boolean }
 const definition = (method: string, template: string, path: Record<string, Rule> = {}, query: Record<string, Rule> = {}, body?: string, key?: boolean): Endpoint => ({ method, template, path, query, ...(body ? { body } : {}), ...(key ? { key } : {}) });
 const analytics = (suffix: string, query: Record<string, Rule> = {}, path: Record<string, Rule> = {}) => definition('GET', `/repositories/{repositoryId}/analytics/${suffix}`, { repositoryId: 'id', ...path }, { snapshot_id: 'id', ...query });
 const ai = (method: string, suffix: string, path: Record<string, Rule> = {}, query: Record<string, Rule> = {}, body?: string, key?: boolean) => definition(method, `/api/ai/v1/${suffix}`, path, query, body, key);
@@ -53,6 +53,7 @@ export const endpoints: Record<string, Endpoint> = {
   attachHistory: ai('POST', 'results/{resultId}/history', { resultId: 'uuid' }, {}, 'AttachHistoryRequest'),
   commits: ai('GET', 'commits', {}, { repository_id: 'id', cursor: 'text' }),
   commitFiles: ai('GET', 'commits/{sha}/files', { sha: 'sha' }, { repository_id: 'id', cursor: 'text' }),
+  insightModels: ai('GET', 'insights/models'),
   insightReports: ai('GET', 'insights/reports', {}, { repository_id: 'id' }),
   createInsightReport: ai('POST', 'insights/reports', {}, {}, 'CreateInsightReportRequest'),
   insightReport: ai('GET', 'insights/reports/{reportId}', { reportId: 'uuid' }),
@@ -64,6 +65,9 @@ export const endpoints: Record<string, Endpoint> = {
   feedback: ai('PUT', 'findings/{findingId}/feedback', { findingId: 'uuid' }, {}, 'FeedbackRequest'),
 };
 endpoints.pullFiles = ai('GET', 'pulls/{pr}/files', { pr: 'id' }, { repository_id: 'id', ...page });
+// AI analysis is app-only BYOK (AD-32 ⑧): main attaches the saved key of body.provider; the renderer never sees it.
+endpoints.createInsightReport.aiKey = true;
+endpoints.askInsight.aiKey = true;
 // Project community (AD-25). Members only; the server enforces roles, the allowlist only shapes requests.
 const community = (method: string, suffix: string, path: Record<string, Rule> = {}, query: Record<string, Rule> = {}, body?: string) =>
   definition(method, `/api/community/v1/${suffix}`, path, query, body);
@@ -136,12 +140,13 @@ export class RemoteContracts {
     if (!value || typeof value !== 'object' || Array.isArray(value) || Buffer.byteLength(JSON.stringify(value)) > 256000 ||
       !this.validators.get((value as Record<string, unknown>).endpointKey as string)?.(value)) throw new Error('INVALID_REQUEST');
   }
-  route(value: unknown): { method: string; path: string; body?: string; idempotencyKey?: string } {
+  route(value: unknown): { method: string; path: string; body?: string; idempotencyKey?: string; aiKeyProvider?: string } {
     this.validate(value);
     const endpoint = endpoints[value.endpointKey];
     const path = endpoint.template.replace(/\{(\w+)\}/g, (_match, key: string) => encodeURIComponent(String(value.path[key])));
     const query = new URLSearchParams(Object.entries(value.query).map(([k, v]) => [k, String(v)]));
     return { method: endpoint.method, path: path + (query.size ? `?${query}` : ''),
-      ...(endpoint.body ? { body: JSON.stringify(value.body) } : {}), ...(value.idempotencyKey ? { idempotencyKey: value.idempotencyKey } : {}) };
+      ...(endpoint.body ? { body: JSON.stringify(value.body) } : {}), ...(value.idempotencyKey ? { idempotencyKey: value.idempotencyKey } : {}),
+      ...(endpoint.aiKey ? { aiKeyProvider: String((value.body as Record<string, unknown>).provider) } : {}) };
   }
 }

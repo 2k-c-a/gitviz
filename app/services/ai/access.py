@@ -53,12 +53,16 @@ def _from_http(exc: HTTPException) -> AIError:
     return AIError(ErrorCode.ACCESS_CHECK_UNAVAILABLE, '저장소 접근 권한을 확인할 수 없습니다.', retryable=True)
 
 
-def authorize_ai(db, user_id: UUID, repo_id: int, action: AIAction, policy_version: str):
-    """로그인 사용자의 현재 저장소 접근과(외부 전송이면) 전송 허용·정책 버전을 검사한다."""
+def authorize_ai(db, user_id: UUID, repo_id: int, action: AIAction, policy_version: str, *, insight: bool = False):
+    """로그인 사용자의 현재 저장소 접근과(외부 전송이면) 전송 허용·정책 버전을 검사한다.
+
+    insight=True(AI 분석): 서버 AI(AI_ENABLED)와 별개인 AI_INSIGHTS_ENABLED로 켜고 끈다. 사용자가 앱에 저장한 자기 key로
+    실행마다 모델을 고르므로 서버의 외부 전송 허용(AI_ALLOW_EXTERNAL_TRANSFER)은 보지 않는다. 비공개 저장소 차단은 같다.
+    """
     if not user_id:
         raise AIError(ErrorCode.AUTH_REQUIRED, '로그인이 필요합니다.')
     settings = get_ai_settings()
-    if not settings.enabled:
+    if not (settings.insights_enabled if insight else settings.enabled):
         raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '사용할 수 없는 기능입니다.')
     try:
         repo, metadata = verify_repository_access(db, repo_id, user_id)
@@ -74,7 +78,7 @@ def authorize_ai(db, user_id: UUID, repo_id: int, action: AIAction, policy_versi
                    for pid in registry.allowed_profile_ids()) or policy_version not in settings.policy_versions:
             raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '로컬 실행 또는 정책이 허용되지 않았습니다.')
     if action.sends_externally:
-        if not settings.allow_external_transfer:
+        if not insight and not settings.allow_external_transfer:
             raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '코드의 외부 전송이 허용되지 않았습니다.')
         if metadata.get('private') is not False:
             # MVP 정책: 비공개(또는 공개 여부를 확인하지 못한) 저장소의 코드는 외부로 보내지 않는다.

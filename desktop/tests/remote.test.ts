@@ -40,6 +40,34 @@ test('HTTPS transport omits cookies, follows no redirect, bounds output and retu
   await assert.rejects(httpsClient('https://server.test', async () => new Response('x'.repeat(8 * 1024 * 1024 + 1), { headers: { 'content-type': 'application/json' } }))('/x', 'GET'));
 });
 
+test('AI analysis (BYOK): main attaches only the saved key of the requested provider, never for other endpoints', async () => {
+  const seen: { path: string; aiKey?: string }[] = [];
+  const http: Http = async (path, _method, _body, _token, _key, aiKey) => { seen.push({ path, aiKey }); return { status: 202, body: {}, headers: {} }; };
+  const saved: Record<string, string> = { anthropic: 'sk-ant-api03-' + 'a'.repeat(24) };
+  const keys = { get: async (provider: string) => saved[provider] ?? null };
+  const remote = new Remote(contracts, http, () => ({ token, generation: 1 }), () => {}, keys);
+  const report = { endpointKey: 'createInsightReport', path: {}, query: {}, body: { repository_id: 7, profile_id: 'claude-opus-5-5-v4', provider: 'anthropic' } };
+  await remote.request(report);
+  assert.deepEqual(seen.pop(), { path: '/api/ai/v1/insights/reports', aiKey: saved.anthropic });
+  await remote.request({ endpointKey: 'askInsight', path: { conversationId: uid }, query: {}, body: { question: 'q', provider: 'anthropic' } });
+  assert.equal(seen.pop()?.aiKey, saved.anthropic);
+  // No saved key for that provider: nothing is sent.
+  await assert.rejects(remote.request({ ...report, body: { ...report.body, provider: 'openai' } }), /AI_KEY_REQUIRED/);
+  assert.equal(seen.length, 0);
+  // Local models need no key; other endpoints never carry one, even if the renderer adds a provider.
+  await remote.request({ ...report, body: { ...report.body, provider: 'ollama' } });
+  assert.equal(seen.pop()?.aiKey, undefined);
+  await remote.request({ endpointKey: 'createInsightConversation', path: {}, query: {}, body: { repository_id: 7, profile_id: 'claude-opus-5-5-v4' } });
+  assert.equal(seen.pop()?.aiKey, undefined);
+  assert.throws(() => contracts.route({ ...report, body: { repository_id: 7, profile_id: 'claude-opus-5-5-v4' } }));   // provider is required
+  // The header goes only over HTTPS with the request; the renderer-facing response never echoes it.
+  let headers: Headers | undefined;
+  const transport = httpsClient('https://server.test', async (_url, options) => { headers = new Headers(options?.headers); return new Response('{}', { status: 202, headers: { 'content-type': 'application/json' } }); });
+  const response = await transport('/api/ai/v1/insights/reports', 'POST', '{}', token, undefined, saved.anthropic);
+  assert.equal(headers?.get('X-GitViz-AI-Key'), saved.anthropic);
+  assert.ok(!JSON.stringify(response).includes(saved.anthropic));
+});
+
 test('account generation drops a late response, 401 invalidates, mutations never retry automatically', async () => {
   let generation = 1, calls = 0, release: (() => void) | undefined;
   const http: Http = async () => { calls++; await new Promise<void>(resolve => { release = resolve; }); return { status: 200, body: {}, headers: {} }; };

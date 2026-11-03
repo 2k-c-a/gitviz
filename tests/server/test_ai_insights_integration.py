@@ -1,8 +1,10 @@
-"""AI 인사이트 통합 시험: 실제 Git 저장소 이력 → 실제 수집 task·스냅샷 → API → worker task → 가짜 Anthropic HTTP 서버.
+"""AI 인사이트 통합 시험: 실제 Git 저장소 이력 → 실제 수집 task·스냅샷 → API → 백그라운드 실행 → 가짜 Anthropic HTTP 서버.
 
 - 이 저장소(GitViz)의 main 브랜치를 임시 폴더로 복제하고 analyze_repository task를 그대로 실행한다.
   GitHub API(PR·릴리스·신원 통합)와 GitHub 접근 확인만 대역으로 바꾼다. 외부 네트워크를 쓰지 않는다.
-- AI 공급자는 tests/server/ai_fake_provider.py(로컬 HTTP)이고, 사용자 key 등록·복호화·Anthropic 어댑터는 실제 경로다.
+- AI 공급자는 tests/server/ai_fake_provider.py(로컬 HTTP)이고 Anthropic 어댑터는 실제 경로다.
+- 앱 BYOK(AD-32 ⑧): 서버 AI 설정(AI_ENABLED·외부 전송 허용·암호화 키)을 모두 끈 상태에서, 요청 헤더의 key로만 실행되고
+  key가 DB 어디에도 남지 않는지 확인한다.
 - GITVIZ_TEST_DATABASE_URL(이름이 gitviz_test로 시작하는 격리 DB)이 필요하다.
 """
 import os
@@ -46,14 +48,15 @@ def _free_port() -> int:
 
 PROVIDER_PORT = _free_port()
 ORIGIN = 'http://localhost:8000'
+TEST_KEY = 'sk-ant-api03-TESTKEY0123456789abcdefABCDEF'
+OPUS = 'claude-opus-5-5-v1'
+# 서버 AI 설정이 전혀 없는 상태(.env를 읽어도 덮어쓰지 않도록 빈 값으로 고정). 가짜 제공자 주소만 시험용으로 둔다.
 os.environ.update({
-    'AI_ENABLED': '1', 'AI_ALLOW_EXTERNAL_TRANSFER': '1', 'AI_ALLOWED_ORIGINS': ORIGIN,
-    'AI_CREDENTIAL_ENCRYPTION_KEYS': 'c1:' + 'b2' * 32, 'AI_CREDENTIAL_KEY_VERSION': 'c1',
-    'AI_INPUT_ENCRYPTION_KEYS': 'v1:' + 'a1' * 32, 'AI_INPUT_KEY_VERSION': 'v1',
-    'AI_TEST_PROVIDER_BASE_URL': f'http://127.0.0.1:{PROVIDER_PORT}', 'AI_DAILY_JOB_LIMIT': '20',
+    'AI_ENABLED': '0', 'AI_ALLOW_EXTERNAL_TRANSFER': '0', 'AI_ALLOWED_ORIGINS': '', 'FRONTEND_URL': ORIGIN,
+    'AI_CREDENTIAL_ENCRYPTION_KEYS': '', 'AI_INPUT_ENCRYPTION_KEYS': '', 'AI_DAILY_JOB_LIMIT': '',
+    'AI_INSIGHTS_ENABLED': '', 'AI_TEST_PROVIDER_BASE_URL': f'http://127.0.0.1:{PROVIDER_PORT}',
 })
 
-import ai_credential_support as C  # noqa: E402
 import requests  # noqa: E402
 from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.exceptions import RequestValidationError  # noqa: E402
@@ -65,7 +68,6 @@ from app.api.ai import insights as insights_api  # noqa: E402
 from app.api.ai.dependencies import ai_error_response, ai_validation_error_response  # noqa: E402
 from app.core.database import SessionLocal  # noqa: E402
 from app.services.ai.access import AIError  # noqa: E402
-from app.tasks import ai_insights as insight_tasks  # noqa: E402
 from app.tasks import analyze_repository as analyze_task  # noqa: E402
 
 CATEGORIES = {'overview', 'maintenance_risk', 'collaboration', 'change_impact', 'anomaly', 'evolution'}
@@ -135,8 +137,6 @@ class InsightIntegration(unittest.TestCase):
             job_id = db.execute(text("""INSERT INTO analysis_jobs(repository_id, status, triggered_by_user_id, parameters)
                 VALUES (:r, 'pending', :u, '{}') RETURNING id"""), {'r': cls.repo_id, 'u': cls.owner}).scalar_one()
             db.commit()
-            cls.key_version = C.ensure_credential(db, cls.owner)
-            C.ensure_credential(db, cls.other)
         cls.private.update({cls.repo_id: False, cls.private_repo: True})
 
         def analysis_access(db, repository_id, user_id=None, **kw):
@@ -218,9 +218,8 @@ class InsightIntegration(unittest.TestCase):
         requests.post(f'http://127.0.0.1:{PROVIDER_PORT}/__mode', json={'mode': 'ok'}, timeout=5)
         self.client = TestClient(build_app())
         self.queued = []
-        self._delay = [patch.object(getattr(insight_tasks, name), 'delay',
-                                    side_effect=lambda rid, name=name: self.queued.append((name, rid)))
-                       for name in ('run_insight_report', 'run_insight_answer')]
+        self._delay = [patch.object(insights_api, '_submit',
+                                    side_effect=lambda run, rid, factory: self.queued.append((run, rid, factory)))]
         for p in self._delay:
             p.start()
         self.login(self.owner)
@@ -234,12 +233,18 @@ class InsightIntegration(unittest.TestCase):
         self.client.post(f'/test/login/{user}')
         self.token = self.client.get('/api/auth/csrf').json()['token']
 
-    def post(self, path, body):
-        return self.client.post(path, json=body, headers={'Origin': ORIGIN, 'X-CSRF-Token': self.token})
+    def post(self, path, body, key=TEST_KEY):
+        """AI를 부르는 요청(리포트·질문)에는 앱처럼 제공자와 key 헤더를 붙인다."""
+        headers = {'Origin': ORIGIN, 'X-CSRF-Token': self.token}
+        if path.endswith(('/reports', '/messages')):
+            body = {'provider': 'anthropic', **body}
+            if key:
+                headers['X-GitViz-AI-Key'] = key
+        return self.client.post(path, json=body, headers=headers)
 
     def run_queued(self):
-        """worker 대신 접수된 Celery task 본문을 그대로 실행한다(SessionLocal로 실제 DB 사용)."""
-        results = [getattr(insight_tasks, name)(rid) for name, rid in self.queued]
+        """백그라운드 스레드 대신 접수된 실행을 그대로 부른다(SessionLocal로 실제 DB 사용, key는 클로저에만 있다)."""
+        results = [run(rid, SessionLocal, factory) for run, rid, factory in self.queued]
         self.queued.clear()
         return results
 
@@ -279,7 +284,7 @@ class InsightIntegration(unittest.TestCase):
 
     def test_automatic_report_on_real_history(self):
         before = self.stats()['messages']
-        response = self.post('/api/ai/v1/insights/reports', {'repository_id': self.repo_id, 'profile_id': C.OPUS})
+        response = self.post('/api/ai/v1/insights/reports', {'repository_id': self.repo_id, 'profile_id': OPUS})
         self.assertEqual(response.status_code, 202, response.text)
         self.assertEqual(response.headers['cache-control'], 'private, no-store')
         self.assertEqual(response.json()['status'], 'queued')
@@ -304,14 +309,14 @@ class InsightIntegration(unittest.TestCase):
             self.assert_references_exist(insight)
         self.assertLessEqual(len(result['highlights']), 5)
         self.assertEqual(self.stats()['messages'] - before, report['callCount'])
-        self.assertIn(C.TEST_KEY, self.stats()['keys'])           # 사용자 key로만 호출한다
+        self.assertIn(TEST_KEY, self.stats()['keys'])           # 사용자 key로만 호출한다
         progress = [e['stage'] for e in report['progress']]
         self.assertIn('tool', progress)
         self.assertEqual([r['id'] for r in self.client.get(
             f'/api/ai/v1/insights/reports?repository_id={self.repo_id}').json()['reports']][0], report['id'])
 
     def test_conversation_answers_from_real_data_and_keeps_history(self):
-        created = self.post('/api/ai/v1/insights/conversations', {'repository_id': self.repo_id, 'profile_id': C.OPUS})
+        created = self.post('/api/ai/v1/insights/conversations', {'repository_id': self.repo_id, 'profile_id': OPUS})
         self.assertEqual(created.status_code, 201, created.text)
         cid = created.json()['id']
         ask = self.post(f'/api/ai/v1/insights/conversations/{cid}/messages',
@@ -348,7 +353,7 @@ class InsightIntegration(unittest.TestCase):
 
     def test_fabricated_answer_is_not_stored(self):
         cid = self.post('/api/ai/v1/insights/conversations',
-                        {'repository_id': self.repo_id, 'profile_id': C.OPUS}).json()['id']
+                        {'repository_id': self.repo_id, 'profile_id': OPUS}).json()['id']
         requests.post(f'http://127.0.0.1:{PROVIDER_PORT}/__mode', json={'mode': 'fabricate'}, timeout=5)
         self.post(f'/api/ai/v1/insights/conversations/{cid}/messages', {'question': '위험한 파일은 어디야?'})
         self.assertEqual(self.run_queued(), ['OUTPUT_UNVERIFIED'])
@@ -358,15 +363,15 @@ class InsightIntegration(unittest.TestCase):
 
     def test_access_isolation_and_transfer_policy(self):
         # 비공개 저장소는 클라우드 모델로 분석하지 않는다.
-        self.error(self.post('/api/ai/v1/insights/reports', {'repository_id': self.private_repo, 'profile_id': C.OPUS}),
+        self.error(self.post('/api/ai/v1/insights/reports', {'repository_id': self.private_repo, 'profile_id': OPUS}),
                    403, 'TRANSFER_NOT_ALLOWED')
         # CSRF 없이 변경 요청 불가.
-        response = self.client.post('/api/ai/v1/insights/reports', json={'repository_id': self.repo_id, 'profile_id': C.OPUS})
+        response = self.client.post('/api/ai/v1/insights/reports', json={'repository_id': self.repo_id, 'profile_id': OPUS})
         self.assertEqual(response.status_code, 403)
         # 다른 사용자는 남의 리포트·대화를 볼 수 없다(존재도 숨긴다).
-        report = self.post('/api/ai/v1/insights/reports', {'repository_id': self.repo_id, 'profile_id': C.OPUS}).json()
+        report = self.post('/api/ai/v1/insights/reports', {'repository_id': self.repo_id, 'profile_id': OPUS}).json()
         self.run_queued()
-        cid = self.post('/api/ai/v1/insights/conversations', {'repository_id': self.repo_id, 'profile_id': C.OPUS}).json()['id']
+        cid = self.post('/api/ai/v1/insights/conversations', {'repository_id': self.repo_id, 'profile_id': OPUS}).json()['id']
         self.login(self.other)
         self.error(self.client.get(f"/api/ai/v1/insights/reports/{report['id']}"), 404, 'RESOURCE_NOT_FOUND')
         self.error(self.client.get(f'/api/ai/v1/insights/conversations/{cid}'), 404, 'RESOURCE_NOT_FOUND')
@@ -391,7 +396,7 @@ class InsightIntegration(unittest.TestCase):
 
     def test_report_with_source_code_reads_the_snapshot_commit(self):
         response = self.post('/api/ai/v1/insights/reports',
-                             {'repository_id': self.repo_id, 'profile_id': C.OPUS, 'include_code': True})
+                             {'repository_id': self.repo_id, 'profile_id': OPUS, 'include_code': True})
         self.assertEqual(response.status_code, 202, response.text)
         self.assertTrue(response.json()['includeCode'])
         self.assertEqual(self.run_queued(), ['succeeded'])
@@ -413,7 +418,7 @@ class InsightIntegration(unittest.TestCase):
     def test_conversation_reads_code_only_when_enabled(self):
         question = 'app/main.py 코드의 역할은?'
         on = self.post('/api/ai/v1/insights/conversations',
-                       {'repository_id': self.repo_id, 'profile_id': C.OPUS, 'include_code': True}).json()
+                       {'repository_id': self.repo_id, 'profile_id': OPUS, 'include_code': True}).json()
         self.assertTrue(on['includeCode'])
         self.post(f"/api/ai/v1/insights/conversations/{on['id']}/messages", {'question': question})
         self.assertEqual(self.run_queued(), ['succeeded'])
@@ -422,7 +427,7 @@ class InsightIntegration(unittest.TestCase):
         self.assertEqual(content['relatedCode'][0]['path'], 'app/main.py')
         self.assertEqual(content['basis']['code']['filesRead'], ['app/main.py'])
 
-        off = self.post('/api/ai/v1/insights/conversations', {'repository_id': self.repo_id, 'profile_id': C.OPUS}).json()
+        off = self.post('/api/ai/v1/insights/conversations', {'repository_id': self.repo_id, 'profile_id': OPUS}).json()
         self.assertFalse(off['includeCode'])
         self.post(f"/api/ai/v1/insights/conversations/{off['id']}/messages", {'question': question})
         self.run_queued()
@@ -430,6 +435,51 @@ class InsightIntegration(unittest.TestCase):
         self.assertEqual([(c['tool'], c['ok']) for c in content['toolCalls']], [('readFile', False)])   # 꺼져 있으면 읽지 않는다
         self.assertEqual(content['relatedCode'], [])
         self.assertEqual(content['basis']['code'], {'requested': False, 'available': False, 'charsSent': 0, 'filesRead': []})
+
+    def test_byok_runs_without_server_ai_settings_and_never_stores_the_key(self):
+        from app.core.ai_settings import get_ai_settings
+        settings = get_ai_settings()
+        self.assertFalse(settings.enabled or settings.allow_external_transfer)
+        self.assertEqual((settings.encryption_keys, settings.credential_keys, settings.daily_job_limit), ({}, {}, 0))
+        listed = self.client.get('/api/ai/v1/insights/models').json()['models']
+        self.assertIn(('claude-opus-5-5-v4', 'anthropic', True), [(m['profile_id'], m['provider'], m['requires_api_key'])
+                                                                  for m in listed])
+        reports = 'SELECT count(*) AS n FROM ai_insight_reports WHERE owner_user_id = :o'
+        before = self.db_rows(reports, o=self.owner)[0]['n']
+        # key가 없거나 형식이 틀리거나 모델과 제공자가 다르면 접수하지 않는다(행도 만들지 않는다).
+        self.error(self.post('/api/ai/v1/insights/reports', {'repository_id': self.repo_id, 'profile_id': OPUS}, key=None),
+                   422, 'CREDENTIAL_REQUIRED')
+        self.error(self.post('/api/ai/v1/insights/reports', {'repository_id': self.repo_id, 'profile_id': OPUS,
+                                                             'provider': 'openai'}), 422, 'INVALID_SELECTION')
+        self.error(self.post('/api/ai/v1/insights/reports', {'repository_id': self.repo_id, 'profile_id': OPUS},
+                             key='short'), 422, 'INVALID_SELECTION')
+        self.assertEqual(self.db_rows(reports, o=self.owner)[0]['n'], before)
+        self.assertEqual(self.queued, [])
+        # key가 있으면 그 key로 실행한다.
+        report = self.post('/api/ai/v1/insights/reports', {'repository_id': self.repo_id, 'profile_id': OPUS})
+        self.assertEqual(report.status_code, 202, report.text)
+        cid = self.post('/api/ai/v1/insights/conversations', {'repository_id': self.repo_id, 'profile_id': OPUS}).json()['id']
+        self.error(self.post(f'/api/ai/v1/insights/conversations/{cid}/messages', {'question': '요약해 줘'}, key=None),
+                   422, 'CREDENTIAL_REQUIRED')
+        self.error(self.post(f'/api/ai/v1/insights/conversations/{cid}/messages',
+                             {'question': '요약해 줘', 'provider': 'gemini'}), 422, 'INVALID_SELECTION')
+        self.post(f'/api/ai/v1/insights/conversations/{cid}/messages', {'question': '가장 많이 기여한 개발자는?'})
+        self.assertEqual(self.run_queued(), ['succeeded', 'succeeded'])
+        self.assertIn(TEST_KEY, self.stats()['keys'])
+        # 하루 실행 한도가 없다: 같은 날 여러 번 실행해도 거절하지 않는다.
+        for _ in range(3):
+            self.assertEqual(self.post('/api/ai/v1/insights/reports',
+                                       {'repository_id': self.repo_id, 'profile_id': OPUS}).status_code, 202)
+            self.run_queued()
+        # key는 어느 테이블에도 남지 않는다(사용자 key 저장소도 쓰지 않는다).
+        with SessionLocal() as db:
+            tables = db.execute(text("""SELECT table_name FROM information_schema.tables
+                                        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'""")).scalars().all()
+            for table in tables:
+                hit = db.execute(text(f'SELECT 1 FROM "{table}" t WHERE t::text LIKE :k LIMIT 1'),
+                                 {'k': '%TESTKEY0123456789%'}).first()
+                self.assertIsNone(hit, table)
+            self.assertEqual(db.execute(text('SELECT count(*) FROM ai_credentials')).scalar(), 0)
 
     def test_zz_analysis_is_read_only(self):
         with SessionLocal() as db:

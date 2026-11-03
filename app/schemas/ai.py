@@ -1030,6 +1030,7 @@ class CreateInsightReportRequest(_Strict):
     repository_id: int = Field(gt=0)
     snapshot_id: int | None = Field(default=None, gt=0)
     profile_id: ProfileId
+    provider: str = Field(pattern=r'^[a-z][a-z0-9_-]{1,31}$')   # 모델의 제공자. 앱은 이 제공자의 저장된 key를 헤더로 붙인다
     include_code: bool = False                # 기준 커밋의 소스 코드 일부를 AI가 읽도록 허용(클라우드는 공개 저장소만)
 
 
@@ -1044,3 +1045,4 @@ class CreateInsightConversationRequest(_Strict):
 class AskInsightQuestionRequest(_Strict):
     """POST /insights/conversations/{id}/messages."""
     question: str = Field(min_length=1, max_length=1000)
+    provider: str = Field(pattern=r'^[a-z][a-z0-9_-]{1,31}$')   # 대화 모델의 제공자(서버가 대화의 모델과 일치하는지 확인)

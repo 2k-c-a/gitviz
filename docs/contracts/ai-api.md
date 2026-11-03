@@ -29,17 +29,19 @@
 
 | 경로 | 동작·범위 | 소스 |
 |---|---|---|
+| `GET /insights/models` | AI 분석에 고를 수 있는 모델(제공자·key 필요 여부). key 저장 여부는 앱이 안다 | [insights](../../app/api/ai/insights.py) |
 | `POST/GET /insights/reports`, `GET /insights/reports/{id}` | 본인 자동 분석 리포트 접수(202)·목록·조회. 6개 범주(종합·기술부채·협업·변경 영향도·이상 징후·진화) | [insights](../../app/api/ai/insights.py) |
 | `POST/GET /insights/conversations`, `GET /insights/conversations/{id}` | 본인 대화 생성(201)·목록·조회 | [insights](../../app/api/ai/insights.py) |
-| `POST /insights/conversations/{id}/messages` | 질문 접수(202). 답변은 worker가 만든다 | [insights](../../app/api/ai/insights.py) |
+| `POST /insights/conversations/{id}/messages` | 질문 접수(202). 답변은 서버 백그라운드 실행이 만든다 | [insights](../../app/api/ai/insights.py) |
 | `DELETE /insights/conversations/{id}` | 대화 초기화(목록에서 숨기고 진행 중 답변 취소, 200) | [insights](../../app/api/ai/insights.py) |
 
+- **앱 전용 BYOK(AD-32 ⑧):** AI를 부르는 요청(`POST /insights/reports`, `POST …/messages`)은 본문에 `provider`를 밝히고, 앱 main이 그 제공자의 저장된 key(Windows DPAPI, 로컬 리뷰와 같은 보관소)를 `X-GitViz-AI-Key` 헤더로 붙인다. 렌더러는 key를 보지 못하고 저장 여부(`desktop.aiKeys.status()`, boolean)만 안다. key가 없으면 앱이 보내지 않는다(`AI_KEY_REQUIRED`). 서버는 모델의 제공자와 `provider`가 같은지 확인하고(`INVALID_SELECTION`), 클라우드 모델에 key가 없으면 `CREDENTIAL_REQUIRED`(422)다. key는 DB·큐·로그에 남기지 않고 그 실행의 메모리에서만 쓰므로, 실행은 Celery가 아니라 요청을 받은 API 프로세스의 스레드(프로세스당 동시 2개, 나머지는 대기)에서 한다. 서버 AI 설정(`AI_ENABLED`·`AI_ALLOW_EXTERNAL_TRANSFER`·암호화 키)과 무관하게 기본으로 켜져 있고 `AI_INSIGHTS_ENABLED=0`으로 끈다. 서버 key 저장소(`/credentials`)는 쓰지 않는다.
 - 입력은 저장된 분석 스냅샷 하나다(`snapshot_id`를 생략하면 최신). AI는 [도구 목록](../../app/services/ai/insight_tools.py)의 읽기 전용 도구만 JSON으로 요청할 수 있고, 서버가 허용 목록·인자 형식을 검사해 그 스냅샷의 관측 구간·기본 브랜치 커밋 범위에서만 SELECT를 실행한다. SQL·명령·소스 코드는 AI에 노출하거나 AI가 만들 수 없다.
 - 응답의 근거(`evidence`: 도구 호출 ID·항목·값), 관련 파일·커밋·기여자는 서버가 도구 결과와 대조한다. 결과에 없는 값·파일·커밋을 쓴 인사이트는 제외하고(보완 요청 1회), 대화 답변은 `OUTPUT_UNVERIFIED`로 실패시킨다. `links`는 검증된 경로·이름의 스냅샷 id다.
 - 결과에는 스냅샷 ID·기준 SHA·관측 구간·계산 버전·payload 해시·모델·프롬프트·도구 버전(`insight-tools-v1`)과 코드 열람 여부(`basis.code`: 요청·사용 가능·보낸 글자 수·읽은 파일)를 기록한다.
 - 소스 코드 열람: 리포트·대화를 만들 때 `include_code: true`(기본 false)를 보낸 실행에서만 `listDirectory`·`readFile`·`searchCode` 도구가 열린다([코드 열람](../../app/services/ai/insight_code.py)). 수집 worker의 clone(`storage/repos/<id>`)에서 스냅샷 기준 커밋의 git 객체만 읽고(checkout·쓰기 없음), 비밀 의심·생성·잠금·바이너리·링크 파일은 보내지 않는다. 한도는 호출당 200줄·9천 자, 실행당 8만 자·파일 20개. clone이나 기준 커밋이 없으면 도구가 `CODE_ACCESS_DISABLED`를 돌려주고 수치만으로 진행한다. 코드 인용(`relatedCode`: 경로·시작·끝 줄)은 그 실행에서 실제로 읽은 줄 범위 안이어야 저장된다.
-- 접수·실행·조회 모두 `authorize_ai`를 거친다. 클라우드 모델은 외부 전송 허용과 공개 저장소를 요구하고, 실행 중 권한을 잃으면 결과를 남기지 않는다. 다른 사용자의 리포트·대화는 존재를 숨긴다(404).
-- 제한: 리포트는 하루 `AI_DAILY_JOB_LIMIT`회, 질문은 하루 100개, 대화 답변 하나에 AI 호출 7회·도구 조회 4단계(단계당 4개)까지. 월 예산(`usage_*`)과는 아직 연결하지 않았다. 30분 안에 끝나지 않은 실행은 `RUN_TIMEOUT`이다.
+- 접수·실행·조회 모두 `authorize_ai(insight=True)`를 거친다. 클라우드 모델은 공개 저장소만 허용하고(사용자가 자기 key로 실행마다 고르므로 서버의 외부 전송 허용 설정은 보지 않는다), 실행 중 권한을 잃으면 결과를 남기지 않는다. 다른 사용자의 리포트·대화는 존재를 숨긴다(404).
+- 제한: 하루 실행 수 제한은 없다(2026-11-03 소유자 결정). 같은 저장소의 리포트는 한 번에 하나, 대화는 이전 답변이 끝나야 다음 질문을 받는다. 실행 하나 안에서는 대화 답변에 AI 호출 7회·도구 조회 4단계(단계당 4개)까지다. 월 예산(`usage_*`)과는 연결하지 않는다(비용은 사용자 key 계정에 청구). 30분 안에 끝나지 않은 실행과 서버 재시작으로 끊긴 실행은 `RUN_TIMEOUT`이다.
 - 진행 상태는 폴링한다(도구 조회·AI 해석·근거 검증 단계). 토큰 단위 스트리밍은 하지 않는다.
 
 개인 API의 owner 제한과 공유 GET 예외를 구분한다. 공유 GET은 입력 원문 조회 권한을 주지 않지만 결과 payload·인용·판단·메모를 반환한다. 공유 endpoint에는 쓰기 경로가 없고, 다른 사용자가 기존 feedback PUT으로 남의 결과에 판정을 쓰는 것도 허용되지 않는다. 공개 저장소의 GitHub read는 조직 구성원 검증과 다르다. 구체 정책은 [D01](../decisions/index.md#d01)에서 미확정으로 관리한다.

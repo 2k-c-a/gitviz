@@ -10,6 +10,8 @@
 - 권한: 실행 전과 AI 호출 직전마다 저장소 접근·전송 정책(공개 저장소만 외부 전송)을 다시 확인한다. 저장소 원본은 읽기만 한다.
 - 소스 코드: 실행을 만들 때 사용자가 켠 경우(include_code)에만 서버 clone의 기준 커밋 코드를 읽는 도구를 연다.
   코드 인용(relatedCode)은 이번 실행에서 실제로 읽은 줄 범위 안이어야 한다.
+- key: 사용자의 API key는 앱이 보관하고 실행 요청마다 헤더로 보낸다. 서버는 그 실행의 메모리에서만 쓰고 저장하지 않는다
+  (AD-32 ⑧). 그래서 실행은 Celery가 아니라 요청을 받은 API 프로세스의 백그라운드 스레드에서 한다.
 """
 import json
 import logging
@@ -24,9 +26,8 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 from app.collectors.git.clone_manager import repository_path
-from app.core.ai_settings import get_ai_settings
 from app.schemas.ai import ErrorCode
-from app.services.ai import credentials, prompts, token_budget
+from app.services.ai import prompts, token_budget
 from app.services.ai.access import AIAction, AIError, authorize_ai
 from app.services.ai.content_policy import POLICY_VERSION
 from app.services.ai.insight_code import CodeReader
@@ -56,7 +57,6 @@ MAX_CHAT_AI_CALLS = 7
 MAX_QUESTION_CHARS = 1000
 HISTORY_TURNS = 6
 TOOL_RESULT_CHARS = 12_000
-QUESTIONS_PER_DAY = 100
 STALE_AFTER = timedelta(minutes=30)
 ACTIVE = ('queued', 'running')
 _FINISH_ERRORS = {'truncated': 'OUTPUT_TRUNCATED', 'refused': 'PROVIDER_REFUSED', 'empty': 'OUTPUT_INVALID',
@@ -296,7 +296,8 @@ class InsightRun:
     def authorize(self) -> None:
         with self.session_factory() as db:
             try:
-                authorize_ai(db, self.owner_id, self.repository_id, _action(self.profile_id), POLICY_VERSION)
+                authorize_ai(db, self.owner_id, self.repository_id, _action(self.profile_id), POLICY_VERSION,
+                             insight=True)
             except HTTPException:
                 raise InsightFailed('REAUTH_REQUIRED') from None
             except AIError as exc:
@@ -602,14 +603,16 @@ def _open(session_factory, owner_id, repository_id, snapshot_id, profile_id, pro
           include_code: bool = False) -> InsightRun:
     with session_factory() as db:
         try:
-            authorize_ai(db, owner_id, repository_id, _action(profile_id), POLICY_VERSION)
+            authorize_ai(db, owner_id, repository_id, _action(profile_id), POLICY_VERSION, insight=True)
         except AIError as exc:
             raise InsightFailed(exc.code.value) from None
         except HTTPException:
             raise InsightFailed('REAUTH_REQUIRED') from None
+        if provider_factory is None:                         # key는 요청과 함께 온 메모리에만 있다(저장하지 않음)
+            raise InsightFailed('CREDENTIAL_UNAVAILABLE')
         try:
-            provider = (provider_factory or credentials.provider_for_owner)(db, owner_id, profile_id)
-        except credentials.CredentialUnavailable:
+            provider = provider_factory(db, owner_id, profile_id)
+        except (registry.UnknownProfile, ValueError):
             raise InsightFailed('CREDENTIAL_UNAVAILABLE') from None
     db = session_factory()
     try:
@@ -734,18 +737,43 @@ def _fail(session_factory, table: str, row_id: UUID, code: str, session: Insight
         db.commit()
 
 
+def provider_factory(api_key: str | None):
+    """요청에 실려 온 사용자 key로 provider를 만드는 함수. key는 이 함수의 클로저(메모리)에만 있고 DB·큐·로그에 남지 않는다."""
+    def build(_db, _owner_id, profile_id: str):
+        if not registry.is_allowed(profile_id):
+            raise ValueError('profile_not_allowed')
+        profile = registry.get_profile(profile_id)
+        if profile.requires_api_key and not api_key:
+            raise ValueError('no_key')
+        return registry.create_provider(profile, api_key=api_key if profile.requires_api_key else None)
+    return build
+
+
 # ── 접수·조회 (API) ──────────────────────────────────────────────────────
 
-def _require_profile(db, owner_id: UUID, repository_id: int, profile_id: str):
+def resolve_profile(profile_id: str, provider: str | None = None):
+    """허용된 모델인지, 요청이 밝힌 제공자와 같은지 확인한다(앱이 엉뚱한 제공자의 key를 붙이지 않게)."""
     try:
         profile = registry.get_profile(profile_id)
     except registry.UnknownProfile:
         raise AIError(ErrorCode.INVALID_SELECTION, '지원하지 않는 모델입니다.') from None
     if not registry.is_allowed(profile_id):
         raise AIError(ErrorCode.INVALID_SELECTION, '이 서버에서 허용하지 않은 모델입니다.')
-    authorize_ai(db, owner_id, repository_id, _action(profile_id), POLICY_VERSION)
-    if profile.requires_api_key and credentials.get_active(db, owner_id, profile.provider) is None:
-        raise AIError(ErrorCode.CREDENTIAL_REQUIRED, f'{profile.provider} API key를 먼저 등록해 주세요.')
+    if provider is not None and provider != profile.provider:
+        raise AIError(ErrorCode.INVALID_SELECTION, '모델과 제공자가 맞지 않습니다.')
+    return profile
+
+
+def models() -> list[dict]:
+    """AI 분석에 고를 수 있는 모델. key는 앱이 보관하므로 서버는 key 등록 여부를 모른다."""
+    return [{k: m[k] for k in ('profile_id', 'provider', 'display_name', 'execution_location', 'requires_api_key',
+                               'currency', 'input_price_per_mtok', 'output_price_per_mtok')}
+            for p in registry.supported_options() for m in p['models'] if m['allowed']]
+
+
+def _require_profile(db, owner_id: UUID, repository_id: int, profile_id: str, provider: str | None = None):
+    profile = resolve_profile(profile_id, provider)
+    authorize_ai(db, owner_id, repository_id, _action(profile_id), POLICY_VERSION, insight=True)
     return profile
 
 
@@ -765,8 +793,8 @@ def _expire_stale(db, table: str, where: str, params: dict) -> None:
 
 
 def create_report(db, owner_id: UUID, repository_id: int, snapshot_id: int | None, profile_id: str,
-                  include_code: bool = False) -> UUID:
-    profile = _require_profile(db, owner_id, repository_id, profile_id)
+                  include_code: bool = False, provider: str | None = None) -> UUID:
+    profile = _require_profile(db, owner_id, repository_id, profile_id, provider)
     snapshot_id = _snapshot_id(db, repository_id, snapshot_id)
     _expire_stale(db, 'ai_insight_reports', 'owner_user_id = :o', {'o': owner_id})
     active = db.execute(text("""SELECT 1 FROM ai_insight_reports WHERE owner_user_id = :o AND repository_id = :r
@@ -774,12 +802,6 @@ def create_report(db, owner_id: UUID, repository_id: int, snapshot_id: int | Non
                         {'o': owner_id, 'r': repository_id}).first()
     if active:
         raise AIError(ErrorCode.INVALID_STATE, '이 저장소의 AI 자동 분석이 이미 진행 중입니다.')
-    limit = get_ai_settings().daily_job_limit
-    if limit:
-        today = db.execute(text("""SELECT count(*) FROM ai_insight_reports WHERE owner_user_id = :o
-                                   AND created_at >= date_trunc('day', now())"""), {'o': owner_id}).scalar()
-        if today >= limit:
-            raise AIError(ErrorCode.USER_LIMIT, f'AI 자동 분석은 하루 {limit}회까지 실행할 수 있습니다.')
     report_id = db.execute(text("""
         INSERT INTO ai_insight_reports (owner_user_id, repository_id, snapshot_id, provider_profile, provider, model,
                                         prompt_version, tool_version, policy_version, include_code)
@@ -859,12 +881,21 @@ def conversation_repository(db, owner_id: UUID, conversation_id: UUID) -> int:
     return _conversation(db, owner_id, conversation_id).repository_id
 
 
+def conversation_profile(db, owner_id: UUID, conversation_id: UUID):
+    """질문을 받기 전에 대화의 모델을 확인한다(요청에 붙은 key가 그 모델의 제공자용인지 보기 위해)."""
+    conversation = _conversation(db, owner_id, conversation_id)
+    if not registry.is_allowed(conversation.provider_profile):
+        raise AIError(ErrorCode.INVALID_SELECTION, '이 대화의 모델은 더 이상 허용되지 않습니다. 새 대화를 시작해 주세요.')
+    return registry.get_profile(conversation.provider_profile)
+
+
 def ask(db, owner_id: UUID, conversation_id: UUID, question: str) -> UUID:
     conversation = _conversation(db, owner_id, conversation_id)
     question = (question or '').strip()
     if not question or len(question) > MAX_QUESTION_CHARS:
         raise AIError(ErrorCode.INVALID_SELECTION, f'질문은 1~{MAX_QUESTION_CHARS}자로 입력해 주세요.')
-    authorize_ai(db, owner_id, conversation.repository_id, _action(conversation.provider_profile), POLICY_VERSION)
+    authorize_ai(db, owner_id, conversation.repository_id, _action(conversation.provider_profile), POLICY_VERSION,
+                 insight=True)
     if not registry.is_allowed(conversation.provider_profile):
         raise AIError(ErrorCode.INVALID_SELECTION, '이 대화의 모델은 더 이상 허용되지 않습니다. 새 대화를 시작해 주세요.')
     _expire_stale(db, 'ai_insight_messages', 'conversation_id = :c', {'c': conversation_id})
@@ -874,11 +905,6 @@ def ask(db, owner_id: UUID, conversation_id: UUID, question: str) -> UUID:
                               AND status IN ('queued', 'running') LIMIT 1"""), {'c': locked}).first()
     if busy:
         raise AIError(ErrorCode.INVALID_STATE, '이전 질문의 답변을 만드는 중입니다.')
-    today = db.execute(text("""SELECT count(*) FROM ai_insight_messages m JOIN ai_insight_conversations c
-                               ON c.id = m.conversation_id WHERE c.owner_user_id = :o AND m.role = 'user'
-                               AND m.created_at >= date_trunc('day', now())"""), {'o': owner_id}).scalar()
-    if today >= QUESTIONS_PER_DAY:
-        raise AIError(ErrorCode.USER_LIMIT, f'AI 대화형 분석 질문은 하루 {QUESTIONS_PER_DAY}개까지입니다.')
     seq = db.execute(text('SELECT COALESCE(MAX(seq), 0) FROM ai_insight_messages WHERE conversation_id = :c'),
                      {'c': conversation_id}).scalar()
     db.execute(text("""INSERT INTO ai_insight_messages (conversation_id, seq, role, content, status, finished_at)
@@ -929,6 +955,7 @@ def delete_conversation(db, owner_id: UUID, conversation_id: UUID) -> None:
 
 
 def mark_enqueue_failed(db, table: str, row_id: UUID) -> None:
+    """실행을 시작하지 못한 행을 실패로 표시한다."""
     db.execute(text(f"""UPDATE {table} SET status = 'failed', error_code = 'QUEUE_UNAVAILABLE', finished_at = now()
                         WHERE id = :id AND status = 'queued'"""), {'id': row_id})
     db.commit()

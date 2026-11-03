@@ -26,15 +26,17 @@ test('API 클라이언트: 인사이트 경로·본문·CSRF', async () => {
   const { createAiClient } = await js('ai-api.js');
   const { calls, fetchImpl } = recorder();
   const api = createAiClient({ fetchImpl, authMode: 'cookie' });
+  await api.insightModels();
   await api.insightReports(7);
-  await api.createInsightReport({ repositoryId: 7, snapshotId: 3, profileId: 'claude-opus-5-5-v1', includeCode: true });
+  await api.createInsightReport({ repositoryId: 7, snapshotId: 3, profileId: 'claude-opus-5-5-v1', provider: 'anthropic', includeCode: true });
   await api.insightReport(U1);
   await api.insightConversations(7);
   await api.createInsightConversation({ repositoryId: 7, profileId: 'claude-opus-5-5-v1' });
   await api.insightConversation(U1);
-  await api.askInsight(U1, '가장 위험한 파일은?');
+  await api.askInsight(U1, '가장 위험한 파일은?', 'anthropic');
   await api.deleteInsightConversation(U1);
-  const api_calls = calls.filter((c) => c.url !== '/api/auth/csrf');
+  const api_calls = calls.filter((c) => c.url !== '/api/auth/csrf').slice(1);
+  assert.equal(calls[0].url, '/api/ai/v1/insights/models');
   assert.deepEqual(api_calls.map((c) => `${c.method} ${c.url}`), [
     'GET /api/ai/v1/insights/reports?repository_id=7',
     'POST /api/ai/v1/insights/reports',
@@ -45,21 +47,42 @@ test('API 클라이언트: 인사이트 경로·본문·CSRF', async () => {
     `POST /api/ai/v1/insights/conversations/${U1}/messages`,
     `DELETE /api/ai/v1/insights/conversations/${U1}`,
   ]);
-  assert.deepEqual(api_calls[1].body, { repository_id: 7, snapshot_id: 3, profile_id: 'claude-opus-5-5-v1', include_code: true });
+  assert.deepEqual(api_calls[1].body, { repository_id: 7, snapshot_id: 3, profile_id: 'claude-opus-5-5-v1', provider: 'anthropic', include_code: true });
   assert.deepEqual(api_calls[4].body, { repository_id: 7, snapshot_id: null, profile_id: 'claude-opus-5-5-v1', include_code: false });  // 기본은 꺼짐
-  assert.deepEqual(api_calls[6].body, { question: '가장 위험한 파일은?' });
-  for (const c of api_calls.filter((x) => x.method !== 'GET')) assert.equal(c.headers['X-CSRF-Token'], 'csrf-1');
+  assert.deepEqual(api_calls[6].body, { question: '가장 위험한 파일은?', provider: 'anthropic' });
+  for (const c of api_calls.filter((x) => x.method !== 'GET')) {
+    assert.equal(c.headers['X-CSRF-Token'], 'csrf-1');
+    assert.ok(!Object.keys(c.headers).some((k) => /ai-key/i.test(k)));        // 화면은 key 헤더를 만들지 않는다(앱 main이 붙인다)
+  }
   assert.equal(calls.filter((c) => c.url === '/api/auth/csrf').length, 1);
 });
 
 test('앱 계약: 화면이 호출하는 인사이트 경로가 데스크톱 허용 목록에 있다', () => {
   const contracts = read('desktop/src/remote-contracts.ts');
   for (const [name, method, route] of [
+    ['insightModels', 'GET', 'insights/models'],
     ['insightReports', 'GET', 'insights/reports'], ['createInsightReport', 'POST', 'insights/reports'],
     ['insightReport', 'GET', 'insights/reports/{reportId}'], ['insightConversations', 'GET', 'insights/conversations'],
     ['createInsightConversation', 'POST', 'insights/conversations'], ['insightConversation', 'GET', 'insights/conversations/{conversationId}'],
     ['askInsight', 'POST', 'insights/conversations/{conversationId}/messages'], ['deleteInsightConversation', 'DELETE', 'insights/conversations/{conversationId}'],
   ]) assert.ok(contracts.includes(`${name}: ai('${method}', '${route}'`), name);
+});
+
+test('BYOK: 앱이 key가 없다고 하면 서버 오류가 아니라 키 저장 안내를 보인다', async () => {
+  const { createAiClient } = await js('ai-api.js');
+  const fetchImpl = async (url) => {
+    if (String(url) === '/api/auth/csrf') return { ok: true, status: 200, json: async () => ({ token: 'c' }) };
+    throw new Error("Error invoking remote method 'desktop:remote': Error: AI_KEY_REQUIRED");
+  };
+  const api = createAiClient({ fetchImpl, authMode: 'cookie' });
+  await assert.rejects(api.askInsight(U1, '질문', 'openai'), (e) => e.code === 'AI_KEY_REQUIRED' && /API 키/.test(e.message));
+  const contracts = read('desktop/src/remote-contracts.ts');
+  assert.match(contracts, /endpoints\.createInsightReport\.aiKey = true/);
+  assert.match(contracts, /endpoints\.askInsight\.aiKey = true/);
+  const source = read('frontend/js/ai-insights.js');
+  assert.match(source, /desktop\?\.aiKeys\?\.status/);                  // 저장 여부(boolean)만 묻는다
+  assert.match(source, /앱에서만 쓸 수 있습니다/);
+  assert.doesNotMatch(source, /api\.credentials\(/);                    // 서버 key 저장소를 쓰지 않는다
 });
 
 test('화면 규칙: 데이터는 textContent로만 넣고 외부 스크립트·인라인 핸들러가 없다', () => {

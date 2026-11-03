@@ -86,6 +86,11 @@ else {
     if (certificate) setDefaultCACertificates([...getCACertificates('default'), certificate]);
     let auth: DesktopAuth | null = null;
     let remote: Remote | null = null;
+    // BYOK provider keys (DPAPI): local review and AI analysis share them. Main attaches them; the renderer gets booleans.
+    const aiKeys = new AiKeyVault(join(directory, 'ai-keys.dpapi'), {
+      available: () => safeStorage.isAsyncEncryptionAvailable(), encrypt: value => safeStorage.encryptStringAsync(value),
+      decrypt: async value => (await safeStorage.decryptStringAsync(value)).result,
+    });
     if (origin) {
       const http = httpsClient(origin);
       auth = new DesktopAuth(origin, http, url => shell.openExternal(url), new SessionVault(join(directory, 'desktop-session.dpapi'), origin, {
@@ -93,9 +98,9 @@ else {
         decrypt: async value => (await safeStorage.decryptStringAsync(value)).result,
       }));
       const bodies = JSON.parse(readFileSync(join(__dirname, '../schema/ai-bodies.json'), 'utf8')) as Record<string, Record<string, unknown>>;
-      remote = new Remote(new RemoteContracts(bodies), http, auth.identity, auth.invalidate);
+      remote = new Remote(new RemoteContracts(bodies), http, auth.identity, auth.invalidate, aiKeys);
     }
-    window.once('closed', registerDesktop(window, auth, remote, createUpdateService(app.getVersion(), DISABLED_UPDATE_POLICY)));
+    window.once('closed', registerDesktop(window, auth, remote, createUpdateService(app.getVersion(), DISABLED_UPDATE_POLICY), aiKeys));
     const signedIn = auth;
     window.once('closed', registerCollabFiles(window, new CollabFiles(
       async () => { const picked = await dialog.showOpenDialog(window!, { title: '공동 편집할 파일 선택', properties: ['openFile'] }); return picked.canceled ? null : picked.filePaths[0] ?? null; },
@@ -107,10 +112,6 @@ else {
     window.once('closed', registerRemoteWorkspace(window, remoteWorkspace));
     // Cloud BYOK no longer needs sign-in or a project connection (owner decision 2026-11-01).
     const cloud = new CloudReview(agent);
-    const aiKeys = new AiKeyVault(join(directory, 'ai-keys.dpapi'), {
-      available: () => safeStorage.isAsyncEncryptionAvailable(), encrypt: value => safeStorage.encryptStringAsync(value),
-      decrypt: async value => (await safeStorage.decryptStringAsync(value)).result,
-    });
     window.once('closed', registerProjects(window, agent, contracts, undefined, cloud, aiKeys));
     window.once('closed', registerImpact(window, agent, contracts, remoteWorkspace && remote ? new HistoricalImpact(agent, remoteWorkspace, remote) : null));
     const invite = pendingInvite; pendingInvite = null; started = true;

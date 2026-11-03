@@ -1,12 +1,12 @@
 /* ── AI 분석 화면 (자동 분석 리포트 · 대화형 분석) ──
    - 주소 ?repo=&snapshot= 가 기준이다. snapshot이 없으면 서버가 그 저장소의 최신 분석 결과를 쓴다.
-   - 실행은 서버 worker가 하고, 이 화면은 접수 후 상태를 폴링해 진행 단계(도구 조회·AI 해석·근거 검증)를 보여 준다.
+   - 앱 전용. API key는 앱(main)이 이 PC에 보관하고 실행 요청에만 붙인다. 이 화면은 key를 보지 못하고 저장 여부만 안다.
+   - 실행은 서버가 하고, 이 화면은 접수 후 상태를 폴링해 진행 단계(도구 조회·AI 해석·근거 검증)를 보여 준다.
    - 근거(evidence)·관련 파일/커밋/기여자는 서버가 도구 결과와 대조해 검증한 값만 온다. 링크는 기존 상세 보기(드릴다운)·
      파일 분석 화면·GitHub 커밋 주소로만 만든다.
    - 모든 동적 문자열은 textContent로만 넣는다(innerHTML에 데이터를 넣지 않는다). */
 import { createAiClient } from './ai-api.js';
 import { createAiPoller } from './ai-poll.js';
-import { selectableProviders } from './ai-state.js';
 import { parseState } from './viz-state.js';
 import { pageUrl } from './ui/shell.js';
 import { getRepoGithubInfo } from './github.js';
@@ -37,11 +37,14 @@ const FAILURE = {
   OUTPUT_TRUNCATED: 'AI 응답이 길이 제한으로 잘려 표시하지 않았습니다.',
   PROVIDER_REFUSED: 'AI 제공자가 응답을 거부했습니다.',
   TOO_MANY_STEPS: '정해진 조회 횟수 안에 답을 만들지 못했습니다. 질문을 좁혀 보세요.',
-  CREDENTIAL_UNAVAILABLE: '등록한 API 키를 사용할 수 없습니다. 설정에서 키를 확인하세요.',
-  RUN_TIMEOUT: '실행이 제한 시간 안에 끝나지 않았습니다.',
-  QUEUE_UNAVAILABLE: '작업 대기열에 연결하지 못했습니다. 잠시 후 다시 시도하세요.',
+  CREDENTIAL_UNAVAILABLE: 'API 키를 사용할 수 없습니다. 앱 설정에서 키를 확인하세요.',
+  CREDENTIAL_REQUIRED: '앱 설정에서 이 AI 제공자의 API 키를 먼저 저장하세요.',
+  AI_KEY_REQUIRED: '앱 설정에서 이 AI 제공자의 API 키를 먼저 저장하세요.',
+  PROVIDER_AUTH: 'AI 제공자가 API 키를 거부했습니다(키 오류 또는 결제 문제). 앱 설정에서 키를 확인하세요.',
+  RUN_TIMEOUT: '실행이 제한 시간 안에 끝나지 않았습니다(실행 중 서버가 다시 시작된 경우도 이렇게 끝납니다). 다시 실행하세요.',
+  QUEUE_UNAVAILABLE: '실행을 시작하지 못했습니다. 잠시 후 다시 시도하세요.',
   SNAPSHOT_UNAVAILABLE: '분석 결과를 찾을 수 없습니다. 먼저 저장소를 분석하세요.',
-  TRANSFER_NOT_ALLOWED: '이 저장소의 분석 결과를 선택한 AI로 보낼 수 없습니다(비공개 저장소이거나 서버가 외부 전송을 허용하지 않음).',
+  TRANSFER_NOT_ALLOWED: '비공개 저장소의 분석 결과는 외부 AI로 보낼 수 없습니다. 로컬 모델을 선택하세요.',
   RESOURCE_NOT_FOUND: '저장소 접근 권한을 확인하지 못했습니다.',
   INPUT_TOO_LARGE: '조회 결과가 모델의 입력 한도를 넘었습니다.',
   INTERNAL_ERROR: '서버 오류로 실행하지 못했습니다.',
@@ -91,7 +94,7 @@ function main(page) {
   const $ = (id) => document.getElementById(id);
   const { repo, snapshot } = parseState(location.search);
   const api = createAiClient();
-  const state = { me: null, models: [], profileId: null, transferAllowed: false, github: null, repoName: '',
+  const state = { me: null, models: [], allModels: [], profileId: null, github: null, repoName: '',
     includeCode: false, reports: [], report: null, conversations: [], conversation: null, sending: false };
   let reportPoller = null;
   let chatPoller = null;
@@ -143,31 +146,38 @@ function main(page) {
         h('div', { class: 'ai-row' }, button('GitHub로 로그인', () => (window.githubLogin ? window.githubLogin() : (location.href = '/api/auth/github')), { cls: 'btn-primary' }))));
       return false;
     }
-    let providers, creds;
+    const keyStatus = globalThis.desktop?.aiKeys?.status;
+    if (!keyStatus) {
+      mount(setup, h('div', { class: 'ai-card' }, h('h2', { text: 'AI 분석은 GitViz 앱에서만 쓸 수 있습니다' }),
+        h('p', { class: 'ai-muted', text: 'API 키를 이 PC의 앱에만 보관하고 실행할 때만 쓰는 방식이라 웹 브라우저에서는 실행할 수 없습니다.' })));
+      return false;
+    }
+    let listed, saved;
     try {
-      [providers, creds] = await Promise.all([api.providers(), api.credentials()]);
+      [listed, saved] = await Promise.all([api.insightModels(), keyStatus()]);
     } catch (e) {
       if (e.status === 404 || e.code === 'RESOURCE_NOT_FOUND') {
-        mount(setup, h('div', { class: 'ai-card' }, h('h2', { text: 'AI 기능을 쓸 수 없습니다' }), h('p', { class: 'ai-muted', text: '이 서버에서는 AI 기능이 꺼져 있습니다.' })));
+        mount(setup, h('div', { class: 'ai-card' }, h('h2', { text: 'AI 기능을 쓸 수 없습니다' }), h('p', { class: 'ai-muted', text: '이 서버에서는 AI 분석이 꺼져 있습니다.' })));
         return false;
       }
+      if (/STORAGE_UNAVAILABLE/.test(String(e?.message || ''))) return showError(setup, e, 'Windows 계정 보호 저장소를 쓸 수 없어 저장한 API 키를 확인하지 못했습니다.');
       showError(setup, e, 'AI 설정을 불러오지 못했습니다.');
       return false;
     }
-    state.transferAllowed = !!providers.external_transfer_allowed;
-    const hasKey = (m) => (creds.credentials || []).some((c) => c.provider === m.provider);
-    state.models = selectableProviders(providers.providers).flatMap((p) => p.models)
-      .filter((m) => m.allowed && (m.execution_location === 'local' || !m.requires_api_key || hasKey(m)));
-    const preferred = (creds.credentials || []).map((c) => c.preferred_profile_id).filter(Boolean);
-    state.profileId = state.models.find((m) => preferred.includes(m.profile_id))?.profile_id || state.models[0]?.profile_id || null;
+    state.allModels = listed.models || [];
+    state.models = state.allModels.filter((m) => m.execution_location === 'local' || !m.requires_api_key || saved?.[m.provider]);
+    let preferred = null;                                   // 앱 설정에서 고른 기본 모델(같은 앱 저장소)
+    try { preferred = JSON.parse(localStorage.getItem('gitviz.workspace.ai') || '{}').profileId || null; } catch { /* 기본값 없음 */ }
+    state.profileId = state.models.find((m) => m.profile_id === preferred)?.profile_id || state.models[0]?.profile_id || null;
     renderSetup();
     return true;
   }
+  const providerOf = (profileId) => state.allModels.find((m) => m.profile_id === profileId)?.provider;
   function renderSetup() {
     const setup = $('insight-setup');
     if (!state.models.length) {
       return mount(setup, h('div', { class: 'ai-card' }, h('h2', { text: '사용할 AI 모델이 없습니다' }),
-        h('p', { class: 'ai-muted', text: '설정에서 AI 제공자 API 키를 등록하거나 로컬 모델을 설정하세요.' }),
+        h('p', { class: 'ai-muted', text: '앱 설정의 AI 항목에서 Anthropic·OpenAI·Gemini 중 하나의 API 키를 저장하세요. 키는 이 PC에만 보관됩니다.' }),
         h('div', { class: 'ai-row' }, h('a', { class: 'btn-secondary ai-btn', href: pageUrl('settings') }, '설정 열기'))));
     }
     const model = state.models.find((m) => m.profile_id === state.profileId);
@@ -175,7 +185,7 @@ function main(page) {
     const select = h('select', { 'aria-label': 'AI 모델', class: 'ai-input', onchange: (ev) => { state.profileId = ev.target.value; renderSetup(); renderAuto(); renderChat(); } },
       state.models.map((m) => h('option', { value: m.profile_id, selected: m.profile_id === state.profileId }, m.display_name)));
     const notice = external
-      ? `선택한 외부 AI에 이 저장소의 분석 수치, 파일·디렉터리 경로, 기여자 이름, 커밋 메시지 제목이 전송됩니다. 아래에서 켜지 않으면 소스 코드는 보내지 않습니다. 비공개 저장소는 외부 AI로 분석할 수 없고, 호출 비용은 등록한 API 키의 계정에 청구됩니다.${state.transferAllowed ? '' : ' 지금은 이 서버가 외부 전송을 허용하지 않습니다.'}`
+      ? '선택한 외부 AI에 이 저장소의 분석 수치, 파일·디렉터리 경로, 기여자 이름, 커밋 메시지 제목이 전송됩니다. 아래에서 켜지 않으면 소스 코드는 보내지 않습니다. 비공개 저장소는 외부 AI로 분석할 수 없습니다. 호출 비용은 앱에 저장한 API 키의 계정에 청구되고 횟수 제한이 없으니 사용량에 주의하세요. 키는 실행할 때만 서버로 보내져 그 실행에만 쓰이고 저장되지 않습니다.'
       : '같은 서버의 로컬 모델로 실행합니다. 외부 AI로 데이터를 보내지 않습니다.';
     const codeToggle = h('label', { class: 'ins-code-toggle' },
       h('input', { type: 'checkbox', id: 'insight-include-code', checked: state.includeCode,
@@ -188,10 +198,9 @@ function main(page) {
       h('div', { class: 'ai-row between' }, h('h2', { text: '분석에 사용할 AI' }), select),
       h('p', { class: 'ai-muted', text: notice }),
       codeToggle,
-      codeNotice ? h('p', { class: 'ai-muted', text: codeNotice }) : null,
-      external && !state.transferAllowed ? banner('warn', '외부 전송이 허용되지 않았습니다', '로컬 모델을 선택하거나 서버 관리자에게 문의하세요.') : null));
+      codeNotice ? h('p', { class: 'ai-muted', text: codeNotice }) : null));
   }
-  const canRun = () => !!state.profileId && (state.models.find((m) => m.profile_id === state.profileId)?.execution_location === 'local' || state.transferAllowed);
+  const canRun = () => !!state.profileId;
 
   /* ── 자동 분석 ── */
   async function loadReports(selectId) {
@@ -220,7 +229,8 @@ function main(page) {
   }
   async function startReport() {
     try {
-      const created = await api.createInsightReport({ repositoryId: repo, snapshotId: snapshot, profileId: state.profileId, includeCode: state.includeCode });
+      const created = await api.createInsightReport({ repositoryId: repo, snapshotId: snapshot, profileId: state.profileId,
+        provider: providerOf(state.profileId), includeCode: state.includeCode });
       await loadReports(created.id);
     } catch (e) { showError($('insight-auto-notice') || $('insight-notice'), e, '자동 분석을 시작하지 못했습니다.'); }
   }
@@ -308,8 +318,14 @@ function main(page) {
     renderChat();
     try {
       let id = state.conversation?.id;
-      if (!id) id = (await api.createInsightConversation({ repositoryId: repo, snapshotId: snapshot, profileId: state.profileId, includeCode: state.includeCode })).id;
-      await api.askInsight(id, text);
+      let profileId = state.conversation?.providerProfile;
+      if (!id) {
+        const created = await api.createInsightConversation({ repositoryId: repo, snapshotId: snapshot, profileId: state.profileId, includeCode: state.includeCode });
+        ({ id, providerProfile: profileId } = created);
+      }
+      const provider = providerOf(profileId);
+      if (!provider) throw Object.assign(new Error('이 대화의 모델은 지금 쓸 수 없습니다. 새 대화를 시작하세요.'), { code: 'INVALID_SELECTION' });
+      await api.askInsight(id, text, provider);
       state.sending = false;
       await loadConversations(id);
     } catch (e) {

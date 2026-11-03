@@ -1,17 +1,21 @@
 import type { RemoteContracts } from './remote-contracts';
+import { AI_PROVIDERS, type AiKeyVault, type AiProvider } from './secrets';
 
 export interface RemoteResponse { status: number; body: unknown; headers: Record<string, string> }
-export type Http = (path: string, method: string, body?: string, token?: string, key?: string) => Promise<RemoteResponse>;
+export type Http = (path: string, method: string, body?: string, token?: string, key?: string, aiKey?: string) => Promise<RemoteResponse>;
+/** Header carrying the user's own provider key for one AI analysis run. The server keeps it in memory only. */
+export const AI_KEY_HEADER = 'X-GitViz-AI-Key';
 
 export function httpsClient(origin: string, transport: typeof fetch = fetch): Http {
   const base = new URL(origin);
   if (base.protocol !== 'https:' || base.origin !== origin || base.username || base.password) throw new Error('INVALID_SERVER');
-  return async (path, method, body, token, key) => {
+  return async (path, method, body, token, key, aiKey) => {
     if (!path.startsWith('/') || path.startsWith('//') || /[\\\r\n#]/.test(path)) throw new Error('INVALID_REQUEST');
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     if (token) headers.Authorization = `Bearer ${token}`;
     if (key) headers['Idempotency-Key'] = key;
+    if (aiKey) headers[AI_KEY_HEADER] = aiKey;
     // No cookie jar, automatic redirects, proxy credentials or renderer headers.
     let response: Response;
     try { response = await transport(origin + path, { method, headers, body, credentials: 'omit', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(15000) }); }
@@ -45,14 +49,21 @@ export class Remote {
   private pending = 0;
   constructor(private readonly contracts: RemoteContracts, private readonly http: Http,
     private readonly identity: () => { token: string; generation: number } | null,
-    private readonly invalidate: () => void) {}
+    private readonly invalidate: () => void,
+    private readonly keys: Pick<AiKeyVault, 'get'> | null = null) {}
   async request(value: unknown): Promise<RemoteResponse> {
     const route = this.contracts.route(value);
     if (this.pending >= 8) throw new Error('BUSY');
     const before = this.identity(); if (!before) throw new Error('AUTH_REQUIRED');
+    // Cloud providers need the saved key; local models (no key) go without one.
+    let aiKey: string | undefined;
+    if (route.aiKeyProvider && AI_PROVIDERS.includes(route.aiKeyProvider as AiProvider)) {
+      aiKey = (await this.keys?.get(route.aiKeyProvider as AiProvider)) ?? undefined;
+      if (!aiKey) throw new Error('AI_KEY_REQUIRED');
+    }
     this.pending++;
     try {
-      const response = await this.http(route.path, route.method, route.body, before.token, route.idempotencyKey);
+      const response = await this.http(route.path, route.method, route.body, before.token, route.idempotencyKey, aiKey);
       if (this.identity()?.generation !== before.generation) throw new Error('ACCOUNT_CHANGED');
       if (response.status === 401) this.invalidate();
       return response;
