@@ -2,7 +2,7 @@
 
 사용법:
   python tools/ops/run_identity_resolution.py <repository_id> [--stage2-limit N | --stage2-full]
-  (기본: 1단계만)
+  (기본: 1단계만. --stage2-*를 주면 분석 worker처럼 커밋 API 단계를 Search 앞에 실행)
 """
 
 import sys, os, argparse
@@ -26,11 +26,24 @@ db = SessionLocal()
 db.execute(text("SET statement_timeout = 0"))
 client = GitHubClient() if stage2_limit != 0 else None
 
-result = run_identity_resolution(db, args.repository_id, client=client, stage2_limit=stage2_limit)
+owner = repo = None
+if client is not None:
+    # analyze_repository.py와 같은 방식으로 저장소 URL에서 owner/repo를 얻는다.
+    url = db.execute(text("SELECT url FROM repositories WHERE id = :rid"),
+                     {"rid": args.repository_id}).scalar()
+    if url:
+        url_parts = url.rstrip("/").split("/")
+        owner, repo = url_parts[-2], url_parts[-1].removesuffix(".git")
+
+result = run_identity_resolution(db, args.repository_id, client=client, stage2_limit=stage2_limit,
+                                 owner=owner, repo=repo)
 
 print("\n=== Identity Resolution 결과 ===")
 print("commits 기본 연결:", result["commits_linked"])
 print("1단계 noreply:", result["stage1"])
+print("PR 근거:", result["pr_authorship"])
+if "commit_login" in result:
+    print("커밋 API:", result["commit_login"])
 if "stage2" in result:
     print("2단계 github_api:", result["stage2"])
 print("commits alias 연결:", result["commits_linked_by_alias"])

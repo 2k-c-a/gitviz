@@ -42,6 +42,7 @@ jobs:
           node-version: '22'
       - run: pip install -r requirements.txt
       - run: python tests/server/test_backend_improvements.py
+      - run: python tests/server/test_identity_resolution.py
       - run: python tests/server/test_analytics_calculations.py
       - run: python tests/server/test_metric_policy.py
       - run: python tests/server/test_repository_snapshots.py
