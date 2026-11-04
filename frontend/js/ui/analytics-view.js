@@ -36,14 +36,15 @@ export function typeBars(host, rows) {
     line.append(element('span', '', names[row.type] || row.type), bar, element('span', '', `${valueText(row.count, '개')} · ${valueText(row.pct, '%')}`)); host.append(line);
   });
 }
-export function chart(canvas, { labels, values, label, type = 'bar', color = 1, percent = false, onSelect }) {
+// alignBars: a line chart puts each month in the middle of its slot like a bar chart, so stacked charts line up month by month.
+export function chart(canvas, { labels, values, label, type = 'bar', color = 1, percent = false, onSelect, alignBars = false }) {
   canvas.setAttribute('role', 'img'); canvas.setAttribute('aria-label', label);
   const previous = Chart.getChart(canvas); previous?.destroy();
   return new Chart(canvas, {
     type, data: { labels, datasets: [{ gitvizColorIndex: color, label, data: values, backgroundColor: chartColor(color), borderColor: chartColor(color), borderWidth: type === 'line' ? 2 : 0, pointRadius: 3, tension: 0 }] },
     options: { responsive: true, maintainAspectRatio: false, animation: false,
       plugins: { legend: { display: false } },
-      scales: { x: { ticks: { maxTicksLimit: 12 } }, y: { beginAtZero: true, ...(percent ? { max: 100 } : {}), title: { display: true, text: percent ? '%' : label.includes('기여자') ? '명' : '건' } } },
+      scales: { x: { ticks: { maxTicksLimit: 12 }, ...(alignBars ? { offset: true } : {}) }, y: { beginAtZero: true, ...(percent ? { max: 100 } : {}), title: { display: true, text: percent ? '%' : label.includes('기여자') ? '명' : '건' } } },
       onClick: (_event, points) => { if (points[0] && onSelect) onSelect(points[0].index); },
     },
   });

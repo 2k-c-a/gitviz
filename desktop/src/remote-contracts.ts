@@ -22,6 +22,7 @@ export const endpoints: Record<string, Endpoint> = {
   reanalyze: definition('POST', '/repositories/{repositoryId}/reanalyze', { repositoryId: 'id' }),
   repositoryStatus: definition('GET', '/repositories/{repositoryId}/status', { repositoryId: 'id' }),
   search: definition('GET', '/search/github-repositories', {}, { q: 'text', sort: 'text', per_page: 'number', page: 'number' }),
+  myGithubRepositories: definition('GET', '/search/my-github-repositories', {}, { per_page: 'number', page: 'number' }),
   snapshotMeta: analytics('snapshot'), summary: analytics('summary'), timeline: analytics('timeline', { months: 'number' }),
   commitTypes: analytics('commit-types'), releases: analytics('releases', { limit: 'number' }),
   heatmap: analytics('contributor-heatmap', { weeks: 'number', limit: 'number' }), contributors: analytics('top-contributors', { limit: 'number' }),

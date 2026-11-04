@@ -170,7 +170,7 @@ void app.whenReady().then(async () => {
   }
   try {
     phase = 'settings delayed usage'; usageDelay = true; await load('settings', ''); await wait(`document.getElementById('ai-keys').textContent.includes('키 없음')`);
-    await check('settings has no server key form (keys live in the app)', `!document.querySelector('input[type="password"]') && document.getElementById('ai-main').textContent.includes('GitViz 앱에만 저장')`);
+    await check('settings has no server key form (keys live in the app)', `!document.querySelector('input[type="password"]') && !document.getElementById('ai-main').textContent.includes('저장 위치와 적용 범위')`);
     assert.ok(releaseUsage); (releaseUsage as () => void)(); usageDelay=false; await new Promise(resolve=>setTimeout(resolve,200));
     await check('P1 late usage response fills the usage line without re-rendering the panel', `document.getElementById('ai-usage').textContent.length>0 && document.getElementById('ai-keys').textContent.includes('키 없음')`);
     await capture('settings-600-dark.png',600,400,'dark');
@@ -225,7 +225,7 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`document.querySelector('#net-top-pairs button').click()`);await wait(`document.getElementById('dd-title').textContent==='Fixture'`);
     await window.webContents.executeJavaScript(`document.querySelector('#dd-body [data-action="__ddPushFile"]').click()`);await wait(`document.getElementById('dd-title').textContent==='fixture.ts'`);await window.webContents.executeJavaScript(`window.closeDrilldown()`);
     checks.push({name:'C top pair → contributor → related file',passed:true});
-    await load('ai-review','?repo=2'); await wait(`document.querySelectorAll('[role="tab"]').length===3`);
+    await load('ai-review','?repo=2'); await wait(`document.querySelectorAll('#ai-main [role="tab"]').length===3`);
     await window.webContents.executeJavaScript(`document.getElementById('ai-pr-tab-open').focus()`);
     window.webContents.sendInputEvent({type:'keyDown',keyCode:'Right'});window.webContents.sendInputEvent({type:'keyUp',keyCode:'Right'});
     await wait(`document.getElementById('ai-pr-tab-closed').getAttribute('aria-selected')==='true'`);
@@ -255,24 +255,24 @@ void app.whenReady().then(async () => {
     checks.push({name:'E PR → selected files → preview → consent → result',passed:true});
     emptyData=true; await load('overview'); await wait(`document.getElementById('tl-contrib-list').textContent.includes('표시할 데이터가 없습니다') && document.getElementById('tl-m-commits').textContent==='0'`); await check('zero and unavailable ratio are distinct', `document.getElementById('tl-m-commits').textContent==='0' && document.getElementById('tl-m-bugfix').textContent==='—'`); await capture('overview-empty-600-dark.png',600,400,'dark');
     await load('overview'); await wait(`document.getElementById('tl-window-note').textContent.includes('월별') && !!document.querySelector('.analysis-toolbar select')`); await check('empty activity hides meaningless plot axes', `document.getElementById('chart-timeline').parentElement.hidden && !Chart.getChart('chart-timeline')`); await capture('activity-empty-1280-light.png',1280,800,'light'); emptyData=false;
-    // The other charts that share the theme update path: activity bar/line (three metrics, two colour indexes) and the doughnut.
+    // The other charts that share the theme update path: the three activity charts (bar + two lines, three colour indexes) and the doughnut.
     // Themes are switched with no resize in between; expected colours come from the CSS tokens, not from the implementation.
     richCharts = true; await load('overview');
     const tok = (name: string) => `getComputedStyle(document.documentElement).getPropertyValue('${name}').trim()`;
     const switchTheme = (theme: string) => window.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent('gitviz-theme-select',{detail:${JSON.stringify(theme)}}))`);
-    const timelineState = (color: number) => `(() => { const c = Chart.getChart('chart-timeline'); const meta = c.getDatasetMeta(0); const line = c.config.type === 'line'; return { type: c.config.type, theme: document.documentElement.dataset.theme, token: ${tok(`--chart-${color}`)}, scaleTitle: c.options.scales.y.title.color, muted: ${tok('--ui-muted')}, bars: line ? [] : meta.data.map(e => e.options.backgroundColor), line: line ? meta.dataset.options.borderColor : null, points: line ? meta.data.map(e => e.options.backgroundColor + '/' + e.options.borderColor) : [] }; })()`;
-    const timelineOk = (color: number, type: string, theme: string) => `(() => { const v = ${timelineState(color)}; return v.type === ${JSON.stringify(type)} && v.theme === ${JSON.stringify(theme)} && v.scaleTitle === v.muted && (v.type === 'bar' ? v.bars.length === 3 && v.bars.every(c => c === v.token) : v.line === v.token && v.points.length === 3 && v.points.every(c => c === v.token + '/' + v.token)); })()`;
+    const timelineState = (id: string, color: number) => `(() => { const c = Chart.getChart('${id}'); const meta = c.getDatasetMeta(0); const line = c.config.type === 'line'; return { type: c.config.type, theme: document.documentElement.dataset.theme, token: ${tok(`--chart-${color}`)}, scaleTitle: c.options.scales.y.title.color, muted: ${tok('--ui-muted')}, bars: line ? [] : meta.data.map(e => e.options.backgroundColor), line: line ? meta.dataset.options.borderColor : null, points: line ? meta.data.map(e => e.options.backgroundColor + '/' + e.options.borderColor) : [] }; })()`;
+    const timelineOk = (id: string, color: number, type: string, theme: string) => `(() => { const v = ${timelineState(id, color)}; return v.type === ${JSON.stringify(type)} && v.theme === ${JSON.stringify(theme)} && v.scaleTitle === v.muted && (v.type === 'bar' ? v.bars.length === 3 && v.bars.every(c => c === v.token) : v.line === v.token && v.points.length === 3 && v.points.every(c => c === v.token + '/' + v.token)); })()`;
     const donutState = `(() => { const c = Chart.getChart('chart-donut'); const order = { '기능 추가': 1, '리팩토링': 4, '버그 수정': 2, '문서': 5, '유지 작업': 3, '기타': 6 }; return { theme: document.documentElement.dataset.theme, expected: c.data.labels.map(label => ${tok("--chart-' + order[label] + '")}), rendered: c.getDatasetMeta(0).data.map(arc => arc.options.backgroundColor) }; })()`;
     const donutOk = (theme: string) => `(() => { const v = ${donutState}; return v.theme === ${JSON.stringify(theme)} && v.rendered.length === 6 && v.rendered.every((color, i) => color === v.expected[i]); })()`;
     await wait(`!!Chart.getChart('chart-timeline') && Chart.getChart('chart-timeline').getDatasetMeta(0).data.length === 3 && !!Chart.getChart('chart-donut') && Chart.getChart('chart-donut').getDatasetMeta(0).data.length === 6`);
     // Let the doughnut's entrance animation finish before switching, so only the theme switch is measured.
     await wait(`(() => { const c = Chart.getChart('chart-donut'); const t = n => ${tok("--chart-' + n + '")}; const order = { '기능 추가': 1, '리팩토링': 4, '버그 수정': 2, '문서': 5, '유지 작업': 3, '기타': 6 }; return c.getDatasetMeta(0).data.every((arc, i) => arc.options.backgroundColor === t(order[c.data.labels[i]])); })()`);
-    for (const [metric, type, color] of [['commits', 'bar', 1], ['active_contributors', 'line', 2], ['bugfix_pct', 'line', 4]] as const) {
-      await window.webContents.executeJavaScript(`(() => { const s = document.querySelector('select[aria-label="월별 지표"]'); s.value = ${JSON.stringify(metric)}; s.dispatchEvent(new Event('change')); })()`);
-      await wait(`Chart.getChart('chart-timeline')?.config.type === ${JSON.stringify(type)} && Chart.getChart('chart-timeline').getDatasetMeta(0).data.length === 3`);
+    // All three metrics are drawn at once, each in its own chart on the same month axis.
+    for (const [id, metric, type, color] of [['chart-timeline', 'commits', 'bar', 1], ['chart-timeline-contributors', 'active_contributors', 'line', 2], ['chart-timeline-bugfix', 'bugfix_pct', 'line', 4]] as const) {
+      await wait(`Chart.getChart('${id}')?.config.type === ${JSON.stringify(type)} && Chart.getChart('${id}').getDatasetMeta(0).data.length === 3`);
       for (const theme of ['dark', 'light', 'dark', 'light']) {
         await switchTheme(theme);
-        await check(`activity ${type} chart (${metric}) follows a switch to ${theme} without any resize`, timelineOk(color, type, theme), timelineState(color));
+        await check(`activity ${type} chart (${metric}) follows a switch to ${theme} without any resize`, timelineOk(id, color, type, theme), timelineState(id, color));
       }
     }
     for (const theme of ['dark', 'light', 'dark', 'light']) {

@@ -11,7 +11,7 @@
 | 로컬 프로젝트 | 폴더 선택으로 등록, 브랜치·staged/unstaged·최근 커밋 읽기 전용 표시, 변경 고정 | [projects](../../desktop/src/projects.ts), [에이전트](../../app/workspace/projects.py) |
 | 커밋 전 AI 리뷰·리팩터링 | 로컬 모델 또는 DPAPI로 저장한 내 키(BYOK)로 리뷰, 제안 → ‘적용’ 버튼 한 번으로 해시 확인 후 적용, 영향 분석, 테스트·린트 전후 비교. 전송 동의 체크박스·native 확인은 없앴고 화면 버튼이 승인이다([AD-23](../architecture/ARCHITECTURE_DECISIONS.md)) | [proposals](../../desktop/src/proposals.ts), [cloud-review](../../desktop/src/cloud-review.ts) |
 | 로그인 | 시스템 브라우저 GitHub 로그인 → 루프백(`127.0.0.1` 임의 포트)으로 돌아와 앱 전용 bearer 세션. 확인 코드·승인 버튼 없음([AD-24](../architecture/ARCHITECTURE_DECISIONS.md)) | [auth.ts](../../desktop/src/auth.ts), [서버](../../app/api/desktop/auth.py) |
-| 서버 기능 | 저장소 검색(페이지 이동)·분석·결과 화면을 서버 API로 사용. 원격 분석 연결·알림함 | [remote-contracts](../../desktop/src/remote-contracts.ts) |
+| 서버 기능 | 저장소 검색(페이지 이동)·분석·결과 화면을 서버 API로 사용. 최근·내 분석의 "내 GitHub 저장소" 탭(로그인 사용자의 토큰으로 github.com/repos와 같은 범위: 소유·협업자·소속 조직, 2026-11-04). 원격 분석 연결·알림함 | [remote-contracts](../../desktop/src/remote-contracts.ts) |
 | 공동 편집 | 호스트가 고른 시작 파일과 그 파일이 불러오는 HTML·CSS·JS(이미지·글꼴은 읽기 전용)를 3명까지 실시간 편집(CodeMirror 6 + Yjs). 편집 중 새 참조는 호스트 승인 후 공유, HTML은 앱 안 격리된 창에서 미리보기. 저장은 호스트만, 서버는 전달만([AD-29](../architecture/ARCHITECTURE_DECISIONS.md), [AD-34](../architecture/collab-file-set-design.md)) | [collab-files](../../desktop/src/collab-files.ts), [화면](../../frontend/js/community.js) |
 | 배포 | 서명 없는 0.7.0 설치 파일(Squirrel, 사용자별 설치), 서명 확인 후 수동 업데이트. 로컬 스테이징 빌드는 서버 주소·인증서를 넣어 탐색기 더블클릭으로 동작([AD-30](../architecture/ARCHITECTURE_DECISIONS.md)) | [설치·업데이트](../operations/windows-desktop.md) |
 
@@ -37,7 +37,7 @@
 | 제공자 | Anthropic·OpenAI·Gemini BYOK 및 같은 PC의 Ollama·LM Studio·KoboldCpp | [현재 profile 안내](../operations/providers.md) |
 | 결과 공유 | 현재 저장소 접근 권한으로 다른 작성자의 결과·판단·메모를 읽는 별도 GET 경로. 쓰기는 작성자 전용 | [공유 API](../../app/api/ai/shared.py), [미확정 정책 D01](../decisions/index.md#d01) |
 
-AI 리뷰·AI 분석은 앱 설정에 저장한 사용자 API key로 실행하고 서버에는 AI key·암호화 키 설정이 없다([AD-33](../architecture/ARCHITECTURE_DECISIONS.md)). 기능이 구현되어 있다는 사실은 실제 모델 품질·운영 배포·인증 E2E가 검증됐다는 뜻이 아니다. 커뮤니티 채팅·음성·공동 편집도 실제 여러 계정·여러 네트워크에서의 사용은 아직 시험하지 않았다. [현재 검증 상태](../validation/current-status.md)를 별도로 읽는다.
+화면 배치(2026-11-04): AI 리뷰(커밋·PR 단위 분석)는 왼쪽 목록의 최상위 항목이 아니라 현재 저장소 "AI 분석"의 세 번째 탭이다(자동 분석·대화형 분석·커밋·PR 단위 분석). AI 리뷰·AI 분석은 앱 설정에 저장한 사용자 API key로 실행하고 서버에는 AI key·암호화 키 설정이 없다([AD-33](../architecture/ARCHITECTURE_DECISIONS.md)). 기능이 구현되어 있다는 사실은 실제 모델 품질·운영 배포·인증 E2E가 검증됐다는 뜻이 아니다. 커뮤니티 채팅·음성·공동 편집도 실제 여러 계정·여러 네트워크에서의 사용은 아직 시험하지 않았다. [현재 검증 상태](../validation/current-status.md)를 별도로 읽는다.
 
 ## 폐기·보류와 보존
 

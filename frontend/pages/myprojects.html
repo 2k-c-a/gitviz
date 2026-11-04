@@ -28,6 +28,12 @@
   </div>
 
   <div class="body">
+    <div class="range-btns myproj-tabs" role="tablist" aria-label="목록 종류">
+      <button type="button" class="rbtn active" role="tab" id="myproj-tab-analyzed" aria-controls="myproj-analyzed" aria-selected="true">분석한 프로젝트</button>
+      <button type="button" class="rbtn" role="tab" id="myproj-tab-github" aria-controls="myproj-github" aria-selected="false" tabindex="-1">내 GitHub 저장소</button>
+    </div>
+
+    <section id="myproj-analyzed" role="tabpanel" aria-labelledby="myproj-tab-analyzed">
     <!-- 요약 지표 -->
     <div class="metrics-4" id="myproj-metrics">
       <div class="metric-card"><div class="m-label">총 분석 프로젝트</div><div class="m-val">—</div></div>
@@ -38,8 +44,20 @@
 
     <!-- 레포 카드 목록 (실데이터는 myprojects.js가 채운다) -->
     <div id="myproj-list" class="flex flex-col gap-2"></div>
+    </section>
+
+    <!-- 내 GitHub 저장소: github.com/repos와 같은 범위(소유·협업자·소속 조직). 처음 열 때 myprojects.js가 불러온다. -->
+    <section id="myproj-github" role="tabpanel" aria-labelledby="myproj-tab-github" hidden>
+      <p class="myproj-github-note">내가 소유하거나 협업자로 초대됐거나 속한 조직의 저장소입니다(최근 push 순). 조직이 OAuth 앱 접근을 제한했다면 그 조직의 저장소는 보이지 않을 수 있습니다.</p>
+      <div id="myproj-github-list" class="flex flex-col gap-2" aria-live="polite"></div>
+      <div class="myproj-github-more"><button type="button" class="btn-secondary" id="myproj-github-more" hidden>더 보기</button></div>
+    </section>
   </div>
 </div>
+
+<!-- "분석 시작"은 검색 화면과 같은 진행 모달(main.js/modal.js)을 쓴다. modal.js가 읽는 url-input/url-feedback을 숨김 요소로 둔다. -->
+<input type="hidden" id="url-input">
+<div id="url-feedback" style="display:none;"></div>
 </body>
 
 <script type="module" src="../js/main.js"></script>

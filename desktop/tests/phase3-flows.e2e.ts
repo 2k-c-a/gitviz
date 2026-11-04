@@ -295,8 +295,11 @@ void app.whenReady().then(async () => {
     await wait(`document.getElementById('dd-title').textContent==='fixture.ts'`);
     await window.webContents.executeJavaScript(`document.getElementById('dd-back-btn').click()`);
     await wait(`document.getElementById('dd-title').textContent==='Fixture'`);
-    await window.webContents.executeJavaScript(`window.closeDrilldown(); const metric=document.querySelector('[aria-label="월별 지표"]'); metric.value='bugfix_pct'; metric.dispatchEvent(new Event('change'));`);
-    assert.equal(await window.webContents.executeJavaScript(`Chart.getChart('chart-timeline').options.scales.y.max`), 100);
+    // 타임라인은 커밋 수·활성 기여자·버그 수정 비율을 같은 월 축의 그래프 3개로 함께 보여 준다(지표 선택 없음).
+    await window.webContents.executeJavaScript(`window.closeDrilldown()`);
+    assert.equal(await window.webContents.executeJavaScript(`JSON.stringify(['chart-timeline','chart-timeline-contributors','chart-timeline-bugfix'].map(id => { const c = Chart.getChart(id); return [c.config.type, c.data.datasets.length, c.options.scales.y.max ?? null]; }))`), JSON.stringify([['bar', 1, null], ['line', 1, null], ['line', 1, 100]]));
+    assert.equal(await window.webContents.executeJavaScript(`[...document.querySelectorAll('.activity-chart-title')].map(e => e.textContent).join()`), '커밋 수 (건),활성 기여자 (명),버그 수정 분류 비율 (%)');
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('[aria-label="월별 지표"]').length`), 0);
     await window.webContents.executeJavaScript(`document.querySelector('.analysis-list button').click()`);
     await wait(`document.querySelector('[role="status"]').textContent.includes('2026-05') || [...document.querySelectorAll('[role="status"]')].some(e=>e.textContent.includes('2026-05'))`);
     phase = 'network-interactions';
@@ -328,7 +331,7 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`window.closeDrilldown()`);
     phase = 'settings-app-keys';
     await window.loadURL('gitviz://app/web/pages/settings.html');
-    await wait(`!!document.querySelector('.app-shell') && document.getElementById('ai-main').textContent.includes('GitViz 앱에만 저장')`);
+    await wait(`!!document.querySelector('.app-shell') && document.getElementById('ai-main').textContent.includes('커밋·PR 단위 분석으로 돌아가기') && !document.getElementById('ai-main').textContent.includes('저장 위치')`);
     assert.equal(await window.webContents.executeJavaScript(`!!document.querySelector('input[type="password"]')`), false, 'the server-side key form is gone');
     assert.ok(await window.webContents.executeJavaScript(`document.getElementById('ai-keys').textContent.includes('키 없음')`));
     phase = 'AI-commit-preview-consent-result';
