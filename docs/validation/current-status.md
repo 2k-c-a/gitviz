@@ -44,7 +44,7 @@
 | 항목 | 상태·필요한 근거 |
 |---|---|
 | 격리 PG 빈 설치·기존 upgrade·backend/AI API/보관 회귀 | 이번 미실행. 단일 migration head가 SQL 성공 증거는 아님 |
-| Redis·별도 worker·dispatcher·장애 주입 | 이번 미실행. 실제 큐 통합을 eager로 대체하지 않음 |
+| AI 실행 스레드의 서버 재시작·장애 주입 | 이번 미실행. AI 큐·worker·dispatcher는 AD-33에서 없어졌다 |
 | 실제 OAuth·GitHub·private 권한 회수·PR 전체 수집 | 이번 미실행. 공유 read 정책의 실제 인증 사례도 남아 있음 |
 | 운영 DB·현재 snapshot·배포 설정 | 이번 미조회. 로컬 과거 보고는 별도 증거 |
 | 실제 cloud smoke·가격·schema·usage | 이번 미호출. 등록된 profile 값은 실측 과금 아님 |
