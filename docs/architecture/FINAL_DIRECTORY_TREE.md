@@ -1,6 +1,6 @@
-# 최종 디렉터리 구조 (3차 확정 · 적용 전)
+# 최종 디렉터리 구조 (3차 확정 · 4차에서 적용)
 
-작성일: 2026-10-30 · 기준 커밋: `65f1b62` · 상태: **확정 설계. 아직 적용되지 않았다.** 4차 작업은 사용자의 명시적 승인 후에만 시작한다.
+작성일: 2026-10-30 · 기준 커밋: `65f1b62` · 상태(2026-11-04 갱신): **4차(S0~S9)에서 적용 완료**([구현 기록](IMPLEMENTATION_LOG.md)). 이 구조가 현재 저장소의 기준이다([프로젝트 규칙](PROJECT_RULES.md)). `(이동)`·`(신규)`·`(삭제)` 표기는 4차 당시의 변경 내용이다. 단, R 단계 표기가 붙은 항목(`desktop/channel.json`(R1), `build-output/dev-data/`(R1))과 §3의 사용자 PC 데이터 경로(R3)는 아직 적용되지 않았다([최종 아키텍처](FINAL_ARCHITECTURE.md) §6).
 
 함께 읽기: [최종 아키텍처](FINAL_ARCHITECTURE.md) · [이동 계획](FINAL_MIGRATION_PLAN.md) · [결정 기록](ARCHITECTURE_DECISIONS.md) · [환경 매트릭스](../deployment/FINAL_ENVIRONMENT_MATRIX.md) · [릴리스 이행 계획](../deployment/RELEASE_MIGRATION_PLAN.md)
 

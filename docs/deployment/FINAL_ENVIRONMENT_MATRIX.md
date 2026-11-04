@@ -1,6 +1,6 @@
 # 최종 환경 매트릭스 (3차 확정)
 
-작성일: 2026-10-30 · 기준 커밋: `65f1b62` · 상태: **확정 설계 (미적용)**. 표기: **[현재]** 지금 동작, **[R#]** 해당 릴리스에서 도입, **[S#]** 4차 구조 작업에서 변경.
+작성일: 2026-10-30 · 기준 커밋: `65f1b62` · 상태(2026-11-04 갱신): **확정 설계.** **[S#]** 항목은 4차에서 적용되었다. **[R#]** 항목은 대부분 아직 적용되지 않았다(단계별 상태는 [최종 아키텍처](../architecture/FINAL_ARCHITECTURE.md) §6). 표기: **[현재]** 지금 동작, **[R#]** 해당 릴리스에서 도입, **[S#]** 4차 구조 작업에서 변경.
 
 함께 읽기: [최종 아키텍처](../architecture/FINAL_ARCHITECTURE.md) · [결정 기록](../architecture/ARCHITECTURE_DECISIONS.md) · [릴리스 이행 계획](RELEASE_MIGRATION_PLAN.md) · [개발 환경 설정](../development/DEVELOPMENT_SETUP.md) · [데이터 저장 정책](DATA_STORAGE_POLICY.md)
 

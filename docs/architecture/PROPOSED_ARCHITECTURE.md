@@ -1,6 +1,8 @@
-# 제안 아키텍처 (1차 · 제안만, 적용 없음)
+# 제안 아키텍처 (1차 제안 · 3차 문서로 대체)
 
 작성일: 2026-10-30 · 기준 커밋: `65f1b62` · [문서 안내](../index.md)
+
+상태(2026-11-04 갱신): 1차 제안 기록이다. 결정은 [최종 아키텍처](FINAL_ARCHITECTURE.md)·[결정 기록](ARCHITECTURE_DECISIONS.md)이 대체했고, 구조는 4차에서 [최종 디렉터리 구조](FINAL_DIRECTORY_TREE.md)대로 적용되었다. 아래 "아무 파일도 옮기지 않았다"는 작성 당시의 상태다.
 
 다른 문서: [구조 감사](PROJECT_STRUCTURE_AUDIT.md) · [현재 아키텍처](CURRENT_ARCHITECTURE.md) · [의존성 분석](DEPENDENCY_ANALYSIS.md) · [이동 후보](FILE_MIGRATION_CANDIDATES.md)
 
