@@ -1,5 +1,5 @@
 import { bindPanel, contributorList, action } from './ui/analytics-view.js';
-import { chartColor } from './ui/chart-theme.js';
+import { chartColor, token } from './ui/chart-theme.js';
 import { element, setText } from './ui/components.js';
 /* ── 분석 개요의 개발 활동 영역: 결과 API → DOM/차트 연동 ──
    chart-timeline 캔버스가 있을 때(=분석 개요 페이지)만 동작한다. */
@@ -49,7 +49,8 @@ async function initTimelinePage() {
   const meta = await fetchSnapshotMeta(id);
   await Promise.all([
     bindPanel(document.querySelector('.metrics-4'), () => fetchSummary(id), data => renderHeader(data, meta.snapshot)),
-    bindPanel(timelineCanvas.closest('.panel'), () => fetchTimeline(id, 0), renderTimelineChart),
+    // 릴리즈는 타임라인 위 표시용이라 받지 못해도 그래프는 그린다.
+    bindPanel(timelineCanvas.closest('.panel'), () => Promise.all([fetchTimeline(id, 0), fetchReleases(id, 500).catch(() => null)]), ([t, rel]) => renderTimelineChart(t, rel?.releases || [])),
     bindPanel(document.getElementById('tl-donut-legend').closest('.panel'), () => fetchCommitTypes(id), renderDonut),
     bindPanel(document.getElementById('tl-release-list'), () => fetchReleases(id, 10), data => renderReleases(data.releases || [])),
     bindPanel(document.getElementById('act-heatmap'), () => fetchContributorHeatmap(id, heatmapWeeks(meta.snapshot), 8), renderHeatmap),
@@ -87,22 +88,68 @@ function renderHeader(s, snap) {
 }
 
 /* ── 타임라인 차트 ──
-   관측 구간 전체의 세 지표를 한 그래프에 함께 그린다. 커밋 수(막대)와 활성 기여자(선)는 왼쪽 축(건·명),
-   버그 수정 분류 비율(점선)은 단위가 달라 오른쪽 축(0~100%)을 쓴다. 정확한 값은 툴팁·월별 수치로 읽는다. */
+   관측 구간 전체의 세 지표를 한 카드 안에 띠 세 개로 위아래로 쌓는다. 가로축(월)은 하나를 같이 쓰고,
+   각 띠는 자기 세로 축을 쓴다(단위가 달라 한 축에 겹치면 작은 값이 납작해진다).
+   마우스를 올리면 세로 기준선 하나와 그 달의 세 값을 한 툴팁에 보여 준다. */
 const TIMELINE_SERIES = [
-  { key: 'commits', label: '커밋 수 (건)', color: 1, type: 'bar', axis: 'y' },
-  { key: 'active_contributors', label: '활성 기여자 (명)', color: 2, type: 'line', axis: 'y' },
-  { key: 'bugfix_pct', label: '버그 수정 분류 비율 (%)', color: 4, type: 'line', axis: 'y1', dash: [6, 4] },
+  { key: 'commits', label: '커밋 수', unit: '건', short: '커밋(건)', color: 1, type: 'bar', axis: 'y', weight: 1.3 },
+  { key: 'active_contributors', label: '활성 기여자', unit: '명', short: '기여자(명)', color: 2, type: 'line', axis: 'yContributors', weight: 1 },
+  { key: 'bugfix_pct', label: '버그 수정 분류 비율', unit: '%', short: '버그 수정(%)', color: 4, type: 'line', axis: 'yBugfix', weight: 1, max: 100 },
 ];
 
-function renderTimelineChart(t) {
+/* 릴리즈 표시: 릴리즈가 나온 달의 커밋 띠 바로 위에 ◆(여러 개면 개수). 태그는 툴팁과 월 상세에 나온다. */
+const RELEASE_MARK_SPACE = 16;
+const timelineReleases = {
+  id: 'gitvizTimelineReleases',
+  afterDatasetsDraw(chart) {
+    const byMonth = chart.$gitvizReleases;
+    if (!byMonth?.size) return;
+    const ctx = chart.ctx, x = chart.scales.x, top = chart.scales.y.top - RELEASE_MARK_SPACE / 2, color = token('--ui-text', '#111827');
+    ctx.save();
+    chart.data.labels.forEach((month, i) => {
+      const tags = byMonth.get(month);
+      if (!tags) return;
+      const cx = x.getPixelForValue(i), r = 5;
+      ctx.beginPath(); ctx.moveTo(cx, top - r); ctx.lineTo(cx + r, top); ctx.lineTo(cx, top + r); ctx.lineTo(cx - r, top); ctx.closePath();
+      ctx.fillStyle = color; ctx.fill();
+      if (tags.length > 1) { ctx.font = '600 11px sans-serif'; ctx.textBaseline = 'middle'; ctx.fillText(`×${tags.length}`, cx + r + 3, top); }
+    });
+    ctx.restore();
+  },
+};
+const releaseMonths = (releases) => {
+  const map = new Map();
+  for (const r of releases) {
+    const month = typeof r.published_at === 'string' ? r.published_at.slice(0, 7) : null;
+    if (!month) continue;
+    if (!map.has(month)) map.set(month, []);
+    map.get(month).push(r.tag_name || r.name || '이름 없음');
+  }
+  return map;
+};
+
+/* 세 띠를 관통하는 세로 기준선. 툴팁이 가리키는 달에만 그린다. */
+const timelineCrosshair = {
+  id: 'gitvizTimelineCrosshair',
+  afterDatasetsDraw(chart) {
+    const active = chart.tooltip?.getActiveElements?.() || [];
+    if (!active.length) return;
+    const x = active[0].element.x, { top, bottom } = chart.chartArea, ctx = chart.ctx;
+    ctx.save(); ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom);
+    ctx.lineWidth = 1; ctx.strokeStyle = chartColor(6); ctx.setLineDash([3, 3]); ctx.stroke(); ctx.restore();
+  },
+};
+
+function renderTimelineChart(t, releases = []) {
   const panel = timelineCanvas.closest('.panel');
   const months = t.months || [];
   const selected = element('p', 'p-note'); selected.setAttribute('role', 'status');
   const numbers = element('details'); numbers.append(element('summary', '', '월별 수치와 상세 선택'));
   const rows = element('div', 'analysis-list'); numbers.append(rows);
   const value = (key, i) => t[key]?.[i] == null ? '—' : num(t[key][i]);
-  const select = i => { selected.textContent = `${months[i]} · 커밋 ${value('commits', i)}건 · 활성 기여자 ${value('active_contributors', i)}명 · 버그 수정 분류 ${value('bugfix_pct', i)}%`; };
+  const byMonth = releaseMonths(releases);
+  const releaseText = i => byMonth.has(months[i]) ? ` · 릴리즈 ${byMonth.get(months[i]).join(', ')}` : '';
+  const select = i => { selected.textContent = `${months[i]} · 커밋 ${value('commits', i)}건 · 활성 기여자 ${value('active_contributors', i)}명 · 버그 수정 분류 ${value('bugfix_pct', i)}%${releaseText(i)}`; };
   const legend = panel.querySelector('.legend');
   timelineCanvas.parentElement.hidden = !months.length; numbers.hidden = !months.length;
   if (legend) legend.hidden = !months.length;
@@ -110,31 +157,46 @@ function renderTimelineChart(t) {
   if (months.length) {
     timelineCanvas.setAttribute('role', 'img');
     timelineCanvas.setAttribute('aria-label', '월별 커밋 수, 활성 기여자 수, 버그 수정 분류 비율');
-    new Chart(timelineCanvas, {
+    const scales = { x: { ticks: { maxTicksLimit: 12 } } };
+    // 같은 stack 이름의 축은 위아래로 나뉜다. 목록의 마지막 축이 가장 위 띠가 되므로 거꾸로 넣는다.
+    [...TIMELINE_SERIES].reverse().forEach(series => {
+      scales[series.axis] = {
+        stack: 'timeline', stackWeight: series.weight, offset: true, beginAtZero: true, position: 'left',
+        ...(series.max ? { max: series.max } : {}),
+        ticks: { maxTicksLimit: 4, precision: 0 },
+        title: { display: true, text: series.short },
+        border: { display: true },
+      };
+    });
+    const chart = new Chart(timelineCanvas, {
       type: 'bar',
       data: {
         labels: months,
-        datasets: TIMELINE_SERIES.map((series, order) => ({
+        datasets: TIMELINE_SERIES.map(series => ({
           type: series.type, label: series.label, data: t[series.key] || [], yAxisID: series.axis, gitvizColorIndex: series.color,
           backgroundColor: chartColor(series.color), borderColor: chartColor(series.color),
-          borderWidth: series.type === 'line' ? 2 : 0, borderDash: series.dash || [], pointRadius: 3, tension: 0,
-          order: series.type === 'line' ? order - 3 : 0,   // 선을 막대 위에 그린다
+          borderWidth: series.type === 'line' ? 2 : 0, pointRadius: 3, pointHoverRadius: 5, tension: 0, maxBarThickness: 28,
         })),
       },
+      plugins: [timelineCrosshair, timelineReleases],
       options: {
         responsive: true, maintainAspectRatio: false, animation: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { ticks: { maxTicksLimit: 12 } },
-          y: { beginAtZero: true, position: 'left', title: { display: true, text: '건 · 명' } },
-          y1: { beginAtZero: true, max: 100, position: 'right', title: { display: true, text: '버그 수정 %' }, grid: { display: false } },
+        layout: { padding: { top: byMonth.size ? RELEASE_MARK_SPACE : 0 } },
+        interaction: { mode: 'index', intersect: false, axis: 'x' },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: item => {
+            const series = TIMELINE_SERIES[item.datasetIndex];
+            return ` ${series.label} ${item.raw == null ? '—' : `${num(item.raw)}${series.unit}`}`;
+          }, footer: items => items[0] && byMonth.has(months[items[0].dataIndex]) ? `◆ 릴리즈 ${byMonth.get(months[items[0].dataIndex]).join(', ')}` : '' } },
         },
+        scales,
         onClick: (_event, points) => { if (points[0]) select(points[0].index); },
       },
     });
+    chart.$gitvizReleases = byMonth; chart.draw();
   }
-  rows.replaceChildren(...months.map((month, i) => action(`${month} · 커밋 ${value('commits', i)}건 · 활성 기여자 ${value('active_contributors', i)}명 · 버그 수정 ${value('bugfix_pct', i)}%`, () => select(i))));
+  rows.replaceChildren(...months.map((month, i) => action(`${month} · 커밋 ${value('commits', i)}건 · 활성 기여자 ${value('active_contributors', i)}명 · 버그 수정 ${value('bugfix_pct', i)}%${releaseText(i)}`, () => select(i))));
   selected.textContent = months.length ? '그래프의 월 또는 월별 수치를 선택하세요. 관측 구간 전체를 보여 줍니다.' : '관측 구간에 커밋이 없습니다.';
   panel.append(selected, numbers);
 }
