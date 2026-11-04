@@ -28,7 +28,9 @@ export function isAppDocument(value: string): boolean {
 }
 export const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
 export function registerScheme(): void {
-  protocol.registerSchemesAsPrivileged([{ scheme: 'gitviz', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+  protocol.registerSchemesAsPrivileged([{ scheme: 'gitviz', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+    // Co-editing preview (AD-34): served only inside each preview's own session, from memory (collab-preview.ts).
+    { scheme: 'gitviz-preview', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
 }
 export async function serveAssets(directory: string): Promise<void> {
   let bundled: Record<string, { file: string; mime: string }> = {};

@@ -528,18 +528,20 @@ async function renderChat(target) {
   connect();
 }
 
-/* ── 실시간 공동 편집 (AD-29, 앱 전용) ──
-   호스트가 내 PC의 파일 하나를 공유하면 3명까지 함께 고친다. 편집기는 CodeMirror 6, 동시 편집은 Yjs(CRDT).
-   파일은 호스트 PC에만 있고 저장도 호스트 앱만 한다. 서버는 자리와 Yjs 변경분만 전달하고 내용을 저장하지 않는다.
-   새로 들어온 사람은 호스트에게 상태를 요청해 받고(sync), 이후 변경분(update)과 커서(awareness)를 주고받는다. */
+/* ── 실시간 공동 편집 (AD-29 → AD-34 파일 묶음, 앱 전용) ──
+   호스트가 시작 파일을 고르면 앱이 그 파일이 불러오는 HTML·CSS·JS·이미지·글꼴을 따라가 묶음을 만들고, 호스트가 확인한 뒤 공유한다.
+   최대 3명이 함께 고친다. 편집기는 CodeMirror 6, 동시 편집은 Yjs(CRDT). 파일은 호스트 PC에만 있고 저장도 호스트 앱만 한다.
+   공유 문서는 '목록' 문서(파일·이미지 목록, 미리보기 시작 파일) 하나와 텍스트 파일마다 문서 하나로 나뉘고, 메시지에 상대 경로(path)를 붙인다.
+   이미지·글꼴은 읽기 전용이며 호스트가 조각으로 나눠 보내고 받는 쪽이 해시로 확인한다.
+   편집 중 새로 생긴 참조는 호스트가 승인해야 호스트 앱이 읽어 공유한다. 서버는 자리와 메시지만 전달하고 내용을 저장하지 않는다. */
 let closeCollab = null;
 function stopCollab() { const close = closeCollab; closeCollab = null; close?.(); }
 const COLLAB_COLORS = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed', '#0891b2'];
-const collabAvailable = () => isDesktop() && !!globalThis.desktop?.collab;
+const collabAvailable = () => isDesktop() && !!globalThis.desktop?.collab?.openBundle;
 let collabLib = null;
 async function loadCollabLib() {
   if (!collabLib) { await import(new URL('./collab-editor.bundle.js', import.meta.url).href); collabLib = globalThis.GitVizCollab; }
-  if (!collabLib?.createCollabEditor) throw new Error('편집기를 불러오지 못했습니다.');
+  if (!collabLib?.createManifest) throw new Error('편집기를 불러오지 못했습니다.');
   return collabLib;
 }
 function toBase64(bytes) {
@@ -549,11 +551,22 @@ function toBase64(bytes) {
 }
 function fromBase64(text) { const binary = atob(text); const bytes = new Uint8Array(binary.length); for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i); return bytes; }
 function seatColor(seat) { let h = 0; for (const c of seat) h = (h * 31 + c.charCodeAt(0)) >>> 0; return COLLAB_COLORS[h % COLLAB_COLORS.length]; }
+async function sha256Hex(bytes) { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(b => b.toString(16).padStart(2, '0')).join(''); }
+const fmtSize = bytes => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)}MB` : bytes >= 1024 ? `${Math.ceil(bytes / 1024)}KB` : `${bytes}B`;
+const baseName = path => path.slice(path.lastIndexOf('/') + 1);
+const isHtml = path => /\.html?$/i.test(path || '');
+const ASSET_PIECE = 128 * 1024; // 원본 바이트. base64로 약 17만 자라 relay 한 번(20만 자)에 들어간다.
+const MAX_ASSET = 2 * 1024 * 1024;
 const FILE_ERRORS = {
-  FILE_TOO_LARGE: '100KB보다 큰 파일은 공유할 수 없습니다.', NOT_TEXT: 'UTF-8 텍스트 파일만 공유할 수 있습니다.', INVALID_FILE: '일반 파일만 공유할 수 있습니다.',
+  FILE_TOO_LARGE: '크기 제한을 넘는 파일입니다(텍스트 100KB, 이미지·글꼴 2MB).', NOT_TEXT: 'UTF-8 텍스트 파일만 공유할 수 있습니다.', INVALID_FILE: '일반 파일만 공유할 수 있습니다.',
   FILE_CHANGED: '파일이 공유한 뒤 다른 곳에서 바뀌어 저장하지 않았습니다.', SAVE_FAILED: '파일을 저장하지 못했습니다.', NOT_OPEN: '공유한 파일이 닫혔습니다.',
+  NOT_ALLOWED: '공유할 수 없는 파일입니다(숨김 파일, 링크, 지원하지 않는 형식 등).', OUTSIDE_ROOT: '공유 범위(루트 폴더) 밖의 파일입니다. 먼저 범위를 넓히세요.',
+  CANNOT_WIDEN: '더 넓힐 수 없습니다(Git 저장소 루트, 세 단계 위, 드라이브·사용자 폴더 제한).', NOT_PENDING: '추가할 수 있는 파일이 아닙니다.',
+  LIMIT: '묶음 한도를 넘습니다(텍스트 20개·1MB, 이미지·글꼴 30개·10MB).', PREVIEW_FAILED: '미리보기를 열지 못했습니다.',
 };
 const fileError = error => FILE_ERRORS[(error?.message || '').replace(/^.*Error: /, '')] || error?.message || '파일을 다루지 못했습니다.';
+const REASONS = { outside: '공유 범위 밖', hidden: '숨김·제외 폴더', link: '링크·바로 가기', type: '지원하지 않는 형식', size: '크기 초과', missing: '파일 없음', limit: '묶음 한도 초과',
+  signature: '형식이 확장자와 다름', 'not-text': '텍스트가 아님' };
 
 async function renderCollab(target) {
   const run = generation;
@@ -566,39 +579,53 @@ async function renderCollab(target) {
   layout.append(main, side);
   target.replaceChildren(layout);
   const voice = createVoice({ panel: voicePanel, path: repoPath });
+  const desktop = globalThis.desktop.collab;
 
   const status = element('p', 'p-sub community-collab-status'); status.setAttribute('role', 'status');
   let sessions = [];
-  let current = null; // { sid, seat, host, handle, editor, synced, timer, flush, pending, outbox, ended }
+  let draft = null; // 호스트가 공유하기 전 확인 중인 묶음
+  let current = null;
 
-  function send(kind, data, to) {
+  /* ── 메시지 ── */
+  function send(kind, data, to, path) {
     const mine = current;
     if (!mine) return Promise.resolve();
     mine.outbox = mine.outbox.then(() => current === mine && !mine.ended
-      ? api('POST', repoPath(`/collab/${mine.sid}/relay`), { seat_id: mine.seat, kind, data: toBase64(data), ...(to ? { to } : {}) }) : null)
+      ? api('POST', repoPath(`/collab/${mine.sid}/relay`), { seat_id: mine.seat, kind, data: toBase64(data), ...(to ? { to } : {}), ...(path ? { path } : {}) }) : null)
       .catch(error => { if (current === mine && error.code === 'COLLAB_ENDED') end('공동 편집이 끝났습니다.'); });
     return mine.outbox;
   }
   function sessionOf(sid) { return sessions.find(s => s.session_id === sid) ?? null; }
   function others() { const s = current && sessionOf(current.sid); return s ? s.seats.filter(seat => seat.seat_id !== current.seat) : []; }
-  function requestSync() {
-    // 다른 자리 모두에게 내가 가진 상태(state vector)를 보내 빠진 변경분을 받는다. 처음 들어온 손님은 호스트에게서 전체를 받는다.
+  function hostSeat() { return sessionOf(current?.sid)?.seats.find(seat => seat.host)?.seat_id ?? current?.hostSeat ?? null; }
+  function docOf(path) { return path ? current.files.get(path)?.doc ?? null : current.manifest.doc; }
+  function requestSync(path = '') {
+    // 내가 가진 상태(state vector)를 보내 빠진 변경분을 받는다. 처음 들어온 손님은 호스트에게서 전체를 받는다.
     if (!current || current.ended) return;
-    const vector = collabLib.encodeStateVector(current.editor.doc);
-    for (const seat of others()) void send('sync-request', vector, seat.seat_id);
+    const doc = docOf(path);
+    if (!doc) return;
+    const vector = collabLib.encodeStateVector(doc);
+    for (const seat of others()) void send('sync-request', vector, seat.seat_id, path);
+  }
+  function textsOf(mine = current) {
+    const texts = {};
+    for (const [path, file] of mine.files) texts[path] = file.ytext.toString();
+    return texts;
   }
 
+  /* ── 목록 화면 ── */
   function renderList() {
-    if (current) return;
-    const share = button('내 파일 공유하기', 'btn-primary', () => void startHost());
-    const intro = element('p', 'p-sub', '내 PC의 파일 하나를 공유하면 최대 3명이 함께 고칩니다. 파일은 공유한 사람 PC에만 있고, 저장도 공유한 사람만 합니다(100KB 이하 UTF-8 텍스트).');
+    if (current || draft) return;
+    const share = button('내 파일 공유하기', 'btn-primary', () => void openDraft());
+    const intro = element('p', 'p-sub', '시작 파일을 고르면 그 파일이 불러오는 CSS·JS·이미지·글꼴을 함께 찾아 최대 3명이 같이 고칩니다. 파일은 공유한 사람 PC에만 있고, 저장도 공유한 사람만 합니다. HTML은 앱 안에서 미리볼 수 있습니다.');
     const list = element('div', 'community-collab-list');
     if (!sessions.length) list.append(element('p', 'p-sub', '진행 중인 공동 편집이 없습니다.'));
     for (const session of sessions) {
       const card = element('div', 'community-collab-card');
       const full = session.seats.length >= session.capacity;
       const mine = session.seats.some(seat => seat.host && seat.user?.id === myId());
-      card.append(element('span', 'community-member-name', session.file_name),
+      const count = Number(session.file_count) || 1;
+      card.append(element('span', 'community-member-name', count > 1 ? `${session.file_name} 외 ${count - 1}개` : session.file_name),
         element('span', 'p-sub', `${who(session.host)} 공유 · ${session.seats.length}/${session.capacity}명`));
       const join = button(full ? '가득 참' : '참여', 'btn-secondary', () => void startGuest(session.session_id));
       join.disabled = full || mine;
@@ -608,44 +635,280 @@ async function renderCollab(target) {
     main.replaceChildren(element('h3', 'ui-panel-title', '공동 편집'), intro, share, list, status);
   }
 
-  function renderSession() {
-    const session = sessionOf(current.sid);
+  /* ── 호스트: 묶음 확인 ── */
+  function reportList(title, items, render) {
+    if (!items.length) return null;
+    const box = element('details', 'community-collab-report');
+    box.append(element('summary', null, `${title} (${items.length})`));
+    const list = element('ul', 'community-collab-report-list');
+    for (const item of items) { const li = element('li'); li.append(...[render(item)].flat()); list.append(li); }
+    box.append(list);
+    return box;
+  }
+  function fileRow(file) {
+    return `${file.path} · ${file.kind === 'binary' ? '읽기 전용' : '편집'} · ${fmtSize(file.size)}`;
+  }
+  function renderDraft() {
+    const view = draft.view;
     const head = element('div', 'ui-toolbar community-collab-head');
-    head.append(element('span', 'community-member-name', session?.file_name ?? current.fileName));
+    head.append(element('span', 'community-member-name', `공유할 묶음 확인 · ${view.entry}`));
+    const root = element('p', 'p-sub', `공유 범위(루트): ${view.root}${view.canWiden ? '' : ' — 더 넓힐 수 없음'}`);
+    const actions = element('div', 'ui-toolbar');
+    const start = button('공유 시작', 'btn-primary', () => void startHost());
+    const widen = button('범위 넓히기(상위 폴더)', 'btn-secondary', () => void draftAction(() => desktop.widenBundle({ bundle: view.bundle })));
+    widen.disabled = !view.canWiden;
+    actions.append(start, widen, button('파일 추가', 'btn-secondary', () => void draftAction(() => desktop.addToBundle({ bundle: view.bundle }))),
+      button('취소', 'btn-secondary', () => void cancelDraft()));
+    const files = element('ul', 'community-collab-files');
+    for (const file of view.files) files.append(element('li', file.path === view.entry ? 'is-entry' : null, fileRow(file)));
+    const parts = [head, root, actions, status, element('h4', 'community-collab-subtitle', `함께 공유할 파일 ${view.files.length}개`), files];
+    const candidates = view.candidates.filter(item => !view.files.some(file => file.path === item.path));
+    const extra = [
+      reportList('추가 후보(페이지 링크·fetch)', candidates, item => [element('span', null, `${item.path}${item.from ? ` ← ${item.from}` : ''} `),
+        button('추가', 'btn-secondary btn-small', () => void draftAction(() => desktop.addToBundle({ bundle: view.bundle, path: item.path })))]),
+      reportList('제외한 참조', view.excluded, item => `${item.spec} ← ${item.from} · ${REASONS[item.reason] ?? item.reason}`),
+      reportList('찾지 못한 참조(동적 경로·패키지)', view.unresolved, item => `${item.spec} ← ${item.from}:${item.line}`),
+      reportList('외부 사이트(미리보기에서 불러옴)', view.external, host => host),
+    ].filter(Boolean);
+    if (view.excluded.some(item => item.reason === 'outside') && view.canWiden) parts.push(element('p', 'p-sub', '공유 범위 밖이라 빠진 참조가 있습니다. 필요하면 범위를 넓히세요.'));
+    main.replaceChildren(...parts, ...extra);
+  }
+  async function openDraft() {
+    if (current || draft) return;
+    let view;
+    try { view = await desktop.openBundle(); } catch (error) { status.textContent = fileError(error); return; }
+    if (!view || view.cancelled || run !== generation) return;
+    draft = { view };
+    status.textContent = '공유할 파일을 확인한 뒤 ‘공유 시작’을 누르세요.';
+    renderDraft();
+  }
+  async function draftAction(action) {
+    if (!draft) return;
+    let view;
+    try { view = await action(); } catch (error) { status.textContent = fileError(error); return; }
+    if (!draft || !view || view.cancelled) return;
+    // 넓히기는 새 보고서를, 추가는 늘어난 파일만 돌려준다. 보고서는 남긴다.
+    draft.view = view.excluded.length || view.unresolved.length || view.external.length || view.entry !== draft.view.entry ? view
+      : { ...view, excluded: draft.view.excluded, unresolved: draft.view.unresolved, external: draft.view.external };
+    status.textContent = '';
+    renderDraft();
+  }
+  async function cancelDraft() {
+    const mine = draft; draft = null;
+    if (mine) await desktop.closeBundle({ bundle: mine.view.bundle }).catch(() => {});
+    status.textContent = '';
+    renderList();
+  }
+
+  /* ── 세션 화면 ── */
+  function renderSession() {
+    const mine = current;
+    const session = sessionOf(mine.sid);
+    const head = element('div', 'ui-toolbar community-collab-head');
+    head.append(element('span', 'community-member-name', session?.file_name ?? mine.fileName));
     const people = element('span', 'community-collab-people');
     for (const seat of session?.seats ?? []) {
-      const chip = element('span', 'community-collab-chip', `${who(seat.user)}${seat.host ? ' · 호스트' : ''}${seat.seat_id === current.seat ? ' (나)' : ''}`);
+      const chip = element('span', 'community-collab-chip', `${who(seat.user)}${seat.host ? ' · 호스트' : ''}${seat.seat_id === mine.seat ? ' (나)' : ''}`);
       chip.style.borderColor = seatColor(seat.seat_id);
       people.append(chip);
     }
     head.append(people);
     const actions = element('div', 'ui-toolbar');
-    if (current.ended) actions.append(button('목록으로', 'btn-secondary', () => { closeSession(); renderList(); }));
-    else if (current.host) actions.append(button('저장', 'btn-primary', () => void save()), confirmButton('공유 끝내기', () => leave()));
+    const entry = mine.manifest.meta.get('entry');
+    if (isHtml(entry) && mine.synced) {
+      actions.append(button(mine.preview ? '미리보기 새로고침' : '미리보기', 'btn-secondary', () => void openPreview()));
+      if (mine.preview) actions.append(button(mine.previewExternal ? '외부 연결 끄기' : '외부 연결 켜기', 'btn-secondary', () => void toggleExternal()));
+    }
+    if (mine.ended) actions.append(button('목록으로', 'btn-secondary', () => { closeSession(); renderList(); }));
+    else if (mine.host) actions.append(button('저장', 'btn-primary', () => void save()), button('파일 추가', 'btn-secondary', () => void hostAdd()), confirmButton('공유 끝내기', () => leave()));
     else actions.append(button('나가기', 'btn-secondary', () => void leave()));
-    main.replaceChildren(head, actions, status, current.mount);
+    const notices = [];
+    if (mine.preview) notices.push(element('p', 'p-sub community-collab-preview-note', !mine.previewExternal ? '미리보기: 외부 연결 꺼짐(묶음 안의 파일만)'
+      : mine.preview.hosts.length ? `미리보기가 외부 사이트에 연결함: ${mine.preview.hosts.join(', ')}` : '미리보기: 외부 사이트 연결 없음'));
+    const pending = mine.host ? mine.scan.pending : (mine.manifest.meta.get('pending') ?? []);
+    if (pending.length) {
+      const box = element('div', 'community-collab-pending');
+      box.append(element('strong', null, mine.host ? '편집 중 새로 생긴 참조 — 추가할까요?' : '호스트 승인 대기'));
+      for (const path of pending) {
+        const row = element('div', 'community-collab-pending-row');
+        row.append(element('span', null, path));
+        if (mine.host) row.append(button('추가', 'btn-secondary btn-small', () => void approve(path, true)), button('무시', 'btn-secondary btn-small', () => void approve(path, false)));
+        box.append(row);
+      }
+      notices.push(box);
+    }
+    if (mine.host) {
+      const extra = [
+        reportList('추가 후보(페이지 링크·fetch)', mine.scan.candidates.filter(item => !mine.files.has(item.path) && !mine.manifest.assets.has(item.path)),
+          item => [element('span', null, `${item.path} `), button('추가', 'btn-secondary btn-small', () => void hostAdd(item.path))]),
+        reportList('찾지 못한 참조(동적 경로·패키지)', mine.scan.unresolved, item => `${item.spec} ← ${item.from}:${item.line}`),
+      ].filter(Boolean);
+      notices.push(...extra);
+    }
+    main.replaceChildren(head, actions, status, ...notices, mine.workspace);
+    renderTree();
+  }
+  function renderTree() {
+    const mine = current;
+    const tree = mine.tree;
+    const paths = [...mine.manifest.files.keys()].sort();
+    const assets = [...mine.manifest.assets.keys()].sort();
+    tree.replaceChildren();
+    for (const path of [...paths, ...assets]) {
+      const asset = mine.manifest.assets.has(path);
+      const kind = asset ? (/^font\//.test(mine.manifest.assets.get(path)?.mime) ? ' (글꼴)' : ' (이미지)') : '';
+      const item = button(`${path}${kind}`, `community-collab-file${path === mine.active ? ' is-active' : ''}`, () => select(path));
+      item.title = asset ? '읽기 전용(이미지·글꼴)' : path;
+      if (!asset && !mine.files.get(path)?.synced) item.classList.add('is-loading');
+      if (asset && !mine.assets.has(path)) item.classList.add('is-loading');
+      tree.append(item);
+    }
+  }
+  function select(path) {
+    const mine = current;
+    if (!mine) return;
+    const previous = mine.active && mine.files.get(mine.active);
+    if (previous && mine.active !== path) { collabLib.setPresence(previous.awareness, null); }
+    mine.editor?.destroy(); mine.editor = null;
+    mine.active = path;
+    const file = mine.files.get(path);
+    if (file) {
+      collabLib.setPresence(file.awareness, mine.user);
+      mine.editor = collabLib.createEditor({ parent: mine.mount, file, language: mine.manifest.files.get(path) || 'plain', readOnly: mine.ended || !file.synced });
+      mine.mount.replaceChildren(mine.editor.view.dom);
+    } else if (mine.manifest.assets.has(path)) {
+      const info = mine.manifest.assets.get(path);
+      const box = element('div', 'community-collab-asset');
+      const bytes = mine.assets.get(path);
+      if (!bytes) box.append(element('p', 'p-sub', '받는 중…'));
+      else if (/^image\//.test(info.mime)) { const img = element('img'); img.alt = path; img.src = `data:${info.mime};base64,${toBase64(bytes)}`; box.append(img); }
+      else box.append(element('p', 'p-sub', `글꼴 파일 · ${fmtSize(bytes.length)}`));
+      box.append(element('p', 'p-sub', `${path} · 읽기 전용 · ${fmtSize(info.size)}`));
+      mine.mount.replaceChildren(box);
+    } else mine.mount.replaceChildren(element('p', 'p-sub', '파일을 고르세요.'));
+    renderTree();
   }
 
-  async function begin(reply, { host, text, language, handle, fileName }) {
+  /* ── 문서 연결 ── */
+  function watchDoc(mine, path, doc) {
+    doc.on('update', (update, origin) => {
+      if (mine.ended) return;
+      if (origin !== collabLib.REMOTE) {
+        // 타자 몇 번을 한 메시지로 묶어 보낸다.
+        const queue = mine.queue.get(path) ?? [];
+        queue.push(update); mine.queue.set(path, queue);
+        if (!mine.flush.has(path)) mine.flush.set(path, setTimeout(() => {
+          mine.flush.delete(path);
+          const merged = collabLib.mergeUpdates(mine.queue.get(path).splice(0));
+          void send('update', merged, null, path);
+        }, 50));
+      }
+      if (path) { schedulePreview(); scheduleScan(); }
+    });
+  }
+  function addFile(mine, path, text) {
+    if (mine.files.has(path)) return mine.files.get(path);
+    const file = collabLib.createFile(mine.host ? text : null);
+    file.synced = mine.host;
+    mine.files.set(path, file);
+    watchDoc(mine, path, file.doc);
+    let cursorTimer = null;
+    file.awareness.on('update', (_change, origin) => {
+      if (origin === collabLib.REMOTE || mine.ended || cursorTimer) return;
+      cursorTimer = setTimeout(() => { cursorTimer = null; void send('awareness', collabLib.encodeAwareness(file.awareness, [file.doc.clientID]), null, path); }, 100);
+    });
+    return file;
+  }
+  /* 손님: 목록이 바뀌면 새 파일 문서를 만들어 동기화를 요청하고, 없는 이미지·글꼴을 호스트에게 요청한다. */
+  function followManifest() {
+    const mine = current;
+    if (!mine || mine.host) return;
+    for (const path of mine.manifest.files.keys()) if (!mine.files.has(path)) { addFile(mine, path); requestSync(path); }
+    requestAssets();
+    if (!mine.active || (!mine.files.has(mine.active) && !mine.manifest.assets.has(mine.active))) select(mine.manifest.meta.get('entry') ?? [...mine.manifest.files.keys()][0]);
+    else renderSession();
+  }
+  function requestAssets() {
+    const mine = current;
+    const host = hostSeat();
+    if (!mine || mine.host || !host) return;
+    const now = Date.now();
+    for (const path of mine.manifest.assets.keys()) {
+      const slot = mine.chunks.get(path);
+      // 조각이 오고 있으면 기다리고, 8초 동안 아무것도 오지 않았을 때만 다시 요청한다(받은 조각은 남긴다).
+      if (mine.assets.has(path) || (slot && now - slot.at < 8000)) continue;
+      mine.chunks.set(path, { parts: slot?.parts ?? [], total: slot?.total ?? 0, at: now });
+      void send('asset-request', new Uint8Array([1]), host, path);
+    }
+  }
+  function sendAsset(path, to) {
+    const bytes = current.assets.get(path);
+    if (!bytes) return;
+    const total = Math.max(1, Math.ceil(bytes.length / ASSET_PIECE));
+    for (let index = 0; index < total; index++) {
+      const piece = bytes.subarray(index * ASSET_PIECE, (index + 1) * ASSET_PIECE);
+      const framed = new Uint8Array(8 + piece.length);
+      const header = new DataView(framed.buffer);
+      header.setUint32(0, index); header.setUint32(4, total);
+      framed.set(piece, 8);
+      void send('asset', framed, to, path);
+    }
+  }
+  async function receiveAsset(path, bytes) {
+    const mine = current;
+    const info = mine.manifest.assets.get(path);
+    if (!info || mine.assets.has(path) || bytes.length < 8) return;
+    const header = new DataView(bytes.buffer, bytes.byteOffset, 8);
+    const index = header.getUint32(0), total = header.getUint32(4);
+    if (!total || index >= total || total * ASSET_PIECE > MAX_ASSET + ASSET_PIECE) return;
+    const slot = mine.chunks.get(path) ?? { parts: [], total, at: 0 };
+    if (slot.total !== total) { slot.parts = []; slot.total = total; }
+    slot.parts[index] = bytes.slice(8);
+    slot.at = Date.now();
+    mine.chunks.set(path, slot);
+    if (slot.parts.filter(Boolean).length !== total) return;
+    const size = slot.parts.reduce((sum, part) => sum + part.length, 0);
+    const whole = new Uint8Array(size);
+    let offset = 0;
+    for (const part of slot.parts) { whole.set(part, offset); offset += part.length; }
+    mine.chunks.delete(path);
+    if (size !== info.size || await sha256Hex(whole) !== info.sha256) { status.textContent = `${path}: 받은 파일이 원본과 달라 버렸습니다.`; return; }
+    if (current !== mine) return;
+    mine.assets.set(path, whole);
+    if (mine.preview) void updatePreview({ assets: { [path]: whole } });
+    if (mine.active === path) select(path); else renderTree();
+  }
+
+  async function begin(reply, { host, draftView = null }) {
     const lib = await loadCollabLib();
     if (run !== generation) return;
+    const workspace = element('div', 'community-collab-workspace');
+    const tree = element('nav', 'community-collab-tree'); tree.setAttribute('aria-label', '공유한 파일');
     const mount = element('div', 'community-collab-editor');
-    const editor = lib.createCollabEditor({ parent: mount, text: host ? text : null, language, readOnly: !host,
-      user: { name: me?.github_login ? `@${me.github_login}` : '나', color: seatColor(reply.seat_id) } });
-    current = { sid: reply.session_id, seat: reply.seat_id, host, handle, fileName, editor, mount, synced: host, pending: [], flush: null,
-      outbox: Promise.resolve(), ended: false, timer: null, retry: null };
+    workspace.append(tree, mount);
+    const user = { name: me?.github_login ? `@${me.github_login}` : '나', color: seatColor(reply.seat_id) };
+    current = { sid: reply.session_id, seat: reply.seat_id, host, bundle: draftView?.bundle ?? null, fileName: reply.session.file_name, user,
+      hostSeat: reply.session.seats?.find(seat => seat.host)?.seat_id ?? null,
+      manifest: lib.createManifest(), files: new Map(), assets: new Map(), chunks: new Map(), active: null, editor: null,
+      workspace, tree, mount, synced: host, queue: new Map(), flush: new Map(), outbox: Promise.resolve(), ended: false, timer: null, retry: null,
+      preview: null, previewExternal: true, previewTimer: null, scan: { pending: [], unresolved: [], candidates: [] }, scanTimer: null };
     const mine = current;
-    editor.doc.on('update', (update, origin) => {
-      if (origin === lib.REMOTE || mine.ended) return;
-      // 타자 몇 번을 한 메시지로 묶어 보낸다.
-      mine.pending.push(update);
-      mine.flush ??= setTimeout(() => { mine.flush = null; const merged = lib.mergeUpdates(mine.pending.splice(0)); void send('update', merged); }, 50);
-    });
-    let cursorTimer = null;
-    editor.awareness.on('update', (_change, origin) => {
-      if (origin === lib.REMOTE || mine.ended || cursorTimer) return;
-      cursorTimer = setTimeout(() => { cursorTimer = null; void send('awareness', lib.encodeAwareness(editor.awareness, [editor.doc.clientID])); }, 100);
-    });
+    watchDoc(mine, '', mine.manifest.doc);
+    if (host) {
+      mine.manifest.doc.transact(() => {
+        for (const file of draftView.files) {
+          if (file.kind === 'text') { mine.manifest.files.set(file.path, file.language || 'plain'); addFile(mine, file.path, file.text); }
+          else { mine.manifest.assets.set(file.path, { sha256: file.sha256, size: file.size, mime: file.mime }); mine.assets.set(file.path, file.bytes); }
+        }
+        mine.manifest.meta.set('entry', draftView.entry);
+      });
+      mine.scan.candidates = draftView.candidates;
+      mine.scan.unresolved = draftView.unresolved;
+    } else {
+      mine.manifest.files.observe(() => { if (current === mine) followManifest(); });
+      mine.manifest.assets.observe(() => { if (current === mine) followManifest(); });
+      mine.manifest.meta.observe(() => { if (current === mine && !mine.ended) renderSession(); });
+    }
     const every = Math.max(5, Number(reply.heartbeat_seconds) || 10) * 1000;
     mine.timer = setInterval(async () => {
       try { const value = await api('POST', repoPath(`/collab/${mine.sid}/heartbeat`), { seat_id: mine.seat }); if (current === mine) updateSessions(value.session); }
@@ -654,10 +917,17 @@ async function renderCollab(target) {
     updateSessions(reply.session);
     status.textContent = host ? '파일을 공유했습니다. 다른 멤버가 참여하면 함께 편집됩니다.' : '호스트와 동기화하는 중…';
     renderSession();
-    if (!host) {
-      requestSync();
-      // 호스트 응답이 늦으면 다시 요청한다.
-      mine.retry = setInterval(() => { if (mine.synced || mine.ended) clearInterval(mine.retry); else requestSync(); }, 4000);
+    if (host) select(draftView.files.some(file => file.path === draftView.entry && file.kind === 'text') ? draftView.entry : draftView.files[0].path);
+    else {
+      mine.mount.replaceChildren(element('p', 'p-sub', '호스트와 동기화하는 중…'));
+      requestSync('');
+      // 호스트 응답이 늦거나 빠진 파일이 있으면 다시 요청한다.
+      mine.retry = setInterval(() => {
+        if (mine.ended || current !== mine) { clearInterval(mine.retry); return; }
+        if (!mine.synced) { requestSync(''); return; }
+        for (const [path, file] of mine.files) if (!file.synced) requestSync(path);
+        requestAssets();
+      }, 4000);
     }
   }
 
@@ -668,20 +938,35 @@ async function renderCollab(target) {
   }
 
   function onCollab(data) {
-    if (!current || current.ended || data.session_id !== current.sid || (data.to && data.to !== current.seat) || typeof data.data !== 'string') return;
+    const mine = current;
+    if (!mine || mine.ended || data.session_id !== mine.sid || (data.to && data.to !== mine.seat) || typeof data.data !== 'string') return;
+    const path = typeof data.path === 'string' ? data.path : '';
     let bytes; try { bytes = fromBase64(data.data); } catch { return; }
-    const { editor } = current;
+    const fromHost = data.from === hostSeat();
     try {
-      if (data.kind === 'update') collabLib.applyUpdate(editor.doc, bytes);
-      else if (data.kind === 'awareness') collabLib.applyAwareness(editor.awareness, bytes);
+      if (!path) {
+        // 목록 문서는 호스트만 쓴다: 호스트는 받은 변경을 무시하고, 손님은 호스트가 보낸 것만 받는다.
+        if (data.kind === 'sync-request') { if (mine.host) void send('sync', collabLib.encodeStateAsUpdate(mine.manifest.doc, bytes), data.from); return; }
+        if (mine.host || !fromHost || (data.kind !== 'update' && data.kind !== 'sync')) return;
+        collabLib.applyUpdate(mine.manifest.doc, bytes);
+        if (data.kind === 'sync' && !mine.synced) { mine.synced = true; status.textContent = '함께 편집하는 중입니다. 저장은 호스트가 합니다.'; followManifest(); }
+        return;
+      }
+      if (data.kind === 'asset-request') { if (mine.host && mine.manifest.assets.has(path)) sendAsset(path, data.from); return; }
+      if (data.kind === 'asset') { if (!mine.host && fromHost) void receiveAsset(path, bytes); return; }
+      if (!mine.manifest.files.has(path)) return;
+      const file = mine.files.get(path) ?? addFile(mine, path);
+      if (data.kind === 'update') collabLib.applyUpdate(file.doc, bytes);
+      else if (data.kind === 'awareness') collabLib.applyAwareness(file.awareness, bytes);
       else if (data.kind === 'sync-request') {
-        void send('sync', collabLib.encodeStateAsUpdate(editor.doc, bytes), data.from);
-        void send('awareness', collabLib.encodeAwareness(editor.awareness, [editor.doc.clientID]), data.from);
+        void send('sync', collabLib.encodeStateAsUpdate(file.doc, bytes), data.from, path);
+        if (mine.active === path) void send('awareness', collabLib.encodeAwareness(file.awareness, [file.doc.clientID]), data.from, path);
       } else if (data.kind === 'sync') {
-        collabLib.applyUpdate(editor.doc, bytes);
-        if (!current.synced) {
-          current.synced = true; editor.setReadOnly(false); status.textContent = '함께 편집하는 중입니다. 저장은 호스트가 합니다.';
-          void send('awareness', collabLib.encodeAwareness(editor.awareness, [editor.doc.clientID]));
+        collabLib.applyUpdate(file.doc, bytes);
+        if (!file.synced) {
+          file.synced = true;
+          if (mine.active === path) { mine.editor?.setReadOnly(false); void send('awareness', collabLib.encodeAwareness(file.awareness, [file.doc.clientID]), null, path); }
+          renderTree();
         }
       }
     } catch { status.textContent = '받은 변경을 적용하지 못했습니다.'; }
@@ -692,23 +977,126 @@ async function renderCollab(target) {
     sessions = data.sessions;
     if (current && !current.ended && (data.ended || []).includes(current.sid)) end(current.host ? '공유가 끝났습니다.' : '호스트가 공유를 끝냈습니다. 내용은 복사해 둘 수 있습니다.');
     else if (current && !current.ended) renderSession();
-    else renderList();
+    else if (!current && !draft) renderList();
   }
 
+  /* ── 미리보기 (각자 자기 앱에서, 지금 공유 문서 내용으로) ── */
+  function allAssets(mine) { const out = {}; for (const [path, bytes] of mine.assets) out[path] = bytes; return out; }
+  async function openPreview() {
+    const mine = current;
+    if (!mine) return;
+    if (mine.preview) { await updatePreview({ files: textsOf(mine) }); return; }
+    try {
+      const opened = await desktop.openPreview({ entry: mine.manifest.meta.get('entry'), files: textsOf(mine), assets: allAssets(mine), external: mine.previewExternal });
+      if (current !== mine) { void desktop.closePreview({ preview: opened.preview }).catch(() => {}); return; }
+      mine.preview = { id: opened.preview, hosts: opened.hosts };
+      status.textContent = '미리보기 창을 열었습니다. 편집하면 잠시 뒤 새로고침됩니다.';
+    } catch (error) { status.textContent = fileError(error); }
+    renderSession();
+  }
+  async function updatePreview(change) {
+    const mine = current;
+    if (!mine?.preview) return;
+    try {
+      const reply = await desktop.updatePreview({ preview: mine.preview.id, ...change });
+      if (current === mine && mine.preview) { const changed = reply.hosts.join() !== mine.preview.hosts.join(); mine.preview.hosts = reply.hosts; if (changed) renderSession(); }
+    } catch (error) {
+      if (current !== mine) return;
+      if (/NOT_OPEN/.test(error?.message || '')) { mine.preview = null; renderSession(); } else status.textContent = fileError(error);
+    }
+  }
+  function schedulePreview() {
+    const mine = current;
+    if (!mine?.preview) return;
+    clearTimeout(mine.previewTimer);
+    mine.previewTimer = setTimeout(() => { if (current === mine) void updatePreview({ files: textsOf(mine) }); }, 500);
+  }
+  async function toggleExternal() {
+    const mine = current;
+    if (!mine?.preview) return;
+    mine.previewExternal = !mine.previewExternal;
+    await updatePreview({ external: mine.previewExternal });
+    renderSession();
+  }
+
+  /* ── 호스트: 새 참조 확인·추가 ── */
+  function scheduleScan() {
+    const mine = current;
+    if (!mine?.host || !mine.bundle) return;
+    clearTimeout(mine.scanTimer);
+    mine.scanTimer = setTimeout(async () => {
+      if (current !== mine || mine.ended) return;
+      try {
+        const found = await desktop.scanBundle({ bundle: mine.bundle, files: textsOf(mine) });
+        if (current !== mine) return;
+        const changed = found.pending.join() !== mine.scan.pending.join() || found.candidates.length !== mine.scan.candidates.length || found.unresolved.length !== mine.scan.unresolved.length;
+        mine.scan = found;
+        if (found.pending.join() !== (mine.manifest.meta.get('pending') ?? []).join()) mine.manifest.meta.set('pending', found.pending);
+        if (changed) renderSession();
+      } catch { /* 다음 편집 때 다시 확인한다 */ }
+    }, 1000);
+  }
+  function include(view) {
+    const mine = current;
+    if (!mine || !view?.files) return 0;
+    let added = 0;
+    mine.manifest.doc.transact(() => {
+      for (const file of view.files) {
+        if (mine.manifest.files.has(file.path) || mine.manifest.assets.has(file.path)) continue;
+        added++;
+        if (file.kind === 'text') { mine.manifest.files.set(file.path, file.language || 'plain'); addFile(mine, file.path, file.text); }
+        else { mine.manifest.assets.set(file.path, { sha256: file.sha256, size: file.size, mime: file.mime }); mine.assets.set(file.path, file.bytes); }
+      }
+    });
+    if (mine.preview && added) void updatePreview({ files: textsOf(mine), assets: allAssets(mine) });
+    return added;
+  }
+  async function approve(path, accept) {
+    const mine = current;
+    if (!mine?.host) return;
+    try {
+      const view = await desktop.approveInBundle({ bundle: mine.bundle, path, accept });
+      if (current !== mine) return;
+      const added = accept ? include(view) : 0;
+      mine.scan.pending = mine.scan.pending.filter(item => item !== path);
+      mine.manifest.meta.set('pending', mine.scan.pending);
+      status.textContent = accept ? `${path}${added > 1 ? ` 외 ${added - 1}개` : ''} 파일을 추가했습니다.` : `${path}는 이번 공유에서 다시 묻지 않습니다.`;
+    } catch (error) { status.textContent = fileError(error); }
+    renderSession();
+  }
+  async function hostAdd(path) {
+    const mine = current;
+    if (!mine?.host) return;
+    try {
+      const view = await desktop.addToBundle(path ? { bundle: mine.bundle, path } : { bundle: mine.bundle });
+      if (current !== mine || !view || view.cancelled) return;
+      const added = include(view);
+      status.textContent = added ? `파일 ${added}개를 추가했습니다.` : '이미 공유 중인 파일입니다.';
+    } catch (error) { status.textContent = fileError(error); }
+    renderSession();
+  }
+
+  /* ── 끝내기·저장 ── */
   function end(text) {
-    if (!current || current.ended) return;
-    current.ended = true;
-    clearInterval(current.timer); clearInterval(current.retry); clearTimeout(current.flush);
-    current.editor.setReadOnly(true);
+    const mine = current;
+    if (!mine || mine.ended) return;
+    mine.ended = true;
+    clearInterval(mine.timer); clearInterval(mine.retry); clearTimeout(mine.previewTimer); clearTimeout(mine.scanTimer);
+    for (const timer of mine.flush.values()) clearTimeout(timer);
+    mine.editor?.setReadOnly(true);
     status.textContent = text;
     renderSession();
   }
   function closeSession() {
     if (!current) return;
     const mine = current; current = null;
-    clearInterval(mine.timer); clearInterval(mine.retry); clearTimeout(mine.flush);
-    mine.editor.destroy();
-    if (mine.handle) void globalThis.desktop.collab.close({ handle: mine.handle }).catch(() => {});
+    clearInterval(mine.timer); clearInterval(mine.retry); clearTimeout(mine.previewTimer); clearTimeout(mine.scanTimer);
+    for (const timer of mine.flush.values()) clearTimeout(timer);
+    mine.editor?.destroy();
+    for (const file of mine.files.values()) collabLib.destroyFile(file);
+    mine.manifest.doc.destroy();
+    if (mine.preview) void desktop.closePreview({ preview: mine.preview.id }).catch(() => {});
+    if (mine.bundle) void desktop.closeBundle({ bundle: mine.bundle }).catch(() => {});
   }
   async function leave() {
     const mine = current;
@@ -719,31 +1107,45 @@ async function renderCollab(target) {
     renderList();
   }
   async function save() {
-    if (!current?.host) return;
     const mine = current;
+    if (!mine?.host) return;
     status.textContent = '저장하는 중…';
     try {
-      await globalThis.desktop.collab.save({ handle: mine.handle, text: mine.editor.ytext.toString() });
-      status.textContent = `저장했습니다 (${new Date().toLocaleTimeString()}).`;
+      const { results } = await desktop.saveBundle({ bundle: mine.bundle, files: [...mine.files].map(([path, file]) => ({ path, text: file.ytext.toString() })) });
+      const failed = results.filter(item => !item.saved);
+      const time = new Date().toLocaleTimeString();
+      if (!failed.length) status.textContent = `저장했습니다 (${results.length}개 파일, ${time}).`;
+      else {
+        const changed = failed.filter(item => item.error === 'FILE_CHANGED').map(item => item.path);
+        const other = failed.filter(item => item.error !== 'FILE_CHANGED').map(item => item.path);
+        status.textContent = [changed.length ? `다른 곳에서 바뀌어 저장하지 않은 파일: ${changed.join(', ')}` : '', other.length ? `저장하지 못한 파일: ${other.join(', ')}` : '']
+          .filter(Boolean).join(' · ') + (results.length > failed.length ? ` (나머지 ${results.length - failed.length}개는 저장함)` : '');
+      }
     } catch (error) { status.textContent = fileError(error); }
   }
 
   async function startHost() {
-    if (current) return;
-    let opened;
-    try { opened = await globalThis.desktop.collab.open(); } catch (error) { status.textContent = fileError(error); return; }
-    if (!opened || opened.cancelled) return;
+    if (current || !draft) return;
+    const view = draft.view;
+    const entry = view.files.find(file => file.path === view.entry);
     let reply;
-    try { reply = await api('POST', repoPath('/collab'), { file_name: opened.name, language: opened.language }); }
-    catch (error) { void globalThis.desktop.collab.close({ handle: opened.handle }).catch(() => {}); status.textContent = error.message; return; }
-    await begin(reply, { host: true, text: opened.text, language: opened.language, handle: opened.handle, fileName: opened.name });
+    try { reply = await api('POST', repoPath('/collab'), { file_name: baseName(view.entry), language: entry?.language || 'plain', file_count: view.files.length }); }
+    catch (error) { status.textContent = error.message; return; }
+    draft = null;
+    await begin(reply, { host: true, draftView: view });
   }
   async function startGuest(sid) {
-    if (current) return;
+    if (current || draft) return;
     let reply;
     try { reply = await api('POST', repoPath(`/collab/${sid}/join`)); }
     catch (error) { status.textContent = error.message; return; }
-    await begin(reply, { host: false, language: reply.session.language, fileName: reply.session.file_name });
+    if (reply.session?.file_count == null) {
+      // 파일 하나만 주고받던 이전 버전 앱의 공유는 문서 구조가 달라 함께 편집할 수 없다.
+      void api('POST', repoPath(`/collab/${sid}/leave`), { seat_id: reply.seat_id }).catch(() => {});
+      status.textContent = '이전 버전 앱에서 시작한 공동 편집이라 참여할 수 없습니다. 공유한 사람에게 앱 업데이트를 요청하세요.';
+      return;
+    }
+    await begin(reply, { host: false });
   }
   async function refresh() {
     try { const value = await api('GET', repoPath('/collab')); if (run === generation) onSessions({ sessions: value.sessions, ended: [] }); }
@@ -753,7 +1155,11 @@ async function renderCollab(target) {
   let ready = false;
   function onEvent({ type, data }) {
     if (run !== generation) return;
-    if (type === 'ready') { void voice.refresh(); void refresh(); if (ready && current?.synced) requestSync(); ready = true; }
+    if (type === 'ready') {
+      void voice.refresh(); void refresh();
+      if (ready && current?.synced && !current.host) { requestSync(''); for (const path of current.files.keys()) requestSync(path); }
+      ready = true;
+    }
     else if (type === 'collab-sessions') onSessions(data);
     else if (type === 'collab') onCollab(data);
     else if (type === 'voice') voice.update(data);
@@ -765,7 +1171,11 @@ async function renderCollab(target) {
     } else if (type === 'status' && data.state === 'reconnecting') status.textContent = '연결이 끊겨 다시 연결하는 중…';
   }
 
-  closeCollab = () => { const mine = current; closeSession(); if (mine && !mine.ended) void api('POST', repoPath(`/collab/${mine.sid}/leave`), { seat_id: mine.seat }).catch(() => {}); };
+  closeCollab = () => {
+    const mine = current; closeSession();
+    if (draft) { void desktop.closeBundle({ bundle: draft.view.bundle }).catch(() => {}); draft = null; }
+    if (mine && !mine.ended) void api('POST', repoPath(`/collab/${mine.sid}/leave`), { seat_id: mine.seat }).catch(() => {});
+  };
   renderList();
   openLive(repositoryId, onEvent);
 }

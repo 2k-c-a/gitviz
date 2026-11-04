@@ -99,15 +99,15 @@ def _prune(entries, now):
     return bool(stale)
 
 
-def hit(name, limit):
-    """Count one call in the current minute; raise 429 past the limit."""
+def hit(name, limit, weight=1):
+    """Count one call (or `weight` units, e.g. bytes) in the current minute; raise 429 past the limit."""
     live = chat.bus()
     minute = int(time.time() // 60)
     key = f'community:voice:hits:{name}:{minute}'
     if isinstance(live, chat.RedisBus):
         try:
-            count = live.sync.incr(key)
-            if count == 1:
+            count = live.sync.incrby(key, weight)
+            if count == weight:
                 live.sync.expire(key, 120)
         except Exception:
             count = 0
@@ -116,7 +116,7 @@ def hit(name, limit):
         with store.lock:
             for old in [k for k in store.hits if not k.endswith(f':{minute}')]:
                 del store.hits[old]
-            count = store.hits[key] = store.hits.get(key, 0) + 1
+            count = store.hits[key] = store.hits.get(key, 0) + weight
     if count > limit:
         raise HTTPException(429, {'code': 'RATE_LIMITED', 'message': '요청이 너무 많습니다. 잠시 후 다시 시도하세요.'},
                             headers={'Retry-After': '60'})

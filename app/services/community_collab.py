@@ -18,6 +18,7 @@ HEARTBEAT_SECONDS = 10
 SESSIONS_PER_COMMUNITY = 5
 CREATE_LIMIT = 10  # per minute per user
 RELAY_LIMIT = 1200  # per minute per user; the editor batches keystrokes
+RELAY_BYTES = 28_000_000  # base64 characters per minute per user (about 20MB): a file set's images and fonts pass through
 
 
 def session_key(repository_id):
@@ -54,6 +55,7 @@ def sessions_view(db, sessions):
                  for seat, (user, _) in session['seats'].items()]
         seats.sort(key=lambda s: (not s['host'], ((s['user'] or {}).get('github_login') or '').lower()))
         rows.append({'session_id': sid, 'file_name': session['file_name'], 'language': session['language'],
+                     'file_count': session.get('file_count'),
                      'host': next((s['user'] for s in seats if s['host']), None), 'seats': seats, 'capacity': CAPACITY,
                      'created_at': session['created_at']})
     return sorted(rows, key=lambda r: r['created_at'])
@@ -91,7 +93,7 @@ def create(db, repository_id, user_id, body):
             ended.append(old)
         if len(sessions) >= SESSIONS_PER_COMMUNITY:
             raise rules.fail(409, 'COLLAB_LIMIT', f'한 커뮤니티에서 동시에 {SESSIONS_PER_COMMUNITY}개까지 공동 편집할 수 있습니다.')
-        sessions[sid] = {'file_name': body.file_name, 'language': body.language, 'host_seat': seat,
+        sessions[sid] = {'file_name': body.file_name, 'language': body.language, 'file_count': body.file_count, 'host_seat': seat,
                          'seats': {seat: [str(user_id), now + TTL]}, 'created_at': now}
         snapshot = dict(sessions)
     announce(db, repository_id, snapshot, ended)
@@ -184,6 +186,7 @@ def relay(db, repository_id, user_id, sid, body):
     """Forward one Yjs message from a seat to the other seats (or to one seat for sync replies)."""
     rules.membership(db, repository_id, user_id)
     rooms.hit(f'collab-relay:{user_id}', RELAY_LIMIT)
+    rooms.hit(f'collab-bytes:{user_id}', RELAY_BYTES, weight=len(body.data))
     with rooms.locked(session_key(repository_id), TTL) as sessions:
         _prune(sessions, time.time())
         session = sessions.get(sid)
@@ -199,6 +202,8 @@ def relay(db, repository_id, user_id, sid, body):
         targets = [s for s in seats if s != body.seat_id]
     users = sorted({seats[s][0] for s in targets})
     if users:
-        chat.publish(repository_id, 'collab', {'session_id': sid, 'from': body.seat_id, 'to': body.to, 'kind': body.kind,
-                                               'data': body.data, 'to_users': users})
+        message = {'session_id': sid, 'from': body.seat_id, 'to': body.to, 'kind': body.kind, 'data': body.data, 'to_users': users}
+        if body.path is not None:
+            message['path'] = body.path
+        chat.publish(repository_id, 'collab', message)
     return {'ok': True}
