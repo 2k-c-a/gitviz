@@ -69,7 +69,7 @@ frontend ──복사(build.mjs)──▶ desktop ──stdio JSON(contracts/wor
 | 4차 S0~S9 | 구조만 변경(이동·경로·소규모 코드 이동) | 없음 (산출물 동일) | [이동 계획](FINAL_MIGRATION_PLAN.md) | **완료** (2026-10-30, `f5f05dd` 병합) |
 | R1 (0.7.1) | 환경 가드·채널 설정·개발 변수 분리·다운그레이드 방어 | 없음 | [릴리스 이행](../deployment/RELEASE_MIGRATION_PLAN.md) | **미적용** (K-07). 서버 접속 원점 내장만 다른 방식으로 구현했다: `channel.json` 대신 `desktop/scripts/build.mjs` → `dist/config/server.json` (2026-11-01, [환경 아키텍처](ENVIRONMENT_ARCHITECTURE.md) §2.4) |
 | R2 (0.7.2) | 빌드 위생·제외 목록·검증 구성 분리 | 설치 파일 축소 | 〃 | **일부 적용**: 릴리스 제외 규칙(K-03), 패키지 디버그 인수 차단(K-04), 릴리스 워크플로의 `SHA256SUMS`. asar 허용 목록, `forge.verify.config.ts` 분리, 빌드 환경 잠금 검사는 미적용 |
-| R3 (0.8.0) | 사용자 데이터 경로 이전 | 첫 실행 복사 | 〃 | **미적용** (K-06. 데이터는 아직 `%APPDATA%\gitviz-workspace`) |
+| R3 (0.8.0 다음, 번호 미정) | 사용자 데이터 경로 이전 | 첫 실행 복사 | 〃 | **미적용** (K-06. 데이터는 아직 `%APPDATA%\gitviz-workspace`) |
 | R4 (선택) | 무인 제거·삭제 선택·서명 | — | 〃 | **일부 적용**: 무인 제거 WMI 대응(K-05). 서명은 소유자 결정으로 하지 않음(K-01). 제거 시 데이터 삭제 선택 UI는 미적용 |
 | S10 | 삭제 후보 정리 | 없음 | [이동 계획 §2](FINAL_MIGRATION_PLAN.md) | **일부**: `app/services/github_service.py` 삭제(`055d724`), `test-react/` 없음. `app/services/ai/markdown_safety.py`, `reports/`는 남아 있음 |
 

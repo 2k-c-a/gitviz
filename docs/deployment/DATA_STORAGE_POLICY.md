@@ -25,6 +25,7 @@
 | 키 검증 | `secret-check.bin` | 키-DB 짝 확인 |
 | 실행 잠금 | `writer.lock` | 단일 쓰기 인스턴스 |
 | 창 상태 | `window.json` | |
+| 앱 로그 | 상위 `logs\app.log`, `app.1.log`~`app.4.log` | 2026-11-04(K-02). 1MB × 5개 순환, 비밀·경로 가림 |
 | 브라우저 캐시류 | `Cache`, `Code Cache`, `GPUCache`, `Local Storage` 등 | Chromium이 만든 파일 |
 | 업그레이드 백업 | `pre-v8-{uuid}.sqlite3` | 업그레이드 시에만 생성 |
 
