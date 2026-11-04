@@ -244,7 +244,7 @@ def get_contributor_heatmap(
 
 @router.get("/top-contributors")
 def get_top_contributors(repository_id: int, limit: int = 5, db: Session = Depends(get_db)):
-    """커밋 수 기준 상위 기여자."""
+    """커밋 수 기준 상위 기여자. pr_count는 그 기여자가 작성한 병합 PR 수다(스냅샷에서는 관측 구간에 병합된 PR)."""
     rows = db.execute(
         text(
             """
@@ -253,9 +253,16 @@ def get_top_contributors(repository_id: int, limit: int = 5, db: Session = Depen
                 co.display_name,
                 co.github_login,
                 COUNT(c.id)        AS commit_count,
-                MAX(c.committed_at) AS last_commit_at
+                MAX(c.committed_at) AS last_commit_at,
+                COALESCE(MAX(pr.pr_count), 0) AS pr_count
             FROM contributors co
             JOIN commits c ON c.contributor_id = co.id
+            LEFT JOIN (
+                SELECT author_contributor_id, COUNT(*) AS pr_count
+                FROM pull_requests
+                WHERE repository_id = :rid AND state = 'merged' AND author_contributor_id IS NOT NULL
+                GROUP BY author_contributor_id
+            ) pr ON pr.author_contributor_id = co.id
             WHERE co.repository_id = :rid
             GROUP BY co.id, co.display_name, co.github_login
             ORDER BY commit_count DESC
@@ -1024,6 +1031,119 @@ def get_network_top_pairs(repository_id: int, limit: int = 5, db: Session = Depe
     ]
     pairs.sort(key=lambda p: p["edge_weight"], reverse=True)
     return pairs[:limit]
+
+
+def get_network_pair_details(repository_id: int, db: Session, pr_limit: int = 20) -> dict:
+    """협업 쌍별 세부 수치 — 화면 표시용이며 기존 협업 강도(edge_weight) 계산에는 쓰지 않는다.
+
+    - 공동 수정: _fetch_network_edges와 같은 기준(같은 병합 PR에서 같은 파일을 둘 다 커밋으로 수정,
+      대형 PR 제외, PR 소속 커밋은 원본 테이블에서 읽음). (PR, 파일) 조합마다 한 번만 센다.
+      co_edit_files = 함께 수정한 (PR, 파일) 수, co_pr_count = 그런 PR 수.
+    - 리뷰: 리뷰어 → 작성자 방향의 리뷰 수(자기 PR 리뷰 제외). 리뷰 기록이 없으면 0이고 관계를 만들지 않는다.
+    - prs: 두 사람이 함께 수정했거나 한쪽이 다른 쪽 PR을 리뷰한 PR(최근 병합순, 최대 pr_limit개).
+    - contributors: 사람별 작성한 병합 PR 수(prs_authored)와 리뷰한 PR 수(reviews_given).
+    """
+    raw = getattr(db, "raw_table_prefix", "")
+    co_rows = db.execute(
+        text(
+            f"""
+            WITH pr_file_contributors AS (
+                SELECT DISTINCT prf.pull_request_id, prf.file_id, c.contributor_id
+                FROM pull_request_files prf
+                JOIN pull_requests pr ON pr.id = prf.pull_request_id
+                JOIN {raw}pr_commits pc ON pc.pull_request_id = prf.pull_request_id
+                JOIN {raw}commits c ON c.id = pc.commit_id
+                JOIN {raw}commit_file_changes cfc
+                  ON cfc.commit_id = c.id AND cfc.file_id = prf.file_id
+                WHERE pr.repository_id = :rid AND COALESCE(pr.is_large_pr, false) = false
+                  AND c.repository_id = :rid
+                  AND c.contributor_id IS NOT NULL
+            )
+            SELECT a.contributor_id AS contributor_a, b.contributor_id AS contributor_b,
+                   a.pull_request_id, COUNT(*) AS files
+            FROM pr_file_contributors a
+            JOIN pr_file_contributors b
+              ON a.pull_request_id = b.pull_request_id AND a.file_id = b.file_id
+             AND a.contributor_id < b.contributor_id
+            GROUP BY a.contributor_id, b.contributor_id, a.pull_request_id
+            """
+        ),
+        {"rid": repository_id},
+    ).mappings().all()
+    review_rows = db.execute(
+        text(
+            """
+            SELECT r.reviewer_contributor_id AS reviewer_id, pr.author_contributor_id AS author_id,
+                   pr.id AS pull_request_id, COUNT(*) AS reviews
+            FROM pr_reviews r
+            JOIN pull_requests pr ON pr.id = r.pull_request_id
+            WHERE pr.repository_id = :rid
+              AND r.reviewer_contributor_id IS NOT NULL AND pr.author_contributor_id IS NOT NULL
+              AND r.reviewer_contributor_id <> pr.author_contributor_id
+            GROUP BY r.reviewer_contributor_id, pr.author_contributor_id, pr.id
+            """
+        ),
+        {"rid": repository_id},
+    ).mappings().all()
+    pr_meta = {
+        r["id"]: {"number": r["pr_number"], "title": r["title"],
+                  "merged_at": r["merged_at"].isoformat() if r["merged_at"] else None}
+        for r in db.execute(
+            text("SELECT id, pr_number, title, merged_at FROM pull_requests WHERE repository_id = :rid"),
+            {"rid": repository_id},
+        ).mappings().all()
+    }
+    authored = {
+        r["author_contributor_id"]: r["n"]
+        for r in db.execute(
+            text(
+                "SELECT author_contributor_id, COUNT(*) AS n FROM pull_requests "
+                "WHERE repository_id = :rid AND state = 'merged' AND author_contributor_id IS NOT NULL "
+                "GROUP BY author_contributor_id"
+            ),
+            {"rid": repository_id},
+        ).mappings().all()
+    }
+
+    pairs: dict[tuple, dict] = {}
+
+    def slot(a, b):
+        key = (a, b) if a < b else (b, a)
+        return pairs.setdefault(key, {"a": key[0], "b": key[1], "co_edit_files": 0, "co_prs": set(),
+                                      "reviews_a_to_b": 0, "reviews_b_to_a": 0, "prs": set()})
+
+    for r in co_rows:
+        entry = slot(r["contributor_a"], r["contributor_b"])
+        entry["co_edit_files"] += r["files"]
+        entry["co_prs"].add(r["pull_request_id"])
+        entry["prs"].add(r["pull_request_id"])
+    reviewed: dict[int, set] = {}
+    for r in review_rows:
+        entry = slot(r["reviewer_id"], r["author_id"])
+        if r["reviewer_id"] == entry["a"]:
+            entry["reviews_a_to_b"] += r["reviews"]
+        else:
+            entry["reviews_b_to_a"] += r["reviews"]
+        entry["prs"].add(r["pull_request_id"])
+        reviewed.setdefault(r["reviewer_id"], set()).add(r["pull_request_id"])
+
+    def pr_list(ids):
+        rows = [pr_meta[i] for i in ids if i in pr_meta]
+        rows.sort(key=lambda x: (x["merged_at"] or "", x["number"]), reverse=True)
+        return rows[:pr_limit]
+
+    out = []
+    for key in sorted(pairs):
+        e = pairs[key]
+        out.append({"a": e["a"], "b": e["b"], "co_edit_files": e["co_edit_files"], "co_pr_count": len(e["co_prs"]),
+                    "reviews_a_to_b": e["reviews_a_to_b"], "reviews_b_to_a": e["reviews_b_to_a"],
+                    "shared_pr_count": len(e["prs"]), "prs": pr_list(e["prs"])})
+    people = set(authored) | set(reviewed)
+    return {
+        "pairs": out,
+        "contributors": {str(cid): {"prs_authored": authored.get(cid, 0), "reviews_given": len(reviewed.get(cid, ()))}
+                         for cid in sorted(people)},
+    }
 
 
 def _contributor_name_row(db, repository_id: int, contributor_id: int):

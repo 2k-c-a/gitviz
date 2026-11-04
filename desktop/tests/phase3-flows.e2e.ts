@@ -177,11 +177,11 @@ const http: Http = async (path, method, _body, givenToken, _idempotency, aiKey) 
   else if (p.endsWith('/contributor-heatmap')) { heatmapWeeksAsked = url.searchParams.get('weeks') ?? ''; body = { weeks: [], contributors: [] }; }
   else if (p.endsWith('/top-contributors')) body = { contributors: [{ id: 1, github_login: 'Fixture', commit_count: 1 }] };
   else if (p.endsWith('/releases')) body = { releases: [] };
-  else if (p.endsWith('/network')) body = { nodes: [{ id: 1, name: 'Fixture', commit_count: 1 }, { id: 2, name: 'Reviewer', commit_count: 1 }], edges: [{ source: 1, target: 2, edge_weight: 0.8 }], metrics: { total_contributor_count: 1, total_edge_count: 0 }, data_quality: {} };
+  else if (p.endsWith('/network')) body = { nodes: [{ id: 1, name: 'Fixture', commit_count: 1 }, { id: 2, name: 'Reviewer-with-long-name', commit_count: 1 }], edges: [{ source: 1, target: 2, edge_weight: 0.8 }], metrics: { total_contributor_count: 1, total_edge_count: 0 }, data_quality: {} };
   else if (p.endsWith('/top-pairs')) body = [];
   else if (p.endsWith('/tree')) body = { tree: { name: 'root', children: files }, files, data_quality: { commit_count: 1 } };
-  else if (p.endsWith('/owned-files')) body = { contributor: { id: 1, name: 'Fixture' }, owned_file_count: 1, files: [{ file_id: 999, path: 'src/fixture.ts', share: 1 }] };
-  else if (p.endsWith('/collaborators')) body = { contributor: { id: 1, name: 'Fixture' }, collaborators: [] };
+  else if (p.endsWith('/owned-files')) body = { contributor: { id: 1, name: 'Fixture', commit_count: 12, pr_count: 3, collaborator_count: 1 }, owned_file_count: 1, files: [{ file_id: 999, path: 'src/fixture.ts', share: 1 }] };
+  else if (p.endsWith('/collaborators')) body = { contributor: { id: 1, name: 'Fixture', commit_count: 12, pr_count: 3, collaborator_count: 1 }, collaborators: [{ contributor: { id: 2, name: 'Partner' }, edge_weight: 0.5 }] };
   else if (/\/files\/(998|999)\/detail$/.test(p)) {
     const slow = p.includes('/998/'); if (slow) await new Promise(resolve => setTimeout(resolve, 200));
     body = { file: { id: slow ? 998 : 999, path: slow ? 'src/older.ts' : 'src/fixture.ts' }, editors: [{ contributor_id: 1, name: 'Fixture', share: 1 }], coupled_files: [], co_change_unit: 'pr', maintenance_priority: 0.5, evidence_status: 'observed', change_freq: 10, churn: 80, bugfix_count: 1, observation_count: 10 };
@@ -295,6 +295,8 @@ void app.whenReady().then(async () => {
     await wait(`!!document.querySelector('#tl-contrib-list button') && !!Chart.getChart('chart-timeline')`);
     await window.webContents.executeJavaScript(`document.querySelector('#tl-contrib-list button').click()`);
     await wait(`document.getElementById('dd-title').textContent==='Fixture' && document.getElementById('dd-body').textContent.includes('src/fixture.ts')`);
+    // 기여자 상세: 맨 위 커밋·병합 PR·협업한 사람 수 → 협업 쌍 → 지분 높은 파일 순서.
+    assert.equal(await window.webContents.executeJavaScript(`(() => { const body = document.getElementById('dd-body'); const t = body.textContent; return JSON.stringify([[...body.querySelectorAll('.dd-stat')].map(e => e.textContent.trim()), t.indexOf('협업 쌍') < t.indexOf('Partner') && t.indexOf('Partner') < t.indexOf('지분 높은 파일') && t.indexOf('지분 높은 파일') < t.indexOf('src/fixture.ts'), body.firstElementChild.classList.contains('dd-stats')]); })()`), JSON.stringify([['커밋12개', '병합 PR3개', '협업한 사람1명'], true, true]));
     await window.webContents.executeJavaScript(`document.querySelector('[data-action="__ddPushFile"]').click()`);
     await wait(`document.getElementById('dd-title').textContent==='fixture.ts'`);
     await window.webContents.executeJavaScript(`document.getElementById('dd-back-btn').click()`);
@@ -316,11 +318,18 @@ void app.whenReady().then(async () => {
     phase = 'network-interactions';
     await window.loadURL('gitviz://app/web/pages/network.html?repo=2&snapshot=7');
     await wait(`document.querySelectorAll('#net-node-list button').length===2`);
+    // 노드 아래에 이름 앞부분(최대 8자)을 보여 준다. 긴 이름은 7자 + …, 전체 이름은 title에 있다.
+    await wait(`JSON.stringify([...document.querySelectorAll('#net-graph-svg .net-node-label')].filter(e => getComputedStyle(e).display !== 'none').map(e => e.textContent).sort())===${JSON.stringify(JSON.stringify(['Fixture', 'Reviewe…']))}`);
+    // 쌍마다 선 하나(공동 수정), 오른쪽 패널은 프로젝트 요약으로 시작한다.
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('#net-graph-svg .net-link').length`), 1);
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelector('#net-side .net-side-title').textContent`), '프로젝트 요약');
     await clickText('확대'); assert.ok(await window.webContents.executeJavaScript(`document.querySelector('#net-graph-svg').__zoom.k>1`));
     await window.webContents.executeJavaScript(`const search=document.getElementById('net-search');search.value='Fixture';search.dispatchEvent(new Event('input'));document.querySelector('#net-node-list button').click()`);
-    await wait(`document.getElementById('dd-title').textContent==='Fixture'`);
+    await wait(`document.querySelector('#net-side .net-side-title')?.textContent==='Fixture' && !!document.querySelector('#net-side [data-more]')`);
     assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('#net-graph-svg [aria-pressed="true"]').length`), 1);
-    await window.webContents.executeJavaScript(`window.closeDrilldown();document.getElementById('net-limit').value='25'`); await clickText('필터 적용');
+    await window.webContents.executeJavaScript(`document.querySelector('#net-side [data-more]').click()`);
+    await wait(`document.getElementById('dd-title').textContent==='Fixture'`);
+    await window.webContents.executeJavaScript(`window.closeDrilldown();const l=document.getElementById('net-limit');l.value='25';l.dispatchEvent(new Event('change'))`);
     await wait(`document.getElementById('net-status').textContent==='결과 조회 완료'`);
     assert.ok(requests.some(path => path.includes('limit_nodes=25')));
     phase = 'file-search-pagination-views';

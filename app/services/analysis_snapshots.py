@@ -218,6 +218,8 @@ def build_snapshot(db, repo, job, *, target_sha, live_paths, reachable_shas, par
         "coupling": a.get_coupling(repo.id, limit=unlimited, db=scoped),
         "network": a.get_network(repo.id, limit_nodes=unlimited, db=scoped),
         "network/top-pairs": a.get_network_top_pairs(repo.id, limit=unlimited, db=scoped),
+        # 협업 쌍별 세부 수치(공동 수정 파일·PR 수, 리뷰 수, PR 목록). 이 키가 없는 이전 결과는 화면에서 '수치 없음'.
+        "network/pair-details": a.get_network_pair_details(repo.id, db=scoped),
         "tree": a.get_repo_tree(repo.id, db=scoped),
         "ownership": a._fetch_recent_ownership(scoped, repo.id),
         "file_index": [dict(r) for r in scoped.execute(text("SELECT id,path FROM files WHERE repository_id=:rid"), {"rid": repo.id}).mappings()],
@@ -332,11 +334,9 @@ def serve_snapshot(snapshot, route, query):
         pairs = sorted(pairs,key=lambda x:(-x[key],-x['co_change_count'],x['file_a_id'],x['file_b_id']))
         result = {"meta": {**p[route]["meta"],"sort_by":sort_by}, "pairs": pairs[:bounded(query,"limit",100)]}
     elif route == "network":
-        count = bounded(query, "limit_nodes", 50, lo=1, hi=1000)
-        minimum = bounded(query, "min_edge_weight", 0, integer=False)
-        nodes = sorted(p[route]["nodes"], key=lambda n: (-n["commit_count"], n["id"]))[:count]
-        ids = {n["id"] for n in nodes}
-        result = {"nodes": nodes, "metrics": p[route]["metrics"], "edges": [e for e in p[route]["edges"] if e["source"] in ids and e["target"] in ids and e["edge_weight"] >= minimum]}
+        # 표시 노드는 커밋·PR 참여·협업 강도 순위의 합집합, 공동 수정은 쌍 하나로 묶는다(app/services/collab_network.py).
+        from app.services.collab_network import network_view
+        result = network_view(p, bounded(query, "limit_nodes", 50, lo=1, hi=1000), bounded(query, "min_edge_weight", 0, integer=False))
     elif route == "network/top-pairs":
         return p[route][:bounded(query, "limit", 5)]
     elif route == "contributor-heatmap":
@@ -376,6 +376,12 @@ def serve_snapshot(snapshot, route, query):
             if not contributor:
                 raise HTTPException(404,"기여자가 해당 스냅샷에 없습니다.")
             result = {"contributor":{"id":cid,"name":contributor["github_login"] or contributor["display_name"] or "익명"}}
+            # 상세 패널 맨 위의 요약: 관측 구간 커밋 수, 병합 PR 수(pr_count를 싣기 전 결과는 None), 협업한 사람 수.
+            top = next((c for c in p["top-contributors"]["contributors"] if c["id"]==cid),None)
+            pairs = [x for x in p["network/top-pairs"] if cid in {x["contributor_a"]["id"],x["contributor_b"]["id"]}]
+            result["contributor"].update(commit_count=top["commit_count"] if top else 0,
+                                         pr_count=top.get("pr_count") if top else None,
+                                         collaborator_count=len(pairs))
             if parts[2]=="owned-files":
                 owned = []
                 for f in p["tree"]["files"]:
@@ -386,7 +392,8 @@ def serve_snapshot(snapshot, route, query):
                 owned.sort(key=lambda f:(-f["share"],f["file_id"]))
                 result.update(owned_file_count=len(owned),files=owned[:bounded(query,"limit",20)])
             else:
-                pairs = [x for x in p["network/top-pairs"] if cid in {x["contributor_a"]["id"],x["contributor_b"]["id"]}]
+                from app.services.collab_network import contributor_collaboration
+                result.update(contributor_collaboration(p, cid))
                 result["collaborators"] = [{"contributor":x["contributor_b"] if x["contributor_a"]["id"]==cid else x["contributor_a"], "edge_weight":x["edge_weight"],"co_edit_raw":x["co_edit_raw"],
                     "review_directed_out":x["review_directed_a_to_b"] if x["contributor_a"]["id"]==cid else x["review_directed_b_to_a"],
                     "review_directed_in":x["review_directed_b_to_a"] if x["contributor_a"]["id"]==cid else x["review_directed_a_to_b"]} for x in pairs][:bounded(query,"limit",20)]

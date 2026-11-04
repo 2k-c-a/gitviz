@@ -15,7 +15,7 @@
     <!-- ═══════════ NETWORK ═══════════ -->
 <div class="page active" id="page-network">
   <div class="dash-head">
-    <div><div class="dash-title js-repo-title">—</div><div class="dash-sub">협업 네트워크 — 방향과 가중치가 있는 그래프 (공동 수정 0.6 + 리뷰 0.4)</div></div>
+    <div><div class="dash-title js-repo-title">—</div><div class="dash-sub">협업 네트워크 — 같은 PR에서 같은 파일을 함께 고친 관계와 PR 리뷰 관계</div></div>
     <div class="flex items-center gap-2.5">
       <div class="flex items-center gap-[7px]">
         <div class="status-dot" id="net-status-dot" style="background:var(--gray);"></div>
@@ -31,29 +31,39 @@
     <div class="sub-tab" data-action="goPage" data-args="%5B%22history%22%5D">분석 이력·비교</div>
   </div>
   <div class="body">
+    <!-- B. 프로젝트 전체(저장소 전체 기준) -->
+    <div class="net-scope-label">프로젝트 전체 <span>저장소 전체 기준 · 그래프에 보이지 않는 개발자도 포함</span></div>
     <div class="metrics-4">
-      <div class="metric-card"><div class="m-label">전체 기여자</div><div class="m-val" id="net-m-contributors">—</div><div class="m-sub" id="net-m-density">&nbsp;</div></div>
-      <div class="metric-card"><div class="m-label">협업 연결</div><div class="m-val" id="net-m-edges">—</div><div class="m-sub">기여자 간 협업 관계</div></div>
-      <div class="metric-card"><div class="m-label">클러스터 수</div><div class="m-val" id="net-m-clusters">—</div><div class="m-sub" id="net-m-maxcluster">&nbsp;</div></div>
-      <div class="metric-card"><div class="m-label">고립 기여자</div><div class="m-val" id="net-m-isolated">—</div><div class="m-sub" id="net-m-isolated-ratio">&nbsp;</div></div>
+      <div class="metric-card"><div class="m-label">전체 개발자</div><div class="m-val" id="net-m-contributors">—</div><div class="m-sub" id="net-m-density">&nbsp;</div></div>
+      <div class="metric-card"><div class="m-label">전체 커밋</div><div class="m-val" id="net-m-commits">—</div><div class="m-sub">관측 구간</div></div>
+      <div class="metric-card"><div class="m-label">전체 병합 PR</div><div class="m-val" id="net-m-prs">—</div><div class="m-sub" id="net-m-edges">&nbsp;</div></div>
+      <div class="metric-card"><div class="m-label">커뮤니티</div><div class="m-val" id="net-m-clusters">—</div><div class="m-sub" id="net-m-isolated">&nbsp;</div></div>
     </div>
-
-    <!-- Force-directed 협업 그래프 -->
-    <div class="panel mb-3.5">
+    <!-- C. 협업 네트워크 + D. 상세 패널 -->
+    <div class="panel mb-3.5 net-panel" id="net-panel">
       <div class="p-head mb-1.5">
         <div class="p-title">협업 네트워크</div>
-        <div class="text-xs text-muted-foreground">선 굵기 = 관측 강도 · 노드 크기 = 커밋 수 · 색 = 클러스터 · 굵은 테두리 = 허브(매개 중심성 상위)</div>
+        <div class="text-xs text-muted-foreground" id="net-period"></div>
       </div>
+      <div id="net-toolbar" class="analysis-toolbar net-toolbar"></div>
+      <p class="p-note" id="net-view-stats" role="status"></p>
       <div id="net-empty-note"></div>
-      <svg class="network-svg" id="net-graph-svg"></svg>
-      <div class="p-note">화살표는 리뷰어 → 작성자 방향을 포함한 관측 관계입니다. 강도 = (공동 수정 가중치 / 2) × 0.6 + 방향별 리뷰 가중치 × 0.4이며 단순 공동 변경 횟수가 아닙니다. 그래프는 휠로 확대·축소하고 빈 영역을 끌어 이동할 수 있습니다. 공동 수정은 같은 PR에서 실제로 같은 파일을 수정한 기록으로 계산합니다. 리뷰는 리뷰어 → 작성자 방향입니다. 허브는 협업 강도의 역수를 거리로 사용한 매개 중심성 기준이며, 수집된 이력의 관계를 나타냅니다. PR·커밋 연결 기록이 부족하면 공동 수정 관계가 누락될 수 있습니다.</div>
+      <div class="net-layout">
+        <div class="net-graph-wrap" id="net-graph-wrap">
+          <svg class="network-svg" id="net-graph-svg" aria-label="협업 네트워크 그래프"></svg>
+          <div class="net-tooltip" id="net-tooltip" role="tooltip" hidden></div>
+          <div class="net-legend" id="net-legend"></div>
+        </div>
+        <aside class="net-side" id="net-side" aria-live="polite"></aside>
+      </div>
+      <details class="net-isolated" id="net-isolated"><summary id="net-isolated-summary">연결이 발견되지 않은 개발자</summary><div id="net-isolated-list"></div></details>
+      <div class="net-find"><input type="search" id="net-search" placeholder="그래프의 개발자 이름 검색" aria-label="그래프의 개발자 이름 검색"><div class="analysis-list" id="net-node-list"></div></div>
     </div>
-
-    <!-- 상위 협업 쌍 -->
+    <!-- E. 하단: 주요 협업 쌍 -->
     <div class="panel">
       <div class="p-head mb-3.5">
-        <div class="p-title">상위 협업 쌍</div>
-        <div class="text-xs text-muted-foreground">협업 강도 기준</div>
+        <div class="p-title">주요 협업 쌍</div>
+        <div class="text-xs text-muted-foreground">저장소 전체 · 협업 강도 순</div>
       </div>
       <div id="net-top-pairs"></div>
     </div>

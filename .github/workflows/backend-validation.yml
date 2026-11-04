@@ -50,6 +50,7 @@ jobs:
       - run: python tests/server/test_repository_snapshots.py
       - run: python tests/server/test_lightweight_score.py
       - run: python tests/server/test_my_github_repositories.py
+      - run: python tests/server/test_collab_network.py
       - run: node tests/frontend/test_metric_display.cjs
       - run: node tests/frontend/test_motion.cjs
       - run: python tests/server/test_ai_contracts.py
