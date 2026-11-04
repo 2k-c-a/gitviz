@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_ai_api import ApiCase, job_runner_run, S
-from app.services.ai import credentials, input_store
+from app.services.ai import input_store
 from app.services.ai.providers import registry
 from app.services.ai.access import AIAction, AIError, authorize_ai
 from app.schemas.ai import ErrorCode
@@ -65,7 +65,7 @@ class MultiProvider(ApiCase):
 
     def setUp(self):
         super().setUp()
-        self.local_env = S.ai_env(AI_ALLOW_EXTERNAL_TRANSFER=1, AI_OLLAMA_ENABLED=1, AI_OLLAMA_MODEL='qwen2.5-coder:7b',
+        self.local_env = S.ai_env(AI_OLLAMA_ENABLED=1, AI_OLLAMA_MODEL='qwen2.5-coder:7b',
                                   AI_OLLAMA_MODEL_DIGEST=DIGEST)
         self.local_env.start()
         self.addCleanup(self.local_env.stop)
@@ -102,31 +102,30 @@ class MultiProvider(ApiCase):
             preview = input_store.load_preview(db, w.input_id, w.owner, profile_id=profile_id)
         t = preview.transfer
         return {'input_id': str(w.input_id), 'manifest_hash': preview.manifest_hash, 'provider': t.provider,
-                'profile_id': t.profile_id, 'credential_version': None, 'policy_version': preview.policy_version,
+                'profile_id': t.profile_id, 'policy_version': preview.policy_version,
                 'profile_fingerprint': t.profile_fingerprint}
 
-    def test_local_generation_without_key_or_external_transfer(self):
+    def test_local_generation_without_key(self):
         w = self.ready()
-        credentials.delete_credential(self.db, w.owner, 'anthropic')
-        with S.ai_env(AI_ALLOW_EXTERNAL_TRANSFER=0):
-            body = self.local_consent(w)
-            response = self.post_job(w, consent=body, key='local-idempotent')
-            self.assertEqual(response.status_code, 202, response.text)
-            job_id = UUID(response.json()['job_id'])
-            row = self.job_row(job_id)
-            self.assertIsNone(row['credential_version_id'])
-            self.assertEqual(row['provider'], 'ollama')
-            self.assertEqual(job_runner_run(self, job_id), 'succeeded')
-            self.assertEqual(self.post_job(w, consent=body, key='local-idempotent').status_code, 200)
-            self.assertEqual(len([r for r in self.provider_http if r.url.path == '/api/chat']), 1)
-            self.assertEqual(self.rows('SELECT spent_amount FROM usage_budgets')[0]['spent_amount'], Decimal(0))
-            self.assertEqual(self.reservations(), ['settled'])
-            self.assertIn(('authorize', 'local_generate'), self.events)
+        body = self.local_consent(w)
+        response = self.post_job(w, consent=body, key='local-idempotent', ai_key=None)      # 로컬 모델은 key가 없어도 된다
+        self.assertEqual(response.status_code, 202, response.text)
+        job_id = UUID(response.json()['job_id'])
+        row = self.job_row(job_id)
+        self.assertIsNone(row['credential_version_id'])
+        self.assertEqual(row['provider'], 'ollama')
+        self.assertEqual(self.submitted[-1], (job_id, None))                                # 헤더가 와도 로컬 실행에는 넘기지 않는다
+        self.assertEqual(job_runner_run(self, job_id), 'succeeded')
+        self.assertEqual(self.post_job(w, consent=body, key='local-idempotent').status_code, 200)
+        self.assertEqual(len([r for r in self.provider_http if r.url.path == '/api/chat']), 1)
+        self.assertEqual(self.rows('SELECT spent_amount FROM usage_budgets')[0]['spent_amount'], Decimal(0))
+        self.assertEqual(self.reservations(), ['settled'])
+        self.assertIn(('authorize', 'local_generate'), self.events)
 
     def test_local_chat_runtime_jobs_without_ollama_or_external_transfer(self):
         for runtime, prefix in (('lmstudio', 'LMSTUDIO'), ('koboldcpp', 'KOBOLDCPP')):
             with self.subTest(runtime=runtime), patch.dict(os.environ, {
-                'AI_OLLAMA_ENABLED': '0', 'AI_ALLOW_EXTERNAL_TRANSFER': '0',
+                'AI_OLLAMA_ENABLED': '0',
                 f'AI_{prefix}_ENABLED': '1', f'AI_{prefix}_MODEL': 'installed-model',
                 f'AI_{prefix}_CONTEXT_WINDOW': '32768', f'AI_{prefix}_MAX_INPUT_TOKENS': '24000'}):
                 w = self.ready(pr_number=17 if runtime == 'lmstudio' else 18)
@@ -146,16 +145,14 @@ class MultiProvider(ApiCase):
                                  ('gemini', 'gemini-3.5-flash-lite-v1', 'AIza' + 'b' * 35)]:
             with self.subTest(provider=provider):
                 w = self.ready(pr_number=7 if provider == 'openai' else 8)
-                result = credentials.register_key(self.db, w.owner, provider, key,
-                            preferred_profile_id=pid, verify=False)
                 with S.Session() as db:
                     preview = input_store.load_preview(db, w.input_id, w.owner, profile_id=pid)
                 self.assertEqual(preview.transfer.provider, provider)
-                body = self.consent(w, provider=provider, profile_id=pid,
-                            credential_version=result.credential.version)
-                response = self.post_job(w, consent=body)
+                body = self.consent(w, provider=provider, profile_id=pid)
+                response = self.post_job(w, consent=body, ai_key=key)                       # 앱이 이 제공자의 key를 붙인다
                 self.assertEqual(response.status_code, 202, response.text)
                 job_id = UUID(response.json()['job_id'])
+                self.assertEqual(self.submitted[-1], (job_id, key))
                 self.assertEqual(job_runner_run(self, job_id), 'succeeded')
                 self.assertEqual(self.job_row(job_id)['provider'], provider)
 
@@ -182,20 +179,22 @@ class MultiProvider(ApiCase):
 
     def test_local_access_keeps_owner_and_policy_checks_private_repo_allowed(self):
         w = self.ready()
-        with S.ai_env(AI_ALLOW_EXTERNAL_TRANSFER=0), patch('app.services.ai.access.verify_repository_access',
-                                                return_value=(None, {'private': True})):
+        with patch('app.services.ai.access.verify_repository_access', return_value=(None, {'private': True})):
             authorize_ai(self.db, w.owner, w.repo, AIAction.local_generate, 'code-transfer-v1')
+            # 비공개 저장소의 클라우드 리뷰도 실행마다 동의하면 허용(2026-11-04 결정). AI 분석은 여전히 막는다.
+            authorize_ai(self.db, w.owner, w.repo, AIAction.generate, 'code-transfer-v1')
             with self.assertRaises(AIError):
-                authorize_ai(self.db, w.owner, w.repo, AIAction.generate, 'code-transfer-v1')
+                authorize_ai(self.db, w.owner, w.repo, AIAction.generate, 'code-transfer-v1', insight=True)
             with self.assertRaises(AIError):
                 authorize_ai(self.db, w.owner, w.repo, AIAction.local_generate, 'unknown-policy')
         body = self.local_consent(w)
         self.login(self.make_user())
         self.error(self.post_job(w, consent=body), 404, 'RESOURCE_NOT_FOUND')
 
-    def test_cloud_null_key_version_does_not_bypass_byok(self):
+    def test_cloud_model_without_a_key_header_is_refused(self):
         w = self.ready()
-        self.error(self.post_job(w, consent=self.consent(w, credential_version=None)), 409, 'PREVIEW_CHANGED')
+        self.error(self.post_job(w, ai_key=None), 422, 'CREDENTIAL_REQUIRED')
+        self.assertEqual(self.scalar("SELECT count(*) FROM ai_jobs WHERE kind <> 'prepare'"), 0)
 
     def test_local_model_check_finishes_before_last_cancel_check(self):
         w = self.ready()

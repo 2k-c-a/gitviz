@@ -79,7 +79,7 @@ class Backend(unittest.TestCase):
         for table in list(Base.metadata.tables.values())+[User.__table__]:
             actual={c['name'] for c in inspector.get_columns(table.name)}
             self.assertFalse(set(table.columns.keys())-actual,table.name)
-        self.assertEqual(self.db.execute(text('SELECT version_num FROM alembic_version')).scalar(),'e7a9c1d3f5b4')
+        self.assertEqual(self.db.execute(text('SELECT version_num FROM alembic_version')).scalar(),'39b676ca36f2')
 
     def test_priority_policy_with_actual_postgres_snapshot_scope(self):
         from app.services.analysis_snapshots import analysis_parameters, SnapshotInput
@@ -152,7 +152,7 @@ class Backend(unittest.TestCase):
                 self.assertEqual(connection.execute(text('SELECT github_login FROM users')).scalar(),'preserved-user')
                 self.assertIn('on_default_branch',{c['name'] for c in inspect(connection).get_columns('commits',schema=schema)})
                 self.assertIn('triggered_by_user_id',{c['name'] for c in inspect(connection).get_columns('analysis_jobs',schema=schema)})
-                self.assertEqual(connection.execute(text('SELECT version_num FROM alembic_version')).scalar(),'e7a9c1d3f5b4')
+                self.assertEqual(connection.execute(text('SELECT version_num FROM alembic_version')).scalar(),'39b676ca36f2')
             finally:
                 connection.rollback()
                 connection.execute(text('RESET search_path'))
@@ -326,7 +326,8 @@ class Backend(unittest.TestCase):
         event.listen(engine,'before_cursor_execute',prohibit_ddl)
         try:
             import app.main
-            self.assertFalse(app.main.app.router.on_startup)
+            # 시작 hook은 AI 유지관리 스레드(AD-33: 실행자를 잃은 작업 정리·기한 삭제)만 허용한다. schema는 바꾸지 않는다.
+            self.assertEqual([f.__name__ for f in app.main.app.router.on_startup], ['_start_ai_maintenance'])
         finally:event.remove(engine,'before_cursor_execute',prohibit_ddl)
 
     def test_local_async_auth_database_connects(self):

@@ -1,4 +1,4 @@
-"""S4 모델 없는 AI 작업 처리 테스트: 생성·멱등성·outbox·처리권·취소·복구·예산.
+"""S4 모델 없는 AI 작업 처리 테스트: 생성·멱등성·처리권·취소·복구·API 프로세스 실행 스레드·예산.
 
 GITVIZ_TEST_DATABASE_URL(gitviz_test로 시작하는 PostgreSQL)이 필요하다. 시간은 now 인자로 제어한다.
 """
@@ -24,7 +24,7 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 import ai_credential_support as credential_support  # noqa: E402
 from app.schemas.ai import ErrorCode  # noqa: E402
-from app.services.ai import idempotency, job_runner, job_service, outbox, usage_service  # noqa: E402
+from app.services.ai import idempotency, job_runner, job_service, usage_service  # noqa: E402
 from app.services.ai.access import AIError  # noqa: E402
 from app.services.ai.lease import CancelRequested, LeaseLost  # noqa: E402
 
@@ -33,7 +33,7 @@ H = lambda c: c * 64  # noqa: E731
 ROUTE = 'POST /api/ai/v1/jobs'
 engine = create_engine(URL, pool_size=30, max_overflow=0)
 Session = sessionmaker(engine, expire_on_commit=False)
-TRUNCATE = ('usage_reservations, usage_budgets, audit_events, request_idempotency, task_outbox, ai_attempts, '
+TRUNCATE = ('usage_reservations, usage_budgets, audit_events, request_idempotency, ai_attempts, '
             'finding_feedback, ai_findings, ai_results, ai_input_files, ai_jobs, ai_inputs, pr_revisions')
 
 
@@ -49,12 +49,8 @@ class Case(unittest.TestCase):
     def setUp(self):
         self.db = Session()
         self.users, self.repos = [], []
-        # 이 파일의 예산 테스트는 서버 공유 예산이 켜진 구성(사용자 + 서버 두 예산)을 전제로 한다. 기본값은 꺼짐이다.
-        self._budget_env = patch.dict(os.environ, {'AI_SERVER_MONTHLY_BUDGET': '100'})
-        self._budget_env.start()
 
     def tearDown(self):
-        self._budget_env.stop()
         self.db.rollback()
         self.db.close()
         with Session() as db:
@@ -136,27 +132,26 @@ class Creation(Case):
         with env(AI_DAILY_JOB_LIMIT=1):
             self.assertEqual(self.code_of(self.create, world, fingerprint=H('5')), ErrorCode.USER_LIMIT)
 
-    def test_job_key_and_outbox_are_saved_together(self):
+    def test_job_and_key_are_saved_together_without_a_queue_message(self):
         world = self.make_world()
         result = self.create(world, key='k1')
         self.assertTrue(result.created)
         job = self.job_row(result.job.id)
         self.assertEqual((job['status'], job['generation'], job['attempt_count']), ('queued', 0, 0))
-        rows = self.db.execute(text("SELECT event_type, dispatch_generation, published_at FROM task_outbox WHERE job_id = :j"),
-                               {'j': job['id']}).all()
-        self.assertEqual([tuple(r) for r in rows], [('generate', 0, None)])
         idem = self.db.execute(text("SELECT resource_id, status FROM request_idempotency WHERE key = 'k1'")).one()
         self.assertEqual((idem.resource_id, idem.status), (job['id'], 'completed'))
+        # AD-33: 실행은 API가 커밋 뒤 job_runner.submit으로 넘긴다. 작업 큐 메시지(outbox)는 만들지 않는다.
+        self.assertEqual(self.scalar('SELECT count(*) FROM task_outbox'), 0)
         prepare_world = self.make_world(input_status='building')
         prepared = self.create(prepare_world, kind='prepare', fingerprint=H('2'))
-        self.assertEqual(self.scalar("SELECT event_type FROM task_outbox WHERE job_id = :j", j=prepared.job.id), 'prepare')
+        self.assertEqual(self.job_row(prepared.job.id)['status'], 'queued')
 
     def test_same_key_same_request_returns_same_job_and_different_request_conflicts(self):
         world = self.make_world()
         first = self.create(world, key='same')
         again = self.create(world, key='same')
         self.assertEqual((again.created, again.reused, again.job.id), (False, 'idempotency', first.job.id))
-        self.assertEqual(self.scalar('SELECT count(*) FROM task_outbox'), 1)
+        self.assertEqual(self.scalar('SELECT count(*) FROM ai_jobs'), 1)
         code = self.code_of(self.create, world, key='same', body={'input': 'other'}, fingerprint=H('9'))
         self.assertEqual(code, ErrorCode.IDEMPOTENCY_CONFLICT)
         self.assertEqual(self.scalar('SELECT count(*) FROM ai_jobs'), 1)
@@ -217,7 +212,6 @@ class Creation(Case):
         self.assertEqual(len({r.job.id for r in results}), 1)
         self.assertEqual(sum(r.created for r in results), 1)
         self.assertEqual(self.scalar('SELECT count(*) FROM ai_jobs'), 1)
-        self.assertEqual(self.scalar('SELECT count(*) FROM task_outbox'), 1)
         self.assertEqual(self.scalar('SELECT count(*) FROM request_idempotency'), 1)
 
     def test_same_fingerprint_different_keys_concurrent_requests_create_one_job(self):
@@ -287,7 +281,6 @@ class Creation(Case):
                          ErrorCode.INVALID_STATE)
         self.assertEqual(self.scalar('SELECT count(*) FROM request_idempotency'), 0)
         self.assertEqual(self.scalar('SELECT count(*) FROM ai_jobs'), 0)
-        self.assertEqual(self.scalar('SELECT count(*) FROM task_outbox'), 0)
         self.assertTrue(self.create(building, key='b', kind='prepare', fingerprint=H('8')).created)
 
 
@@ -369,21 +362,17 @@ class Leases(Case):
         self.assertEqual(job_service.finish_job(self.db, lease, 'failed', error_code='PROVIDER_REJECTED', now=T0), 'failed')
         self.assertEqual(self.job_row(job.id)['error_code'], 'PROVIDER_REJECTED')
 
-    def test_retryable_failure_waits_then_requeues_through_the_outbox(self):
+    def test_retryable_failure_waits_then_requeues_when_due(self):
         world, job, lease = self.claimed()
         self.assertEqual(job_service.fail_job(self.db, lease, 'UPSTREAM', retryable=True, now=T0), 'retry_wait')
         row = self.job_row(job.id)
         self.assertEqual((row['status'], row['next_attempt_at'], row['lease_token']), ('retry_wait', T0 + timedelta(seconds=30), None))
         self.assertEqual(self.scalar("SELECT status FROM ai_attempts WHERE job_id = :j AND attempt_no = 1", j=job.id), 'failed')
-        events = self.db.execute(text("SELECT dispatch_generation, available_at FROM task_outbox WHERE job_id = :j ORDER BY 1"),
-                                 {'j': job.id}).all()
-        self.assertEqual([(e[0], e[1]) for e in events], [(0, events[0][1]), (1, T0 + timedelta(seconds=30))])
-        published = []
-        outbox.dispatch_pending(self.db, published.append, now=T0 + timedelta(seconds=10))      # 아직 도래 전
+        self.assertFalse(job_service.requeue_due(self.db, job.id, now=T0 + timedelta(seconds=10)))   # 아직 도래 전
         self.assertEqual(self.job_row(job.id)['status'], 'retry_wait')
-        outbox.dispatch_pending(self.db, published.append, now=T0 + timedelta(seconds=31))
+        self.assertTrue(job_service.requeue_due(self.db, job.id, now=T0 + timedelta(seconds=31)))
         self.assertEqual(self.job_row(job.id)['status'], 'queued')
-        self.assertTrue(any(e.dispatch_generation == 1 for e in published))
+        self.assertFalse(job_service.requeue_due(self.db, job.id, now=T0 + timedelta(seconds=32)))   # 한 번만
         lease2 = job_service.claim_job(self.db, job.id, now=T0 + timedelta(seconds=31))
         self.assertEqual(lease2.attempt_no, 2)
         self.assertEqual(self.scalar('SELECT count(*) FROM ai_attempts WHERE job_id = :j', j=job.id), 2)
@@ -413,11 +402,7 @@ class Cancellation(Case):
         self.assertEqual(job_service.request_cancel(self.db, job.id, world[0], now=T0), 'cancelled')
         row = self.job_row(job.id)
         self.assertEqual((row['status'], row['finished_at']), ('cancelled', T0))
-        self.assertIsNone(job_service.claim_job(self.db, job.id, now=T0))
-        published = []
-        outbox.dispatch_pending(self.db, published.append, now=T0)
-        self.assertEqual(published, [])                                         # 취소된 작업은 발행하지 않는다
-        self.assertIsNotNone(self.scalar('SELECT published_at FROM task_outbox'))
+        self.assertIsNone(job_service.claim_job(self.db, job.id, now=T0))           # 실행 스레드가 가져가도 건너뛴다
         self.assertEqual(job_service.request_cancel(self.db, job.id, world[0], now=T0), 'cancelled')   # 멱등
 
     def test_cancel_running_job_is_confirmed_by_lease_holder_and_success_is_not_recorded(self):
@@ -441,9 +426,7 @@ class Cancellation(Case):
         world, job, lease = self.claimed()
         job_service.fail_job(self.db, lease, 'E', retryable=True, now=T0)
         self.assertEqual(job_service.request_cancel(self.db, job.id, world[0], now=T0), 'cancelled')
-        published = []
-        outbox.dispatch_pending(self.db, published.append, now=T0 + timedelta(hours=1))
-        self.assertEqual(published, [])
+        self.assertFalse(job_service.requeue_due(self.db, job.id, now=T0 + timedelta(hours=1)))
         self.assertEqual(self.job_row(job.id)['status'], 'cancelled')
 
     def test_cancel_and_finish_race_is_consistent(self):
@@ -477,41 +460,29 @@ class Recovery(Case):
     def expire(self, job_id):
         return T0 + timedelta(seconds=job_service.get_ai_settings().lease_seconds + 1)
 
-    def test_expired_lease_before_provider_call_is_retried_and_stale_worker_is_fenced(self):
+    def test_expired_lease_before_provider_call_is_interrupted_and_stale_worker_is_fenced(self):
+        # AD-33: 사용자 key는 실행 스레드 메모리에만 있으므로 다른 실행자가 이어받지 않는다. 만료되면 INTERRUPTED로 닫는다.
         world, job, lease = self.claimed()
-        self.assertEqual(job_service.recover_expired(self.db, now=T0 + timedelta(seconds=60))['retried'], 0)   # 유효
+        self.assertEqual(job_service.recover_expired(self.db, now=T0 + timedelta(seconds=60))['interrupted'], 0)   # 유효
         stats = job_service.recover_expired(self.db, now=self.expire(job.id))
-        self.assertEqual(stats['retried'], 1)
+        self.assertEqual(stats['interrupted'], 1)
         row = self.job_row(job.id)
-        self.assertEqual((row['status'], row['error_code'], row['lease_token']), ('retry_wait', 'LEASE_EXPIRED', None))
+        self.assertEqual((row['status'], row['error_code'], row['lease_token']), ('failed', 'INTERRUPTED', None))
         self.assertEqual(self.scalar("SELECT status FROM ai_attempts WHERE job_id = :j", j=job.id), 'failed')
-        self.assertEqual(self.scalar('SELECT count(*) FROM task_outbox WHERE job_id = :j', j=job.id), 2)
         # 오래된 처리자는 더 이상 확정할 수 없다
         with self.assertRaises(LeaseLost):
             job_service.finish_job(self.db, lease, 'succeeded', now=self.expire(job.id))
         with self.assertRaises(LeaseLost):
             job_service.fail_job(self.db, lease, 'X', now=self.expire(job.id))
         self.assertFalse(job_service.heartbeat(self.db, lease, now=self.expire(job.id)).alive)
-        # 새 처리자가 이어받는다
-        outbox.dispatch_pending(self.db, lambda e: None, now=self.expire(job.id))
-        lease2 = job_service.claim_job(self.db, job.id, now=self.expire(job.id))
-        self.assertEqual(lease2.attempt_no, 2)
-        with self.assertRaises(LeaseLost):
-            job_service.finish_job(self.db, lease, 'succeeded', now=self.expire(job.id))     # 여전히 옛 처리자는 불가
-        self.assertEqual(job_service.finish_job(self.db, lease2, 'succeeded', now=self.expire(job.id)), 'succeeded')
-
-    def test_recovery_exhausts_attempts(self):
-        with env(AI_MAX_ATTEMPTS=1):
-            world, job, lease = self.claimed()
-            self.assertEqual(job_service.recover_expired(self.db, now=self.expire(job.id))['exhausted'], 1)
-            self.assertEqual(self.job_row(job.id)['error_code'], 'ATTEMPTS_EXHAUSTED')
+        self.assertIsNone(job_service.claim_job(self.db, job.id, now=self.expire(job.id)))
 
     def test_attempt_that_reserved_a_provider_call_is_never_resumed_with_a_new_call(self):
         world, job, lease = self.claimed()
         usage_service.reserve_attempt(self.db, lease, Decimal('1.5'), now=T0)
         self.db.commit()
         stats = job_service.recover_expired(self.db, now=self.expire(job.id))
-        self.assertEqual((stats['uncertain'], stats['retried']), (1, 0))
+        self.assertEqual((stats['uncertain'], stats['interrupted']), (1, 0))
         row = self.job_row(job.id)
         self.assertEqual((row['status'], row['error_code']), ('failed', 'OUTCOME_UNCERTAIN'))
         attempt = self.db.execute(text("SELECT status, outcome_uncertain FROM ai_attempts WHERE job_id = :j"), {'j': job.id}).one()
@@ -519,7 +490,6 @@ class Recovery(Case):
         self.assertEqual(set(self.db.execute(text('SELECT status FROM usage_reservations')).scalars()), {'uncertain'})
         budgets = self.db.execute(text('SELECT reserved_amount, spent_amount FROM usage_budgets')).all()
         self.assertTrue(all(b[0] == Decimal('1.5') and b[1] == 0 for b in budgets))         # 예약을 해제하지 않는다
-        outbox.dispatch_pending(self.db, lambda e: self.fail('재호출 금지'), now=self.expire(job.id))
         self.assertIsNone(job_service.claim_job(self.db, job.id, now=self.expire(job.id)))
 
     def test_cancel_requested_job_with_dead_worker_is_cancelled(self):
@@ -528,12 +498,18 @@ class Recovery(Case):
         self.assertEqual(job_service.recover_expired(self.db, now=self.expire(job.id))['cancelled'], 1)
         self.assertEqual(self.job_row(job.id)['status'], 'cancelled')
 
-    def test_queue_deadline(self):
+    def test_orphaned_waiting_jobs_are_closed_as_interrupted(self):
+        # 접수 뒤(또는 재시도 대기 뒤) 처리권 시간 넘게 실행 스레드가 가져가지 않았으면 서버 재시작 등으로 잃은 것이다.
+        lease_seconds = job_service.get_ai_settings().lease_seconds
         world = self.make_world()
         old = self.create(world, fingerprint=H('1'), now=T0).job
-        fresh = self.create(world, fingerprint=H('2'), now=T0 + timedelta(minutes=29)).job
-        self.assertEqual(job_service.fail_queue_deadline(self.db, now=T0 + timedelta(minutes=31)), 1)
-        self.assertEqual(self.job_row(old.id)['error_code'], 'QUEUE_TIMEOUT')
+        fresh = self.create(world, fingerprint=H('2'), now=T0 + timedelta(seconds=lease_seconds - 5)).job
+        _, waiting, lease = self.claimed(self.make_world(), fingerprint=H('3'))
+        job_service.fail_job(self.db, lease, 'TEMP', retryable=True, now=T0)       # next_attempt_at = T0 + 30s
+        self.assertEqual(job_service.fail_orphaned(self.db, now=T0 + timedelta(seconds=lease_seconds + 1)), 1)
+        self.assertEqual(job_service.fail_orphaned(self.db, now=T0 + timedelta(seconds=lease_seconds + 31)), 1)
+        self.assertEqual((self.job_row(old.id)['status'], self.job_row(old.id)['error_code']), ('failed', 'INTERRUPTED'))
+        self.assertEqual(self.job_row(waiting.id)['error_code'], 'INTERRUPTED')
         self.assertEqual(self.job_row(fresh.id)['status'], 'queued')
 
     def test_maintenance_purges_expired_keys(self):
@@ -543,68 +519,82 @@ class Recovery(Case):
         self.assertEqual(stats['idempotency_purged'], 1)
 
 
-class Outbox(Case):
-    def test_publish_failure_keeps_the_row_and_retries_with_backoff(self):
+class Submit(Case):
+    """AD-33: API 프로세스의 실행 스레드. 사용자 key는 메모리로만 넘기고 DB에 남기지 않는다."""
+    def setUp(self):
+        super().setUp()
+        job_runner.load_handlers()        # submit이 실제 handler를 등록하므로, 시험 handler는 그 뒤에 덮어쓴다
+        self._real = dict(job_runner.HANDLERS)
+
+    def tearDown(self):
+        job_runner.HANDLERS.clear()
+        job_runner.HANDLERS.update(self._real)
+        super().tearDown()
+
+    def wait_status(self, job_id, statuses, timeout=15):
+        import time
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.db.rollback()
+            status = self.job_row(job_id)['status']
+            if status in statuses:
+                return status
+            time.sleep(0.05)
+        self.fail(f"job {job_id} stayed {status}")
+
+    def test_submit_runs_in_a_thread_with_the_request_key(self):
         world = self.make_world()
         job = self.create(world).job
+        seen = []
+        job_runner.register_handler('review', lambda ctx: seen.append(ctx.api_key))
+        try:
+            job_runner.submit(job.id, 'sk-test-key-1234567890', session_factory=Session)
+            self.assertEqual(self.wait_status(job.id, ('succeeded', 'failed')), 'succeeded')
+        finally:
+            job_runner.HANDLERS.pop('review', None)
+        self.assertEqual(seen, ['sk-test-key-1234567890'])
+        stored = self.scalar("SELECT count(*) FROM ai_jobs WHERE request_options::text LIKE '%sk-test-key%' "
+                             "OR coalesce(error_code, '') LIKE '%sk-test%'")
+        self.assertEqual(stored, 0)
 
-        def broken(event):
-            raise ConnectionError('redis down')
-        stats = outbox.dispatch_pending(self.db, broken, now=T0)
-        self.assertEqual(stats, {'published': 0, 'skipped': 0, 'failed': 1})
-        row = self.db.execute(text('SELECT retry_count, published_at, available_at FROM task_outbox')).one()
-        self.assertEqual((row.retry_count, row.published_at), (1, None))
-        self.assertGreater(row.available_at, T0)
-        self.assertEqual(self.job_row(job.id)['status'], 'queued')                 # job은 그대로 대기
-        published = []
-        self.assertEqual(outbox.dispatch_pending(self.db, published.append, now=T0 + timedelta(seconds=1))['published'], 0)
-        stats = outbox.dispatch_pending(self.db, published.append, now=T0 + timedelta(minutes=10))
-        self.assertEqual((stats['published'], len(published), published[0].job_id), (1, 1, job.id))
-        self.assertEqual(published[0].event_type, 'generate')
-        self.assertEqual(outbox.dispatch_pending(self.db, published.append, now=T0 + timedelta(hours=1))['published'], 0)
-
-    def test_retry_requeue_is_committed_before_the_message_is_published(self):
-        """worker가 메시지를 받는 시점에 작업이 이미 queued여야 한다(아니면 claim이 건너뛰어 작업이 유실된다)."""
-        world, job, lease = self.claimed()
-        job_service.fail_job(self.db, lease, 'E', retryable=True, now=T0)
+    def test_retryable_failure_is_retried_by_the_same_thread_with_the_same_key(self):
+        world = self.make_world()
+        job = self.create(world).job
         seen = []
 
-        def publish(event):
-            with Session() as other:                       # worker와 같은 시점의 다른 connection
-                seen.append(other.execute(text('SELECT status FROM ai_jobs WHERE id = :j'), {'j': event.job_id}).scalar())
-                claimed = job_service.claim_job(other, event.job_id, now=T0 + timedelta(seconds=31))
-                seen.append(claimed is not None)
-        outbox.dispatch_pending(self.db, publish, now=T0 + timedelta(seconds=31))
-        self.assertEqual(seen[-2:], ['queued', True])
+        def handler(ctx):
+            seen.append((ctx.lease.attempt_no, ctx.api_key))
+            if ctx.lease.attempt_no == 1:
+                raise job_runner.RetryableError('TEMP')
+        job_runner.register_handler('review', handler)
+        try:
+            with patch.object(job_service, 'retry_delay', return_value=0):
+                job_runner.submit(job.id, 'sk-retry-key-1234567890', session_factory=Session)
+                self.assertEqual(self.wait_status(job.id, ('succeeded', 'failed')), 'succeeded')
+        finally:
+            job_runner.HANDLERS.pop('review', None)
+        self.assertEqual(seen, [(1, 'sk-retry-key-1234567890'), (2, 'sk-retry-key-1234567890')])
 
-    def test_failure_of_one_event_does_not_block_others(self):
-        jobs = [self.create(self.make_world(), fingerprint=H(str(i))).job for i in range(3)]
-        seen = []
+    def test_cancelled_while_waiting_is_not_run_again(self):
+        world = self.make_world()
+        job = self.create(world).job
+        runs = []
 
-        def flaky(event):
-            if event.job_id == jobs[1].id:
-                raise ConnectionError()
-            seen.append(event.job_id)
-        stats = outbox.dispatch_pending(self.db, flaky, now=T0 + timedelta(seconds=1))
-        self.assertEqual((stats['published'], stats['failed']), (2, 1))
-
-    def test_concurrent_dispatchers_never_publish_the_same_event_twice(self):
-        for i in range(12):
-            self.create(self.make_world(), fingerprint=H(format(i, 'x')))
-        counts, lock = {}, threading.Lock()
-
-        def publish(event):
-            with lock:
-                counts[event.id] = counts.get(event.id, 0) + 1
-
-        def run():
-            with Session() as db:
-                outbox.dispatch_pending(db, publish, limit=5, now=T0 + timedelta(seconds=1))
-        threads = [threading.Thread(target=run) for _ in range(6)]
-        [t.start() for t in threads]
-        [t.join() for t in threads]
-        self.assertEqual(len(counts), 12)
-        self.assertEqual(set(counts.values()), {1})
+        def handler(ctx):
+            runs.append(ctx.lease.attempt_no)
+            raise job_runner.RetryableError('TEMP')
+        job_runner.register_handler('review', handler)
+        try:
+            with patch.object(job_service, 'retry_delay', return_value=1):
+                job_runner.submit(job.id, None, session_factory=Session)
+                self.wait_status(job.id, ('retry_wait',))
+                job_service.request_cancel(self.db, job.id, world[0])
+                import time
+                time.sleep(1.5)                              # 대기 시각이 지나도 다시 실행하지 않는다
+        finally:
+            job_runner.HANDLERS.pop('review', None)
+        self.assertEqual(runs, [1])
+        self.assertEqual(self.job_row(job.id)['status'], 'cancelled')
 
     def test_duplicate_delivery_runs_the_job_once(self):
         world = self.make_world()
@@ -677,55 +667,51 @@ class Runner(Case):
                 job_service.recover_expired(db, now=T0 + timedelta(seconds=1))
         _, job, outcome = self.run_with(handler)
         self.assertEqual(outcome, 'lost')
-        self.assertEqual(self.job_row(job.id)['status'], 'retry_wait')
+        self.assertEqual((self.job_row(job.id)['status'], self.job_row(job.id)['error_code']), ('failed', 'INTERRUPTED'))
 
 
 class Budget(Case):
-    def test_zero_budget_disables_existing_cap_but_preserves_accounting(self):
-        from app.services.ai import job_views
-        with env(AI_USER_MONTHLY_BUDGET=1, AI_SERVER_MONTHLY_BUDGET=0):
-            world, job, lease = self.claimed()
-            usage_service.reserve_attempt(self.db, lease, Decimal('0'), now=T0)
-            usage_service.settle_attempt(self.db, job.id, 1, Decimal('0'))
-            job_service.finish_job(self.db, lease, 'succeeded', now=T0)
-        with env(AI_USER_MONTHLY_BUDGET=0, AI_SERVER_MONTHLY_BUDGET=0, AI_DAILY_JOB_LIMIT=0):
-            other = self.create(world, fingerprint=H('2')).job
-            lease = job_service.claim_job(self.db, other.id, now=T0)
-            ids = usage_service.reserve_attempt(self.db, lease, Decimal('1000'), now=T0)
-            self.assertEqual(len(ids), 1)
-            usage_service.settle_attempt(self.db, other.id, 1, Decimal('999'))
-            self.db.commit()
-            view = job_views.usage_summary(self.db, world[0], now=T0)
-            self.assertEqual(Decimal(view.user_limit), 0)
-            self.assertEqual(Decimal(view.user_spent), 999)
-            self.assertEqual(view.daily_job_limit, 0)
-            self.assertEqual(self.budgets()['user'], (0, Decimal('999')))
+    """AD-33: 사용자 key의 비용은 사용자의 제공자 계정에서 통제한다. 서버는 지출 상한을 두지 않고 사용 기록만 남긴다."""
 
     def budgets(self):
         rows = self.db.execute(text("SELECT scope, reserved_amount, spent_amount FROM usage_budgets ORDER BY scope")).all()
         return {r.scope: (r.reserved_amount, r.spent_amount) for r in rows}
 
-    def test_reserve_settle_release_and_uncertain(self):
-        with env(AI_USER_MONTHLY_BUDGET=10, AI_SERVER_MONTHLY_BUDGET=100):
+    def test_no_server_spending_cap_but_usage_is_recorded(self):
+        from app.services.ai import job_views
+        with env(AI_USER_MONTHLY_BUDGET=1, AI_SERVER_MONTHLY_BUDGET=1, AI_DAILY_JOB_LIMIT=0):   # 예전 설정이 남아 있어도 무시
             world, job, lease = self.claimed()
-            ids = usage_service.reserve_attempt(self.db, lease, Decimal('2'), now=T0)
+            ids = usage_service.reserve_attempt(self.db, lease, Decimal('1000'), now=T0)
+            self.assertEqual(len(ids), 1)                                          # 사용자 기록 하나(서버 공유 예산 없음)
+            usage_service.settle_attempt(self.db, job.id, 1, Decimal('999'))
             self.db.commit()
-            self.assertEqual(len(ids), 2)                                          # 사용자 + 서버
-            self.assertEqual(self.budgets(), {'server': (2, 0), 'user': (2, 0)})
-            self.assertEqual(self.scalar('SELECT estimated_cost FROM ai_attempts'), Decimal('2'))
-            self.assertEqual(usage_service.settle_attempt(self.db, job.id, 1, Decimal('1.25'), input_tokens=100,
-                                                          output_tokens=20, provider_reported=True), 2)
-            self.db.commit()
-            self.assertEqual(self.budgets(), {'server': (0, Decimal('1.25')), 'user': (0, Decimal('1.25'))})
-            attempt = self.db.execute(text('SELECT provider_reported_cost, input_tokens, output_tokens FROM ai_attempts')).one()
-            self.assertEqual(tuple(attempt), (Decimal('1.25'), 100, 20))
-            self.assertEqual(usage_service.settle_attempt(self.db, job.id, 1, Decimal('5')), 0)   # 이미 정산됨
-            self.assertEqual(self.budgets()['user'][1], Decimal('1.25'))
-            self.assertEqual(self.code_of(usage_service.reserve_attempt, self.db, lease, Decimal('1')), ErrorCode.INVALID_STATE)
+            view = job_views.usage_summary(self.db, world[0], now=T0)
+            self.assertEqual((Decimal(view.user_limit), Decimal(view.user_spent)), (0, 999))
+            self.assertFalse(view.server_budget_enabled)
+            self.assertEqual(self.budgets(), {'user': (0, Decimal('999'))})
+        with self.assertRaises(ValueError):
+            usage_service.reserve_attempt(self.db, lease, Decimal('-1'))
+
+    def test_reserve_settle_release_and_uncertain(self):
+        world, job, lease = self.claimed()
+        ids = usage_service.reserve_attempt(self.db, lease, Decimal('2'), now=T0)
+        self.db.commit()
+        self.assertEqual(len(ids), 1)
+        self.assertEqual(self.budgets(), {'user': (2, 0)})
+        self.assertEqual(self.scalar('SELECT estimated_cost FROM ai_attempts'), Decimal('2'))
+        self.assertEqual(usage_service.settle_attempt(self.db, job.id, 1, Decimal('1.25'), input_tokens=100,
+                                                      output_tokens=20, provider_reported=True), 1)
+        self.db.commit()
+        self.assertEqual(self.budgets(), {'user': (0, Decimal('1.25'))})
+        attempt = self.db.execute(text('SELECT provider_reported_cost, input_tokens, output_tokens FROM ai_attempts')).one()
+        self.assertEqual(tuple(attempt), (Decimal('1.25'), 100, 20))
+        self.assertEqual(usage_service.settle_attempt(self.db, job.id, 1, Decimal('5')), 0)   # 이미 정산됨
+        self.assertEqual(self.budgets()['user'][1], Decimal('1.25'))
+        self.assertEqual(self.code_of(usage_service.reserve_attempt, self.db, lease, Decimal('1')), ErrorCode.INVALID_STATE)
 
     def requeue_after_settled_attempt(self, job, now=T0):
         """정산된 attempt의 작업을 다시 queued로 돌린다. fail_job은 이미 처리된 호출을 재시도하지 않으므로(S7 복구 규칙)
-        예산 계산을 보려는 이 테스트는 상태를 직접 되돌린다."""
+        사용 기록을 보려는 이 테스트는 상태를 직접 되돌린다."""
         self.db.execute(text("UPDATE ai_attempts SET status = 'failed', finished_at = :n WHERE job_id = :j AND status = 'started'"),
                         {'n': now, 'j': job.id})
         self.db.execute(text("""UPDATE ai_jobs SET status = 'queued', lease_token = NULL, lease_until = NULL
@@ -733,93 +719,37 @@ class Budget(Case):
         self.db.commit()
 
     def test_each_attempt_is_tracked_separately_across_retries(self):
-        with env(AI_USER_MONTHLY_BUDGET=10, AI_SERVER_MONTHLY_BUDGET=100):
-            world, job, lease = self.claimed()
-            usage_service.reserve_attempt(self.db, lease, Decimal('1'), now=T0)
-            usage_service.settle_attempt(self.db, job.id, 1, Decimal('0.4'))
-            self.db.commit()
-            self.requeue_after_settled_attempt(job)                                           # 출력 검증 실패 → 재생성
-            lease2 = job_service.claim_job(self.db, job.id, now=T0 + timedelta(hours=1))
-            usage_service.reserve_attempt(self.db, lease2, Decimal('1'), now=T0)
-            usage_service.settle_attempt(self.db, job.id, 2, Decimal('0.6'))
-            self.db.commit()
-            self.assertEqual(self.budgets()['user'], (0, Decimal('1.0')))                   # 실패한 호출 비용도 남는다
-            self.assertEqual(self.scalar('SELECT count(*) FROM usage_reservations'), 4)
+        world, job, lease = self.claimed()
+        usage_service.reserve_attempt(self.db, lease, Decimal('1'), now=T0)
+        usage_service.settle_attempt(self.db, job.id, 1, Decimal('0.4'))
+        self.db.commit()
+        self.requeue_after_settled_attempt(job)                                           # 출력 검증 실패 → 재생성
+        lease2 = job_service.claim_job(self.db, job.id, now=T0 + timedelta(hours=1))
+        usage_service.reserve_attempt(self.db, lease2, Decimal('1'), now=T0)
+        usage_service.settle_attempt(self.db, job.id, 2, Decimal('0.6'))
+        self.db.commit()
+        self.assertEqual(self.budgets()['user'], (0, Decimal('1.0')))                   # 실패한 호출 비용도 남는다
+        self.assertEqual(self.scalar('SELECT count(*) FROM usage_reservations'), 2)
 
     def test_release_and_uncertain_resolution(self):
-        with env(AI_USER_MONTHLY_BUDGET=10, AI_SERVER_MONTHLY_BUDGET=100):
-            world, job, lease = self.claimed()
-            usage_service.reserve_attempt(self.db, lease, Decimal('3'), now=T0)
-            self.assertEqual(usage_service.release_attempt(self.db, job.id, 1), 2)
-            self.db.commit()
-            self.assertEqual(self.budgets(), {'server': (0, 0), 'user': (0, 0)})
-            self.assertEqual(usage_service.release_attempt(self.db, job.id, 1), 0)           # 두 번 해제해도 안전
+        world, job, lease = self.claimed()
+        usage_service.reserve_attempt(self.db, lease, Decimal('3'), now=T0)
+        self.assertEqual(usage_service.release_attempt(self.db, job.id, 1), 1)
+        self.db.commit()
+        self.assertEqual(self.budgets(), {'user': (0, 0)})
+        self.assertEqual(usage_service.release_attempt(self.db, job.id, 1), 0)           # 두 번 해제해도 안전
 
-            world2, job2, lease2 = self.claimed(self.make_world(), fingerprint=H('2'))
-            usage_service.reserve_attempt(self.db, lease2, Decimal('4'), now=T0)
-            self.assertEqual(usage_service.mark_uncertain(self.db, job2.id, 1), 2)
-            self.db.commit()
-            self.assertEqual(self.budgets()['user'], (4, 0))                                  # 불명 호출은 예산을 점유
-            ids = list(self.db.execute(text("SELECT id FROM usage_reservations WHERE status = 'uncertain' ORDER BY 1")).scalars())
-            self.assertTrue(usage_service.resolve_uncertain(self.db, ids[0], Decimal('2.5')))
-            self.assertTrue(usage_service.resolve_uncertain(self.db, ids[1]))
-            self.assertFalse(usage_service.resolve_uncertain(self.db, ids[1]))
-            self.db.commit()
-            totals = self.db.execute(text('SELECT sum(reserved_amount), sum(spent_amount) FROM usage_budgets')).one()
-            self.assertEqual((totals[0], totals[1]), (0, Decimal('2.5')))
-
-    def test_budget_limits_are_atomic_across_user_and_server(self):
-        with env(AI_USER_MONTHLY_BUDGET=5, AI_SERVER_MONTHLY_BUDGET=3):
-            world, job, lease = self.claimed()
-            self.assertEqual(self.code_of(usage_service.reserve_attempt, self.db, lease, Decimal('4'), now=T0), ErrorCode.BUDGET_LIMIT)
-            self.db.rollback()
-            self.assertEqual(self.scalar('SELECT count(*) FROM usage_reservations'), 0)       # 부분 예약이 남지 않는다
-            self.assertEqual(self.budgets().get('user', (0, 0))[0], 0)
-            usage_service.reserve_attempt(self.db, lease, Decimal('3'), now=T0)               # 서버 한도 정확히 소진
-            self.db.commit()
-            world2, job2, lease2 = self.claimed(self.make_world(), fingerprint=H('2'))
-            self.assertEqual(self.code_of(usage_service.reserve_attempt, self.db, lease2, Decimal('0.01'), now=T0),
-                             ErrorCode.BUDGET_LIMIT)
-            with self.assertRaises(ValueError):
-                usage_service.reserve_attempt(self.db, lease2, Decimal('-1'))
-
-    def test_spent_amount_counts_against_the_limit(self):
-        with env(AI_USER_MONTHLY_BUDGET=5, AI_SERVER_MONTHLY_BUDGET=100):
-            world, job, lease = self.claimed()
-            usage_service.reserve_attempt(self.db, lease, Decimal('4'), now=T0)
-            usage_service.settle_attempt(self.db, job.id, 1, Decimal('6'))                    # 예약보다 많이 나온 실제 비용
-            self.db.commit()
-            self.assertEqual(self.budgets()['user'], (0, Decimal('6')))
-            self.requeue_after_settled_attempt(job)
-            lease2 = job_service.claim_job(self.db, job.id, now=T0 + timedelta(hours=1))
-            self.assertEqual(self.code_of(usage_service.reserve_attempt, self.db, lease2, Decimal('0.01'), now=T0),
-                             ErrorCode.BUDGET_LIMIT)
-
-    def test_concurrent_reservations_cannot_exceed_the_limit(self):
-        with env(AI_USER_MONTHLY_BUDGET=5, AI_SERVER_MONTHLY_BUDGET=100):
-            owner_world = self.make_world()
-            leases = []
-            for i in range(6):
-                job = self.create(owner_world, fingerprint=H(format(i + 1, 'x'))).job
-                leases.append(job_service.claim_job(self.db, job.id, now=T0))
-            outcomes = []
-
-            def run(lease):
-                with Session() as db:
-                    try:
-                        usage_service.reserve_attempt(db, lease, Decimal('2'), now=T0)
-                        db.commit()
-                        outcomes.append('ok')
-                    except AIError as exc:
-                        db.rollback()
-                        outcomes.append(exc.code)
-            threads = [threading.Thread(target=run, args=(l,)) for l in leases]
-            [t.start() for t in threads]
-            [t.join() for t in threads]
-            self.assertEqual(outcomes.count('ok'), 2, outcomes)
-            self.assertEqual(outcomes.count(ErrorCode.BUDGET_LIMIT), 4)
-            self.assertEqual(self.budgets()['user'][0], Decimal('4'))
-            self.assertEqual(self.budgets()['server'][0], Decimal('4'))
+        world2, job2, lease2 = self.claimed(self.make_world(), fingerprint=H('2'))
+        usage_service.reserve_attempt(self.db, lease2, Decimal('4'), now=T0)
+        self.assertEqual(usage_service.mark_uncertain(self.db, job2.id, 1), 1)
+        self.db.commit()
+        self.assertEqual(self.scalar('SELECT max(reserved_amount) FROM usage_budgets'), 4)   # 불명 호출은 기록에 남는다
+        ids = list(self.db.execute(text("SELECT id FROM usage_reservations WHERE status = 'uncertain' ORDER BY 1")).scalars())
+        self.assertTrue(usage_service.resolve_uncertain(self.db, ids[0], Decimal('2.5')))
+        self.assertFalse(usage_service.resolve_uncertain(self.db, ids[0]))
+        self.db.commit()
+        totals = self.db.execute(text('SELECT sum(reserved_amount), sum(spent_amount) FROM usage_budgets')).one()
+        self.assertEqual((totals[0], totals[1]), (0, Decimal('2.5')))
 
     def test_reservation_requires_the_current_lease(self):
         world, job, lease = self.claimed()
@@ -833,22 +763,21 @@ class Budget(Case):
         self.db.rollback()
         self.assertEqual(self.scalar('SELECT count(*) FROM usage_reservations'), 0)
 
-    def test_anonymized_budget_survives_user_deletion_and_period_rolls_over(self):
-        with env(AI_USER_MONTHLY_BUDGET=10, AI_SERVER_MONTHLY_BUDGET=100):
-            world, job, lease = self.claimed()
-            usage_service.reserve_attempt(self.db, lease, Decimal('1'), now=T0)
-            usage_service.settle_attempt(self.db, job.id, 1, Decimal('1'))
-            self.db.commit()
-            self.db.execute(text('DELETE FROM users WHERE id = :i'), {'i': world[0]})
-            self.db.commit()
-            self.assertEqual(self.scalar("SELECT count(*) FROM usage_budgets WHERE scope = 'user' AND owner_user_id IS NULL"), 1)
-            later = T0 + timedelta(days=40)
-            world2 = self.make_world()
-            job2 = self.create(world2, fingerprint=H('2'), now=later).job
-            lease2 = job_service.claim_job(self.db, job2.id, now=later)
-            usage_service.reserve_attempt(self.db, lease2, Decimal('1'), now=later)   # 다음 달은 새 예산
-            self.db.commit()
-            self.assertEqual(self.scalar("SELECT count(DISTINCT period_start) FROM usage_budgets WHERE scope = 'server'"), 2)
+    def test_anonymized_usage_survives_user_deletion_and_period_rolls_over(self):
+        world, job, lease = self.claimed()
+        usage_service.reserve_attempt(self.db, lease, Decimal('1'), now=T0)
+        usage_service.settle_attempt(self.db, job.id, 1, Decimal('1'))
+        self.db.commit()
+        self.db.execute(text('DELETE FROM users WHERE id = :i'), {'i': world[0]})
+        self.db.commit()
+        self.assertEqual(self.scalar("SELECT count(*) FROM usage_budgets WHERE scope = 'user' AND owner_user_id IS NULL"), 1)
+        later = T0 + timedelta(days=40)
+        world2 = self.make_world()
+        job2 = self.create(world2, fingerprint=H('2'), now=later).job
+        lease2 = job_service.claim_job(self.db, job2.id, now=later)
+        usage_service.reserve_attempt(self.db, lease2, Decimal('1'), now=later)   # 다음 달은 새 기록
+        self.db.commit()
+        self.assertEqual(self.scalar("SELECT count(DISTINCT period_start) FROM usage_budgets WHERE scope = 'user'"), 2)
 
 
 class ReservationSafety(Case):
@@ -902,11 +831,11 @@ class ReservationSafety(Case):
         reserving = Session()
         usage_service.reserve_attempt(reserving, lease, Decimal('1'), now=T0)   # 미커밋 잠금 보유
         late = T0 + timedelta(seconds=121)
-        self.assertEqual(job_service.recover_expired(self.db, now=late)['retried'], 0)   # 잠긴 행은 건드리지 않는다
+        self.assertEqual(sum(job_service.recover_expired(self.db, now=late).values()), 0)   # 잠긴 행은 건드리지 않는다
         reserving.commit()
         reserving.close()
         stats = job_service.recover_expired(self.db, now=late)
-        self.assertEqual((stats['uncertain'], stats['retried']), (1, 0))
+        self.assertEqual((stats['uncertain'], stats['interrupted']), (1, 0))
         self.assertEqual(self.job_row(job.id)['error_code'], 'OUTCOME_UNCERTAIN')
 
     def test_retryable_failure_with_open_reservation_is_uncertain_and_not_retried(self):
@@ -916,10 +845,9 @@ class ReservationSafety(Case):
         self.assertEqual(job_service.fail_job(self.db, lease, 'TIMEOUT', retryable=True, now=T0), 'failed')
         row = self.job_row(job.id)
         self.assertEqual((row['status'], row['error_code']), ('failed', 'OUTCOME_UNCERTAIN'))
-        self.assertEqual(self.reservations(), [(1, 'uncertain'), (1, 'uncertain')])
+        self.assertEqual(self.reservations(), [(1, 'uncertain')])
         self.assertEqual(self.scalar('SELECT status FROM ai_attempts WHERE job_id = :j', j=job.id), 'uncertain')
-        self.assertEqual(self.scalar("SELECT max(reserved_amount) FROM usage_budgets"), Decimal('1'))   # 예산 계속 점유
-        self.assertEqual(self.scalar('SELECT count(*) FROM task_outbox WHERE job_id = :j', j=job.id), 1)  # 재시도 발행 없음
+        self.assertEqual(self.scalar("SELECT max(reserved_amount) FROM usage_budgets"), Decimal('1'))   # 불명 호출 기록 유지
         self.assertIsNone(job_service.claim_job(self.db, job.id, now=T0 + timedelta(hours=1)))
         self.assertEqual(self.scalar('SELECT count(*) FROM ai_attempts WHERE job_id = :j', j=job.id), 1)
 
@@ -946,7 +874,7 @@ class ReservationSafety(Case):
         usage_service.reserve_attempt(self.db, lease, Decimal('1.5'), now=T0)
         self.db.commit()
         job_service.finish_job(self.db, lease, 'succeeded', now=T0)               # 비용을 모르면 예약액으로 추정 정산
-        self.assertEqual(self.reservations(), [(1, 'settled'), (1, 'settled')])
+        self.assertEqual(self.reservations(), [(1, 'settled')])
         self.assertEqual(self.scalar("SELECT max(spent_amount) FROM usage_budgets"), Decimal('1.5'))
         self.assertEqual(self.scalar("SELECT max(reserved_amount) FROM usage_budgets"), 0)
 

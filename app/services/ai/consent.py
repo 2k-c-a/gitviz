@@ -1,8 +1,8 @@
 """전송 동의 확인과 작업에 고정할 실행 설정(PinnedConfig).
 
-사용자는 미리보기에서 (1) 보낼 코드 범위(manifest_hash), (2) 제공자·모델, (3) 쓸 API key 버전을 확인한 뒤 동의한다.
-서버는 동의 내용이 지금의 입력·허용 목록·key와 같을 때만 그 설정을 작업에 고정한다. 하나라도 다르면 PREVIEW_CHANGED로
-새 확인을 요구한다. 고정된 설정은 이후 key를 바꾸거나 profile 선택이 달라져도 바뀌지 않는다.
+사용자는 미리보기에서 (1) 보낼 코드 범위(manifest_hash), (2) 제공자·모델을 확인한 뒤 동의한다.
+서버는 동의 내용이 지금의 입력·허용 목록과 같을 때만 그 설정을 작업에 고정한다. 하나라도 다르면 PREVIEW_CHANGED로
+새 확인을 요구한다. 사용자 API key는 앱이 실행 요청마다 헤더로 보내며 동의·작업에 기록하지 않는다(AD-33).
 """
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.ai_settings import get_ai_settings
 from app.models.ai_input import AIInput
 from app.schemas.ai import ErrorCode, InputManifest, PRTransferMetadata, TransferConsent, canonical_hash
-from app.services.ai import credentials, input_builder
+from app.services.ai import input_builder
 from app.services.ai.access import AIError, ensure_owner
 from app.services.ai.providers import registry
 from app.services.ai.providers.base import ProviderProfile
@@ -25,9 +25,6 @@ class PinnedConfig:
     provider: str
     profile: ProviderProfile
     profile_fingerprint: str
-    credential_version_id: UUID | None
-    credential_version: int | None
-    key_hint: str | None
     input_id: UUID
     repository_id: int
     manifest_hash: str
@@ -39,7 +36,7 @@ class PinnedConfig:
 
 
 def resolve_consent(db: Session, owner_id: UUID, consent: TransferConsent, *, now: datetime | None = None) -> PinnedConfig:
-    """동의를 현재 상태와 대조해 고정할 설정을 돌려준다. 본인 입력·본인 key만 쓸 수 있다."""
+    """동의를 현재 상태와 대조해 고정할 설정을 돌려준다. 본인 입력만 쓸 수 있다."""
     now = now or datetime.now(timezone.utc)
     settings = get_ai_settings()
     if consent.policy_version not in settings.policy_versions:
@@ -49,8 +46,6 @@ def resolve_consent(db: Session, owner_id: UUID, consent: TransferConsent, *, no
     if profile is None or profile.provider != consent.provider or consent.provider not in registry.PROVIDERS:
         raise AIError(ErrorCode.INVALID_SELECTION, '지원하지 않는 제공자 또는 모델입니다.')
     profile = registry.get_profile(consent.profile_id)
-    if profile.execution_location == 'external' and not settings.allow_external_transfer:
-        raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '코드의 외부 전송이 허용되지 않았습니다.')
     if (consent.profile_fingerprint is not None and consent.profile_fingerprint != profile.fingerprint()
             or not profile.requires_api_key and consent.profile_fingerprint != profile.fingerprint()):
         raise AIError(ErrorCode.PREVIEW_CHANGED, '모델 설정이 확인한 뒤 바뀌었습니다.')
@@ -82,29 +77,15 @@ def resolve_consent(db: Session, owner_id: UUID, consent: TransferConsent, *, no
         raise AIError(ErrorCode.INPUT_TOO_LARGE, '선택한 모델의 입력 토큰 한도를 넘습니다.',
                       details={'estimated_tokens': estimate.input_tokens, 'limit': estimate.limit})
 
-    if not profile.requires_api_key:
-        if consent.credential_version is not None:
-            raise AIError(ErrorCode.PREVIEW_CHANGED, '로컬 실행은 API key를 사용하지 않습니다.')
-        return PinnedConfig(provider=profile.provider, profile=profile, profile_fingerprint=profile.fingerprint(),
-                            credential_version_id=None, credential_version=None, key_hint=None,
-                            input_id=row.id, repository_id=row.repository_id,
-                            manifest_hash=consent.manifest_hash, policy_version=row.policy_version)
-    found = credentials.get_active(db, owner_id, profile.provider)
-    if found is None:
-        raise AIError(ErrorCode.CREDENTIAL_REQUIRED, f'{profile.provider} API key를 먼저 등록해 주세요.')
-    version = found[1]
-    if version.version != consent.credential_version:
-        raise AIError(ErrorCode.PREVIEW_CHANGED, 'API key가 확인한 뒤 바뀌었습니다. 다시 확인해 주세요.')
     return PinnedConfig(provider=profile.provider, profile=profile, profile_fingerprint=profile.fingerprint(),
-                        credential_version_id=version.id, credential_version=version.version,
-                        key_hint=version.key_hint, input_id=row.id, repository_id=row.repository_id,
+                        input_id=row.id, repository_id=row.repository_id,
                         manifest_hash=consent.manifest_hash, policy_version=row.policy_version)
 
 
 def generation_fingerprint(owner_id: UUID, kind: str, input_hash: str, pinned: PinnedConfig) -> str:
     """생성 작업 fingerprint: owner·kind·입력·제공자/모델/프롬프트/schema/정책/profile 설정.
 
-    key 버전은 넣지 않는다. 같은 입력·같은 설정이면 key가 바뀌어도 이미 성공한 결과를 재사용한다."""
+    key는 넣지 않는다. 같은 입력·같은 설정이면 key가 바뀌어도 이미 성공한 결과를 재사용한다."""
     profile = pinned.profile
     return canonical_hash({'owner': str(owner_id), 'kind': kind, 'input': input_hash, 'provider': pinned.provider,
                            'model': profile.model, 'profile': pinned.profile_fingerprint,

@@ -178,9 +178,7 @@ class BaseUrl(unittest.TestCase):
     def test_test_only_override_is_used_and_restricted_to_loopback(self):
         with patch.dict(os.environ, {'AI_TEST_PROVIDER_BASE_URL': 'http://127.0.0.1:9999', 'ANTHROPIC_BASE_URL': 'http://evil.example'}):
             self.assertEqual(str(AnthropicProvider(PROFILE, api_key=API_KEY).client.base_url).rstrip('/'), 'http://127.0.0.1:9999')
-        env = {'AI_ENABLED': '1', 'AI_INPUT_ENCRYPTION_KEYS': 'v1:' + 'a1' * 32, 'AI_INPUT_KEY_VERSION': 'v1',
-               'AI_CREDENTIAL_ENCRYPTION_KEYS': 'c1:' + 'b2' * 32, 'AI_CREDENTIAL_KEY_VERSION': 'c1',
-               'AI_ALLOWED_ORIGINS': 'http://localhost:8000', 'DATABASE_URL': 'postgresql://u:p@localhost/db',
+        env = {'AI_ALLOWED_ORIGINS': 'http://localhost:8000', 'DATABASE_URL': 'postgresql://u:p@localhost/db',
                'DATABASE_URL_ASYNC': '', 'DATABASE_SSL_CA': '', 'AI_PROVIDER_PROFILE': 'claude-opus-5-5-v1', 'AI_ALLOWED_PROFILES': ''}
         for url, ok in (('http://127.0.0.1:8123', True), ('http://localhost:8123', True), ('', True),
                         ('https://api.evil.example', False), ('http://10.0.0.5:80', False), ('ftp://127.0.0.1', False),
@@ -194,12 +192,12 @@ class BaseUrl(unittest.TestCase):
         """앱 시작 시 설정 검증을 거치지 않는 독립 실행(smoke 등)도 사용자 key를 외부 주소로 보내지 않는다."""
         for url in ('https://api.evil.example', 'http://10.0.0.5:80', 'http://127.0.0.1@evil.example', 'http://localhost.evil.example', 'ftp://127.0.0.1',
                     'http://user:pw@127.0.0.1:9', 'http://127.0.0.1:notaport'):
-            with self.subTest(url=url), patch.dict(os.environ, {'AI_ENABLED': '0', 'AI_TEST_PROVIDER_BASE_URL': url}):
+            with self.subTest(url=url), patch.dict(os.environ, {'AI_TEST_PROVIDER_BASE_URL': url}):
                 with self.assertRaises(ProviderConfigError):
                     AnthropicProvider(PROFILE, api_key=API_KEY)
                 with self.assertRaises(ProviderConfigError):
                     registry.create_provider(PROFILE, api_key=API_KEY)
-        with patch.dict(os.environ, {'AI_ENABLED': '0', 'AI_TEST_PROVIDER_BASE_URL': 'http://localhost:8123'}):
+        with patch.dict(os.environ, {'AI_TEST_PROVIDER_BASE_URL': 'http://localhost:8123'}):
             self.assertEqual(str(AnthropicProvider(PROFILE, api_key=API_KEY).client.base_url).rstrip('/'), 'http://localhost:8123')
 
 
@@ -491,27 +489,20 @@ class Profiles(unittest.TestCase):
         with self.assertRaises(ProviderConfigError):                                # 공용 key로 대체하지 않는다
             registry.create_provider(PROFILE)
 
-    def test_settings_validation_checks_profile_and_credentials_before_any_call(self):
-        env = {'AI_ENABLED': '1', 'AI_INPUT_ENCRYPTION_KEYS': 'v1:' + 'a1' * 32, 'AI_INPUT_KEY_VERSION': 'v1',
-               'AI_CREDENTIAL_ENCRYPTION_KEYS': 'c1:' + 'b2' * 32, 'AI_CREDENTIAL_KEY_VERSION': 'c1',
-               'AI_ALLOWED_ORIGINS': 'http://localhost:8000', 'DATABASE_URL': 'postgresql://u:p@localhost/db',
+    def test_settings_validation_checks_profile_before_any_call(self):
+        env = {'AI_ALLOWED_ORIGINS': 'http://localhost:8000', 'DATABASE_URL': 'postgresql://u:p@localhost/db',
                'DATABASE_URL_ASYNC': '', 'DATABASE_SSL_CA': '', 'AI_PROVIDER_PROFILE': 'claude-opus-5-5-v1',
                'AI_ALLOWED_PROFILES': ''}
         def problems(**over):
             with patch.dict(os.environ, {**env, **over}):
                 return ai_settings.validate_ai_settings()
-        # 서버 공용 API key는 필요 없다(사용자가 자신의 key를 등록한다). 대신 사용자 key 암호화 키가 필요하다.
-        self.assertEqual(problems(AI_ALLOW_EXTERNAL_TRANSFER='1', ANTHROPIC_API_KEY=''), [])
-        self.assertEqual(problems(AI_ALLOW_EXTERNAL_TRANSFER='0'), [])
-        self.assertTrue(any('AI_CREDENTIAL_ENCRYPTION_KEYS' in p for p in problems(AI_CREDENTIAL_ENCRYPTION_KEYS='')))
-        self.assertTrue(any('AI_CREDENTIAL_KEY_VERSION' in p for p in problems(AI_CREDENTIAL_KEY_VERSION='c9')))
-        self.assertTrue(any('달라야' in p for p in problems(AI_CREDENTIAL_ENCRYPTION_KEYS='v1:' + 'a1' * 32,
-                                                          AI_CREDENTIAL_KEY_VERSION='v1')))   # 입력 키와 같은 키 금지
+        # AD-33: 서버 공용 API key도, 사용자 key 암호화 키도 필요 없다(key는 앱이 실행 요청마다 보낸다).
+        self.assertEqual(problems(ANTHROPIC_API_KEY=''), [])
         self.assertTrue(any('AI_PROVIDER_PROFILE' in p for p in problems(AI_PROVIDER_PROFILE='unknown-profile')))
         self.assertTrue(any('AI_PROVIDER_PROFILE' in p for p in problems(AI_ALLOWED_PROFILES='claude-sonnet-5-5-v1')))
         self.assertEqual(problems(AI_ALLOWED_PROFILES='claude-opus-5-5-v1,claude-sonnet-5-5-v1'), [])
-        leaked = ' '.join(problems(AI_CREDENTIAL_ENCRYPTION_KEYS='', AI_PROVIDER_PROFILE='zzz'))
-        self.assertNotIn('b2' * 32, leaked)
+        leaked = ' '.join(problems(DATABASE_URL='postgresql://u:dbsecretpw@remote.example.com/db', AI_PROVIDER_PROFILE='zzz'))
+        self.assertNotIn('dbsecretpw', leaked)
 
 
 class TokenBudget(unittest.TestCase):

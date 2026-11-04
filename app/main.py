@@ -29,12 +29,10 @@ from app.api.community import router as community_router
 
 app = FastAPI(title="GitViz API", version="0.1.0")
 
-# ── AI 기능 (기본 꺼짐). 켜져 있으면 모델 호출 전에 필요한 보안 설정을 검증한다 ──
-from app.core.ai_settings import get_ai_settings, require_valid_ai_settings
+# ── AI 기능: 앱 전용 BYOK(AD-32 ⑧, AD-33). 사용자 key는 실행 요청마다 헤더로 오고 서버에 저장하지 않으므로 서버 비밀 설정이 없다 ──
 from fastapi.exceptions import RequestValidationError
 from app.api.ai.dependencies import ai_error_response, ai_validation_error_response
 from app.api.ai.inputs import router as ai_inputs_router
-from app.api.ai.credentials import router as ai_credentials_router
 from app.api.ai.jobs import router as ai_jobs_router
 from app.api.ai.results import router as ai_results_router
 from app.api.ai.feedback import router as ai_feedback_router
@@ -46,9 +44,15 @@ from app.api.ai.shared import router as ai_shared_router
 from app.api.ai.insights import router as ai_insights_router
 from app.services.ai.access import AIError
 
-if get_ai_settings().enabled:
-    require_valid_ai_settings()
 app.add_exception_handler(AIError, ai_error_response)
+
+
+@app.on_event('startup')
+def _start_ai_maintenance() -> None:
+    """AI 리뷰 작업은 API 프로세스 스레드에서 돈다(AD-33). 실행자를 잃은 작업·기한 지난 입력은 이 루프가 정리한다."""
+    from app.services.ai import job_runner
+    job_runner.start_maintenance_loop()
+
 app.add_exception_handler(RequestValidationError, ai_validation_error_response)
 
 # ── 세션 미들웨어 (HttpOnly 서명 쿠키, auth 로그인에 필요) ────────────────────
@@ -80,8 +84,7 @@ app.include_router(snapshots_router)
 app.include_router(auth_router.router)
 app.include_router(desktop_auth_router)
 app.include_router(desktop_repositories_router)
-app.include_router(ai_inputs_router)   # AI 기능이 꺼져 있으면 모든 경로가 404를 돌려준다
-app.include_router(ai_credentials_router)
+app.include_router(ai_inputs_router)
 app.include_router(ai_jobs_router)
 app.include_router(ai_results_router)
 app.include_router(ai_feedback_router)

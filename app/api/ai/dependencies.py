@@ -1,5 +1,6 @@
-"""AI API 공용 dependency: 로그인 사용자, CSRF, 오류 응답."""
+"""AI API 공용 dependency: 로그인 사용자, CSRF, 앱이 보낸 사용자 API key, 오류 응답."""
 import hmac
+import re
 import secrets
 from uuid import UUID, uuid4
 
@@ -16,16 +17,29 @@ from app.services.ai.access import AIError
 CSRF_SESSION_KEY = 'csrf_token'
 CSRF_HEADER = 'X-CSRF-Token'
 SAFE_METHODS = frozenset({'GET', 'HEAD', 'OPTIONS'})
+# 앱 전용 BYOK(AD-32 ⑧, AD-33): 앱 main 프로세스가 AI를 부르는 요청에만 붙이는 사용자 key. 서버는 저장·기록하지 않는다.
+KEY_HEADER = 'x-gitviz-ai-key'
+KEY_PATTERN = re.compile(r'[!-~]{16,512}')
 
 
 def require_ai_user(request: Request) -> UUID:
-    """AI 기능이 켜져 있고 로그인한 사용자의 ID. 아니면 AIError."""
-    if not get_ai_settings().enabled:
-        raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '사용할 수 없는 기능입니다.')
+    """로그인한 사용자의 ID. 아니면 AIError."""
     user_id = _get_session_user_id(request)
     if user_id is None:
         raise AIError(ErrorCode.AUTH_REQUIRED, '로그인이 필요합니다.')
     return user_id
+
+
+def request_api_key(request: Request, profile) -> str | None:
+    """이 모델에 쓸 사용자 key. 로컬 모델은 key를 쓰지 않는다(헤더가 와도 버린다). 값은 오류 메시지에 넣지 않는다."""
+    if not profile.requires_api_key:
+        return None
+    key = (request.headers.get(KEY_HEADER) or '').strip()
+    if not key:
+        raise AIError(ErrorCode.CREDENTIAL_REQUIRED, '앱 설정에서 이 AI 제공자의 API 키를 먼저 저장해 주세요.')
+    if not KEY_PATTERN.fullmatch(key):
+        raise AIError(ErrorCode.INVALID_SELECTION, 'API 키 형식이 올바르지 않습니다.')
+    return key
 
 
 def issue_csrf_token(request: Request) -> str:

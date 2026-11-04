@@ -6,7 +6,9 @@
 frontend/를 그대로 서빙하고 /api/ai/v1/* 응답을 계약(docs/contracts/ai-api.md)의 모양으로 흉내 낸다.
 시나리오는 /mock/set?key=value (여러 개 가능)와 /mock/reset으로 바꾼다:
   unauth=1  disabled=1  pulls_error=429|503|404  xss=1  outcome=success|uncertain|result_lost|cancelled|access|keyless
-  empty=1  expired=1  no_reviewable=1  head_changed=1  transfer_off=1  no_key=1  fail_create=<에러코드>  slow=1
+  empty=1  expired=1  no_reviewable=1  head_changed=1  no_key=1  fail_create=<에러코드>  slow=1
+AI 리뷰는 앱 전용 BYOK다(AD-33): 서버에는 key 관리 API가 없고, 앱이 실행 요청에 X-GitViz-AI-Key 헤더를 붙인다.
+no_key=1이면 key 없이 온 실행 요청처럼 CREDENTIAL_REQUIRED를 돌려준다.
 """
 import sys
 import time
@@ -30,7 +32,7 @@ XSS = '<img src=x onerror="window.__xss=1"><script>window.__xss=1</script>'
 def reset():
     STATE.clear()
     FLAGS.clear()
-    STATE.update(cred=None, inputs={}, jobs={}, results={}, findings={}, feedback={}, ver=0, spent=0.0)
+    STATE.update(profile='claude-opus-5-5-v1', inputs={}, jobs={}, results={}, findings={}, feedback={}, ver=0, spent=0.0)
 
 
 reset()
@@ -104,8 +106,6 @@ def mock_seed(request: Request):
     kind, advance, paths = q.pop('kind', 'review'), int(q.pop('advance', 5)), q.pop('paths', 'main.py,.env').split(',')
     reset()
     FLAGS.update(q)
-    if not FLAGS.get('no_key'):
-        STATE['cred'] = {'version': 1, 'hint': 'sk-ant-…1111', 'profile': 'claude-opus-5-5-v1'}
     iid = str(uuid4())
     STATE['inputs'][iid] = {'id': iid, 'repo': 1, 'pr': 7, 'files': make_files(paths), 'gets': 3}
     out = {'input': iid}
@@ -120,7 +120,7 @@ def mock_seed(request: Request):
 @app.get('/mock/state')
 def mock_state():
     return {'flags': FLAGS, 'jobs': {k: {'status': v['status'], 'polls': v['polls']} for k, v in STATE['jobs'].items()},
-            'cred': STATE['cred'] is not None, 'create_calls': STATE.get('create_calls', 0), 'jobs_created': len(STATE['jobs'])}
+            'create_calls': STATE.get('create_calls', 0), 'jobs_created': len(STATE['jobs'])}
 
 
 # ── 키·모델 ──
@@ -132,68 +132,11 @@ MODELS = [
 ]
 
 
-def cred_view():
-    c = STATE['cred']
-    return {'provider': 'anthropic', 'status': 'active', 'version': c['version'], 'key_hint': c['hint'], 'preferred_profile_id': c['profile'],
-            'validated_at': now(), 'created_at': now(), 'updated_at': now(),
-            'in_flight_jobs': sum(1 for j in STATE['jobs'].values() if j['status'] in ('queued', 'running'))}
-
-
 @app.get('/api/ai/v1/providers')
 def providers(request: Request):
     if (e := guard(request)):
         return e
-    return ok({'providers': [{'id': 'anthropic', 'display_name': 'Anthropic', 'models': MODELS}], 'external_transfer_allowed': not FLAGS.get('transfer_off')})
-
-
-@app.get('/api/ai/v1/credentials')
-def credentials(request: Request):
-    if (e := guard(request)):
-        return e
-    if FLAGS.get('no_key') and STATE['cred'] is None:
-        return ok({'credentials': []})
-    if STATE['cred'] is None and not FLAGS.get('no_key') and not STATE.get('touched'):
-        STATE['cred'] = {'version': 1, 'hint': 'sk-ant-…1111', 'profile': 'claude-opus-5-5-v1'}
-    return ok({'credentials': [cred_view()] if STATE['cred'] else []})
-
-
-@app.put('/api/ai/v1/credentials/{provider}')
-async def put_cred(provider: str, request: Request):
-    if (e := guard(request, True)):
-        return e
-    body = await request.json()
-    STATE['touched'] = True
-    key = body.get('api_key', '')
-    if key.endswith('BAD'):
-        return err(422, 'CREDENTIAL_INVALID', 'sk-ant-LEAK', {'reason': 'auth_failed'})
-    changed = STATE['cred'] is None or not STATE['cred']['hint'].endswith(key[-4:])
-    STATE['cred'] = {'version': (STATE['cred']['version'] + 1) if STATE['cred'] and changed else (STATE['cred'] or {'version': 1})['version'],
-                     'hint': f'sk-ant-…{key[-4:]}', 'profile': body.get('profile_id') or 'claude-opus-5-5-v1'}
-    return ok({'credential': cred_view(), 'changed': changed, 'previous_version': None})
-
-
-@app.patch('/api/ai/v1/credentials/{provider}')
-async def patch_cred(provider: str, request: Request):
-    if (e := guard(request, True)):
-        return e
-    if STATE['cred'] is None:
-        return err(404, 'RESOURCE_NOT_FOUND')
-    STATE['cred']['profile'] = (await request.json())['profile_id']
-    return ok(cred_view())
-
-
-@app.delete('/api/ai/v1/credentials/{provider}')
-def del_cred(provider: str, request: Request):
-    if (e := guard(request, True)):
-        return e
-    STATE['touched'] = True
-    STATE['cred'] = None
-    n = 0
-    for j in STATE['jobs'].values():
-        if j['status'] in ('queued', 'running'):
-            j['status'] = 'cancelled'
-            n += 1
-    return ok({'provider': provider, 'status': 'deleted', 'jobs_cancelled': n})
+    return ok({'providers': [{'id': 'anthropic', 'display_name': 'Anthropic', 'models': MODELS}]})
 
 
 @app.get('/api/ai/v1/usage')
@@ -264,19 +207,18 @@ def input_view(i):
     status = 'building' if building else ('expired' if FLAGS.get('expired') else 'ready')
     files = [] if building else i['files']
     read = sum(1 for f in files if f['content_state'] == 'read')
-    t = STATE['cred']
+    profile = STATE['profile']
     return {'input_id': i['id'], 'status': status, 'repository_id': i['repo'], 'pr_number': i['pr'], 'base_sha': SHA('a'), 'head_sha': SHA('b'), 'merge_base_sha': SHA('f'),
             'pr_state': 'open', 'pr_title': XSS if FLAGS.get('xss') else 'PR 7: add feature', 'pr_body': (XSS + '\nbody text') if FLAGS.get('xss') else 'Adds the feature',
             'pr_body_truncated': False, 'coverage': coverage(len(i['files']) or 1, read), 'files': files, 'manifest_hash': 'c' * 64, 'policy_version': 'code-transfer-v1',
-            'provider_profile': t['profile'] if t else 'claude-opus-5-5-v1',
-            'token_estimate': None if building else {'input_tokens': 6400, 'method': 'local-conservative-v1', 'profile': t['profile'] if t else 'claude-opus-5-5-v1', 'limit': 24000,
+            'provider_profile': profile,
+            'token_estimate': None if building else {'input_tokens': 6400, 'method': 'local-conservative-v1', 'profile': profile, 'limit': 24000,
                                                      'within_limit': True, 'max_output_tokens': 4000, 'estimated_max_cost': '0.105600', 'currency': 'USD'},
             'valid_until': None if building else later(-1 if FLAGS.get('expired') else 24), 'expires_at': later(24 * 7), 'execution_valid': (not building) and not FLAGS.get('expired'),
             'raw_available': not building and not FLAGS.get('expired'), 'reviewable': read > 0 and not building,
             'prepare_job': {'job_id': str(uuid4()), 'status': 'running' if building else 'succeeded', 'stage': 'input_preparation' if building else None, 'error_code': None},
-            'transfer': {'provider': 'anthropic', 'profile_id': t['profile'] if t else 'claude-opus-5-5-v1', 'model': 'claude-opus-5-5' if not t or '5-5-v1' in t['profile'] and 'opus' in t['profile'] else 'claude-sonnet-5-5',
-                         'external_transfer_allowed': not FLAGS.get('transfer_off'), 'credential_configured': t is not None, 'credential_version': t['version'] if t else None,
-                         'key_hint': t['hint'] if t else None}}
+            'transfer': {'provider': 'anthropic', 'profile_id': profile, 'model': 'claude-opus-5-5' if 'opus' in profile else 'claude-sonnet-5-5',
+                         'profile_fingerprint': 'd' * 64, 'requires_api_key': True, 'execution_location': 'external', 'model_digest': None}}
 
 
 @app.post('/api/ai/v1/inputs')
@@ -390,7 +332,7 @@ async def create_job(request: Request):
     if FLAGS.get('fail_create'):
         return err({'PREVIEW_CHANGED': 409, 'CREDENTIAL_REQUIRED': 422, 'USER_LIMIT': 429, 'BUDGET_LIMIT': 429, 'INPUT_EXPIRED': 410}.get(FLAGS['fail_create'], 422), FLAGS['fail_create'])
     body = await request.json()
-    if STATE['cred'] is None:
+    if FLAGS.get('no_key'):
         return err(422, 'CREDENTIAL_REQUIRED')
     time.sleep(0.3 if FLAGS.get('slow_create') else 0)
     STATE['create_calls'] = STATE.get('create_calls', 0) + 1

@@ -1,13 +1,13 @@
 """AI 기능 운영 도구: 설정 점검·상태 확인·작업 취소·복구·기한 삭제. 사용법과 절차는 docs/operations/ai.md.
 
-    python tools/ops/ai_ops.py check                     설정·DB(migration)·Redis 점검(문제가 있으면 종료 코드 1)
-    python tools/ops/ai_ops.py status                    작업·대기열·예산·보관 현황
-    python tools/ops/ai_ops.py uncertain                 결과를 알 수 없는 호출(예산을 점유 중)
+    python tools/ops/ai_ops.py check                     설정·DB(migration) 점검(문제가 있으면 종료 코드 1)
+    python tools/ops/ai_ops.py status                    작업·사용 기록·보관 현황
+    python tools/ops/ai_ops.py uncertain                 결과를 알 수 없는 호출
     python tools/ops/ai_ops.py resolve <예약id> [--settle 금액]   불명 호출 정리: 금액을 주면 정산, 없으면 해제
     python tools/ops/ai_ops.py cancel <작업id>           작업 취소(대기 중이면 즉시, 실행 중이면 취소 접수)
-    python tools/ops/ai_ops.py maintenance               복구·기한 삭제를 지금 한 번 실행(dispatcher가 주기적으로 같은 일을 한다)
+    python tools/ops/ai_ops.py maintenance               정리·기한 삭제를 지금 한 번 실행(API 프로세스가 주기적으로 같은 일을 한다)
 
-DATABASE_URL 등 운영 환경변수가 있는 셸에서 실행한다. 사용자 API key·원문 코드는 출력하지 않는다.
+DATABASE_URL 등 운영 환경변수가 있는 셸에서 실행한다. 서버는 사용자 API key·원문 코드를 보관하지 않는다(AD-33).
 """
 import argparse
 import json
@@ -24,15 +24,14 @@ sys.path.insert(0, str(ROOT))
 from sqlalchemy import text  # noqa: E402
 
 
-def check(*, redis_url: str | None = None, env=None) -> list[tuple[str, bool, str]]:
+def check(*, env=None) -> list[tuple[str, bool, str]]:
     """(항목, 통과, 설명) 목록. 하나라도 False면 운영을 시작하면 안 된다."""
     from app.core.ai_settings import get_ai_settings, validate_ai_settings
     env = os.environ if env is None else env
     out = []
     settings = get_ai_settings()
     problems = validate_ai_settings(settings)
-    out.append(('AI 설정', not problems and settings.enabled, '; '.join(problems) if problems else ('켜짐' if settings.enabled else 'AI_ENABLED=1이 아닙니다')))
-    out.append(('외부 전송 허용', True, '허용됨(사용자가 동의해야 전송)' if settings.allow_external_transfer else '꺼짐(입력 준비·조회만 가능)'))
+    out.append(('AI 설정', not problems, '; '.join(problems) if problems else '정상(사용자 key는 앱이 실행마다 보낸다)'))
     out.append(('제공자 주소 우회 없음', not settings.test_provider_base_url, '운영에서는 AI_TEST_PROVIDER_BASE_URL을 비워야 합니다' if settings.test_provider_base_url else '공식 주소만 사용'))
     stray = [k for k in ('ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY') if env.get(k)]
     out.append(('남은 제공자 환경변수', True, f'{", ".join(stray)}가 설정돼 있지만 AI 기능은 무시합니다(사용자 key만 사용). 정리를 권장합니다' if stray else '없음'))
@@ -47,16 +46,6 @@ def check(*, redis_url: str | None = None, env=None) -> list[tuple[str, bool, st
         out.append(('DB migration', current == head, f'현재 {current} / 최신 {head}'))
     except Exception as exc:
         out.append(('DB migration', False, f'확인하지 못했습니다({type(exc).__name__})'))
-    url = redis_url or env.get('REDIS_URL')
-    if url:
-        try:
-            import redis
-            redis.Redis.from_url(url, socket_connect_timeout=3).ping()
-            out.append(('Redis', True, '연결됨'))
-        except Exception as exc:
-            out.append(('Redis', False, f'연결하지 못했습니다({type(exc).__name__})'))
-    else:
-        out.append(('Redis', False, 'REDIS_URL이 없습니다'))
     return out
 
 
@@ -70,16 +59,12 @@ def status(db, now: datetime | None = None) -> dict:
         'jobs': jobs,
         'oldest_waiting_seconds': int((now - oldest).total_seconds()) if oldest else None,
         'running_with_expired_lease': one("SELECT count(*) FROM ai_jobs WHERE status IN ('running','cancel_requested') AND lease_until < :n", n=now),
-        'outbox_unpublished': one('SELECT count(*) FROM task_outbox WHERE published_at IS NULL'),
-        'outbox_failing': one('SELECT count(*) FROM task_outbox WHERE published_at IS NULL AND retry_count > 0'),
         'uncertain_reservations': one("SELECT count(DISTINCT (job_id, attempt_no)) FROM usage_reservations WHERE status = 'uncertain'"),
         'reserved_amount': str(one("SELECT coalesce(sum(reserved_amount), 0) FROM usage_budgets WHERE period_start = date_trunc('month', :n)::date", n=now)),
         'spent_amount': str(one("SELECT coalesce(sum(spent_amount), 0) FROM usage_budgets WHERE period_start = date_trunc('month', :n)::date AND scope = 'user'", n=now)),
-        'inputs_expired_with_payload': one("""SELECT count(DISTINCT i.id) FROM ai_inputs i JOIN ai_input_files f ON f.input_id = i.id
-                                              WHERE f.encrypted_payload IS NOT NULL AND i.expires_at <= :n""", n=now),
+        'input_files_with_payload': one('SELECT count(*) FROM ai_input_files WHERE encrypted_payload IS NOT NULL'),
         'results_expired': one('SELECT count(*) FROM ai_results WHERE expires_at <= :n', n=now),
-        'credentials_active': one("SELECT count(*) FROM ai_credential_versions WHERE status = 'active'"),
-        'retired_credentials_with_secret': one("SELECT count(*) FROM ai_credential_versions WHERE status = 'retired' AND encrypted_key IS NOT NULL"),
+        'stored_api_keys': one('SELECT count(*) FROM ai_credential_versions WHERE encrypted_key IS NOT NULL'),
     }
 
 
@@ -118,8 +103,8 @@ def cancel_job(db, job_id: UUID) -> str:
 
 
 def run_maintenance() -> dict:
-    from app.tasks import ai_dispatch
-    return ai_dispatch.maintenance_once()
+    from app.services.ai import job_runner
+    return job_runner.maintenance_once()
 
 
 def main(argv=None) -> int:

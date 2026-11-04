@@ -10,13 +10,6 @@ celery = Celery(
     "gitviz",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.tasks.analyze_repository", "app.tasks.ai_dispatch", "app.tasks.ai_maintenance",
-             "app.tasks.ai_prepare", "app.tasks.ai_generate"]
+    include=["app.tasks.analyze_repository"]
 )
-
-# AI 작업은 분석 task와 큐를 분리한다(기존 분석은 기본 큐 그대로).
-celery.conf.task_routes = {
-    "ai.prepare_job": {"queue": "ai_prepare"},
-    "ai.generate_job": {"queue": "ai_generate"},
-    "ai.maintenance": {"queue": "ai_maintenance"},
-}
+# AI 리뷰 작업은 Celery를 쓰지 않는다. 사용자 key가 요청마다 오므로 API 프로세스의 스레드에서 실행한다(AD-33).

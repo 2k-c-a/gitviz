@@ -1,11 +1,11 @@
-"""입력의 저장·확정·조회·삭제·만료. 코드 원문은 AES-GCM으로 암호화해 파일 행에만 둔다.
+"""입력의 저장·확정·조회·삭제·만료. 코드 원문은 저장하지 않는다(AD-33).
 
-- 확정(finalize_input)은 코드 암호화·파일 행·manifest/hash·coverage·상태 전이를 한 transaction으로 저장한다.
+- 확정(finalize_input)은 파일 행(경로·상태·content_hash·줄 지도)·manifest/hash·coverage·상태 전이를 한 transaction으로
+  저장한다. 원문이 필요하면(생성 실행·파일 보기) 고정 SHA에서 다시 가져와 해시를 대조한다(input_prepare.fetch_code).
   입력 준비 작업의 종료 확정(job_service.finish_job)의 work로 실행되어 작업 상태와 함께 커밋된다.
 - 확정 뒤에는 파일을 바꾸거나 추가할 수 없다(DB trigger). 코드를 더하려면 새 입력을 준비한다.
 - 로그·큐·audit에는 코드 원문과 PR 설명 본문을 넣지 않는다.
 """
-import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
@@ -18,10 +18,11 @@ from app.models.ai_input import AIInput, AIInputFile, PRRevision as PRRevisionRo
 from app.models.ai_usage import AuditEvent
 from app.schemas.ai import (ContentState, Coverage, ErrorCode, InputFileContent, InputFileView, InputManifest,
                             InputPreview, InputStatus, JobStage, JobStatus, PrepareJobView, Side)
-from app.services.ai import credentials, input_builder, job_service
+from app.schemas.ai import TransferView
+from app.services.ai import input_builder, job_service
 from app.services.ai.access import AIError, ensure_owner
 from app.services.ai.content_policy import POLICY_VERSION
-from app.services.ai.crypto import InputCryptoError, decrypt_input, encrypt_input
+from app.services.ai.providers import registry
 
 PLACEHOLDER_COVERAGE = {'inventory_coverage': 'unknown', 'selected_content_coverage': 'none',
                         'analysis_coverage': 'none', 'selected_files': 0, 'pr_total_files': None, 'limitations': []}
@@ -74,7 +75,7 @@ def create_building_input(db: Session, owner_id: UUID, repository_id: int, revis
 
 def create_input_and_job(db: Session, *, owner_id: UUID, repository_id: int, captured, selected_paths: list[str],
                          route: str, idempotency_key: str, body_hash: str, now: datetime | None = None):
-    """리비전·building 입력·prepare 작업·Idempotency-Key·outbox를 한 transaction으로 저장한다.
+    """리비전·building 입력·prepare 작업·Idempotency-Key를 한 transaction으로 저장한다.
 
     같은 key·같은 요청, 또는 같은 fingerprint의 사용 가능한 준비가 있으면 새로 만들지 않고 기존 것을 돌려준다.
     """
@@ -111,16 +112,12 @@ def finalize_input(db: Session, input_id: UUID, built, collected, *, now: dateti
     for item in collected.files:
         file_id = uuid4()
         entry = item.manifest
-        payload = None
-        if item.payload is not None:
-            payload = encrypt_input(item.payload, settings.active_key_version,
-                                    aad=f'{input_id}:{file_id}'.encode())
         db.add(AIInputFile(
             id=file_id, input_id=input_id, path=entry.path, old_path=entry.old_path,
             side_availability=item.side_availability, language=entry.language, content_state=entry.content_state.value,
             reason=entry.exclusion_reason.value if entry.exclusion_reason else None,
             blob_oids={'old': entry.old_blob_oid, 'new': entry.new_blob_oid}, content_hash=entry.content_hash,
-            encrypted_payload=payload, key_version=settings.active_key_version if payload is not None else None,
+            encrypted_payload=None, key_version=None,
             line_map=item.line_map, byte_count=item.byte_count))
     db.flush()
     row.manifest = built.manifest.model_dump(mode='json')
@@ -181,16 +178,15 @@ def load_preview(db: Session, input_id: UUID, owner_id: UUID, *, now: datetime |
                 side_availability=f.side_availability, byte_count=f.byte_count, content_hash=entry.content_hash,
                 hunks=entry.hunks))
     read_files = [f for f in files if f.content_state is ContentState.read]
-    raw_available = status == 'ready' and any(f.encrypted_payload is not None for f in stored.values())
+    raw_available = status == 'ready' and bool(read_files)        # 원문은 볼 때 고정 SHA에서 다시 가져온다
     metadata = manifest.pr_metadata if manifest and manifest.pr_metadata else input_builder.transfer_metadata(
         revision.pr_metadata or {})
     if profile_id is not None:
-        from app.services.ai.providers import registry
         if not registry.is_allowed(profile_id):
             raise AIError(ErrorCode.INVALID_SELECTION, '허용되지 않은 모델입니다.')
         profile = registry.get_profile(profile_id)
     else:
-        profile = credentials.preferred_profile(db, owner_id)
+        profile = default_profile()
     token_estimate = (input_builder.estimate_tokens(sum(f.byte_count for f in read_files), metadata, len(read_files),
                                                     profile=profile)
                       if status in ('ready', 'expired') and manifest is not None else None)
@@ -209,16 +205,33 @@ def load_preview(db: Session, input_id: UUID, owner_id: UUID, *, now: datetime |
         pr_state=revision.state_at_capture, pr_title=metadata.title, pr_body=metadata.body,
         pr_body_truncated=metadata.body_truncated, coverage=Coverage(**row.coverage), files=files,
         manifest_hash=row.manifest_hash, policy_version=row.policy_version, provider_profile=profile.id,
-        transfer=credentials.transfer_view(db, owner_id, profile),
+        transfer=transfer_view(profile),
         token_estimate=token_estimate, valid_until=row.valid_until, expires_at=row.expires_at,
         execution_valid=status == 'ready' and row.valid_until is not None and now < row.valid_until,
         raw_available=raw_available, reviewable=bool(read_files), prepare_job=prepare_job)
 
 
+def default_profile():
+    """미리보기 추정에 쓸 기본 모델(서버가 허용한 것). 실제 모델은 사용자가 동의 화면에서 고른다."""
+    default = registry.current_profile()
+    if registry.is_allowed(default.id):
+        return default
+    allowed = registry.allowed_profile_ids()
+    return registry.get_profile(allowed[0]) if allowed else default
+
+
+def transfer_view(profile) -> TransferView:
+    return TransferView(provider=profile.provider, profile_id=profile.id, model=profile.model,
+                        requires_api_key=profile.requires_api_key, execution_location=profile.execution_location,
+                        model_digest=profile.model_digest or None, profile_fingerprint=profile.fingerprint())
+
+
 def read_file_content(db: Session, input_id: UUID, file_id: UUID, owner_id: UUID, *, side: str | None = None,
                       start_line: int | None = None, end_line: int | None = None, request_id: str = '-',
                       now: datetime | None = None) -> InputFileContent:
-    """보관된 고정 diff를 줄 번호와 함께 돌려준다. side·범위를 주면 그 부분만(작성자만, 실제 보관 자료)."""
+    """고정 diff를 줄 번호와 함께 돌려준다. side·범위를 주면 그 부분만(작성자만).
+
+    원문은 저장하지 않으므로 고정 SHA에서 다시 가져와 확정 때의 해시와 대조한다(다르면 PREVIEW_CHANGED)."""
     now = _now(now)
     row = _load_owned(db, input_id, owner_id)
     if (start_line is None) != (end_line is None) or (start_line is not None and side is None):
@@ -242,17 +255,17 @@ def read_file_content(db: Session, input_id: UUID, file_id: UUID, owner_id: UUID
     entry = next(e for e in manifest.files if e.path == f.path)
     lines = []
     if f.content_state == 'read':
-        if f.encrypted_payload is None:
-            raise AIError(ErrorCode.INPUT_EXPIRED, '원문 코드의 보관 기간이 지났거나 삭제됐습니다.')
+        from app.services.ai import input_prepare
+        source = input_prepare.code_source(db, row, owner_id)
+        db.commit()                                    # git 작업 동안 DB transaction을 잡고 있지 않는다
         try:
-            plain = decrypt_input(bytes(f.encrypted_payload), f.key_version, aad=f'{row.id}:{f.id}'.encode())
-            if hashlib.sha256(plain).hexdigest() != f.content_hash:
-                raise InputCryptoError('content hash mismatch')
-        except InputCryptoError:
-            audit(db, actor_id=owner_id, repository_id=row.repository_id, action='input.integrity_failure',
-                  object_id=f.id, request_id=request_id, object_type='input_file')
-            db.commit()
-            raise AIError(ErrorCode.INVALID_STATE, '보관된 코드의 무결성을 확인할 수 없습니다.') from None
+            plain = input_prepare.fetch_code(source, [f.path])[f.path]
+        except AIError as exc:
+            if exc.code is ErrorCode.PREVIEW_CHANGED:
+                audit(db, actor_id=owner_id, repository_id=row.repository_id, action='input.integrity_failure',
+                      object_id=f.id, request_id=request_id, object_type='input_file')
+                db.commit()
+            raise
         lines = input_builder.diff_lines(plain.decode('utf-8'))
         if side is not None:
             key = 'left_line' if side == Side.LEFT.value else 'right_line'

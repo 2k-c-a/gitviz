@@ -29,7 +29,14 @@ class Compatibility(unittest.TestCase):
         directory = ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini")))
         # 2026-11-01 (AD-25, AD-27): the community tables and then chat history sit on top of the desktop sessions.
         # 2026-11-03: '내 분석 프로젝트'에서 숨김(repository_access.hidden_at, nullable 컬럼 추가만).
-        self.assertEqual(directory.get_heads(), ["e7a9c1d3f5b4"])
+        # 2026-11-04 (AD-33): AI 리뷰를 앱 전용 BYOK로 바꾸며 서버에 저장했던 key·코드 원문을 지운다(데이터 삭제만, 표·열 유지).
+        self.assertEqual(directory.get_heads(), ["39b676ca36f2"])
+        self.assertEqual(directory.get_revision("39b676ca36f2").down_revision, "e7a9c1d3f5b4")
+        purge = (ROOT / "migrations/versions/39b676ca36f2_ai_review_byok_purge_server_secrets.py").read_text(encoding="utf8")
+        upgrade, downgrade = purge.split("def downgrade")
+        self.assertNotIn("DROP TABLE", upgrade)
+        self.assertNotIn("DROP COLUMN", upgrade)
+        self.assertIn("raise RuntimeError", downgrade)
         self.assertEqual(directory.get_revision("e7a9c1d3f5b4").down_revision, "f1b3d5e7a9c2")
         # 2026-11-03 (AD-32): AI insight reports and conversations are added on top of chat history.
         self.assertEqual(directory.get_revision("f1b3d5e7a9c2").down_revision, "d4f6a8c0e2b3")
