@@ -89,7 +89,7 @@ void app.whenReady().then(async () => {
     phase = 'first-run';
     await wait(visible('[data-view="start"]'));
     await check('no project: start guide shown, project views hidden', `${visible('[data-view="start"]')} && !${visible('[data-view="project"]')} && !${visible('[data-view="projects"]')}`);
-    await check('rail has the same seven entries as the web pages', `[...document.querySelectorAll('.app-nav .app-nav-link')].map(a=>a.getAttribute('aria-label')).join()==='저장소 탐색,최근·내 분석,URL로 분석 시작,AI 리뷰,커뮤니티,설정,프로젝트' && [...document.querySelectorAll('[data-ws-view]')].map(a=>a.dataset.wsView).join()==='settings,projects'`);
+    await check('rail has the same six entries as the web pages', `[...document.querySelectorAll('.app-nav .app-nav-link')].map(a=>a.getAttribute('aria-label')).join()==='저장소 탐색,최근·내 분석,URL로 분석 시작,커뮤니티,설정,프로젝트' && [...document.querySelectorAll('[data-ws-view]')].map(a=>a.dataset.wsView).join()==='settings,projects'`);
     await check('account chip offers sign-in when signed out', `document.getElementById('ws-account-chip').textContent==='로그인'`);
     await check('theme is a sun/moon toggle without a system option', `(()=>{const b=document.getElementById('shell-theme');const before=document.documentElement.dataset.theme;b.click();const flipped=document.documentElement.dataset.theme!==before && b.dataset.theme===document.documentElement.dataset.theme;b.click();return b.tagName==='BUTTON' && flipped && !document.body.textContent.includes('시스템 테마');})()`);
     await capture('01-start-900.png', 900, 640);

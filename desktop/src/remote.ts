@@ -45,28 +45,43 @@ export function httpsClient(origin: string, transport: typeof fetch = fetch): Ht
   };
 }
 
+// At most 8 requests reach the server at once; later ones wait in order instead of failing, so a page that loads
+// many panels together (the overview loads about ten) gets every panel. BUSY only when 64 are already waiting.
+export const REMOTE_CONCURRENCY = 8;
+export const REMOTE_QUEUE_LIMIT = 64;
+
 export class Remote {
-  private pending = 0;
+  private active = 0;
+  private readonly waiting: (() => void)[] = [];
   constructor(private readonly contracts: RemoteContracts, private readonly http: Http,
     private readonly identity: () => { token: string; generation: number } | null,
     private readonly invalidate: () => void,
     private readonly keys: Pick<AiKeyVault, 'get'> | null = null) {}
+  // Waits only when all slots are taken; a free slot is taken synchronously, as before the queue existed.
+  private wait(): Promise<void> {
+    if (this.waiting.length >= REMOTE_QUEUE_LIMIT) return Promise.reject(new Error('BUSY'));
+    return new Promise<void>(resolve => this.waiting.push(resolve)); // release() hands its slot over
+  }
+  private release(): void {
+    const next = this.waiting.shift();
+    if (next) next(); else this.active--;
+  }
   async request(value: unknown): Promise<RemoteResponse> {
     const route = this.contracts.route(value);
-    if (this.pending >= 8) throw new Error('BUSY');
-    const before = this.identity(); if (!before) throw new Error('AUTH_REQUIRED');
-    // Cloud providers need the saved key; local models (no key) go without one.
-    let aiKey: string | undefined;
-    if (route.aiKeyProvider && AI_PROVIDERS.includes(route.aiKeyProvider as AiProvider)) {
-      aiKey = (await this.keys?.get(route.aiKeyProvider as AiProvider)) ?? undefined;
-      if (!aiKey) throw new Error('AI_KEY_REQUIRED');
-    }
-    this.pending++;
+    if (this.active < REMOTE_CONCURRENCY) this.active++; else await this.wait();
     try {
+      // Identity and key are read after waiting, so a queued request never goes out with a token from before an account change.
+      const before = this.identity(); if (!before) throw new Error('AUTH_REQUIRED');
+      // Cloud providers need the saved key; local models (no key) go without one.
+      let aiKey: string | undefined;
+      if (route.aiKeyProvider && AI_PROVIDERS.includes(route.aiKeyProvider as AiProvider)) {
+        aiKey = (await this.keys?.get(route.aiKeyProvider as AiProvider)) ?? undefined;
+        if (!aiKey) throw new Error('AI_KEY_REQUIRED');
+      }
       const response = await this.http(route.path, route.method, route.body, before.token, route.idempotencyKey, aiKey);
       if (this.identity()?.generation !== before.generation) throw new Error('ACCOUNT_CHANGED');
       if (response.status === 401) this.invalidate();
       return response;
-    } finally { this.pending--; }
+    } finally { this.release(); }
   }
 }

@@ -64,3 +64,8 @@
 @media (prefers-reduced-motion: reduce) {
   .repo-item, .search-card, .bus-card, .landing-card { transition: none; transform: none !important; }
 }
+
+/* 최근·내 분석: 분석한 프로젝트 / 내 GitHub 저장소 탭 */
+.myproj-tabs { width: fit-content; margin-bottom: 14px; }
+.myproj-github-note { margin: 0 0 10px; font-size: 12px; color: var(--text3); }
+.myproj-github-more { display: flex; justify-content: center; margin-top: 12px; }
