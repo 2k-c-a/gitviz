@@ -547,6 +547,56 @@ class CommunityTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_collab_file_sets_carry_paths_and_assets_within_byte_limits(self):
+        """AD-34: a file set names each file by a root-relative path; images and fonts go in pieces; bytes per minute are capped."""
+        import asyncio
+        import json
+        self.voice_members()
+        base = '/api/community/v1/repositories/1/collab'
+        self.assertEqual(self.as_('owner').post(base, json={'file_name': 'index.html', 'file_count': 0}).status_code, 422)
+        made = self.as_('owner').post(base, json={'file_name': 'index.html', 'language': 'html', 'file_count': 7}).json()
+        sid, host = made['session_id'], made['seat_id']
+        self.assertEqual(made['session']['file_count'], 7)
+        guest = self.as_('contrib').post(f'{base}/{sid}/join').json()['seat_id']
+        listed = self.as_('guest').get(base).json()['sessions']
+        self.assertEqual([(s['file_name'], s['file_count']) for s in listed], [('index.html', 7)])
+        update = {'seat_id': host, 'kind': 'update', 'data': 'AQID'}
+        for path in ('../secret.txt', '/abs.css', 'a//b.css', 'a/./b.css', 'C:x.css', 'a\\b.css', 'a' * 401, ''):
+            self.assertEqual(self.as_('owner').post(f'{base}/{sid}/relay', json={**update, 'path': path}).status_code, 422, path)
+
+        async def connected():
+            return False
+
+        def parse(chunk):
+            fields = dict(line.split(': ', 1) for line in chunk.strip().splitlines() if not line.startswith(':'))
+            return fields.get('event'), json.loads(fields['data']) if 'data' in fields else None
+
+        async def scenario():
+            stream = chat.stream(1, self.users['contrib'], connected, ping=0.05)
+            await anext(stream)
+            await anext(stream)
+
+            async def next_collab():
+                while True:
+                    kind, data = parse(await anext(stream))
+                    if kind == 'collab':
+                        return data
+
+            await asyncio.to_thread(self.as_('owner').post, f'{base}/{sid}/relay', json={**update, 'path': 'css/site.css'})
+            self.assertEqual(await next_collab(), {'session_id': sid, 'from': host, 'to': None, 'kind': 'update', 'data': 'AQID', 'path': 'css/site.css'})
+            await asyncio.to_thread(self.as_('owner').post, f'{base}/{sid}/relay',
+                                    json={'seat_id': host, 'to': guest, 'kind': 'asset', 'data': 'AAAAAQAAAAKJUE5H', 'path': 'img/logo.png'})
+            self.assertEqual(await next_collab(), {'session_id': sid, 'from': host, 'to': guest, 'kind': 'asset', 'data': 'AAAAAQAAAAKJUE5H', 'path': 'img/logo.png'})
+            await stream.aclose()
+
+        asyncio.run(scenario())
+        # About 20MB a minute per person: a 200,000-character piece is fine, but not past the byte budget.
+        piece = {'seat_id': host, 'to': guest, 'kind': 'asset', 'data': 'A' * 200000, 'path': 'img/big.png'}
+        with patch.object(collab, 'RELAY_BYTES', 450000):
+            self.assertEqual(self.as_('owner').post(f'{base}/{sid}/relay', json=piece).status_code, 200)
+            self.assertEqual(self.as_('owner').post(f'{base}/{sid}/relay', json=piece).status_code, 200)
+            self.assertEqual(self.code(self.as_('owner').post(f'{base}/{sid}/relay', json=piece)), 'RATE_LIMITED')
+
     def test_changes_require_csrf_outside_the_desktop_session(self):
         del self.app.dependency_overrides[require_csrf]
         client = self.as_('contrib')

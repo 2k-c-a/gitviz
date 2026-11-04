@@ -1,6 +1,6 @@
 # 설치 가이드 (Setup.exe)
 
-작성일 2026-10-30 · 기준 커밋 `65f1b62` · 상태: 설계 문서 (코드 변경 없음)
+작성일 2026-10-30 · 기준 커밋 `65f1b62` · 상태(2026-11-04 갱신): 설계 문서. 데이터 경로 이전(**[제안]**, R3)은 아직 적용되지 않았다. 제거 시 데이터 삭제 선택 UI(**[결정 필요]**)도 아직 없다. 무인 제거 정리(K-05)는 적용되었다. Git for Windows 필수 안내는 아직 이 문서에 없다(K-12).
 표기: **[현재]** 검증된 동작, **[제안]** 설계안, **[결정 필요]** 사용자 결정 사항.
 
 관련 문서: [환경 아키텍처](../architecture/ENVIRONMENT_ARCHITECTURE.md) · [빌드와 릴리스](BUILD_AND_RELEASE.md) · [데이터 저장 정책](DATA_STORAGE_POLICY.md)
@@ -14,7 +14,7 @@
   - `%LOCALAPPDATA%\Programs\Git\cmd\git.exe` — 사용자 단위 설치(관리자 권한 불필요)
 - 설치 경로를 바꾸면 앱이 Git을 찾지 못한다. 기본 경로로 설치한다.
 - 설치 확인: PowerShell에서 `Test-Path "$env:ProgramFiles\Git\cmd\git.exe"` 또는 `Test-Path "$env:LOCALAPPDATA\Programs\Git\cmd\git.exe"` 중 하나가 `True`여야 한다.
-- Git이 없으면 내부적으로 `GIT_NOT_FOUND`가 되지만, 0.7.0 화면은 이를 안내 문구로 보여 주지 않는다([알려진 문제](KNOWN_ISSUES.md) K-12). 앱 로그의 `git.check found=false`로 확인할 수 있다(§6).
+- Git이 없으면 내부적으로 `GIT_NOT_FOUND`가 되지만, 0.7.0 화면은 이를 안내 문구로 보여 주지 않는다([알려진 문제](KNOWN_ISSUES.md) K-12). 앱 로그의 `"event":"git-check"` 줄의 `"found":false`로 확인할 수 있다(§6).
 
 ## 1. 설치 방식 요약
 
@@ -73,7 +73,7 @@
 |---|---|---|
 | Squirrel 설치 로그 | `%LOCALAPPDATA%\SquirrelTemp\SquirrelSetup.log` | 호스트에서 파일 존재 확인. 항목 내용은 미검토 |
 | 제거 정리 로그 | `desktop/src/squirrel.ts`의 `CLEANUP_LOG` 경로 | 코드 상수, VM에서 기록 확인 |
-| 앱 로그 | `%APPDATA%\gitviz-workspace\logs\app.log` | [현재] 1 MB씩 최대 5개 회전, 14일 지난 회전 파일 삭제. 기록 항목은 [데이터 저장 정책 §2](DATA_STORAGE_POLICY.md). R3 이후 목표 위치는 `%LOCALAPPDATA%\GitViz\Workspace\logs` |
+| 앱 로그 | `%APPDATA%\gitviz-workspace\logs\app.log` | [현재] 1 MB씩 최대 5개 순환(한 줄에 JSON 한 건). 기록 항목은 [데이터 저장 정책 §2](DATA_STORAGE_POLICY.md). R3 이후 목표 위치는 `%LOCALAPPDATA%\GitViz\Workspace\logs` |
 
 로그에 키, 토큰, 환경 변수 값을 남기지 않는다.
 
@@ -85,8 +85,8 @@
 | 앱이 `UNSUPPORTED_PROTOCOL` | DB 스키마가 앱보다 새로움 | 앱을 최신 버전으로 업데이트. DB를 수동 수정하지 않음 |
 | 설치 중단 | 설치 폴더 일부만 생성 | `Setup.exe` 재실행. 안 되면 설치 루트와 SquirrelTemp 로그 확인 후 수동 삭제 |
 | 제거 후 폴더 잔존 | 무인 제거 또는 프로세스 잠금 | 로그오프/로그온 후 예약 작업 실행 여부 확인, 수동 삭제 |
-| 실행 직후 종료 | 에이전트 프레임 오류, 단일 실행 잠금(`writer.lock`) | 다른 인스턴스 종료 후 재실행. 앱 로그의 `agent.failed`·`startup.failed` 코드 확인 |
-| 로컬 프로젝트 등록이 아무 반응 없음 | Git for Windows 미설치 또는 기본 경로 밖 설치 | §0대로 Git 설치. 앱 로그의 `git.check found=false` 확인 |
+| 실행 직후 종료 | 에이전트 프레임 오류, 단일 실행 잠금(`writer.lock`) | 다른 인스턴스 종료 후 재실행. 앱 로그의 `agent-start-failed`·`startup-failed` 코드 확인 |
+| 로컬 프로젝트 등록이 아무 반응 없음 | Git for Windows 미설치 또는 기본 경로 밖 설치 | §0대로 Git 설치. 앱 로그의 `git-check` 줄에서 `"found":false` 확인 |
 
 ## 8. 보안과 권한
 

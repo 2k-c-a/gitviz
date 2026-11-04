@@ -22,11 +22,10 @@ import ai_test_support as support
 from ai_git_fixture import Fixture
 
 URL = os.environ['GITVIZ_TEST_DATABASE_URL']
-KEY = 'a1' * 32
 T0 = datetime(2036, 10, 7, 12, 0, 0, tzinfo=timezone.utc)   # 실제 시각보다 항상 미래: DB now() 기본값과 섞여도 시험이 시간에 따라 깨지지 않게 한다
 engine = create_engine(URL, pool_size=20, max_overflow=0)
 Session = sessionmaker(engine, expire_on_commit=False)
-TRUNCATE = ('usage_reservations, usage_budgets, audit_events, request_idempotency, task_outbox, ai_attempts, '
+TRUNCATE = ('usage_reservations, usage_budgets, audit_events, request_idempotency, ai_attempts, '
             'finding_feedback, ai_findings, ai_results, ai_input_files, ai_jobs, ai_inputs, pr_revisions')
 PR_PATHS = ['main.py', 'src/b.py', 'src/new_mod.py', 'src/old_mod.py']
 SECRET_MARKERS = ['line two', 'bracket = 1', 'API_KEY', 'abcdefghijklmnop12345', 'def hello']
@@ -37,9 +36,8 @@ def migrate():
 
 
 def ai_env(**over):
-    base = {'AI_ENABLED': '1', 'AI_INPUT_ENCRYPTION_KEYS': f'v1:{KEY}', 'AI_INPUT_KEY_VERSION': 'v1',
-            'AI_ALLOWED_ORIGINS': 'http://localhost:8000', 'SESSION_SECRET_KEY': 'input-test-secret',
-            'AI_ALLOW_EXTERNAL_TRANSFER': '0', 'AI_MAX_FILES': '50', 'AI_MAX_INPUT_BYTES': '2000000'}
+    base = {'AI_ALLOWED_ORIGINS': 'http://localhost:8000', 'SESSION_SECRET_KEY': 'input-test-secret',
+            'AI_MAX_FILES': '50', 'AI_MAX_INPUT_BYTES': '2000000'}
     base.update({k: str(v) for k, v in over.items()})
     return patch.dict(os.environ, base)
 
@@ -64,8 +62,18 @@ class InputCase(unittest.TestCase):
         self.clock = T0                  # input_store가 '지금'으로 쓰는 시각(테스트가 고정한다)
         self._clock = patch('app.services.ai.input_store._now', side_effect=lambda now=None: now or self.clock)
         self._clock.start()
+        # API가 접수한 작업은 API 프로세스 스레드에서 바로 실행된다(AD-33). 테스트는 실행 시점을 직접 정하므로
+        # 접수(submit)만 기록하고, 실행은 run_prepare·run_generation으로 한다. 기록에는 실행에 넘긴 key가 있다.
+        self.submitted = []
+        self._submit = patch('app.services.ai.job_runner.submit',
+                             side_effect=lambda job_id, api_key=None, **kw: self.submitted.append((job_id, api_key)))
+        self._submit.start()
+        # 코드 원문은 저장하지 않고 필요할 때 고정 SHA에서 다시 가져온다(AD-33): 모든 시험에서 local git fixture를 원격으로 쓴다.
+        self._code = self.with_code()
 
     def tearDown(self):
+        self._code.close()
+        self._submit.stop()
         self._clock.stop()
         self.db.rollback()
         self.db.close()
@@ -116,18 +124,32 @@ class InputCase(unittest.TestCase):
         import ai_credential_support
         return ai_credential_support.pinned_for(self.db, owner, repo, input_id, **kw)
 
-    def run_prepare(self, job_id, *, authorize=None, verify=None, token=None):
-        """prepare handler를 실제 DB·실제 git(local file remote)로 실행한다. GitHub API와 HTTP는 쓰지 않는다."""
-        from app.services.ai import job_runner
-        from app.tasks import ai_prepare
-        job_runner.register_handler('prepare', ai_prepare.prepare_handler)
-        patches = [
-            patch('app.tasks.ai_prepare.authorize_ai', side_effect=authorize or (lambda *a, **k: ('repo', {}))),
-            patch('app.tasks.ai_prepare.user_github_token', return_value=token),
-            patch('app.tasks.ai_prepare.verify_unchanged', side_effect=verify),
-            patch.object(ai_prepare, 'PROTOCOLS', 'file'),
+    def code_patches(self, token=None):
+        """고정 코드를 local git fixture에서 가져오게 한다(준비·생성·파일 보기 공통). GitHub·HTTP는 쓰지 않는다."""
+        from app.services.ai import input_prepare
+        return [
+            patch('app.services.ai.input_prepare.user_github_token', return_value=token),
+            patch.object(input_prepare, 'PROTOCOLS', 'file'),
             patch('app.services.ai.input_builder.remote_url_for', return_value=self.fx.path.as_uri()),
             patch('requests.sessions.Session.request', side_effect=AssertionError('네트워크 호출 금지')),
+        ]
+
+    def with_code(self, token=None):
+        """code_patches를 한꺼번에 켜는 context manager."""
+        from contextlib import ExitStack
+        stack = ExitStack()
+        for p in self.code_patches(token):
+            stack.enter_context(p)
+        return stack
+
+    def run_prepare(self, job_id, *, authorize=None, verify=None, token=None):
+        """prepare handler를 실제 DB·실제 git(local file remote)로 실행한다. GitHub API와 HTTP는 쓰지 않는다."""
+        from app.services.ai import input_prepare, job_runner
+        job_runner.register_handler('prepare', input_prepare.prepare_handler)
+        patches = [
+            patch('app.services.ai.input_prepare.authorize_ai', side_effect=authorize or (lambda *a, **k: ('repo', {}))),
+            patch('app.services.ai.input_prepare.verify_unchanged', side_effect=verify),
+            *self.code_patches(token),
         ]
         for p in patches:
             p.start()

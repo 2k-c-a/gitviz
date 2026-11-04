@@ -17,7 +17,7 @@
 | O09 | [모델](../../app/models/repository.py), [snapshot](../../app/models/analysis_snapshot.py), [AI 입력](../../app/models/ai_input.py), [결과](../../app/models/ai_result.py): 서버 ID·PostgreSQL 전용 제약·고정 리비전·해시 |
 | O10 | [AI DTO](../../app/schemas/ai.py), [AI API 안내](../contracts/ai-api.md), [AI client](../../frontend/js/ai-api.js): 계약 1.9, PR/커밋 선택·CSRF·멱등 key·오류 envelope |
 | O11 | [provider registry](../../app/services/ai/providers/registry.py), [동의](../../app/services/ai/consent.py), [입력 정책](../../app/services/ai/content_policy.py), [검증기](../../app/services/ai/validators.py): provider/profile 고정·원문 제외·위치/인용 검증 |
-| O12 | [생성](../../app/services/ai/generation_service.py), [job](../../app/services/ai/job_service.py), [runner](../../app/services/ai/job_runner.py), [outbox](../../app/services/ai/outbox.py): DB·lease·작업·비용·외부 호출 수명 관리 |
+| O12 | [생성](../../app/services/ai/generation_service.py), [job](../../app/services/ai/job_service.py), [runner](../../app/services/ai/job_runner.py), outbox(`outbox.py`, AD-33에서 삭제): DB·lease·작업·비용·외부 호출 수명 관리 |
 | O13 | [이력 근거](../../app/services/ai/history_context.py), [접근](../../app/services/ai/access.py), [공유](../../app/services/ai/shared_views.py): 공동 변경은 별도 근거, cloud는 공개 확인 필요, 공유 GET은 현재 repo read 기준 |
 | O14 | [frontend API](../../frontend/js/api.js), [URL 상태](../../frontend/js/viz-state.js), [AI 상태](../../frontend/js/ai-state.js), [poll](../../frontend/js/poll.js): URL snapshot 고정, 일반 repo 기본값, AI 세대·취소·backoff |
 | O15 | [timeline](../../frontend/js/timeline.js), [network](../../frontend/js/network.js), [code analysis](../../frontend/js/code-analysis.js): Chart.js·D3 그래프·파일 트리. HTML에서 CDN 자산 사용 |

@@ -41,7 +41,8 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertEqual(result.json(), {'accountId': str(ACCOUNT), 'repositoryId': 2, 'githubId': 900,
                                          'canonicalUrl': 'https://github.com/owner/repo', 'visibility': 'public'})
-        self.access.assert_called_once_with(self.database, 2, ACCOUNT)
+        # 신원 증명은 저장된 공개 여부가 아니라 현재 GitHub 정보로 확인한다.
+        self.access.assert_called_once_with(self.database, 2, ACCOUNT, live=True)
         self.assertEqual(result.headers['cache-control'], 'private, no-store')
         self.assertEqual(result.headers['referrer-policy'], 'no-referrer')
 

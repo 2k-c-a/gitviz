@@ -19,15 +19,13 @@ flowchart LR
   AW --> GH
   AW --> SNAP[불변 분석 스냅샷]
   SNAP --> DB
-  DB --> D[AI outbox dispatcher]
-  D --> R[(Redis · AI 큐)]
-  R --> W[AI 준비·생성 worker]
+  API --> W[AI 리뷰·분석 실행 스레드 · 앱이 보낸 사용자 key는 메모리에만]
   W --> GH
   W --> P[선택한 provider 또는 같은 PC 런타임]
   W --> DB
 ```
 
-근거: [앱·router 등록](../../app/main.py), [Celery routing](../../app/core/celery_app.py), [dispatcher](../../app/tasks/ai_dispatch.py), [생성 서비스](../../app/services/ai/generation_service.py).
+근거: [앱·router 등록](../../app/main.py), [Celery routing](../../app/core/celery_app.py), [실행 스레드](../../app/services/ai/job_runner.py), [생성 서비스](../../app/services/ai/generation_service.py). AI 작업은 Celery를 쓰지 않는다([AD-33](ARCHITECTURE_DECISIONS.md)).
 
 앱은 화면(renderer)이 서버를 직접 부르지 않는다. main 프로세스가 허용 목록(`desktop/src/remote-contracts.ts`)의 요청만 Bearer 토큰으로 보내고, 커뮤니티 실시간 이벤트(SSE)도 main이 받아 IPC로 넘긴다. 로컬 프로젝트·리뷰·제안·검증은 PC의 agent와 로컬 SQLite(schema 8)에서 처리하며 서버로 올리지 않는다. 음성은 참여자끼리 WebRTC로 직접, 공동 편집은 서버가 Yjs 메시지를 전달만 하고 파일 내용을 저장하지 않는다.
 
@@ -46,7 +44,7 @@ flowchart LR
 | 데스크톱 세션 | 토큰은 해시만 저장, 8시간, 쿠키와 혼용 거부 | [모델](../../app/models/desktop_session.py) |
 | 커뮤니티 | 멤버·초대(토큰 해시)·글·댓글·채팅 기록은 PostgreSQL, 소프트 삭제. 음성·공동 편집 자리는 Redis(없으면 메모리) 만료 항목, DB 없음 | [모델](../../app/models/community.py), [API](../../app/api/community.py) |
 
-서버 import/startup의 스키마 설치 대신 Alembic을 먼저 적용한다. 정적 migration 그래프의 단일 head는 `d4f6a8c0e2b3`(community_chat)이다. 그 앞은 `c3e5a7b9d1f2`(community)·`b7e1d9c3a502`(desktop_sessions)·`a9d2f4c6e8b0`(commit_reviews). 운영 DB가 이 revision인지 이번에 조회하지 않았다.
+서버 import/startup의 스키마 설치 대신 Alembic을 먼저 적용한다. 정적 migration 그래프의 단일 head는 `39b676ca36f2`(ai_review_byok_purge_server_secrets, 2026-11-04, AD-33)이다. 그 앞은 `e7a9c1d3f5b4`(repository_access_hidden)· `f1b3d5e7a9c2`(ai_insights, AD-32)·`d4f6a8c0e2b3`(community_chat)·`c3e5a7b9d1f2`(community)·`b7e1d9c3a502`(desktop_sessions)·`a9d2f4c6e8b0`(commit_reviews). 운영 DB가 이 revision인지 이번에 조회하지 않았다.
 
 추정: 상세 DB·API 제안 전체를 현재 아키텍처에 복사하지 않고, 실제 등록·저장 경계와 과거 설계를 연결하는 방식을 유지한다.
 

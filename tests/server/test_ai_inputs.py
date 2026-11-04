@@ -24,10 +24,10 @@ from sqlalchemy import text  # noqa: E402
 
 from app.collectors.ai_errors import PRChanged  # noqa: E402
 from app.schemas.ai import ErrorCode, InputManifest, canonical_hash  # noqa: E402
-from app.services.ai import crypto, input_store, job_runner, job_service, token_budget  # noqa: E402
+from app.models.ai_input import AIInput  # noqa: E402
+from app.services.ai import input_prepare, input_store, job_runner, job_service, token_budget  # noqa: E402
 from app.services.ai.providers.registry import get_profile  # noqa: E402
 from app.services.ai.access import AIError  # noqa: E402
-from app.services.ai.crypto import decrypt_input  # noqa: E402
 
 T0 = S.T0
 PROFILE = get_profile('claude-opus-5-5-v1')
@@ -38,7 +38,7 @@ def setUpModule():
 
 
 class Prepare(S.InputCase):
-    def test_prepared_input_has_encrypted_files_manifest_hashes_and_validity(self):
+    def test_prepared_input_has_manifest_hashes_and_validity_but_no_code(self):
         owner, repo, input_id, job_id = self.prepared()
         row = self.input_row(input_id)
         self.assertEqual(row['status'], 'ready')
@@ -54,18 +54,20 @@ class Prepare(S.InputCase):
         # 24시간 실행 유효기간·7일 원문 보관
         self.assertEqual(row['valid_until'] - row['finalized_at'], timedelta(hours=24))
         self.assertEqual(row['expires_at'] - row['created_at'], timedelta(days=7))
-        # 파일은 암호화되어 있고 복호화하면 해시와 일치한다
+        # 코드 원문은 저장하지 않는다(AD-33). 고정 SHA에서 다시 가져오면 파일별 해시·크기가 확정 때와 같다.
         files = self.db.execute(text('SELECT id, path, content_state, encrypted_payload, key_version, content_hash, '
                                      'byte_count FROM ai_input_files WHERE input_id = :i ORDER BY path'), {'i': input_id}).all()
         self.assertEqual(len(files), 4)
+        self.assertTrue(all(f.encrypted_payload is None and f.key_version is None for f in files))
         import hashlib
+        source = input_prepare.code_source(self.db, self.db.get(AIInput, input_id), owner)
+        fetched = input_prepare.fetch_code(source)
+        self.assertEqual(sorted(fetched), [f.path for f in files if f.content_state == 'read'])
         for f in files:
-            raw = bytes(f.encrypted_payload)
-            for marker in S.SECRET_MARKERS:
-                self.assertNotIn(marker.encode(), raw)
-            plain = decrypt_input(raw, f.key_version, aad=f'{input_id}:{f.id}'.encode())
-            self.assertEqual(hashlib.sha256(plain).hexdigest(), f.content_hash)
-            self.assertEqual(len(plain), f.byte_count)
+            if f.content_state != 'read':
+                continue
+            self.assertEqual(hashlib.sha256(fetched[f.path]).hexdigest(), f.content_hash)
+            self.assertEqual(len(fetched[f.path]), f.byte_count)
 
     def test_no_model_or_network_is_called_while_acquiring_code(self):
         sys.modules.pop('app.services.ai.providers', None)
@@ -91,8 +93,7 @@ class Prepare(S.InputCase):
         logs = ' '.join(r.getMessage() for r in records)
         stored = ' '.join([json.dumps(dict(self.job_row(job_id)['request_options'])),
                            self.scalar("SELECT coalesce(string_agg(details::text || action || request_id, ' '), '') "
-                                       "FROM audit_events"),
-                           self.scalar("SELECT coalesce(string_agg(event_type, ' '), '') FROM task_outbox")])
+                                       "FROM audit_events")])
         for marker in S.SECRET_MARKERS:
             self.assertNotIn(marker, logs)
             self.assertNotIn(marker, stored)
@@ -175,7 +176,7 @@ class Prepare(S.InputCase):
     def test_preparation_time_limit(self):
         owner, repo = self.make_user(), self.make_repo()
         result = self.submit(owner, repo)
-        with patch('app.tasks.ai_prepare.time.monotonic', side_effect=[0, 500, 500, 500, 500]):
+        with patch('app.services.ai.input_prepare.time.monotonic', side_effect=[0, 500, 500, 500, 500]):
             self.assertEqual(self.run_prepare(result.job.id), 'failed')
         self.assertEqual(self.job_row(result.job.id)['error_code'], 'PREPARE_TIMEOUT')
         self.assertEqual(self.input_row(result.job.input_id)['status'], 'failed')
@@ -288,7 +289,7 @@ class Reading(S.InputCase):
                           estimate.currency), ('claude-opus-5-5-v1', 24_000, True, 4_000, 'USD'))
         self.assertEqual(estimate.estimated_max_cost, str(token_budget.max_cost(PROFILE, expected)))   # 예약액 상한
         # 모델 호출 전에 한도를 넘는 입력임을 미리 알린다(생성 요청은 이 입력으로 시작할 수 없다)
-        with patch('app.services.ai.credentials.preferred_profile',
+        with patch('app.services.ai.input_store.default_profile',
                    return_value=dataclasses.replace(PROFILE, id='tiny-v1', max_input_tokens=100)):
             tiny = input_store.load_preview(self.db, input_id, owner, now=T0 + timedelta(hours=1)).token_estimate
         self.assertEqual((tiny.within_limit, tiny.limit, tiny.profile), (False, 100, 'tiny-v1'))
@@ -377,31 +378,22 @@ class Reading(S.InputCase):
             input_store.read_file_content(self.db, input_id, fid, owner2, now=T0 + timedelta(days=8))
         self.assertEqual((ctx.exception.code, ctx.exception.status_code), (ErrorCode.INPUT_EXPIRED, 410))
 
-    def test_tampered_ciphertext_is_detected_and_audited(self):
+    def test_code_changed_at_the_pinned_revision_is_detected_and_audited(self):
+        # 원문은 저장하지 않으므로 볼 때마다 고정 SHA에서 다시 가져와 확정 때의 해시와 대조한다(AD-33).
         owner, repo, input_id, _ = self.prepared()
+        self.assertTrue(self.read(owner, input_id, 'main.py').lines)
         fid = self.file_id(input_id, 'main.py')
-        other = self.file_id(input_id, 'src/b.py')
-        self.db.rollback()
-
-        def tamper(sql, **params):
-            with S.Session() as db:
-                db.execute(text("SET LOCAL session_replication_role = replica"))   # 변경 방지 trigger를 우회(공격 시뮬레이션)
-                db.execute(text(sql), params)
-                db.commit()
-        # 1) 바이트 변조 2) 다른 파일의 암호문으로 바꿔치기(aad 불일치) 3) content_hash 변경
-        original = self.db.execute(text('SELECT encrypted_payload FROM ai_input_files WHERE id = :i'), {'i': fid}).scalar()
-        for sql, params in (
-            ("UPDATE ai_input_files SET encrypted_payload = set_byte(encrypted_payload, 20, 255 - get_byte(encrypted_payload, 20)) WHERE id = :i", dict(i=fid)),
-            ("UPDATE ai_input_files SET encrypted_payload = (SELECT encrypted_payload FROM ai_input_files WHERE id = :o) WHERE id = :i", dict(i=fid, o=other)),
-            ("UPDATE ai_input_files SET encrypted_payload = :p, content_hash = :h WHERE id = :i", dict(i=fid, p=bytes(original), h='0' * 64)),
-        ):
-            tamper("UPDATE ai_input_files SET encrypted_payload = :p WHERE id = :i", i=fid, p=bytes(original))   # 원복
-            tamper(sql, **params)
-            with self.assertRaises(AIError) as ctx:
-                input_store.read_file_content(self.db, input_id, fid, owner, now=T0 + timedelta(hours=1))
-            self.assertEqual(ctx.exception.code, ErrorCode.INVALID_STATE)
-            self.assertNotIn('main', ctx.exception.message)
-        self.assertEqual(self.scalar("SELECT count(*) FROM audit_events WHERE action = 'input.integrity_failure'"), 3)
+        with S.Session() as db:
+            db.execute(text("SET LOCAL session_replication_role = replica"))   # 변경 방지 trigger를 우회(변조 시뮬레이션)
+            db.execute(text("UPDATE ai_input_files SET content_hash = :h WHERE id = :i"), {'h': '0' * 64, 'i': fid})
+            db.commit()
+        with self.assertRaises(AIError) as ctx:
+            self.read(owner, input_id, 'main.py')
+        self.assertEqual(ctx.exception.code, ErrorCode.PREVIEW_CHANGED)
+        self.assertNotIn('main', ctx.exception.message)
+        self.assertEqual(self.scalar("SELECT count(*) FROM audit_events WHERE action = 'input.integrity_failure'"), 1)
+        # 다른 파일은 그대로 볼 수 있다
+        self.assertTrue(self.read(owner, input_id, 'src/b.py').lines)
 
     def test_views_are_audited_without_content(self):
         owner, repo, input_id, _ = self.prepared()
@@ -453,7 +445,7 @@ class DeletionAndExpiry(S.InputCase):
         self.assertIsNotNone(row['manifest'])                                             # 입력 행·manifest는 남는다
         self.assertEqual(self.scalar('SELECT count(*) FROM ai_input_files WHERE input_id = :i', i=input_id), 4)
         self.assertEqual(self.scalar('SELECT count(*) FROM ai_input_files WHERE input_id = :i AND encrypted_payload IS NOT NULL',
-                                     i=input_id), 0)                                      # 원문은 모두 삭제
+                                     i=input_id), 0)                                      # 원문은 처음부터 저장하지 않는다
         with self.assertRaises(AIError) as ctx:
             input_store.read_file_content(self.db, input_id, fid, owner, now=T0 + timedelta(hours=1))
         self.assertEqual(ctx.exception.code, ErrorCode.INPUT_EXPIRED)
@@ -470,8 +462,9 @@ class DeletionAndExpiry(S.InputCase):
         self.db.execute(text("UPDATE ai_jobs SET deleted_at = now() WHERE id = :j"), {'j': job_id})
         self.db.commit()
         self.assertEqual(self.input_row(input_id)['status'], 'ready')
-        self.assertEqual(self.scalar('SELECT count(*) FROM ai_input_files WHERE input_id = :i AND encrypted_payload IS NOT NULL',
-                                     i=input_id), 4)
+        self.assertEqual(self.scalar('SELECT count(*) FROM ai_input_files WHERE input_id = :i', i=input_id), 4)
+        fid = self.scalar('SELECT id FROM ai_input_files WHERE input_id = :i AND path = :p', i=input_id, p='main.py')
+        self.assertTrue(input_store.read_file_content(self.db, input_id, fid, owner, now=T0 + timedelta(hours=1)).lines)   # 입력은 그대로 쓸 수 있다
 
     def test_completion_then_delete_and_delete_then_completion_are_consistent(self):
         # 1) 준비 완료 후 삭제: 원문 삭제됨
@@ -526,7 +519,7 @@ class DeletionAndExpiry(S.InputCase):
             route='POST /api/ai/v1/jobs', idempotency_key='kp', body_hash=canonical_hash('p'), pinned=self.pinned(owner, repo, input_id), now=T0 + timedelta(minutes=3)).job
         self.assertEqual(input_store.run_input_maintenance(self.db, now=T0 + timedelta(days=6))['expired'], 0)
         stats = input_store.run_input_maintenance(self.db, now=T0 + timedelta(days=8))
-        self.assertEqual((stats['expired'], stats['payloads_purged'], stats['jobs_cancelled']), (1, 4, 1))
+        self.assertEqual((stats['expired'], stats['payloads_purged'], stats['jobs_cancelled']), (1, 0, 1))   # 지울 원문이 없다
         self.assertEqual(self.input_row(input_id)['status'], 'expired')
         self.assertEqual(self.job_row(pending.id)['status'], 'cancelled')
         self.assertEqual(self.scalar('SELECT count(*) FROM ai_findings'), 1)               # 결과·지적은 별도 보관 기한
@@ -543,7 +536,7 @@ class Finalize(S.InputCase):
         # 파일 저장 중 실패하면 입력·파일·작업 상태 모두 되돌려진다
         owner2, repo2 = self.make_user(), self.make_repo()
         result = self.submit(owner2, repo2)
-        with patch('app.services.ai.input_store.encrypt_input', side_effect=RuntimeError('kms down')):
+        with patch('app.services.ai.input_store.AIInputFile', side_effect=RuntimeError('db write failed')):
             self.assertEqual(self.run_prepare(result.job.id), 'retry')
         self.assertEqual(self.input_row(result.job.input_id)['status'], 'building')
         self.assertEqual(self.scalar('SELECT count(*) FROM ai_input_files WHERE input_id = :i', i=result.job.input_id), 0)

@@ -36,21 +36,23 @@ const test = (name, fn) => tests.push([name, fn]);
 const U1 = '11111111-1111-4111-8111-111111111111';
 const U2 = '22222222-2222-4222-8222-222222222222';
 
-test('로컬 동의: key·외부 전송 없이 모델 fingerprint를 고정한다', async () => {
+test('로컬 동의: key 없이 모델 fingerprint를 고정한다(웹에서도 로컬 모델은 막지 않는다)', async () => {
   const S = await js('ai-state.js');
   const preview = { input_id: U1, status: 'ready', execution_valid: true, reviewable: true,
     manifest_hash: 'a'.repeat(64), policy_version: 'code-transfer-v1', files: [{ content_state: 'read' }],
     transfer: { provider: 'ollama', profile_id: 'ollama-local-v1', model: 'qwen2.5-coder:7b',
-      execution_location: 'local', requires_api_key: false, external_transfer_allowed: false,
-      credential_configured: true, credential_version: null, profile_fingerprint: 'b'.repeat(64), model_digest: 'c'.repeat(64) } };
+      execution_location: 'local', requires_api_key: false, profile_fingerprint: 'b'.repeat(64), model_digest: 'c'.repeat(64) } };
   assert.deepEqual(S.consentBlockers(preview), []);
-  assert.equal(S.buildConsent(preview).credential_version, null);
+  assert.equal('credential_version' in S.buildConsent(preview), false);
   assert.equal(S.buildConsent(preview).profile_fingerprint, 'b'.repeat(64));
   assert.match(S.consentStatement(preview), /같은 PC/);
   assert.match(S.consentStatement(preview), /API 요금은 없습니다/);
-  const cloud = { ...preview, transfer: { ...preview.transfer, execution_location: 'external', requires_api_key: true, credential_configured: false } };
-  assert.equal(S.buildConsent(cloud), null);
-  assert.equal(S.consentBlockers(cloud).length, 2);
+  const cloud = { ...preview, transfer: { ...preview.transfer, provider: 'anthropic', execution_location: 'external', requires_api_key: true } };
+  assert.equal(S.buildConsent(cloud), null);                                   // 웹: 앱 키 보관소가 없다
+  assert.match(S.consentBlockers(cloud).join(' '), /앱에서만/);
+  assert.equal(S.buildConsent(cloud, { anthropic: false }), null);             // 앱: 키를 저장하지 않았다
+  assert.match(S.consentBlockers(cloud, { anthropic: false }).join(' '), /앱 설정에서 anthropic API 키/);
+  assert.equal(S.buildConsent(cloud, { anthropic: true }).provider, 'anthropic');
 });
 
 test('미리보기 API: 선택 profile을 query로 보낸다', async () => {
@@ -254,29 +256,31 @@ const previewOk = () => ({
 test('동의: 미리보기 값을 그대로 쓰고 하나라도 막히면 만들지 않는다', async () => {
   const s = await js('ai-state.js');
   const p = previewOk();
-  assert.deepEqual(s.consentBlockers(p), []);
-  assert.deepEqual(s.buildConsent(p), { input_id: U1, manifest_hash: 'c'.repeat(64), provider: 'anthropic', profile_id: 'claude-opus-5-5-v1', credential_version: 3, policy_version: 'code-transfer-v1' });
+  const keys = { anthropic: true };
+  assert.deepEqual(s.consentBlockers(p, keys), []);
+  assert.deepEqual(s.buildConsent(p, keys), { input_id: U1, manifest_hash: 'c'.repeat(64), provider: 'anthropic', profile_id: 'claude-opus-5-5-v1', policy_version: 'code-transfer-v1' });
   const cases = [
     [{ status: 'building' }, /준비하는 중/],
     [{ status: 'expired' }, /지났거나 원문이 삭제/],
     [{ status: 'failed' }, /실패/],
     [{ execution_valid: false }, /유효기간/],
     [{ reviewable: false }, /보낼 수 있는 파일이 없습니다/],
-    [{ transfer: { ...p.transfer, external_transfer_allowed: false } }, /외부 전송을 허용하지 않습니다/],
-    [{ transfer: { ...p.transfer, credential_configured: false } }, /API 키를 먼저 등록/],
+    [{ transfer: { ...p.transfer, provider: 'openai' } }, /앱 설정에서 openai API 키를 먼저 저장/],
     [{ transfer: null }, /전송 대상/],
     [{ token_estimate: { within_limit: false } }, /토큰 한도/],
   ];
   for (const [over, re] of cases) {
     const q = { ...p, ...over };
-    assert.ok(s.consentBlockers(q).some((m) => re.test(m)), JSON.stringify(over));
-    assert.equal(s.buildConsent(q), null);
+    assert.ok(s.consentBlockers(q, keys).some((m) => re.test(m)), JSON.stringify(over));
+    assert.equal(s.buildConsent(q, keys), null);
   }
   assert.deepEqual(s.consentBlockers(null), ['미리보기를 불러오지 못했습니다.']);
   const text = s.consentStatement(p);
   assert.match(text, /선택한 2개 파일/);
   assert.match(text, /anthropic \/ claude-opus-5-5/);
-  assert.match(text, /sk-ant-…1111 \(v3\)/);
+  assert.match(text, /앱에 저장한 내 anthropic API 키/);
+  assert.match(text, /서버에 저장되지 않습니다/);
+  assert.doesNotMatch(text, /sk-|v3/);
   assert.match(text, /code-transfer-v1/);
 });
 
@@ -436,19 +440,13 @@ test('api: 오류 정규화(코드·details·Retry-After) 와 비정상 응답',
   assert.equal(await me.me(), null);
 });
 
-test('api: key는 요청 본문에만 있고 오류·메시지에 남지 않는다', async () => {
+test('api: 화면은 API 키를 다루지 않는다(서버 키 저장 API 없음, 키는 앱 main이 붙인다)', async () => {
   const { createAiClient } = await js('ai-api.js');
-  const bodies = [];
-  const client = createAiClient({ fetchImpl: async (url, opts = {}) => {
-    if (url === '/api/auth/csrf') return res(200, { token: 't' });
-    bodies.push(opts.body);
-    return res(422, envelope('CREDENTIAL_INVALID', { details: { reason: 'auth_failed' } }));
-  } });
-  await assert.rejects(() => client.putCredential('anthropic', { apiKey: 'sk-ant-api03-SECRETVALUE', profileId: 'claude-opus-5-5-v1' }), (e) => {
-    assert.ok(!JSON.stringify({ m: e.message, d: e.details, c: e.code }).includes('SECRETVALUE'));
-    return true;
-  });
-  assert.deepEqual(JSON.parse(bodies[0]), { api_key: 'sk-ant-api03-SECRETVALUE', profile_id: 'claude-opus-5-5-v1', verify: true });
+  const client = createAiClient({ fetchImpl: async () => res(200, {}) });
+  for (const name of ['credentials', 'putCredential', 'setPreferredProfile', 'deleteCredential']) assert.equal(client[name], undefined, name);
+  const read = (f) => require('node:fs').readFileSync(path.resolve(__dirname, '..', '..', 'frontend', 'js', f), 'utf8');
+  const src = read('ai-api.js') + read('ai-review.js');
+  assert.doesNotMatch(src, /\/credentials|[^_]api_key|X-GitViz-AI-Key/i);
 });
 
 test('api: 멱등 key 생성은 호출마다 다르다', async () => {

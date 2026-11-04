@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RemoteContracts, endpoints } from '../src/remote-contracts';
-import { Remote, httpsClient, type Http } from '../src/remote';
+import { Remote, REMOTE_CONCURRENCY, REMOTE_QUEUE_LIMIT, httpsClient, type Http } from '../src/remote';
 import { DesktopAuth } from '../src/auth';
 
 const bodies = JSON.parse(readFileSync(join(__dirname, '../schema/ai-bodies.json'), 'utf8')) as Record<string, Record<string, unknown>>;
@@ -38,6 +38,57 @@ test('HTTPS transport omits cookies, follows no redirect, bounds output and retu
   await assert.rejects(http('//evil.test', 'GET'));
   await assert.rejects(httpsClient('https://server.test', async () => new Response('<html>no</html>'))('/x', 'GET'));
   await assert.rejects(httpsClient('https://server.test', async () => new Response('x'.repeat(8 * 1024 * 1024 + 1), { headers: { 'content-type': 'application/json' } }))('/x', 'GET'));
+});
+
+test('AI analysis (BYOK): main attaches only the saved key of the requested provider, never for other endpoints', async () => {
+  const seen: { path: string; aiKey?: string }[] = [];
+  const http: Http = async (path, _method, _body, _token, _key, aiKey) => { seen.push({ path, aiKey }); return { status: 202, body: {}, headers: {} }; };
+  const saved: Record<string, string> = { anthropic: 'sk-ant-api03-' + 'a'.repeat(24) };
+  const keys = { get: async (provider: string) => saved[provider] ?? null };
+  const remote = new Remote(contracts, http, () => ({ token, generation: 1 }), () => {}, keys);
+  const report = { endpointKey: 'createInsightReport', path: {}, query: {}, body: { repository_id: 7, profile_id: 'claude-opus-5-5-v4', provider: 'anthropic' } };
+  await remote.request(report);
+  assert.deepEqual(seen.pop(), { path: '/api/ai/v1/insights/reports', aiKey: saved.anthropic });
+  await remote.request({ endpointKey: 'askInsight', path: { conversationId: uid }, query: {}, body: { question: 'q', provider: 'anthropic' } });
+  assert.equal(seen.pop()?.aiKey, saved.anthropic);
+  // No saved key for that provider: nothing is sent.
+  await assert.rejects(remote.request({ ...report, body: { ...report.body, provider: 'openai' } }), /AI_KEY_REQUIRED/);
+  assert.equal(seen.length, 0);
+  // Local models need no key; other endpoints never carry one, even if the renderer adds a provider.
+  await remote.request({ ...report, body: { ...report.body, provider: 'ollama' } });
+  assert.equal(seen.pop()?.aiKey, undefined);
+  await remote.request({ endpointKey: 'createInsightConversation', path: {}, query: {}, body: { repository_id: 7, profile_id: 'claude-opus-5-5-v4' } });
+  assert.equal(seen.pop()?.aiKey, undefined);
+  assert.throws(() => contracts.route({ ...report, body: { repository_id: 7, profile_id: 'claude-opus-5-5-v4' } }));   // provider is required
+  // The header goes only over HTTPS with the request; the renderer-facing response never echoes it.
+  let headers: Headers | undefined;
+  const transport = httpsClient('https://server.test', async (_url, options) => { headers = new Headers(options?.headers); return new Response('{}', { status: 202, headers: { 'content-type': 'application/json' } }); });
+  const response = await transport('/api/ai/v1/insights/reports', 'POST', '{}', token, undefined, saved.anthropic);
+  assert.equal(headers?.get('X-GitViz-AI-Key'), saved.anthropic);
+  assert.ok(!JSON.stringify(response).includes(saved.anthropic));
+});
+
+test('AI review (BYOK, AD-33): job create/retry carry the saved key of consent.provider; server key routes are gone', async () => {
+  const seen: { path: string; aiKey?: string }[] = [];
+  const http: Http = async (path, _method, _body, _token, _key, aiKey) => { seen.push({ path, aiKey }); return { status: 202, body: {}, headers: {} }; };
+  const saved: Record<string, string> = { openai: 'sk-proj-' + 'b'.repeat(24) };
+  const keys = { get: async (provider: string) => saved[provider] ?? null };
+  const remote = new Remote(contracts, http, () => ({ token, generation: 1 }), () => {}, keys);
+  const consent = { input_id: uid, manifest_hash: 'c'.repeat(64), provider: 'openai', profile_id: 'gpt-5.4-v1', policy_version: 'code-transfer-v1' };
+  await remote.request({ endpointKey: 'createJob', path: {}, query: {}, body: { kind: 'review', consent }, idempotencyKey: 'k1' });
+  assert.deepEqual(seen.pop(), { path: '/api/ai/v1/jobs', aiKey: saved.openai });
+  await remote.request({ endpointKey: 'retryJob', path: { jobId: uid }, query: {}, body: { consent }, idempotencyKey: 'k2' });
+  assert.equal(seen.pop()?.aiKey, saved.openai);
+  await assert.rejects(remote.request({ endpointKey: 'createJob', path: {}, query: {}, body: { kind: 'review', consent: { ...consent, provider: 'anthropic', profile_id: 'claude-opus-5-5-v1' } }, idempotencyKey: 'k3' }), /AI_KEY_REQUIRED/);
+  assert.equal(seen.length, 0);
+  await remote.request({ endpointKey: 'createJob', path: {}, query: {}, body: { kind: 'review', consent: { ...consent, provider: 'ollama', profile_id: 'ollama-local-v1' } }, idempotencyKey: 'k4' });
+  assert.equal(seen.pop()?.aiKey, undefined);
+  await remote.request({ endpointKey: 'job', path: { jobId: uid }, query: {} });
+  assert.equal(seen.pop()?.aiKey, undefined);
+  // The old server key store is no longer reachable from the app, and consent no longer names a key version.
+  for (const endpointKey of ['credentials', 'putCredential', 'patchCredential', 'deleteCredential'])
+    assert.throws(() => contracts.route({ endpointKey, path: { provider: 'openai' }, query: {}, body: {} }), endpointKey);
+  assert.throws(() => contracts.route({ endpointKey: 'createJob', path: {}, query: {}, body: { kind: 'review', consent: { ...consent, credential_version: 1 } }, idempotencyKey: 'k5' }));
 });
 
 test('account generation drops a late response, 401 invalidates, mutations never retry automatically', async () => {
@@ -99,4 +150,32 @@ test('offline logout quarantines encrypted session across restart and prevents a
   assert.equal(restarted.identity(), null); await assert.rejects(restarted.start(), /REVOCATION_REQUIRED/);
   offline = false; await restarted.logout(); assert.equal(stored, null);
   assert.deepEqual(methods, ['GET', 'DELETE', 'DELETE', 'DELETE']);
+});
+
+test('a page that loads many panels at once gets every response: 8 in flight, the rest wait in order, BUSY only past the queue', async () => {
+  let inFlight = 0, peak = 0;
+  const gates: (() => void)[] = [];
+  const order: string[] = [];
+  const http: Http = async (path) => {
+    inFlight++; peak = Math.max(peak, inFlight); order.push(path);
+    await new Promise<void>(resolve => gates.push(resolve));
+    inFlight--;
+    return { status: 200, body: {}, headers: {} };
+  };
+  const remote = new Remote(contracts, http, () => ({ token, generation: 1 }), () => {});
+  const ask = (n: number) => remote.request({ endpointKey: 'repository', path: { repositoryId: n }, query: {} });
+  const requests = Array.from({ length: REMOTE_CONCURRENCY + REMOTE_QUEUE_LIMIT }, (_, i) => ask(i + 1));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(inFlight, REMOTE_CONCURRENCY);
+  await assert.rejects(ask(999), /BUSY/);
+  while (gates.length || inFlight) { gates.splice(0).forEach(open => open()); await new Promise(resolve => setImmediate(resolve)); }
+  const results = await Promise.all(requests);
+  assert.equal(results.length, REMOTE_CONCURRENCY + REMOTE_QUEUE_LIMIT);
+  assert.ok(results.every(result => result.status === 200));
+  assert.equal(peak, REMOTE_CONCURRENCY);
+  assert.deepEqual(order, Array.from({ length: requests.length }, (_, i) => `/repositories/${i + 1}`));
+  // A failure inside a request still frees its slot.
+  const failing = new Remote(contracts, async () => { throw new Error('NETWORK_UNAVAILABLE'); }, () => ({ token, generation: 1 }), () => {});
+  for (let i = 0; i < REMOTE_CONCURRENCY + 2; i++) await assert.rejects(failing.request({ endpointKey: 'repository', path: { repositoryId: 1 }, query: {} }), /NETWORK_UNAVAILABLE/);
+  await assert.rejects(new Remote(contracts, http, () => null, () => {}).request({ endpointKey: 'repository', path: { repositoryId: 1 }, query: {} }), /AUTH_REQUIRED/);
 });

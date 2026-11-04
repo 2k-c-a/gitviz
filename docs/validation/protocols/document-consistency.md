@@ -45,7 +45,7 @@ python -B tests/server/evaluate_ai_review.py --check-release
 |---|---|---|
 | PG 설치·개인 API | [backend](../../../tests/server/test_backend_improvements.py), [AI schema](../../../tests/server/test_ai_schema.py), [AI API](../../../tests/server/test_ai_api.py) | 전용 DB 빈 설치·upgrade·보존, owner·CSRF·동시성·기한 |
 | 공유 | test_ai_api의 SharedRead와 실제 인증 | 공개 read와 조직 구성원의 차이, owner 쓰기 제한, 원문 비공개, 메모·삭제·만료·권한 회수 |
-| 큐·장애 | [queue](../../../tests/server/test_ai_queue_integration.py), [MVP integration](../../../tests/server/verify_ai_mvp_integration.py) | 전용 PG·Redis·별도 worker/dispatcher, 응답 유실·불명·취소·원문 삭제 |
+| 큐·장애 | queue(`test_ai_queue_integration.py`, AD-33에서 삭제), MVP integration(`verify_ai_mvp_integration.py`, AD-33에서 삭제) | 전용 PG·Redis·별도 worker/dispatcher, 응답 유실·불명·취소·원문 삭제 |
 | snapshot·수집 | [snapshot](../../../tests/server/test_repository_snapshots.py), [live](../../../tests/server/verify_live_repository.py) | SHA·해시·분모·페이지·반복 수집 구분 |
 | 브라우저 | 실제 앱·모의 서버 | URL·선택·공유 혼입, 동의·키·오류·XSS·모바일 |
 | 모델 | [평가 절차](ai-evaluation.md)·[manifest](../../../tests/server/fixtures/ai/evaluation_manifest.json) | 사전 기준·사람 정답·조정/최종 분리, 품질·비용·coverage·한계 |

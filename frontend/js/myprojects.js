@@ -98,7 +98,7 @@ function actionButtons(repo, repoName, cardId) {
     return `
       <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-action="goPage" data-args="${encodeURIComponent(JSON.stringify(['overview', repo.id]))}">결과 보기</button>
       <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" data-action="openReanalyzeToast" data-args="${encodeURIComponent(JSON.stringify([repo.id]))}">재분석</button>
-      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId]))}">제거</button>`;
+      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId,repo.id]))}">제거</button>`;
   }
   if (['running', 'pending', 'rate_limited'].includes(repo.status)) {
     return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-action="openJobModal" data-args="${encodeURIComponent(JSON.stringify(['poll', repo.id]))}">진행 확인</button>`;
@@ -112,9 +112,9 @@ function actionButtons(repo, repoName, cardId) {
     return `
       ${last}
       <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" data-action="openReanalyzeToast" data-args="${encodeURIComponent(JSON.stringify([repo.id]))}">재시도</button>
-      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId]))}">제거</button>`;
+      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId,repo.id]))}">제거</button>`;
   }
-  return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId]))}">제거</button>`;
+  return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId,repo.id]))}">제거</button>`;
 }
 
 function buildCard(repo) {
@@ -182,6 +182,152 @@ function errorState(msg) {
   return `<div class="panel" style="padding:40px 20px;text-align:center;color:var(--red-dark);font-size:13px;">${esc(msg)}</div>`;
 }
 
+/* ── 내 GitHub 저장소 탭: github.com/repos와 같은 범위(소유·협업자·소속 조직). 처음 열 때 불러온다. ── */
+const GITHUB_PER_PAGE = 30;
+const githubListEl = document.getElementById('myproj-github-list');
+const githubMoreEl = document.getElementById('myproj-github-more');
+const github = { page: 0, loaded: false, loading: false, generation: 0 };
+// 이미 분석된 저장소의 ID(정규화한 URL → id). 분석한 프로젝트 목록과 최근 공개 분석에서 채운다.
+const analyzedIds = new Map();
+const normalizeUrl = (url) => String(url || '').trim().replace(/\.git$/i, '').replace(/\/+$/, '').toLowerCase();
+
+async function loadAnalyzedIds() {
+  await Promise.allSettled(['/repositories?limit=100', '/repositories/mine'].map(async (path) => {
+    const response = await request(path, { credentials: 'include' });
+    if (response.ok) for (const repo of await response.json()) analyzedIds.set(normalizeUrl(repo.url), repo.id);
+  }));
+}
+
+function githubCard(repo) {
+  const fullName = `${repo.owner || ''}/${repo.repo_name || ''}`;
+  const id = repo.is_registered ? analyzedIds.get(normalizeUrl(repo.url)) : undefined;
+  const badges = [
+    repo.private ? '<span class="badge badge-gray">비공개</span>' : '',
+    repo.fork ? '<span class="badge badge-gray">포크</span>' : '',
+    repo.archived ? '<span class="badge badge-gray">보관됨</span>' : '',
+    repo.language ? `<span class="badge badge-blue">${esc(repo.language)}</span>` : '',
+    repo.is_registered ? '<span class="badge badge-green">이미 분석됨</span>' : '',
+  ].join('');
+  const pushed = repo.pushed_at ? `<span>최근 push ${fmtRelative(repo.pushed_at)}</span>` : '';
+  const action = id
+    ? `<button type="button" class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-action="goPage" data-args="${encodeURIComponent(JSON.stringify(['overview', id]))}">결과 보기</button>`
+    : '<button type="button" class="btn-primary myproj-github-start" style="font-size:12px;padding:5px 10px;">분석 시작</button>';
+  return `
+    <div class="panel myproj-github-card" data-url="${esc(repo.url)}" style="padding:14px 20px;">
+      <div style="display:flex;align-items:flex-start;gap:14px;">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+            ${GITHUB_ICON}
+            <a href="${esc(repo.url)}" target="_blank" rel="noopener" data-action="stop" style="font-size:14px;font-weight:600;color:var(--text);text-decoration:none;" title="GitHub에서 열기">${esc(fullName)}</a>
+            ${badges}
+          </div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">${esc(repo.description || '설명이 없습니다.')}</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:var(--ui-text-xs);color:var(--text3);">
+            <span>★ ${num(repo.stars)}</span><span>포크 ${num(repo.forks)}</span>${pushed}
+          </div>
+        </div>
+        <div style="flex-shrink:0;">${action}</div>
+      </div>
+    </div>`;
+}
+
+const GITHUB_ERRORS = {
+  401: 'GitHub 인증이 만료됐습니다. 로그아웃한 뒤 다시 로그인해 주세요.',
+  429: 'GitHub API 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.',
+};
+
+async function loadGithubPage(reset = false) {
+  if (!githubListEl || (github.loading && !reset)) return;
+  const generation = reset ? ++github.generation : github.generation;
+  if (reset) { github.page = 0; githubListEl.innerHTML = loadingState(); }
+  github.loading = true;
+  if (githubMoreEl) githubMoreEl.disabled = true;
+  const page = github.page + 1;
+  try {
+    const [response] = await Promise.all([
+      request(`/search/my-github-repositories?per_page=${GITHUB_PER_PAGE}&page=${page}`, { credentials: 'include' }),
+      reset ? loadAnalyzedIds() : null,
+    ]);
+    if (generation !== github.generation) return;
+    if (!response.ok) {
+      const message = GITHUB_ERRORS[response.status] || `저장소 목록을 불러오지 못했습니다 (HTTP ${response.status}).`;
+      if (page === 1) githubListEl.innerHTML = errorState(message);
+      else githubListEl.insertAdjacentHTML('beforeend', errorState(message));
+      if (githubMoreEl) githubMoreEl.hidden = true;
+      return;
+    }
+    const data = await response.json();
+    const results = Array.isArray(data.results) ? data.results : [];
+    if (page === 1) {
+      githubListEl.innerHTML = results.length ? results.map(githubCard).join('')
+        : '<div class="panel" style="padding:40px 20px;text-align:center;font-size:13px;color:var(--text2);">접근할 수 있는 GitHub 저장소가 없습니다.</div>';
+    } else {
+      githubListEl.insertAdjacentHTML('beforeend', results.map(githubCard).join(''));
+    }
+    github.page = page; github.loaded = true;
+    if (githubMoreEl) githubMoreEl.hidden = !data.has_next;
+  } catch {
+    if (generation !== github.generation) return;
+    if (page === 1) githubListEl.innerHTML = errorState('저장소 목록을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.');
+  } finally {
+    if (generation === github.generation) {
+      github.loading = false;
+      if (githubMoreEl) githubMoreEl.disabled = false;
+    }
+  }
+}
+
+function startGithubAnalysis(url) {
+  const hidden = document.getElementById('url-input');
+  if (!hidden || !url || typeof window.openJobModal !== 'function') return;
+  hidden.value = url;
+  window.openJobModal('new');
+}
+
+const TABS = [['myproj-tab-analyzed', 'myproj-analyzed'], ['myproj-tab-github', 'myproj-github']];
+
+function selectTab(tabId, { focus = false } = {}) {
+  for (const [tab, panel] of TABS) {
+    const on = tab === tabId;
+    const tabEl = document.getElementById(tab);
+    const panelEl = document.getElementById(panel);
+    if (!tabEl || !panelEl) continue;
+    tabEl.classList.toggle('active', on);
+    tabEl.setAttribute('aria-selected', String(on));
+    tabEl.tabIndex = on ? 0 : -1;
+    panelEl.hidden = !on;
+    if (on && focus) tabEl.focus();
+  }
+  const url = new URL(location.href);
+  if (tabId === 'myproj-tab-github') url.searchParams.set('tab', 'github'); else url.searchParams.delete('tab');
+  history.replaceState(history.state, '', url);
+  if (tabId === 'myproj-tab-github' && !github.loaded && !github.loading) void loadGithubPage(true);
+}
+
+function bindGithubTab() {
+  const tablist = document.querySelector('.myproj-tabs');
+  if (!tablist || !githubListEl) return;
+  tablist.addEventListener('click', (event) => {
+    const tab = event.target.closest('[role="tab"]');
+    if (tab) selectTab(tab.id);
+  });
+  tablist.addEventListener('keydown', (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const ids = TABS.map(([tab]) => tab);
+    const current = ids.indexOf(document.activeElement?.id);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? ids.length - 1
+      : (current + (event.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length;
+    selectTab(ids[next], { focus: true });
+  });
+  githubMoreEl?.addEventListener('click', () => void loadGithubPage());
+  githubListEl.addEventListener('click', (event) => {
+    const start = event.target.closest('.myproj-github-start');
+    if (start) startGithubAnalysis(start.closest('.myproj-github-card')?.dataset.url || '');
+  });
+  if (new URLSearchParams(location.search).get('tab') === 'github') selectTab('myproj-tab-github');
+}
+
 async function initMyProjectsPage() {
   listEl.innerHTML = loadingState();
 
@@ -224,6 +370,12 @@ async function initMyProjectsPage() {
 
 if (listEl) {
   initMyProjectsPage();
-  // 재분석 진행 모달을 닫을 때(modal.js) 목록을 다시 불러와 뱃지/메트릭을 갱신하기 위한 훅
-  window.refreshMyProjects = initMyProjectsPage;
+  bindGithubTab();
+  // 분석 진행 모달을 닫을 때(modal.js) 목록을 다시 불러와 뱃지/메트릭을 갱신하기 위한 훅.
+  // 내 GitHub 저장소 탭은 '이미 분석됨' 표시가 바뀔 수 있으므로 보고 있으면 다시 불러오고, 아니면 다음에 열 때 불러온다.
+  window.refreshMyProjects = () => {
+    void initMyProjectsPage();
+    github.loaded = false;
+    if (!document.getElementById('myproj-github')?.hidden) void loadGithubPage(true);
+  };
 }

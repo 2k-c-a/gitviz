@@ -114,7 +114,7 @@ npm --prefix desktop run build; npm --prefix desktop run package
 npm --prefix desktop run make   # build-output\desktop\make\squirrel.windows\x64\GitVizWorkspaceSetup.exe
 ```
 
-현재 0.7.0은 코드 서명이 없어 설치 때 Windows SmartScreen 경고가 나온다. 설치는 사용자별(`%LOCALAPPDATA%\GitVizWorkspace`)이고 설치본은 `gitviz-join://` 초대 링크를 연다. 설치본을 쓰는 PC에도 Git for Windows가 기본 경로에 있어야 로컬 프로젝트 기능이 동작한다([설치 가이드 §0](docs/deployment/INSTALLATION_GUIDE.md)). 앱 로그는 `%APPDATA%\gitviz-workspace\logs\app.log`에 남는다. 설치·업데이트 상태는 [Windows 데스크톱 안내](docs/operations/windows-desktop.md)를 따른다.
+현재 앱(배포한 0.7.0, 다음 0.8.0)은 코드 서명이 없어 설치 때 Windows SmartScreen 경고가 나온다. 설치는 사용자별(`%LOCALAPPDATA%\GitVizWorkspace`)이고 설치본은 `gitviz-join://` 초대 링크를 연다. 설치본을 쓰는 PC에도 Git for Windows가 기본 경로에 있어야 로컬 프로젝트 기능이 동작한다([설치 가이드 §0](docs/deployment/INSTALLATION_GUIDE.md)). 앱 로그는 `%APPDATA%\gitviz-workspace\logs\app.log`에 남는다. 설치·업데이트 상태는 [Windows 데스크톱 안내](docs/operations/windows-desktop.md)를 따른다.
 
 ### 앱 테스트
 
@@ -174,9 +174,9 @@ python -m celery -A app.core.celery_app:celery worker --loglevel=info --pool=sol
 
 ## AI 리뷰
 
-기본 비활성이다. 클라우드는 Anthropic·OpenAI·Gemini 사용자 BYOK를, 같은 PC 실행은 Ollama·LM Studio·KoboldCpp를 지원한다. 입력 고정 → 미리보기·동의 → 설명/리뷰 → 근거·피드백 흐름을 제공한다. 결과·인용·메모의 공유 읽기 조건은 [AI API](docs/contracts/ai-api.md)와 [미확정 공유 정책](docs/decisions/index.md#d01)을 확인한다.
+앱 전용이다. 사용자가 앱 설정에 저장한 API key(Windows DPAPI)를 앱이 실행마다 보내고, 서버는 key도 코드 원문도 저장하지 않는다([AD-33](docs/architecture/ARCHITECTURE_DECISIONS.md)). 클라우드는 Anthropic·OpenAI·Gemini 사용자 BYOK를, 같은 PC 실행은 Ollama·LM Studio·KoboldCpp를 지원한다. 입력 고정 → 미리보기·동의 → 설명/리뷰 → 근거·피드백 흐름을 제공한다. 결과·인용·메모의 공유 읽기 조건은 [AI API](docs/contracts/ai-api.md)와 [미확정 공유 정책](docs/decisions/index.md#d01)을 확인한다.
 
-화면은 `/pages/ai-review.html?repo=<id>`다. 설정·worker/dispatcher 실행은 [AI 운영](docs/operations/ai.md), 모델별 한도·로컬 조건은 [제공자 안내](docs/operations/providers.md)를 따른다. 로컬 실행에는 외부 전송 허용이 필요하지 않으며 클라우드는 별도 전송 허용과 공개 저장소 정책을 적용한다.
+화면은 `/pages/ai-review.html?repo=<id>`다(웹에서는 '앱에서만'으로 안내). 실행은 API 프로세스 안의 스레드에서 하므로 별도 AI worker가 없다. 설정은 [AI 운영](docs/operations/ai.md), 모델별 한도·로컬 조건은 [제공자 안내](docs/operations/providers.md)를 따른다. 비공개 저장소도 실행마다 보낼 코드를 확인하고 동의하면 클라우드 모델로 리뷰할 수 있다.
 
 S12 인수인계·S13 보고서는 폐기했고 S14 자동 리뷰·S15 GitHub 댓글 게시는 보류다. [현재 범위](docs/product/current-scope.md)와 [후속 계획](docs/product/roadmap.md)을 구분한다. 실제 모델 품질을 구조 검증만으로 보장하지 않는다.
 

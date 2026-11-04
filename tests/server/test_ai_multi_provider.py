@@ -15,7 +15,9 @@ from app.services.ai.providers.base import GenerationRequest, ProviderError, Tok
 from app.services.ai.providers.json_provider import (
     OpenAIProvider, GeminiProvider, OllamaProvider, ProviderConfigError, local_endpoint, strict_schema,
 )
-from app.services.ai.credentials import normalize_key
+from types import SimpleNamespace
+
+from app.api.ai.dependencies import KEY_HEADER, request_api_key
 
 TEXT = json.dumps({'schema_version': 'review-output-v1', 'findings': []})
 DIGEST = 'a' * 64
@@ -240,8 +242,12 @@ class Adapters(unittest.TestCase):
     def test_keyless_provider_and_cloud_user_key_requirement(self):
         for pid in ('gpt-5.4-v1', 'gemini-3.5-flash-lite-v1'):
             with self.assertRaises(ProviderConfigError): registry.create_provider(registry.get_profile(pid))
-        self.assertEqual(normalize_key('openai', KEY), KEY)
-        self.assertEqual(normalize_key('gemini', 'AIza' + 'a' * 35), 'AIza' + 'a' * 35)
+        # AD-33: 클라우드 key는 실행 요청 헤더로만 받는다. 로컬 모델은 헤더가 와도 key를 쓰지 않는다.
+        for pid, key in (('gpt-5.4-v1', KEY), ('gemini-3.5-flash-lite-v1', 'AIza' + 'a' * 35)):
+            request = SimpleNamespace(headers={KEY_HEADER: f'  {key} '})
+            self.assertEqual(request_api_key(request, registry.get_profile(pid)), key)
+        keyless = SimpleNamespace(requires_api_key=False)
+        self.assertIsNone(request_api_key(SimpleNamespace(headers={KEY_HEADER: KEY}), keyless))
 
     def test_local_registration_disabled_by_default_and_dynamic_fingerprint(self):
         with patch.dict(os.environ, {'AI_OLLAMA_ENABLED': '0'}):

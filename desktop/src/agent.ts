@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Health, Operation, Request } from '../contracts/workspace';
 import { unavailable } from '../contracts/workspace';
 import { Contracts, FrameReader, MAX_FRAME } from './contracts';
+import { log } from './app-log';
 
 type Pending = { operation: Operation; projectId?: string; resolve: (value: Record<string, unknown>) => void; reject: (error: Error) => void; timer: NodeJS.Timeout };
 export class Agent {
@@ -10,8 +11,10 @@ export class Agent {
   private readonly pending = new Map<string, Pending>();
   private state: Health = unavailable();
   private dead = false;
+  private stopping = false;
   private exit: Promise<void> = Promise.resolve();
-  constructor(private readonly contracts: Contracts, private readonly launch: typeof spawn = spawn) {}
+  // appVersion comes from app.getVersion() (desktop/package.json); the agent reports its own version in the handshake reply.
+  constructor(private readonly contracts: Contracts, private readonly launch: typeof spawn = spawn, private readonly appVersion = '0.8.0') {}
   health(): Health { return structuredClone(this.state); }
 
   async start(executable: string, dataDirectory: string, key: () => Promise<Buffer>): Promise<void> {
@@ -22,7 +25,7 @@ export class Agent {
     env.PYTHONDONTWRITEBYTECODE = '1'; env.PYTHONUTF8 = '1';
     const child = this.launch(executable, ['--data-dir', dataDirectory, '--parent-pid', String(process.pid)], { cwd: process.resourcesPath, env, shell: false, windowsHide: true, stdio: 'pipe' });
     this.child = child;
-    this.exit = new Promise(resolve => { child.once('close', () => { this.fail(); resolve(); }); });
+    this.exit = new Promise(resolve => { child.once('close', (code, signal) => { if (!this.dead && !this.stopping) log('warn', 'agent-exited', { exitCode: code, signal }); this.fail(); resolve(); }); });
     child.once('error', () => this.fail());
     child.stdin.on('error', () => { this.fail(); child.kill(); });
     // Discard raw stderr; never render/log potentially sensitive child output.
@@ -55,7 +58,7 @@ export class Agent {
     });
     const deadline = setTimeout(() => { this.fail(); child.kill(); }, 15000);
     try {
-      const hello = await this.request('workspace.system.handshake', { appVersion: '0.8.0', protocolVersion: 1, localSchemaRange: { min: 8, max: 8 } });
+      const hello = await this.request('workspace.system.handshake', { appVersion: this.appVersion, protocolVersion: 1, localSchemaRange: { min: 8, max: 8 } });
       const capabilities = hello.capabilities as string[];
       const range = hello.localSchemaRange as { min: number; max: number };
       if (range.min > 8 || range.max < 8 || range.min > range.max) throw new Error('UNSUPPORTED_PROTOCOL');
@@ -98,6 +101,7 @@ export class Agent {
   async stop(): Promise<void> {
     const child = this.child;
     if (!child) return;
+    this.stopping = true;
     if (!this.dead) { try { await this.request('workspace.system.shutdown', {}); child.stdin.end(); } catch { /* kill below */ } }
     let timer: NodeJS.Timeout | undefined;
     await Promise.race([this.exit, new Promise<void>(resolve => { timer = setTimeout(resolve, 5000); })]);

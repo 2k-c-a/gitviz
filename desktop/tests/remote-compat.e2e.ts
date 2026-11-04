@@ -51,9 +51,16 @@ const http: Http = async (path, method, _body, givenToken) => {
   }
   else if (p.endsWith('/risk-scores') || p.endsWith('/bus-factor') || p.endsWith('/coupling')) body = [];
   else if (p.endsWith('/snapshots')) body = { repository_id: 2, snapshots: [snapshot], next_before_id: null };
-  else if (p === '/api/ai/v1/providers') body = { providers: [], external_transfer_allowed: false };
-  else if (p === '/api/ai/v1/credentials') body = { credentials: [] };
+  else if (p === '/api/ai/v1/providers') body = { providers: [] };
   else if (p === '/api/ai/v1/usage') body = { period_start: '2026-10-01', currency: 'USD', user_spent: '0', user_reserved: '0', user_limit: '20', user_remaining: '20', server_budget_enabled: true, uncertain_reservations: 0, daily_jobs_used: 0, daily_job_limit: 30 };
+  else if (p === '/search/my-github-repositories') {
+    const page = Number(url.searchParams.get('page'));
+    body = page === 1
+      ? { page: 1, per_page: 30, has_next: true, results: [
+        { owner: 'fixture', repo_name: 'p03', url: repo.url, description: 'Analyzed fixture', stars: 1, forks: 0, private: false, is_registered: true },
+        { owner: 'fixture-org', repo_name: 'secret', url: 'https://github.com/fixture-org/secret', description: '<b>raw</b>', stars: 0, forks: 0, private: true, fork: true, is_registered: false }] }
+      : { page: 2, per_page: 30, has_next: false, results: [{ owner: 'fixture', repo_name: 'page-two', url: 'https://github.com/fixture/page-two', is_registered: false }] };
+  }
   else if (p === '/search/github-repositories') body = { query: 'fixture', total_count: 1, results: [{ owner: 'fixture', repo_name: 'p03', url: repo.url, description: 'Search fixture', stars: 1, forks: 0, is_registered: true }] };
   return { status: method === 'DELETE' ? 204 : 200, body, headers: {} };
 };
@@ -78,7 +85,7 @@ void app.whenReady().then(async () => {
   }
   try {
     for (const [page, ready] of [
-      ['settings', `document.getElementById('ai-title')?.textContent.includes('설정') && document.getElementById('ai-main')?.textContent.includes('저장 위치')`],
+      ['settings', `document.getElementById('ai-title')?.textContent.includes('설정') && document.getElementById('ai-main')?.textContent.includes('돌아가기') && !document.getElementById('ai-main').textContent.includes('저장 위치')`],
       ['overview', `document.getElementById('tl-m-commits')?.textContent==='1' && !!Chart.getChart('chart-timeline') && document.getElementById('overview-collaboration')?.textContent.includes('전체 기여자 1명')`],
       ['network', `document.getElementById('net-status')?.textContent==='결과 조회 완료' && !!document.querySelector('#net-graph-svg circle')`],
       ['code-analysis', `document.getElementById('cx-status')?.textContent.includes('#7')`],
@@ -106,6 +113,39 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`document.getElementById('search-input').value='fixture'; document.getElementById('search-btn').click()`);
     await wait(`!!document.querySelector('.search-start-btn') && document.getElementById('search-results').textContent.includes('fixture/p03')`);
     assert.equal(requestMethods.slice(beforeSelect).some(method => method !== 'GET'), false, 'search is read-only');
+    phase = 'my-github-repositories';
+    // 최근·내 분석의 '내 GitHub 저장소' 탭: 열 때만 불러오고, 분석된 저장소는 결과로, 나머지는 분석 시작으로 연결한다.
+    const beforeGithub = requests.length;
+    await window.loadURL('gitviz://app/web/pages/myprojects.html');
+    await wait(`document.getElementById('myproj-list')?.textContent.includes('fixture/p03') && document.getElementById('myproj-github')?.hidden === true`);
+    assert.equal(requests.slice(beforeGithub).some(path => path.includes('my-github-repositories')), false, 'loads only when the tab opens');
+    await window.webContents.executeJavaScript(`document.getElementById('myproj-tab-github').click()`);
+    await wait(`document.getElementById('myproj-github-list')?.textContent.includes('fixture-org/secret') && !document.getElementById('myproj-github-more').hidden`);
+    assert.equal(await window.webContents.executeJavaScript(`[document.getElementById('myproj-analyzed').hidden, document.getElementById('myproj-tab-github').getAttribute('aria-selected'), location.search]`).then(v => JSON.stringify(v)), JSON.stringify([true, 'true', '?tab=github']));
+    assert.equal(await window.webContents.executeJavaScript(`[...document.querySelectorAll('.myproj-github-card')].map(c => c.querySelector('[data-action="goPage"]') ? 'result' : c.querySelector('.myproj-github-start') ? 'start' : '-').join()`), 'result,start');
+    assert.match(await window.webContents.executeJavaScript(`document.querySelectorAll('.myproj-github-card')[1].textContent`), /비공개[\s\S]*포크[\s\S]*<b>raw<\/b>/, 'badges shown; description escaped');
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('#myproj-github-list b').length`), 0);
+    await window.webContents.executeJavaScript(`document.getElementById('myproj-github-more').click()`);
+    await wait(`document.getElementById('myproj-github-list').textContent.includes('fixture/page-two') && document.getElementById('myproj-github-more').hidden`);
+    assert.equal(requestMethods.slice(beforeGithub).some(method => method !== 'GET'), false, 'listing is read-only');
+    await window.webContents.executeJavaScript(`document.querySelector('.myproj-github-start').click()`);
+    await wait(`document.getElementById('url-input')?.value === 'https://github.com/fixture-org/secret' && document.getElementById('job-modal')?.classList.contains('open') && document.getElementById('modal-repo')?.textContent.includes('secret')`);
+    await window.loadURL('gitviz://app/web/pages/myprojects.html?tab=github');
+    await wait(`document.getElementById('myproj-analyzed')?.hidden === true && document.getElementById('myproj-github-list')?.textContent.includes('fixture/p03')`);
+    phase = 'ai-analysis-tabs';
+    // 커밋·PR 단위 분석(AI 리뷰)은 왼쪽 목록의 최상위 항목이 아니라 현재 저장소 AI 분석의 세 번째 탭이다.
+    await window.loadURL('gitviz://app/web/pages/ai-insights.html?repo=2&snapshot=7');
+    await wait(`[...document.querySelectorAll('#page-ai-insights .ai-tabs [role="tab"]')].map(t=>t.textContent).join()==='자동 분석,대화형 분석,커밋·PR 단위 분석'`);
+    assert.equal(await window.webContents.executeJavaScript(`[...document.querySelectorAll('.app-nav-link')].some(a=>a.getAttribute('aria-label')==='AI 리뷰')`), false, 'no top-level AI review entry');
+    await window.webContents.executeJavaScript(`document.getElementById('insight-tab-chat').click()`);
+    await wait(`location.search.includes('tab=chat') && document.getElementById('insight-auto').hidden && !document.getElementById('insight-chat').hidden`);
+    await window.webContents.executeJavaScript(`document.getElementById('insight-tab-review').click()`);
+    await wait(`location.pathname.endsWith('/ai-review.html') && location.search==='?repo=2' && !document.getElementById('ai-analysis-tabs').hidden`);
+    await wait(`document.querySelector('.app-nav-link[aria-current="page"]')?.getAttribute('aria-label')==='AI 분석' && document.getElementById('ai-tab-review').getAttribute('aria-selected')==='true'`);
+    await window.webContents.executeJavaScript(`document.querySelector('#ai-analysis-tabs [data-insight-tab="chat"]').click()`);
+    await wait(`location.pathname.endsWith('/ai-insights.html') && location.search==='?repo=2&tab=chat' && document.getElementById('insight-tab-chat')?.getAttribute('aria-selected')==='true' && !document.getElementById('insight-chat').hidden`);
+    await window.loadURL('gitviz://app/web/pages/ai-review.html');
+    await wait(`!!document.getElementById('ai-main')?.textContent.trim() && document.getElementById('ai-analysis-tabs').hidden`);
     phase = 'delegated-navigation';
     // The old activity address still lands on the merged overview with the same result.
     await window.loadURL('gitviz://app/web/pages/timeline.html?repo=2&snapshot=7');

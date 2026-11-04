@@ -4,6 +4,9 @@
       running → retry_wait → queued (일시 오류), queued/running/retry_wait → cancel_requested → cancelled
 모든 확정은 `WHERE id AND lease_token AND status` 조건과 행 잠금으로 처리권 소유자만 할 수 있다.
 함수는 호출자의 Session을 쓰고 상태를 바꾸는 함수는 스스로 commit한다(LeaseLost 등은 rollback 후 예외).
+
+작업은 API 프로세스의 스레드가 실행한다(job_runner.submit, AD-33). 사용자 API key는 그 스레드의 메모리에만 있으므로
+실행자가 사라진 작업(처리권 만료·서버 재시작)은 다른 실행자가 이어받지 않고 실패로 닫는다. 다시 실행은 사용자가 요청한다.
 """
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -17,7 +20,7 @@ from app.core.ai_settings import get_ai_settings
 from app.models.ai_input import AIInput
 from app.models.ai_job import AIJob
 from app.schemas.ai import ErrorCode
-from app.services.ai import idempotency, outbox, usage_service
+from app.services.ai import idempotency, usage_service
 from app.services.ai.access import AIError, ensure_owner
 from app.services.ai.lease import CancelRequested, Lease, LeaseLost
 
@@ -25,8 +28,8 @@ if TYPE_CHECKING:
     from app.services.ai.consent import PinnedConfig
 
 __all__ = ['Lease', 'LeaseLost', 'CreateResult', 'HeartbeatResult', 'create_job', 'claim_job', 'heartbeat',
-           'request_cancel', 'finish_job', 'fail_job', 'recover_expired', 'fail_queue_deadline',
-           'run_maintenance', 'retry_delay', 'TERMINAL_STATUSES', 'IN_PROGRESS_STATUSES']
+           'request_cancel', 'finish_job', 'fail_job', 'recover_expired', 'fail_orphaned',
+           'run_maintenance', 'retry_delay', 'requeue_due', 'TERMINAL_STATUSES', 'IN_PROGRESS_STATUSES']
 
 TERMINAL_STATUSES = ('succeeded', 'failed', 'cancelled')
 IN_PROGRESS_STATUSES = ('queued', 'running', 'retry_wait', 'cancel_requested')
@@ -101,18 +104,18 @@ def create_job(db: Session, *, owner_id: UUID, repository_id: int, input_id: UUI
                route: str, idempotency_key: str, body_hash: str, request_options: dict | None = None,
                pinned: 'PinnedConfig | None' = None, force_regenerate: bool = False, input_factory: Callable[[Session], UUID] | None = None,
                now: datetime | None = None) -> CreateResult:
-    """job·Idempotency-Key·outbox를 한 transaction으로 저장한다.
+    """job·Idempotency-Key를 한 transaction으로 저장한다. 실행은 호출자가 commit 뒤에 job_runner.submit으로 시작한다.
 
     input_factory를 주면(입력 준비 작업) 재사용 여부를 확인한 뒤에만 호출되어 새 입력을 만들고, 입력·작업·
-    key·outbox가 모두 같은 transaction에 저장된다. 이때 input_id는 None이다.
+    key가 모두 같은 transaction에 저장된다. 이때 input_id는 None이다.
 
-    생성 작업(summary/review)은 동의로 확정한 `pinned`(제공자·모델·profile·사용자 key 버전)가 필수이며 작업에 그대로
-    기록된다. 이후 key를 교체해도 이 작업은 고정된 key 버전과 모델로 실행된다.
+    생성 작업(summary/review)은 동의로 확정한 `pinned`(제공자·모델·profile)가 필수이며 작업에 그대로 기록된다.
+    사용자 API key는 작업에 기록하지 않는다(실행 스레드의 메모리에만 있다).
 
     재사용 규칙은 두 가지로 구분한다.
     - Idempotency-Key: 같은 key·같은 요청이면 처음 만든 job을 그대로, 다른 요청이면 IDEMPOTENCY_CONFLICT.
-    - fingerprint: 새 key라도 같은 (owner, kind, fingerprint)의 최신 generation이 진행 중이고 같은 key 버전에 고정돼 있으면
-      그것을, 성공했고 force_regenerate가 아니면 그 결과를 재사용한다(성공 결과는 key와 무관). 실패·취소·강제 재생성은 새 generation이다.
+    - fingerprint: 새 key라도 같은 (owner, kind, fingerprint)의 최신 generation이 진행 중이면 그것을, 성공했고
+      force_regenerate가 아니면 그 결과를 재사용한다. 실패·취소·강제 재생성은 새 generation이다.
     """
     try:
         return _create_job(db, owner_id=owner_id, repository_id=repository_id, input_id=input_id, kind=kind,
@@ -148,12 +151,7 @@ def _create_job(db: Session, *, owner_id, repository_id, input_id, kind, fingerp
         .order_by(AIJob.generation.desc()).limit(1).with_for_update()
         .execution_options(populate_existing=True)).scalar_one_or_none()      # 다른 경로가 바꾼 상태를 반영
     if latest is not None and latest.deleted_at is None:
-        # 끝난 결과는 어느 key로 만들었든 재사용할 수 있다. 진행 중 작업은 동의한 key 버전과 같을 때만 재사용한다:
-        # 다른 버전에 고정된 작업을 돌려주면 사용자가 동의한 key와 다른 key로 비용·전송이 일어난다.
-        # 다르면 새 generation을 만들고, 기존 작업의 고정 설정은 건드리지 않는다.
-        in_progress_ok = latest.status in IN_PROGRESS_STATUSES and (
-            kind == 'prepare' or latest.credential_version_id == pinned.credential_version_id)
-        reusable = in_progress_ok or (latest.status == 'succeeded' and not force_regenerate)
+        reusable = latest.status in IN_PROGRESS_STATUSES or (latest.status == 'succeeded' and not force_regenerate)
         if reusable and kind == 'prepare' and not _prepared_input_usable(db, latest.input_id, now):
             reusable = False          # 만료됐거나 더는 실행에 쓸 수 없는 입력은 새로 준비한다
         wanted = (request_options or {}).get('history_snapshot_id')
@@ -180,7 +178,6 @@ def _create_job(db: Session, *, owner_id, repository_id, input_id, kind, fingerp
                 status='queued', request_options=request_options or {}, **_pinned_columns(kind, pinned))
     db.add(job)
     db.flush()
-    outbox.enqueue(db, job.id, kind)
     idempotency.complete(db, entry, job.id)
     db.commit()
     return CreateResult(job, True)
@@ -191,25 +188,15 @@ def _pinned_columns(kind: str, pinned) -> dict:
         return {}
     return {'consent_manifest_hash': pinned.manifest_hash, 'provider_profile': pinned.profile.id,
             'prompt_version': pinned.profile.prompt_version(kind), 'schema_version': pinned.profile.schema_version(kind),
-            'provider': pinned.provider, 'model': pinned.profile.model, 'profile_fingerprint': pinned.profile_fingerprint,
-            'credential_version_id': pinned.credential_version_id}
+            'provider': pinned.provider, 'model': pinned.profile.model, 'profile_fingerprint': pinned.profile_fingerprint}
 
 
 def _check_pinned(db: Session, owner_id, repository_id, input_id, kind: str, pinned) -> None:
-    """생성 작업의 고정 설정을 확인한다. key 버전 행을 FOR SHARE로 잠가 교체(retire)와 직렬화한다:
-    교체가 먼저 끝났으면 거부(새 확인 필요), 작업 생성이 먼저면 그 작업이 옛 key를 쓰는 동안 암호문이 남는다."""
+    """생성 작업의 고정 설정(동의한 입력·제공자·모델)을 확인한다."""
     if pinned is None:
-        raise AIError(ErrorCode.CREDENTIAL_REQUIRED, '제공자·모델·API key를 확인하고 동의해야 합니다.')
+        raise AIError(ErrorCode.INVALID_STATE, '제공자·모델과 보낼 코드를 확인하고 동의해야 합니다.')
     if pinned.input_id != input_id or pinned.repository_id != repository_id:
         raise AIError(ErrorCode.PREVIEW_CHANGED, '동의한 입력과 다른 입력입니다.')
-    if not pinned.profile.requires_api_key:
-        if pinned.credential_version_id is not None:
-            raise AIError(ErrorCode.PREVIEW_CHANGED, '로컬 실행에 API key를 사용할 수 없습니다.')
-        return
-    status = db.execute(text("""SELECT status FROM ai_credential_versions WHERE id = :v AND owner_user_id = :o
-                                FOR SHARE"""), {'v': pinned.credential_version_id, 'o': owner_id}).scalar()
-    if status != 'active':
-        raise AIError(ErrorCode.PREVIEW_CHANGED, 'API key가 바뀌었거나 삭제됐습니다. 다시 확인해 주세요.')
 
 
 def _prepared_input_usable(db: Session, input_id: UUID, now: datetime) -> bool:
@@ -219,13 +206,7 @@ def _prepared_input_usable(db: Session, input_id: UUID, now: datetime) -> bool:
         return False
     if row.status == 'building':
         return True
-    if row.status != 'ready' or row.valid_until is None or row.valid_until <= now:
-        return False
-    # 현재 서버에 없는 키로 암호화된 입력은 재사용하지 않고 새로 수집한다.
-    versions = db.execute(text("SELECT key_version FROM ai_input_files WHERE input_id = :i "
-                               "AND content_state = 'read'"), {'i': input_id}).scalars().all()
-    keys = get_ai_settings().encryption_keys
-    return all(version in keys for version in versions)
+    return row.status == 'ready' and row.valid_until is not None and row.valid_until > now
 
 
 def _check_input(db: Session, owner_id: UUID, repository_id: int, input_id: UUID, kind: str, now: datetime) -> None:
@@ -378,7 +359,7 @@ def finish_job(db: Session, lease: Lease, outcome: str = 'succeeded', *, error_c
 
 def fail_job(db: Session, lease: Lease, error_code: str, *, retryable: bool = False,
              now: datetime | None = None) -> str:
-    """실패를 확정한다. 재시도 가능하고 한도가 남았으면 retry_wait(+outbox 재발행 예약), 아니면 failed."""
+    """실패를 확정한다. 재시도 가능하고 한도가 남았으면 retry_wait(같은 실행 스레드가 대기 후 다시 시도), 아니면 failed."""
     now = _now(now)
     row = _locked(db, lease)
     _close_open_reservations(db, lease, succeeded=False)       # 남은 예약이 있으면 호출 결과가 불명확하다
@@ -397,7 +378,6 @@ def fail_job(db: Session, lease: Lease, error_code: str, *, retryable: bool = Fa
         db.execute(text("""UPDATE ai_jobs SET status = 'retry_wait', error_code = :e, next_attempt_at = :due,
                            lease_token = NULL, lease_until = NULL, updated_at = :now WHERE id = :id"""),
                    {'e': error_code, 'due': due, 'now': now, 'id': lease.job_id})
-        outbox.enqueue(db, lease.job_id, row.kind, available_at=due)
         final = 'retry_wait'
     else:
         _close_attempt(db, lease, 'failed', error_code, now)
@@ -409,16 +389,27 @@ def fail_job(db: Session, lease: Lease, error_code: str, *, retryable: bool = Fa
 
 # ── 복구·유지관리 ───────────────────────────────────────────────────────
 
-def recover_expired(db: Session, *, now: datetime | None = None, limit: int = 100) -> dict:
-    """처리권이 만료된 작업을 정리한다(처리자 중단 복구).
+def requeue_due(db: Session, job_id: UUID, *, now: datetime | None = None) -> bool:
+    """재시도 대기 시각이 지난 작업을 queued로 되돌린다. 같은 실행 스레드가 key를 들고 다시 claim한다."""
+    now = _now(now)
+    result = db.execute(text("""UPDATE ai_jobs SET status = 'queued', updated_at = :now
+                                WHERE id = :id AND status = 'retry_wait' AND deleted_at IS NULL
+                                  AND next_attempt_at <= :now"""), {'now': now, 'id': job_id})
+    db.commit()
+    return result.rowcount == 1
 
-    - AI 호출을 예약해 둔 attempt는 결과가 불명확하므로 새 호출로 이어가지 않는다(uncertain → failed).
-    - 호출 전이었다면 attempt를 실패로 닫고 한도가 남았으면 재시도 대기, 아니면 실패.
+
+def recover_expired(db: Session, *, now: datetime | None = None, limit: int = 100) -> dict:
+    """처리권이 만료된 작업을 정리한다(실행 스레드 중단·서버 재시작 복구).
+
+    사용자 API key는 실행 스레드의 메모리에만 있으므로 다른 실행자가 이어받을 수 없다. 처리권이 만료되면:
     - 취소가 접수된 작업은 cancelled.
+    - AI 호출을 예약해 둔 attempt는 결과가 불명확하다(OUTCOME_UNCERTAIN).
+    - 호출·정산 뒤 저장하지 못했으면 RESULT_LOST, 그 밖에는 INTERRUPTED로 실패를 확정한다.
+    다시 실행은 사용자가 명시적으로 요청한다(새 동의·key와 함께).
     """
     now = _now(now)
-    max_attempts = get_ai_settings().max_attempts
-    stats = {'retried': 0, 'uncertain': 0, 'exhausted': 0, 'cancelled': 0, 'result_lost': 0}
+    stats = {'interrupted': 0, 'uncertain': 0, 'cancelled': 0, 'result_lost': 0}
     rows = db.execute(text("""
         SELECT id, status, attempt_count, kind FROM ai_jobs
         WHERE status IN ('running', 'cancel_requested') AND lease_until < :now
@@ -438,42 +429,43 @@ def recover_expired(db: Session, *, now: datetime | None = None, limit: int = 10
             _terminal(db, lease, 'failed', 'OUTCOME_UNCERTAIN', now)
             stats['uncertain'] += 1
         elif state == 'settled':
-            # 호출은 처리·정산됐지만 결과를 저장하지 못했다. 같은 작업으로 다시 호출하지 않는다(새 generation은 사용자가 요청).
             _close_attempt(db, lease, 'failed', 'RESULT_LOST', now)
             _terminal(db, lease, 'failed', 'RESULT_LOST', now)
             stats['result_lost'] += 1
         else:
-            _close_attempt(db, lease, 'failed', 'LEASE_EXPIRED', now)
-            if row.attempt_count < max_attempts:
-                db.execute(text("""UPDATE ai_jobs SET status = 'retry_wait', error_code = 'LEASE_EXPIRED',
-                                   next_attempt_at = :now, lease_token = NULL, lease_until = NULL, updated_at = :now
-                                   WHERE id = :id"""), {'now': now, 'id': row.id})
-                outbox.enqueue(db, row.id, row.kind, available_at=now)
-                stats['retried'] += 1
-            else:
-                _terminal(db, lease, 'failed', 'ATTEMPTS_EXHAUSTED', now)
-                stats['exhausted'] += 1
+            _close_attempt(db, lease, 'failed', 'INTERRUPTED', now)
+            _terminal(db, lease, 'failed', 'INTERRUPTED', now)
+            stats['interrupted'] += 1
     db.commit()
     return stats
 
 
-def fail_queue_deadline(db: Session, *, now: datetime | None = None) -> int:
-    """대기열에서 기한을 넘긴 작업을 실패로 닫는다(발행이 계속 실패하는 경우 등)."""
+def fail_orphaned(db: Session, *, now: datetime | None = None) -> int:
+    """실행 스레드 없이 남은 대기 작업을 실패로 닫는다(INTERRUPTED).
+
+    queued는 접수 직후 실행 스레드가 바로 가져가고, retry_wait는 대기 시각에 같은 스레드가 다시 가져간다. 그보다
+    처리권 시간 이상 늦었으면 그 스레드가 사라진 것이다(서버 재시작 등). key가 없으니 이어서 실행할 수 없다.
+    """
     now = _now(now)
-    cutoff = now - timedelta(seconds=get_ai_settings().queue_deadline_seconds)
+    cutoff = now - timedelta(seconds=get_ai_settings().lease_seconds)
     result = db.execute(text("""
-        UPDATE ai_jobs SET status = 'failed', error_code = 'QUEUE_TIMEOUT', finished_at = :now, next_attempt_at = NULL,
+        UPDATE ai_jobs SET status = 'failed', error_code = 'INTERRUPTED', finished_at = :now, next_attempt_at = NULL,
             updated_at = :now
         WHERE status IN ('queued', 'retry_wait') AND deleted_at IS NULL
-          AND COALESCE(next_attempt_at, created_at) < :cutoff"""), {'now': now, 'cutoff': cutoff})
+          AND COALESCE(next_attempt_at, updated_at) < :cutoff"""), {'now': now, 'cutoff': cutoff})
+    db.execute(text("""
+        UPDATE ai_jobs SET status = 'cancelled', finished_at = :now, next_attempt_at = NULL, updated_at = :now
+        WHERE status = 'cancel_requested' AND lease_token IS NULL AND deleted_at IS NULL
+          AND updated_at < :cutoff"""), {'now': now, 'cutoff': cutoff})
     db.commit()
     return result.rowcount
 
 
 def run_maintenance(db: Session, *, now: datetime | None = None) -> dict:
+    """API 프로세스가 주기적으로(작업 목록 조회·접수 때, 시작 때) 부르는 정리. 여러 번 불러도 안전하다."""
     now = _now(now)
     stats = recover_expired(db, now=now)
-    stats['queue_timeout'] = fail_queue_deadline(db, now=now)
+    stats['orphaned'] = fail_orphaned(db, now=now)
     stats['idempotency_purged'] = idempotency.purge_expired(db, now)
     db.commit()
     return stats

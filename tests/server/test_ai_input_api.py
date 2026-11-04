@@ -121,7 +121,7 @@ class ApiCase(S.InputCase):
 
     def counts(self):
         return {t: self.scalar(f'SELECT count(*) FROM {t}') for t in
-                ('pr_revisions', 'ai_inputs', 'ai_jobs', 'ai_input_files', 'task_outbox', 'request_idempotency',
+                ('pr_revisions', 'ai_inputs', 'ai_jobs', 'ai_input_files', 'request_idempotency',
                  'ai_attempts', 'usage_reservations')}
 
     def prepare_via_worker(self, job_id):
@@ -131,15 +131,12 @@ class ApiCase(S.InputCase):
 
 
 class Access(ApiCase):
-    def test_login_feature_flag_and_csrf(self):
+    def test_login_and_csrf(self):
         anon = TestClient(build_app())
         for method, path in (('post', '/api/ai/v1/inputs'), ('get', f'/api/ai/v1/inputs/{uuid4()}'),
                              ('delete', f'/api/ai/v1/inputs/{uuid4()}'),
                              ('get', f'/api/ai/v1/inputs/{uuid4()}/files/{uuid4()}')):
             self.error(getattr(anon, method)(path), 401, 'AUTH_REQUIRED')
-        with S.ai_env(AI_ENABLED=0):
-            self.error(self.post(), 404, 'RESOURCE_NOT_FOUND')
-            self.error(self.client.get(f'/api/ai/v1/inputs/{uuid4()}'), 404, 'RESOURCE_NOT_FOUND')
         self.error(self.client.post('/api/ai/v1/inputs', json=self.body(), headers={'Idempotency-Key': 'k'}), 403, 'CSRF_FAILED')
         self.error(self.client.post('/api/ai/v1/inputs', json=self.body(),
                                     headers={**self.headers(Origin='https://evil.example'), 'Idempotency-Key': 'k'}), 403, 'CSRF_FAILED')
@@ -187,9 +184,10 @@ class Create(ApiCase):
         self.assertEqual(self.calls['capture'], [('acme/widgets', 7, self.fx.m1, self.fx.f1)])
         self.assertEqual(self.calls['authorize'], [(AIAction.prepare, self.repo)])         # 외부 전송 권한이 아니라 준비 권한
         self.assertEqual(self.counts(), {'pr_revisions': 1, 'ai_inputs': 1, 'ai_jobs': 1, 'ai_input_files': 0,
-                                         'task_outbox': 1, 'request_idempotency': 1, 'ai_attempts': 0,
+                                         'request_idempotency': 1, 'ai_attempts': 0,
                                          'usage_reservations': 0})
-        self.assertEqual(self.scalar('SELECT event_type FROM task_outbox'), 'prepare')
+        # 준비 작업은 커밋 뒤 API 프로세스 스레드로 넘긴다(AD-33). 준비에는 사용자 AI key가 필요 없다.
+        self.assertEqual(self.submitted, [(UUID(data['prepare_job']['job_id']), None)])
         job = self.job_row(UUID(data['prepare_job']['job_id']))
         self.assertEqual((job['kind'], job['owner_user_id']), ('prepare', self.owner))     # owner는 서버가 세션에서 정한다
         self.assertEqual(job['request_options']['selected_paths'], sorted(S.PR_PATHS))
@@ -197,9 +195,8 @@ class Create(ApiCase):
         self.assertEqual((audit.action, audit.request_id, audit.details['selected_files']), ('input.prepare_requested', 'req-abc', 4))
 
     def test_private_repository_can_be_prepared_without_any_transfer_permission(self):
-        with S.ai_env(AI_ALLOW_EXTERNAL_TRANSFER=0):
-            private_repo = self.make_repo(private=True)
-            self.assertEqual(self.post(self.body(repository_id=private_repo)).status_code, 202)
+        private_repo = self.make_repo(private=True)
+        self.assertEqual(self.post(self.body(repository_id=private_repo)).status_code, 202)
 
     def test_same_key_returns_the_original_input_even_if_the_pr_moved(self):
         first = self.post(key='dup')
@@ -293,12 +290,13 @@ class ReadAndDelete(ApiCase):
         input_id = self.prepared_input()
         file_id = self.get(input_id).json()['files'][0]['file_id']
         before = self.counts()
-        with patch('app.collectors.git.ai_diff_collector.collect_selected_code') as collect, \
-                patch.object(inputs_api, 'capture_revision') as capture:
+        # 파일 보기는 고정 SHA의 코드를 다시 읽기만 한다(AD-33, 원문 미보관). PR 재수집·작업 생성·DB 변경은 없다.
+        with patch.object(inputs_api, 'capture_revision') as capture:
             for _ in range(3):
-                self.get(input_id)
-                self.get(f'{input_id}/files/{file_id}')
-            self.assertEqual((collect.call_count, capture.call_count), (0, 0))
+                self.assertEqual(self.get(input_id).status_code, 200)
+                self.assertEqual(self.get(f'{input_id}/files/{file_id}').status_code, 200)
+            self.assertEqual(capture.call_count, 0)
+        self.assertEqual(len(self.submitted), 1)                     # 처음 준비 작업 하나뿐
         after = self.counts()
         self.assertEqual({k: v for k, v in after.items() if k != 'audit_events'}, before)
 

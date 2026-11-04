@@ -3,7 +3,9 @@
 - POST는 동의(TransferConsent)를 현재 상태와 대조하고(`consent.resolve_consent`) Idempotency-Key를 적용한다.
   새로 접수하면 202, 기존 작업(같은 key·같은 fingerprint의 진행 중·성공 결과)을 돌려주면 200이다.
 - GET은 작업을 만들거나 코드를 가져오지 않는다. 본인 자료만, 현재 저장소 권한을 확인하고, 응답은 private/no-store다.
-- 재시도(`/retry`)와 `force_regenerate`는 사용자의 명시적 요청이다. 자동 재시도는 worker가 정한 범위(호출 전 실패)뿐이다.
+- 재시도(`/retry`)와 `force_regenerate`는 사용자의 명시적 요청이다. 자동 재시도는 실행 스레드가 정한 범위(호출 전 실패)뿐이다.
+- 외부 모델을 쓰는 접수·재시도는 앱이 보낸 사용자 key(X-GitViz-AI-Key)가 필요하다. key는 이 실행의 스레드에만 넘기고
+  DB·로그·감사 기록에 남기지 않는다(AD-33).
 """
 from datetime import datetime, timezone
 from uuid import UUID
@@ -13,10 +15,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.api.ai.dependencies import request_api_key
 from app.api.ai.inputs import NO_STORE, _json, _request_id, _require_key, guard
 from app.core.database import get_db
 from app.schemas.ai import CreateJobRequest, ErrorCode, JobList, JobStatus, RetryJobRequest, TransferConsent
-from app.services.ai import consent, history_context, idempotency, input_store, job_service, job_views
+from app.services.ai import consent, history_context, idempotency, input_store, job_runner, job_service, job_views
 from app.services.ai.access import AIAction, AIError, authorize_ai
 from app.services.ai.content_policy import POLICY_VERSION
 
@@ -71,7 +74,7 @@ def _attach_to_reused(db: Session, user_id: UUID, request: Request, job_id: UUID
 
 def _accept(db: Session, user_id: UUID, request: Request, *, kind: str, consent_in: TransferConsent, route: str,
             key: str, body_hash: str, force: bool, history_snapshot_id: int | None = None) -> JSONResponse:
-    """동의를 확인하고 작업을 접수한다. reviewable=false·만료·삭제된 입력과 key 불일치는 여기서 막힌다."""
+    """동의를 확인하고 작업을 접수한다. reviewable=false·만료·삭제된 입력과 모델 불일치는 여기서 막힌다."""
     now = datetime.now(timezone.utc)
     row = input_store.load_owned(db, consent_in.input_id, user_id)                       # 남의 입력은 404
     replay = job_views.existing_for_key(db, user_id, route, key, body_hash, now)
@@ -85,6 +88,7 @@ def _accept(db: Session, user_id: UUID, request: Request, *, kind: str, consent_
                 _attach_to_reused(db, user_id, request, replay, row.repository_id, options['history_snapshot_id'])
         return _json(job_views.get_job(db, replay, user_id, now=now), 200)
     pinned = consent.resolve_consent(db, user_id, consent_in, now=now)
+    api_key = request_api_key(request, pinned.profile)       # 없으면 작업을 만들지 않는다
     authorize_ai(db, user_id, row.repository_id,
                  AIAction.local_generate if pinned.profile.execution_location == 'local' else AIAction.generate,
                  consent_in.policy_version)
@@ -98,9 +102,9 @@ def _accept(db: Session, user_id: UUID, request: Request, *, kind: str, consent_
     if result.created:
         input_store.audit(db, actor_id=user_id, repository_id=row.repository_id, action='job.created',
                           object_id=result.job.id, request_id=_request_id(request), object_type='job',
-                          details={'kind': kind, 'provider': pinned.provider, 'model': pinned.model,
-                                   'credential_version': pinned.credential_version, 'force': force})
+                          details={'kind': kind, 'provider': pinned.provider, 'model': pinned.model, 'force': force})
         db.commit()
+        job_runner.submit(result.job.id, api_key)
     return _json(job_views.get_job(db, result.job.id, user_id, now=now), 202 if result.created else 200)
 
 

@@ -1,7 +1,7 @@
 """Community request bodies. Exported to contracts/desktop/v1/community-bodies.json for the desktop allowlist."""
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # No control characters except line breaks and tabs in multi-line text; titles stay on one line.
 _LINE = r'^[^\x00-\x1f\x7f]*$'
@@ -86,10 +86,12 @@ _LANGUAGE = r'^(plain|javascript|typescript|jsx|tsx|python|json|markdown|css|htm
 
 
 class CreateCollabSessionRequest(BaseModel):
-    """The host shares one local file by name only; its content never goes to the server."""
+    """The host shares local files by the start file's name only; their content never goes to the server.
+    file_count (AD-34) is how many files the shared set holds, for the session list; absent means one file (AD-29)."""
     model_config = ConfigDict(extra='forbid')
     file_name: str = Field(min_length=1, max_length=200, pattern=r'^[^\x00-\x1f\x7f/\\]*$')
     language: str = Field(default='plain', pattern=_LANGUAGE)
+    file_count: int | None = Field(default=None, ge=1, le=60)
 
 
 class CollabSeatRequest(BaseModel):
@@ -98,9 +100,19 @@ class CollabSeatRequest(BaseModel):
 
 
 class CollabRelayRequest(BaseModel):
-    """One Yjs message: a document update, a sync request/reply (state vector / diff) or a cursor (awareness) update."""
+    """One Yjs message: a document update, a sync request/reply (state vector / diff) or a cursor (awareness) update.
+    In a file set (AD-34) `path` names the file (root-relative, absent for the set's file list), and `asset`/`asset-request`
+    carry a read-only image or font in pieces from the host to one seat."""
     model_config = ConfigDict(extra='forbid')
     seat_id: str = Field(pattern=_SESSION)
     to: str | None = Field(default=None, pattern=_SESSION)
-    kind: str = Field(pattern=r'^(update|sync-request|sync|awareness)$')
+    kind: str = Field(pattern=r'^(update|sync-request|sync|awareness|asset|asset-request)$')
     data: str = Field(min_length=1, max_length=200000, pattern=r'^[A-Za-z0-9+/]+={0,2}$')
+    path: str | None = Field(default=None, min_length=1, max_length=400, pattern=r'^[^/\\\x00-\x1f:*?"<>|][^\\\x00-\x1f:*?"<>|]*$')
+
+    @field_validator('path')
+    @classmethod
+    def relative_path(cls, value):
+        if value is not None and any(part in ('', '.', '..') for part in value.split('/')):
+            raise ValueError('path must be a root-relative file path')
+        return value

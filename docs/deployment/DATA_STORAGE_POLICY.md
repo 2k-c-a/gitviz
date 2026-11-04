@@ -1,6 +1,6 @@
 # 데이터 저장 정책
 
-작성일 2026-10-30 · 기준 커밋 `65f1b62` · 상태: 설계 문서 (코드 변경 없음)
+작성일 2026-10-30 · 기준 커밋 `65f1b62` · 상태(2026-11-04 갱신): 설계 문서. 데이터 경로 이전(R3)은 아직 적용되지 않았다. 실제 데이터 위치는 지금도 `%APPDATA%\gitviz-workspace`다(K-06).
 표기: **[현재]** 검증된 동작, **[제안]** 설계안, **[결정 필요]** 사용자 결정 사항.
 
 관련 문서: [환경 아키텍처](../architecture/ENVIRONMENT_ARCHITECTURE.md) · [설치 가이드](INSTALLATION_GUIDE.md) · [빌드와 릴리스](BUILD_AND_RELEASE.md)
@@ -25,11 +25,11 @@
 | 키 검증 | `secret-check.bin` | 키-DB 짝 확인 |
 | 실행 잠금 | `writer.lock` | 단일 쓰기 인스턴스 |
 | 창 상태 | `window.json` | |
+| 앱 로그 | 상위 `logs\app.log`, `app.1.log`~`app.4.log` | 2026-11-04(K-02). 1MB × 5개 순환, 비밀·경로 가림 |
 | 브라우저 캐시류 | `Cache`, `Code Cache`, `GPUCache`, `Local Storage` 등 | Chromium이 만든 파일 |
 | 업그레이드 백업 | `pre-v8-{uuid}.sqlite3` | 업그레이드 시에만 생성 |
-| 앱 로그 | `..\logs\app.log` (+ `app.1.log`~`app.4.log`) | `workspace\`가 아니라 사용자 데이터 폴더 바로 아래 |
 
-앱 로그: `%APPDATA%\gitviz-workspace\logs\app.log`(2026-11-03, K-02). 1 MB를 넘으면 `app.1.log`~`app.4.log`로 밀어 최대 5개(약 5 MB)만 두고, 시작할 때 14일이 지난 회전 파일을 지운다. 정해진 이벤트(시작·종료, 서버 설정 여부, Git 설치 여부, 에이전트 준비·실패 코드, 처리되지 않은 예외의 코드, 렌더러·하위 프로세스 종료 사유)와 짧은 코드값만 쓴다(`desktop/src/app-log.ts`). 오류 메시지 원문, 서버 주소, 파일 경로, 계정, 토큰, 에이전트 stderr는 쓰지 않는다. 에이전트(Python) 쪽 로그는 아직 없다.
+앱 로그: `%APPDATA%\gitviz-workspace\logs\app.log`(2026-11-04, K-02). `workspace\`가 아니라 사용자 데이터 폴더 바로 아래다. 한 줄에 JSON 한 건이고, 1 MB를 넘으면 `app.1.log`~`app.4.log`로 밀어 최대 5개(약 5 MB)만 둔다. 기록 항목: 시작·종료 버전, Git for Windows 설치 여부(`git-check`, 찾음/못 찾음만), main 예외·거부, 렌더러·하위 프로세스 종료, 에이전트 시작 실패·비정상 종료, 서버·공동 편집 IPC 실패 코드, 공동 편집 실행 결과(언어·종료 코드·시간). 토큰·키·이메일·사용자 폴더 경로는 가리고 값은 300자로 자른다(`desktop/src/app-log.ts`). 렌더러는 쓸 수 없고 진단 내보내기에도 넣지 않는다. 에이전트(Python) 쪽 로그는 아직 없다.
 
 문제점: Roaming은 도메인 환경에서 프로필 동기화 대상이 될 수 있고, 캐시와 DB와 키가 한 폴더에 섞여 있다. DPAPI 키는 기기/사용자에 묶이므로 Roaming 동기화와 맞지 않는다.
 
@@ -82,7 +82,7 @@
 
 ## 7. 서버 측 데이터 (참고)
 
-서버 PostgreSQL은 사용자 클라이언트 데이터와 분리한다. 운영 DB는 Alembic 단일 head(`d4f6a8c0e2b3`, 2026-11-01 커뮤니티·채팅 추가)로만 변경하고, 마이그레이션은 배포 절차에서 사람이 실행한다. 개발/테스트 코드는 `assert_database_allowed`로 운영 DB 접속을 거부한다 ([환경 아키텍처 §3.3](../architecture/ENVIRONMENT_ARCHITECTURE.md)). 운영 비밀값(`SESSION_SECRET_KEY` 등)은 서버 환경에만 두고 클라이언트 빌드에 넣지 않는다.
+서버 PostgreSQL은 사용자 클라이언트 데이터와 분리한다. 운영 DB는 Alembic 단일 head(`e7a9c1d3f5b4`, 2026-11-01 커뮤니티·채팅, 2026-11-03 AI 분석·내 분석 프로젝트 숨김 추가)로만 변경하고, 마이그레이션은 배포 절차에서 사람이 실행한다. 개발/테스트 코드는 `assert_database_allowed`로 운영 DB 접속을 거부한다 ([환경 아키텍처 §3.3](../architecture/ENVIRONMENT_ARCHITECTURE.md)). 운영 비밀값(`SESSION_SECRET_KEY` 등)은 서버 환경에만 두고 클라이언트 빌드에 넣지 않는다.
 
 ## 8. 권한과 보안
 

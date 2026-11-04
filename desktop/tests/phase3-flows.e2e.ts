@@ -2,7 +2,7 @@ import './profile';
 /** Actual sandbox pages with an in-process server transport fixture. No external OAuth/API. */
 import assert from 'node:assert/strict';
 import { app, BrowserWindow } from 'electron';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DesktopAuth } from '../src/auth';
@@ -10,6 +10,9 @@ import { Remote, type Http } from '../src/remote';
 import { RemoteContracts } from '../src/remote-contracts';
 import { registerCollabFiles, registerCommunityLive, registerDesktop } from '../src/desktop-ipc';
 import { CollabFiles } from '../src/collab-files';
+import { CollabBundles } from '../src/collab-bundle';
+import { Previews } from '../src/collab-preview';
+import { CollabRunner } from '../src/collab-run';
 import { CommunityLive, type StreamHttp } from '../src/community-live';
 import { registerScheme, serveAssets } from '../src/app-protocol';
 import { createWindow } from '../src/window';
@@ -32,7 +35,11 @@ const requestMethods: string[] = [];
 const unauthorized = false;
 const inputId = '22222222-2222-4222-8222-222222222222', jobId = '33333333-3333-4333-8333-333333333333', resultId = '44444444-4444-4444-8444-444444444444', sourceId = '55555555-5555-4555-8555-555555555555';
 const model = { provider: 'openai', profile_id: 'fixture-v1', model: 'fixture-model', display_name: 'Fixture model', allowed: true, execution_location: 'external', requires_api_key: true, input_price_per_mtok: '1', output_price_per_mtok: '1', max_input_tokens: 10000, max_output_tokens: 1000 };
-let credential: { provider: string; key_hint: string; version: number; preferred_profile_id: string; validated_at: string; in_flight_jobs: number } | null = null;
+// AI keys live in the app (AD-33): a fake vault stands in for DPAPI; the fixture server only sees the per-request header.
+const appKeys: Record<string, string> = {};
+const fakeVault = { get: async (provider: string) => appKeys[provider] ?? null,
+  status: async () => ({ anthropic: !!appKeys.anthropic, openai: !!appKeys.openai, gemini: !!appKeys.gemini }) };
+const jobKeys: (string | undefined)[] = [];
 let inputSource: 'commit' | 'pr' = 'commit';
 let typeFailure = false;
 // Community fixture: the fixture user starts as admin of repository 2 with one other member.
@@ -60,11 +67,14 @@ let voicePeer: BrowserWindow | null = null;
 const voiceSeats = () => ({ participants: [{ session_id: seatB, user: peer }, ...(voiceJoined ? [{ session_id: seatA, user: author }] : [])], capacity: 3 });
 // Co-editing fixture: the peer is the real editor bundle in its own window; the fixture relays Yjs messages like the server does.
 const collabSid = 'S'.repeat(22);
+const siteIndex = '<!doctype html>\r\n<link rel="stylesheet" href="css/site.css">\r\n<link rel="stylesheet" href="../outside.css">\r\n<script src="https://cdn.example.org/lib.js"></script>\r\n<img src="img/logo.png" alt="logo"><a href="about.html">about</a>\r\n';
+const siteCss = 'body { color: rgb(1, 2, 3) }\r\n';
 let collabSessions: Record<string, unknown>[] = [];
 const collabRelays: Record<string, unknown>[] = [];
 let collabPeer: BrowserWindow | null = null;
 let collabLeft = 0;
-const collabSession = (appHosts: boolean, seats: string[]) => ({ session_id: collabSid, file_name: 'app.py', language: 'python', host: appHosts ? author : peer,
+const collabSession = (appHosts: boolean, seats: string[]) => ({ session_id: collabSid, file_name: appHosts ? 'index.html' : 'app.py', language: appHosts ? 'html' : 'python',
+  file_count: appHosts ? 4 : 1, host: appHosts ? author : peer,
   seats: seats.map(seat => ({ seat_id: seat, user: seat === seatA ? author : peer, host: (seat === seatA) === appHosts })), capacity: 3, created_at: 1 });
 const sse = (type: string, data: unknown) => `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
 function communityFixture(p: string, method: string, payload: Record<string, unknown>): { status: number; body: unknown } {
@@ -142,9 +152,9 @@ function communityFixture(p: string, method: string, payload: Record<string, unk
   return { status: 403, body: { detail: { code: 'INVITE_REQUIRED', message: '이 저장소의 기여자가 아니면 초대 링크로만 참여할 수 있습니다.' } } };
 }
 const files =Array.from({ length: 52 }, (_, i) => ({ file_id: 999 + i, path: i ? `src/module-${i}.ts` : 'src/fixture.ts', name: i ? `module-${i}.ts` : 'fixture.ts', observation_count: 100 - i, maintenance_priority: 0.5, risk_score: 0.5, evidence_status: 'observed', bus_factor: 1, coupling_score: 0.5, coupling_support: 3, coupled_file_count: 1 }));
-const preview = () => ({ input_id: inputId, repository_id: 2, source_type: inputSource, pr_number: inputSource === 'pr' ? 1 : null, pr_title: 'Fixture change', base_sha: 'b'.repeat(40), head_sha: 'a'.repeat(40), status: 'ready', execution_valid: true, reviewable: true, manifest_hash: 'c'.repeat(64), policy_version: 'code-transfer-v1', files: [{ file_id: sourceId, path: 'src/fixture.ts', content_state: 'read', change_type: 'modified', byte_count: 50, hunks: [] }], coverage: { pr_total_files: 1, selected_files: 1, inventory_coverage: 'complete', selected_content_coverage: 'complete', analysis_coverage: 'complete', limitations: [] }, transfer: { ...model, external_transfer_allowed: true, credential_configured: !!credential, credential_version: credential?.version || 1, key_hint: 'fixture-masked' }, token_estimate: { input_tokens: 20, max_output_tokens: 100, within_limit: true, estimated_max_cost: '0.01' } });
+const preview = () => ({ input_id: inputId, repository_id: 2, source_type: inputSource, pr_number: inputSource === 'pr' ? 1 : null, pr_title: 'Fixture change', base_sha: 'b'.repeat(40), head_sha: 'a'.repeat(40), status: 'ready', execution_valid: true, reviewable: true, manifest_hash: 'c'.repeat(64), policy_version: 'code-transfer-v1', files: [{ file_id: sourceId, path: 'src/fixture.ts', content_state: 'read', change_type: 'modified', byte_count: 50, hunks: [] }], coverage: { pr_total_files: 1, selected_files: 1, inventory_coverage: 'complete', selected_content_coverage: 'complete', analysis_coverage: 'complete', limitations: [] }, transfer: { ...model }, token_estimate: { input_tokens: 20, max_output_tokens: 100, within_limit: true, estimated_max_cost: '0.01' } });
 
-const http: Http = async (path, method, _body, givenToken) => {
+const http: Http = async (path, method, _body, givenToken, _idempotency, aiKey) => {
   requests.push(path); assert.equal(givenToken, token);
   requestMethods.push(method);
   if (unauthorized) return { status: 401, body: { detail: 'fixture signed out' }, headers: {} };
@@ -178,20 +188,14 @@ const http: Http = async (path, method, _body, givenToken) => {
   else if (p.endsWith('/coupling')) body = { meta: { co_change_unit: 'pr', sort_by: 'coupling', total_pairs: 1 }, pairs: [{ file_a_id: 999, file_b_id: 1000, file_a_path: 'src/fixture.ts', file_b_path: 'src/module-1.ts', co_change_count: 3, change_count_a: 4, change_count_b: 6, a_to_b_ratio: 0.75, b_to_a_ratio: 0.5, coupling_score: 0.75, adjusted_score: 0.6, low_support: true }] };
   else if (p.endsWith('/risk-scores') || p.endsWith('/bus-factor') || p.endsWith('/coupling')) body = [];
   else if (p.endsWith('/snapshots')) body = { repository_id: 2, snapshots: [snapshot], next_before_id: null };
-  else if (p === '/api/ai/v1/providers') body = { providers: [{ id: 'openai', display_name: 'Fixture provider', key_format: 'Fixture key', models: [model] }], external_transfer_allowed: true };
-  else if (p === '/api/ai/v1/credentials') body = { credentials: credential ? [credential] : [] };
-  else if (p === '/api/ai/v1/credentials/openai') {
-    if (method === 'PUT') { assert.equal(payload.api_key, 'fixture-test-value'); credential = { provider: 'openai', key_hint: 'fixture-masked', version: (credential?.version || 0) + 1, preferred_profile_id: 'fixture-v1', validated_at: snapshot.analyzed_at, in_flight_jobs: 0 }; body = { changed: true, credential }; }
-    else if (method === 'DELETE') { credential = null; body = { jobs_cancelled: 0 }; }
-    else body = { credential };
-  }
+  else if (p === '/api/ai/v1/providers') body = { providers: [{ id: 'openai', display_name: 'Fixture provider', key_format: 'Fixture key', models: [model] }] };
   else if (p === '/api/ai/v1/pulls') body = { items: [{ number: 1, title: 'Fixture PR', head_sha: 'a'.repeat(40), base_ref: 'main', head_ref: 'work' }], next_cursor: null };
   else if (p === '/api/ai/v1/commits') body = { items: [{ sha: 'a'.repeat(40), message: 'Fixture commit', committed_at: snapshot.analyzed_at }], next_cursor: null };
   else if (p.endsWith('/files') && (p.includes('/commits/') || p.includes('/pulls/'))) body = { base_sha: 'b'.repeat(40), head_sha: 'a'.repeat(40), pr_total_files: 1, inventory_coverage: 'complete', next_cursor: null, files: [{ path: 'src/fixture.ts', change_type: 'modified', has_patch: true, additions: 1, deletions: 1 }] };
   else if (p === '/api/ai/v1/inputs' && method === 'POST') { inputSource = payload.commit_sha ? 'commit' : 'pr'; body = { input_id: inputId, repository_id: 2 }; }
   else if (p === `/api/ai/v1/inputs/${inputId}`) body = preview();
   else if (p === `/api/ai/v1/inputs/${inputId}/files/${sourceId}`) body = { path: 'src/fixture.ts', lines: [{ kind: 'added', right_line: 1, left_line: null, text: 'return value;' }] };
-  else if (p === '/api/ai/v1/jobs' && method === 'POST') { assert.equal((payload.consent as Record<string, unknown>).manifest_hash, 'c'.repeat(64)); body = { job_id: jobId, repository_id: 2 }; }
+  else if (p === '/api/ai/v1/jobs' && method === 'POST') { assert.equal((payload.consent as Record<string, unknown>).manifest_hash, 'c'.repeat(64)); assert.equal('credential_version' in (payload.consent as Record<string, unknown>), false); jobKeys.push(aiKey); body = { job_id: jobId, repository_id: 2 }; }
   else if (p === '/api/ai/v1/jobs') body = { jobs: [], next_cursor: null };
   else if (p === `/api/ai/v1/jobs/${jobId}`) body = { job_id: jobId, repository_id: 2, result_id: resultId, input_id: inputId, status: 'succeeded', kind: 'review', created_at: snapshot.analyzed_at };
   else if (p === `/api/ai/v1/results/${resultId}`) body = { result_id: resultId, job_id: jobId, repository_id: 2, input_id: inputId, kind: 'review', finding_count: 2, human_validation: 'unverified', coverage: preview().coverage };
@@ -214,27 +218,37 @@ void app.whenReady().then(async () => {
   const contracts = new RemoteContracts(JSON.parse(readFileSync(join(__dirname, '../schema/ai-bodies.json'), 'utf8')) as Record<string, Record<string, unknown>>);
   const auth = new DesktopAuth('https://fixture.test', http, async () => { throw new Error('UNEXPECTED_EXTERNAL_BROWSER'); }, { read: async () => issued, write: async () => {} });
   await auth.restore();
-  const remote = new Remote(contracts, http, auth.identity, auth.invalidate);
-  const window = createWindow(false); const unregister = registerDesktop(window, auth, remote);
+  const remote = new Remote(contracts, http, auth.identity, auth.invalidate, fakeVault);
+  const window = createWindow(false); const unregister = registerDesktop(window, auth, remote, undefined, fakeVault);
   const unregisterLive = registerCommunityLive(window, emit => new CommunityLive(chatStream, auth.identity, auth.invalidate, emit));
   window.once('closed', unregisterLive);
-  const collabDir = mkdtempSync(join(tmpdir(), 'gitviz-collab-e2e-')); const collabFile = join(collabDir, 'app.py');
-  writeFileSync(collabFile, 'def a():\r\n    return 1\r\n');
+  // A small site: the start page loads a stylesheet and an image, links to another page, and refers outside its folder and to a CDN.
+  const collabDir = mkdtempSync(join(tmpdir(), 'gitviz-collab-e2e-'));
+  mkdirSync(join(collabDir, 'css')); mkdirSync(join(collabDir, 'img'));
+  writeFileSync(join(collabDir, 'index.html'), siteIndex);
+  writeFileSync(join(collabDir, 'css', 'site.css'), siteCss);
+  writeFileSync(join(collabDir, 'img', 'logo.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64'));
+  writeFileSync(join(collabDir, 'about.html'), '<p>about</p>\r\n');
+  writeFileSync(join(collabDir, 'extra.css'), 'body { border-top: 4px solid red }\r\n');
   let overwrite = false;
-  const unregisterCollab = registerCollabFiles(window, new CollabFiles(async () => collabFile, async () => overwrite));
+  const collabFile = join(collabDir, 'index.html');
+  const unregisterCollab = registerCollabFiles(window, new CollabFiles(async () => collabFile, async () => overwrite),
+    new CollabBundles(async () => collabFile, async () => overwrite, collabDir), new Previews(false, false),
+    new CollabRunner(join(__dirname, '../../node_modules/pyodide')));
+  const runtimes = await new CollabRunner(join(__dirname, '../../node_modules/pyodide')).runtimes({});
   window.webContents.setBackgroundThrottling(false);
   const unregisterHealth = registerHealth(window, unavailable);
   const errors: string[] = [];
   window.webContents.on('console-message', details => { if (details.level === 'error') errors.push(details.message.replace(/[A-Za-z]:[^\n]*/g, '[path]')); });
   async function wait(expression: string): Promise<void> {
     for (let i = 0; i < 100; i++) {
-      if (await window.webContents.executeJavaScript(expression)) return;
+      if (await window.webContents.executeJavaScript(expression).catch((error: unknown) => { throw new Error(`wait ${String(error)} :: ${expression.slice(0, 200)}`); })) return;
       await new Promise(resolve => setTimeout(resolve, 30));
     }
     throw new Error(`ASSERTION:${phase}:${expression.slice(0, 130)}`);
   }
   async function clickText(text: string) {
-    await window.webContents.executeJavaScript(`(() => { const button = [...document.querySelectorAll('button,a')].find(e => e.textContent.trim() === ${JSON.stringify(text)} && e.getClientRects().length); if(!button) throw new Error('missing action'); button.click(); })()`);
+    await window.webContents.executeJavaScript(`(() => { const button = [...document.querySelectorAll('button,a')].find(e => e.textContent.trim() === ${JSON.stringify(text)} && e.getClientRects().length); if(!button) throw new Error('missing action'); button.click(); })()`).catch((error: unknown) => { throw new Error(`click ${text}: ${String(error)}`); });
   }
   try {
     phase = 'search-paging';
@@ -284,8 +298,11 @@ void app.whenReady().then(async () => {
     await wait(`document.getElementById('dd-title').textContent==='fixture.ts'`);
     await window.webContents.executeJavaScript(`document.getElementById('dd-back-btn').click()`);
     await wait(`document.getElementById('dd-title').textContent==='Fixture'`);
-    await window.webContents.executeJavaScript(`window.closeDrilldown(); const metric=document.querySelector('[aria-label="월별 지표"]'); metric.value='bugfix_pct'; metric.dispatchEvent(new Event('change'));`);
-    assert.equal(await window.webContents.executeJavaScript(`Chart.getChart('chart-timeline').options.scales.y.max`), 100);
+    // 타임라인은 커밋 수·활성 기여자·버그 수정 비율을 같은 월 축의 그래프 3개로 함께 보여 준다(지표 선택 없음).
+    await window.webContents.executeJavaScript(`window.closeDrilldown()`);
+    assert.equal(await window.webContents.executeJavaScript(`JSON.stringify(['chart-timeline','chart-timeline-contributors','chart-timeline-bugfix'].map(id => { const c = Chart.getChart(id); return [c.config.type, c.data.datasets.length, c.options.scales.y.max ?? null]; }))`), JSON.stringify([['bar', 1, null], ['line', 1, null], ['line', 1, 100]]));
+    assert.equal(await window.webContents.executeJavaScript(`[...document.querySelectorAll('.activity-chart-title')].map(e => e.textContent).join()`), '커밋 수 (건),활성 기여자 (명),버그 수정 분류 비율 (%)');
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('[aria-label="월별 지표"]').length`), 0);
     await window.webContents.executeJavaScript(`document.querySelector('.analysis-list button').click()`);
     await wait(`document.querySelector('[role="status"]').textContent.includes('2026-05') || [...document.querySelectorAll('[role="status"]')].some(e=>e.textContent.includes('2026-05'))`);
     phase = 'network-interactions';
@@ -315,13 +332,11 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`document.querySelector('#cx-cp-body .cx-pair-file').click()`);
     await wait(`document.getElementById('dd-title').textContent==='fixture.ts'`);
     await window.webContents.executeJavaScript(`window.closeDrilldown()`);
-    phase = 'settings-key-save';
+    phase = 'settings-app-keys';
     await window.loadURL('gitviz://app/web/pages/settings.html');
-    await wait(`!!document.getElementById('ai-key-input') && !!document.querySelector('.app-shell')`);
-    await window.webContents.executeJavaScript(`document.getElementById('ai-key-input').value='fixture-test-value'`); await clickText('키 확인 후 저장');
-    await wait(`document.getElementById('ai-keys').textContent.includes('키 등록됨')`);
-    assert.equal(await window.webContents.executeJavaScript(`document.getElementById('ai-key-input').value`), '');
-    assert.equal(await window.webContents.executeJavaScript(`document.body.textContent.includes('fixture-test-value') || JSON.stringify(localStorage).includes('fixture-test-value')`), false);
+    await wait(`!!document.querySelector('.app-shell') && document.getElementById('ai-main').textContent.includes('커밋·PR 단위 분석으로 돌아가기') && !document.getElementById('ai-main').textContent.includes('저장 위치')`);
+    assert.equal(await window.webContents.executeJavaScript(`!!document.querySelector('input[type="password"]')`), false, 'the server-side key form is gone');
+    assert.ok(await window.webContents.executeJavaScript(`document.getElementById('ai-keys').textContent.includes('키 없음')`));
     phase = 'AI-commit-preview-consent-result';
     await window.loadURL('gitviz://app/web/pages/ai-review.html?repo=2');
     await wait(`document.getElementById('ai-main')?.textContent.includes('Fixture PR')`);
@@ -331,12 +346,15 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`document.querySelector('.ai-file input[type="checkbox"]').click()`); await clickText('미리보기 만들기');
     await wait(`!!document.getElementById('ai-consent-check')`);
     assert.equal(await window.webContents.executeJavaScript(`[...document.querySelectorAll('button')].find(e=>e.textContent==='코드 리뷰 생성').disabled`), true);
-    await clickText('API 키·설정');
-    await wait(`location.pathname.endsWith('/settings.html') && !!document.getElementById('ai-key-input')`);
-    await clickText('AI 리뷰로 돌아가기'); await wait(`!!document.getElementById('ai-consent-check')`);
-    assert.equal(await window.webContents.executeJavaScript(`document.getElementById('ai-consent-check').checked`), false, 'return requires fresh consent');
+    assert.ok(await window.webContents.executeJavaScript(`document.querySelector('.ai-blockers').textContent.includes('앱 설정에서 openai API 키')`));
+    assert.ok(await window.webContents.executeJavaScript(`!![...document.querySelectorAll('button')].find(e=>e.textContent==='API 키 저장하러 가기')`));
+    appKeys.openai = 'fixture-test-value-0123456789';                           // saved through the app's own settings
+    await window.webContents.executeJavaScript(`location.reload()`); await wait(`!!document.getElementById('ai-consent-check') && document.getElementById('ai-keys').textContent.includes('앱에 키 저장됨')`);
+    assert.equal(await window.webContents.executeJavaScript(`document.getElementById('ai-consent-check').checked`), false, 'reload requires fresh consent');
+    assert.equal(await window.webContents.executeJavaScript(`document.body.textContent.includes(${JSON.stringify(appKeys.openai)})`), false, 'renderer never shows the key');
     await window.webContents.executeJavaScript(`document.getElementById('ai-consent-check').click()`); await clickText('코드 리뷰 생성');
     await wait(`document.querySelectorAll('.ai-finding').length===2`);
+    assert.deepEqual(jobKeys, [appKeys.openai], 'main attached the saved key to the job request only');
     await window.webContents.executeJavaScript(`const select=document.querySelector('[aria-label="검토 순서 필터"]');select.value='1';select.dispatchEvent(new Event('change'))`);
     assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('.ai-finding').length`), 1);
     await window.webContents.executeJavaScript(`(() => { const note=document.querySelector('.ai-finding textarea'); note.value='Unsaved fixture note'; note.dispatchEvent(new Event('input')); const search=document.querySelector('[aria-label="불러온 지적의 파일 또는 제목 검색"]'); search.focus(); search.value='fixture'; search.dispatchEvent(new Event('input')); })()`);
@@ -349,17 +367,8 @@ void app.whenReady().then(async () => {
     await wait(`document.getElementById('ai-main')?.textContent.includes('Fixture PR')`); await clickText('파일 선택');
     await wait(`document.querySelectorAll('.ai-file input[type="checkbox"]').length>0`);
     assert.ok(requests.some(path => path.includes('/pulls/1/files')));
-    phase = 'key-replace-delete';
-    await window.loadURL('gitviz://app/web/pages/settings.html');
-    await wait(`!!document.getElementById('ai-key-input') && document.getElementById('ai-keys').textContent.includes('키 등록됨')`);
-    await window.webContents.executeJavaScript(`document.getElementById('ai-key-input').value='fixture-test-value'`); await clickText('키 교체(확인 후 저장)');
-    await wait(`document.getElementById('ai-keys').textContent.includes('v2')`);
-    await window.webContents.executeJavaScript(`window.confirm=()=>true;void 0`); await clickText('키 삭제');
-    await wait(`document.getElementById('ai-keys').textContent.includes('키 없음')`);
-    assert.equal(credential, null);
-
     phase = 'community';
-    const js = (code: string) => window.webContents.executeJavaScript(code);
+    const js = (code: string) => window.webContents.executeJavaScript(code).catch((error: unknown) => { throw new Error(`${String(error)} :: ${code.slice(0, 160)}`); });
     await window.loadURL('gitviz://app/web/pages/community.html');
     await wait(`[...document.querySelectorAll('.app-nav-link')].some(a=>a.getAttribute('aria-label')==='커뮤니티' && a.getAttribute('aria-current')==='page') && !!document.querySelector('.community-list-item')`);
     assert.equal(await js(`document.querySelector('.community-list-item .community-badge').textContent`), '관리자');
@@ -439,7 +448,8 @@ void app.whenReady().then(async () => {
       await clickText('음성 참여');
       await wait(`document.querySelector('.community-voice-status').textContent.includes('3명까지') && !!document.querySelector('.community-voice .btn-primary') && !document.querySelector('.community-voice audio')`);
     } finally { clearInterval(pump); voicePeer.destroy(); voicePeer = null; }
-    // Co-editing: the app shares a local file and edits it with a real second editor; then it joins the peer's file as a guest.
+    // Co-editing (AD-34): the app shares a start file and what it loads, edits it with a real second editor, previews it,
+    // approves a reference the peer added; then it joins the peer's share as a guest.
     phase = 'community-collab';
     await js(`document.querySelector('[data-tab="collab"]').click()`);
     for (let i = 0; i < 100 && chatStreams.length < 2; i++) await new Promise(resolve => setTimeout(resolve, 20));
@@ -450,68 +460,152 @@ void app.whenReady().then(async () => {
     // The bundle's last statement evaluates to the module object, which cannot cross back; end with undefined.
     await collabPeer.webContents.executeJavaScript(`${readFileSync(join(__dirname, '../ui/web/js/collab-editor.bundle.js'), 'utf8')}\n;void 0`);
     await collabPeer.webContents.executeJavaScript(`(() => {
-      const lib = window.GitVizCollab; window.out = [];
-      const b64 = bytes => btoa(String.fromCharCode(...bytes)); const raw = text => Uint8Array.from(atob(text), c => c.charCodeAt(0));
+      const lib = window.GitVizCollab; window.out = []; window.assetPieces = 0;
+      const b64 = bytes => { let s = ''; for (const b of bytes) s += String.fromCharCode(b); return btoa(s); };
+      const raw = text => Uint8Array.from(atob(text), c => c.charCodeAt(0));
+      let manifest, files, hosting;
+      const push = (kind, data, to, path) => window.out.push({ kind, data: b64(data), ...(to ? { to } : {}), ...(path ? { path } : {}) });
+      const watch = (path, doc) => doc.on('update', (update, origin) => { if (origin !== lib.REMOTE) push('update', update, null, path); });
+      const addFile = (path, text) => {
+        if (files[path]) return files[path];
+        const file = files[path] = lib.createFile(text);
+        watch(path, file.doc);
+        file.awareness.on('update', (_change, origin) => { if (origin !== lib.REMOTE) push('awareness', lib.encodeAwareness(file.awareness, [file.doc.clientID]), null, path); });
+        lib.setPresence(file.awareness, { name: '@peer', color: '#db2777' });
+        return file;
+      };
       window.start = text => {
-        window.ed?.destroy();
-        const ed = window.ed = lib.createCollabEditor({ parent: document.body.appendChild(document.createElement('div')), text, language: 'python', user: { name: '@peer', color: '#db2777' } });
-        ed.doc.on('update', (update, origin) => { if (origin !== lib.REMOTE) window.out.push({ kind: 'update', data: b64(update) }); });
+        manifest = lib.createManifest(); files = {}; hosting = text !== null; watch('', manifest.doc);
+        if (hosting) {
+          manifest.doc.transact(() => { manifest.files.set('app.py', 'python'); manifest.files.set('main.c', 'c'); manifest.meta.set('entry', 'app.py'); });
+          addFile('app.py', text); addFile('main.c', '#include <stdio.h>\\nint main(void) { printf("%d\\\\n", 6 * 7); return 0; }\\n');
+        }
       };
       window.receive = m => {
-        const ed = window.ed; const bytes = raw(m.data);
-        if (m.kind === 'update' || m.kind === 'sync') lib.applyUpdate(ed.doc, bytes);
-        else if (m.kind === 'awareness') lib.applyAwareness(ed.awareness, bytes);
-        else if (m.kind === 'sync-request') window.out.push({ kind: 'sync', to: m.from, data: b64(lib.encodeStateAsUpdate(ed.doc, bytes)) });
+        const path = m.path || ''; const bytes = raw(m.data);
+        if (!path) {
+          if (m.kind === 'sync-request') { if (hosting) push('sync', lib.encodeStateAsUpdate(manifest.doc, bytes), m.from); return; }
+          if (m.kind !== 'update' && m.kind !== 'sync') return;
+          lib.applyUpdate(manifest.doc, bytes);
+          for (const name of manifest.files.keys()) if (!files[name]) push('sync-request', lib.encodeStateVector(addFile(name, null).doc), m.from, name);
+          return;
+        }
+        if (m.kind === 'asset') { window.assetPieces++; return; }
+        const file = files[path] || (manifest.files.has(path) ? addFile(path, null) : null);
+        if (!file) return;
+        if (m.kind === 'update' || m.kind === 'sync') lib.applyUpdate(file.doc, bytes);
+        else if (m.kind === 'awareness') lib.applyAwareness(file.awareness, bytes);
+        else if (m.kind === 'sync-request') push('sync', lib.encodeStateAsUpdate(file.doc, bytes), m.from, path);
       };
-      window.request = to => window.out.push({ kind: 'sync-request', to, data: b64(lib.encodeStateVector(window.ed.doc)) });
-      window.text = () => window.ed.ytext.toString();
-      window.names = () => [...window.ed.awareness.getStates().values()].map(s => s.user && s.user.name).filter(Boolean).sort().join();
+      window.request = to => push('sync-request', lib.encodeStateVector(manifest.doc), to);
+      window.requestAsset = (to, path) => push('asset-request', new Uint8Array([1]), to, path);
+      window.listing = () => [...manifest.files.keys()].sort().join() + '|' + [...manifest.assets.keys()].sort().join();
+      window.text = path => files[path] ? files[path].ytext.toString() : null;
+      window.append = (path, text) => files[path].ytext.insert(files[path].ytext.length, text);
+      window.names = path => files[path] ? [...files[path].awareness.getStates().values()].map(s => s.user && s.user.name).filter(Boolean).sort().join() : '';
     })()`);
-    const peerJs = (code: string) => collabPeer!.webContents.executeJavaScript(code);
+    const peerJs = (code: string) => collabPeer!.webContents.executeJavaScript(code).catch((error: unknown) => { throw new Error(`peer ${String(error)} :: ${code.slice(0, 120)}`); });
     async function peerWait(expression: string, expected: unknown): Promise<void> {
       for (let i = 0; i < 150 && (await peerJs(expression)) !== expected; i++) await new Promise(resolve => setTimeout(resolve, 20));
       assert.equal(await peerJs(expression), expected, `peer ${expression}`);
     }
     const collabPump = setInterval(() => {
-      void collabPeer?.webContents.executeJavaScript('window.out.splice(0)').then((out: { kind: string; data: string; to?: string }[]) => {
-        for (const m of out) chatStreams.at(-1)?.write(sse('collab', { session_id: collabSid, from: seatB, to: m.to ?? null, kind: m.kind, data: m.data }));
+      void collabPeer?.webContents.executeJavaScript('window.out.splice(0)').then((out: { kind: string; data: string; to?: string; path?: string }[]) => {
+        for (const m of out) chatStreams.at(-1)?.write(sse('collab', { session_id: collabSid, from: seatB, to: m.to ?? null, kind: m.kind, data: m.data, ...(m.path ? { path: m.path } : {}) }));
       }).catch(() => {});
     }, 25);
     const appText = `[...document.querySelectorAll('.community-collab-editor .cm-line')].map(line => line.textContent).join('\\n')`;
+    const previewWindow = () => BrowserWindow.getAllWindows().find(item => item !== window && item !== collabPeer && !item.isDestroyed()) ?? null;
     try {
       await peerJs('window.start(null)');
       await clickText('내 파일 공유하기');
-      await wait(`document.querySelector('.community-collab-status')?.textContent.startsWith('파일을 공유했습니다') && ${appText}==='def a():\\n    return 1\\n'`);
-      // The peer joins and asks the host (the app) for the document; the reply goes only to the peer's seat.
+      // The host reviews the set first: references followed, the outside one and the CDN listed, a page link offered as a candidate.
+      await wait(`document.querySelector('.community-collab-head')?.textContent.includes('공유할 묶음 확인 · index.html') && document.querySelectorAll('.community-collab-files li').length===3`);
+      assert.equal(await js(`[...document.querySelectorAll('.community-collab-files li')].map(li => li.textContent.split(' · ')[0]).join()`), 'index.html,css/site.css,img/logo.png');
+      assert.ok(!(await js('document.body.textContent')).includes(collabDir), 'no absolute path on the page');
+      await js(`document.querySelectorAll('.community-collab-report').forEach(box => { box.open = true; })`);
+      assert.ok((await js(`document.querySelector('.community-collab').textContent`)).includes('../outside.css ← index.html · 공유 범위 밖'));
+      assert.ok((await js(`document.querySelector('.community-collab').textContent`)).includes('cdn.example.org'));
+      await js(`[...document.querySelectorAll('.community-collab-report button')].find(b => b.textContent === '추가').click()`);
+      await wait(`document.querySelectorAll('.community-collab-files li').length===4 && document.querySelector('.community-collab-files').textContent.includes('about.html')`);
+      await clickText('공유 시작');
+      await wait(`document.querySelector('.community-collab-status')?.textContent.startsWith('파일을 공유했습니다') && ${appText}===${JSON.stringify(siteIndex.replace(/\r\n/g, '\n'))}`);
+      // The peer joins, gets the file list, each text file and the image (in pieces, only to its seat).
       collabSessions = [collabSession(true, [seatA, seatB])];
       chatStreams[1].write(sse('collab-sessions', { sessions: collabSessions, ended: [] }));
       await wait(`document.querySelector('.community-collab-people')?.textContent.includes('@peer')`);
       await peerJs(`window.request(${JSON.stringify(seatA)})`);
-      await peerWait('window.text()', 'def a():\n    return 1\n');
-      await peerWait('window.names()', '@fixture,@peer');
-      await peerJs(`window.ed.view.dispatch({ changes: { from: window.ed.view.state.doc.length, insert: '# peer\\n' } })`);
-      await wait(`${appText}.endsWith('# peer\\n')`);
-      await js(`(() => { const content = document.querySelector('.community-collab-editor .cm-content'); content.focus(); document.execCommand('insertText', false, '#'); })()`);
-      const merged = '#def a():\n    return 1\n# peer\n';
-      await peerWait('window.text()', merged);
-      // Save writes the host's own file with its CRLF line endings; a file changed on disk is kept unless the host confirms.
+      await peerWait('window.listing()', 'about.html,css/site.css,index.html|img/logo.png');
+      await peerWait(`window.text('css/site.css')`, siteCss.replace(/\r\n/g, '\n'));
+      await peerJs(`window.requestAsset(${JSON.stringify(seatA)}, 'img/logo.png')`);
+      await peerWait('window.assetPieces', 1);
+      await peerWait(`window.names('index.html')`, '@fixture,@peer');
+      // Both edit index.html; the peer also adds a stylesheet reference, which waits for the host's approval.
+      await peerJs(`window.append('index.html', '<link rel="stylesheet" href="extra.css">\\n')`);
+      await wait(`${appText}.endsWith('<link rel="stylesheet" href="extra.css">\\n')`);
+      await js(`(() => { const content = document.querySelector('.community-collab-editor .cm-content'); content.focus(); document.execCommand('insertText', false, '<!-- a -->'); })()`);
+      const merged = `<!-- a -->${siteIndex.replace(/\r\n/g, '\n')}<link rel="stylesheet" href="extra.css">\n`;
+      await peerWait(`window.text('index.html')`, merged);
+      await wait(`document.querySelector('.community-collab-pending')?.textContent.includes('extra.css')`);
+      assert.equal(await peerJs('window.listing()'), 'about.html,css/site.css,index.html|img/logo.png', 'nothing is read before the host approves');
+      await js(`[...document.querySelectorAll('.community-collab-pending button')].find(b => b.textContent === '추가').click()`);
+      await peerWait('window.listing()', 'about.html,css/site.css,extra.css,index.html|img/logo.png');
+      // The preview renders the shared state with its separate CSS and image; plain http and private addresses are refused.
+      await clickText('미리보기');
+      for (let i = 0; i < 100 && !previewWindow(); i++) await new Promise(resolve => setTimeout(resolve, 30));
+      const preview = previewWindow();
+      assert.ok(preview, 'preview window');
+      const previewJs = (code: string) => preview.webContents.executeJavaScript(code);
+      for (let i = 0; i < 150; i++) {
+        try { if (await previewJs(`getComputedStyle(document.body).color==='rgb(1, 2, 3)' && getComputedStyle(document.body).borderTopWidth==='4px' && document.querySelector('img')?.naturalWidth===1`)) break; }
+        catch { /* still loading */ }
+        await new Promise(resolve => setTimeout(resolve, 30));
+      }
+      assert.equal(await previewJs(`getComputedStyle(document.body).color + '|' + getComputedStyle(document.body).borderTopWidth + '|' + document.querySelector('img').naturalWidth`), 'rgb(1, 2, 3)|4px|1');
+      assert.equal(await previewJs(`fetch('http://example.org/').then(() => 'loaded', () => 'blocked')`), 'blocked');
+      assert.equal(await previewJs(`fetch('https://127.0.0.1/').then(() => 'loaded', () => 'blocked')`), 'blocked');
+      assert.equal(await previewJs(`fetch('gitviz://app/index.html').then(() => 'loaded', () => 'blocked')`), 'blocked');
+      assert.equal(await previewJs(`typeof window.desktop + typeof window.workspace + typeof require`), 'undefinedundefinedundefined');
+      // Save writes every shared text file with its own line endings; a file changed on disk is kept unless the host confirms.
       await clickText('저장');
       await wait(`document.querySelector('.community-collab-status').textContent.startsWith('저장했습니다')`);
-      assert.equal(readFileSync(collabFile, 'utf8'), merged.replace(/\n/g, '\r\n'));
-      writeFileSync(collabFile, 'changed\r\n');
+      assert.equal(readFileSync(join(collabDir, 'index.html'), 'utf8'), merged.replace(/\n/g, '\r\n'));
+      writeFileSync(join(collabDir, 'index.html'), 'changed\r\n');
       await clickText('저장');
-      await wait(`document.querySelector('.community-collab-status').textContent.includes('다른 곳에서 바뀌어')`);
-      assert.equal(readFileSync(collabFile, 'utf8'), 'changed\r\n');
+      await wait(`document.querySelector('.community-collab-status').textContent.includes('다른 곳에서 바뀌어 저장하지 않은 파일: index.html')`);
+      assert.equal(readFileSync(join(collabDir, 'index.html'), 'utf8'), 'changed\r\n');
       overwrite = true;
       await clickText('저장');
       await wait(`document.querySelector('.community-collab-status').textContent.startsWith('저장했습니다')`);
-      assert.equal(readFileSync(collabFile, 'utf8'), merged.replace(/\n/g, '\r\n'));
+      assert.equal(readFileSync(join(collabDir, 'index.html'), 'utf8'), merged.replace(/\n/g, '\r\n'));
       assert.ok(collabRelays.length > 0 && collabRelays.every(relay => relay.seat_id === seatA && !JSON.stringify(relay).includes('gitviz-collab-e2e')));
-      assert.deepEqual(collabRelays.filter(relay => relay.kind === 'sync').map(relay => relay.to), [seatB]);
-      assert.ok(communityBodies.some(body => JSON.stringify(body) === JSON.stringify({ file_name: 'app.py', language: 'python' })), 'only the file name goes to the server');
+      assert.ok(collabRelays.filter(relay => relay.kind === 'sync' || relay.kind === 'asset').every(relay => relay.to === seatB));
+      assert.ok(communityBodies.some(body => JSON.stringify(body) === JSON.stringify({ file_name: 'index.html', language: 'html', file_count: 4 })), 'only the start file name and the count go to the server');
+      // New files: a reference the peer adds to a missing file can be created, and the host can name a new file; save writes both.
+      phase = 'collab-new-missing';
+      await peerJs(`window.append('index.html', '<script src="js/app2.js"></script>\\n')`);
+      await wait(`[...document.querySelectorAll('.community-collab-report summary')].some(s => s.textContent.startsWith('없는 파일을 참조함')) && document.querySelector('.community-collab').textContent.includes('js/app2.js')`);
+      await js(`[...document.querySelectorAll('.community-collab-report button')].find(b => b.textContent === '만들기').click()`);
+      await wait(`[...document.querySelectorAll('.community-collab-file')].some(b => b.textContent === 'js/app2.js (새 파일)')`);
+      await peerWait('window.listing()', 'about.html,css/site.css,extra.css,index.html,js/app2.js|img/logo.png');
+      phase = 'collab-new-named';
+      await clickText('새 파일');
+      await js(`(() => { const input = document.querySelector('.community-collab-create-input'); input.value = '../escape.txt'; input.form.requestSubmit(); })()`);
+      await wait(`document.querySelector('.community-collab-status').textContent.startsWith('공유할 수 없는 파일')`);
+      await js(`(() => { const input = document.querySelector('.community-collab-create-input'); input.value = 'notes/todo.txt'; input.form.requestSubmit(); })()`);
+      await wait(`[...document.querySelectorAll('.community-collab-file')].some(b => b.textContent === 'notes/todo.txt (새 파일)')`);
+      await js(`(() => { const content = document.querySelector('.community-collab-editor .cm-content'); content.focus(); document.execCommand('insertText', false, '할 일'); })()`);
+      await peerWait(`window.text('notes/todo.txt')`, '할 일');
+      assert.ok(!existsSync(join(collabDir, 'notes')), 'nothing is written before saving');
+      await clickText('저장');
+      await wait(`document.querySelector('.community-collab-status').textContent.startsWith('저장했습니다') && ![...document.querySelectorAll('.community-collab-file')].some(b => b.textContent.endsWith('(새 파일)'))`);
+      assert.equal(readFileSync(join(collabDir, 'notes', 'todo.txt'), 'utf8'), '할 일');
+      assert.equal(readFileSync(join(collabDir, 'js', 'app2.js'), 'utf8'), '');
       await clickText('공유 끝내기');
       await clickText('공유 끝내기 확인');
       await wait(`document.querySelector('.community-collab-status')?.textContent==='공유를 끝냈습니다.' && !document.querySelector('.community-collab-editor') && document.querySelector('.community-collab-list').textContent==='진행 중인 공동 편집이 없습니다.'`);
+      for (let i = 0; i < 100 && previewWindow(); i++) await new Promise(resolve => setTimeout(resolve, 30));
+      assert.equal(previewWindow(), null, 'ending the share closes the preview');
       assert.equal(collabLeft, 1);
       // As a guest the editor stays read-only until the host's state arrives; the host ending the share keeps the text, read-only.
       await peerJs(`window.start('x = 1\\n')`);
@@ -520,11 +614,38 @@ void app.whenReady().then(async () => {
       await wait(`document.querySelector('.community-collab-card')?.textContent.includes('@peer 공유 · 1/3명')`);
       await js(`document.querySelector('.community-collab-card button').click()`);
       await wait(`document.querySelector('.community-collab-status')?.textContent.startsWith('함께 편집하는 중') && ${appText}==='x = 1\\n' && document.querySelector('.community-collab-editor .cm-content').contentEditable==='true'`);
-      assert.deepEqual(collabRelays.filter(relay => relay.kind === 'sync-request').map(relay => relay.to), [seatB]);
-      await peerWait('window.names()', '@fixture,@peer');
+      assert.deepEqual(collabRelays.filter(relay => relay.kind === 'sync-request').map(relay => [relay.to, relay.path ?? '']), [[seatB, ''], [seatB, 'app.py'], [seatB, 'main.c']]);
+      await peerWait(`window.names('app.py')`, '@fixture,@peer');
+      // Anyone can run: Python runs in the app's sandbox without asking; the output stays here.
+      phase = 'collab-run-python';
+      await peerJs(`window.append('app.py', 'print("from peer", x, input())\\n')`);
+      await wait(`${appText}.endsWith('input())\\n') && !document.querySelector('.community-collab-run').hidden`);
+      await js(`(() => { const box = document.querySelector('.community-collab-stdin-input'); box.value = 'abc'; })()`);
+      const relaysBeforeRun = collabRelays.length;
+      await clickText('실행');
+      await wait(`document.querySelector('.community-collab-stdout')?.textContent==='from peer 1 abc\\n' && document.querySelector('.community-collab-run-summary').textContent.startsWith('끝났습니다 · 종료 코드 0')`);
+      assert.ok(collabRelays.slice(relaysBeforeRun).every(relay => relay.kind !== 'update' || relay.path !== 'app.py'), 'running sends nothing');
+      // Native code written by someone else asks first and shows what changed since my last run.
+      phase = 'collab-run-c';
+      await js(`[...document.querySelectorAll('.community-collab-file')].find(b => b.textContent === 'main.c').click()`);
+      await wait(`document.querySelector('.community-collab-run-head')?.textContent.startsWith('실행 · main.c')`);
+      if (runtimes.c) {
+        await clickText('실행');
+        await wait(`document.querySelector('.community-collab-confirm')?.textContent.includes('main.c · 처음 실행(전체)')`);
+        await clickText('확인하고 실행');
+        await wait(`document.querySelector('.community-collab-stdout')?.textContent.replace(/\\r/g, '')==='42\\n'`);
+        await clickText('실행');
+        await wait(`!document.querySelector('.community-collab-confirm') && document.querySelector('.community-collab-run-summary')?.textContent.startsWith('끝났습니다')`);
+        await peerJs(`window.append('main.c', '// changed by peer\\n')`);
+        await wait(`${appText}.includes('// changed by peer')`);
+        await clickText('실행');
+        await wait(`document.querySelector('.community-collab-confirm')?.textContent.includes('+ // changed by peer')`);
+        await clickText('취소');
+        await wait(`!document.querySelector('.community-collab-confirm')`);
+      } else assert.ok((await js(`document.querySelector('.community-collab-run').textContent`)).includes('gcc 또는 clang'));
       collabSessions = [];
       chatStreams[1].write(sse('collab-sessions', { sessions: [], ended: [collabSid] }));
-      await wait(`document.querySelector('.community-collab-status')?.textContent.startsWith('호스트가 공유를 끝냈습니다') && document.querySelector('.community-collab-editor .cm-content').contentEditable==='false' && ${appText}==='x = 1\\n'`);
+      await wait(`document.querySelector('.community-collab-status')?.textContent.startsWith('호스트가 공유를 끝냈습니다') && document.querySelector('.community-collab-editor .cm-content').contentEditable==='false' && ${appText}.startsWith('#include <stdio.h>')`);
       await clickText('목록으로');
       await wait(`!document.querySelector('.community-collab-editor') && !!document.querySelector('.community-collab-list')`);
     } finally { clearInterval(collabPump); collabPeer.destroy(); collabPeer = null; }
@@ -556,7 +677,7 @@ void app.whenReady().then(async () => {
     await wait(`document.getElementById('community-join-message').textContent==='참여했습니다.'`);
     assert.deepEqual(communityBodies.slice(0, 3),[{ title: '첫 글', body: markup }, { body: '댓글입니다' }, { expires_in_hours: 168, max_uses: 5 }]);
     assert.equal(errors.length, 0, `renderer errors: ${errors.join(',')}`);
-    process.stdout.write('PASS Phase 3 renderer: search/paging/selection/overview, community posts/comments/chat/voice (real WebRTC peer)/co-editing (real Yjs peer, host save, guest sync)/invites/admin handover, partial retry, contributor-file-back, monthly metric, graph zoom/filter/selection, file pagination/search/view restoration, credential save/erase, commit/PR selection, preview/fresh consent, review result/filter/code. Fixture transport only.\n');
+    process.stdout.write('PASS Phase 3 renderer: search/paging/selection/overview, community posts/comments/chat/voice (real WebRTC peer)/co-editing file set (real Yjs peer, references, host approval, sandboxed preview, new files, host save, guest sync, Python run, confirmed C run)/invites/admin handover, partial retry, contributor-file-back, monthly metric, graph zoom/filter/selection, file pagination/search/view restoration, app-held AI key status, commit/PR selection, preview/fresh consent, review result/filter/code. Fixture transport only.\n');
   } finally { unregisterCollab(); unregisterHealth(); unregister(); window.destroy(); rmSync(collabDir, { recursive: true, force: true }); clearTimeout(deadline); }
 }).then(() => app.exit(0)).catch(error => {
   if (process.env.GITVIZ_UI_REPORT) writeFileSync(process.env.GITVIZ_UI_REPORT, JSON.stringify({ status: 'failed', phase, message: error instanceof Error ? error.message : 'assertion' }));

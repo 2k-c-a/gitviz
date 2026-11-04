@@ -43,7 +43,7 @@ function Run-Step([string]$Name, [string]$Executable, [string[]]$Arguments, [int
     if ($timedOut) { $process.Kill($true) }
     $process.WaitForExit()
     $exitCode = if ($timedOut) { 124 } else { $process.ExitCode }
-    "CMD: $Executable $($Arguments -join ' ')`nSTDOUT:`n$($stdout.GetAwaiter().GetResult())`nSTDERR:`n$($stderr.GetAwaiter().GetResult())" | Set-Content -LiteralPath (Join-Path $evidence "$Name.log") -Encoding utf8
+    "CMD: $Executable $($Arguments -join ' ')`nSTDOUT:`n$($stdout.GetAwaiter().GetResult())`nSTDERR:`n$($stderr.GetAwaiter().GetResult())" | Set-Content -LiteralPath (Join-Path $evidence "$($Name -replace '[^A-Za-z0-9._-]', '-').log") -Encoding utf8
     $process.Dispose()
     $summary.Add([ordered]@{ step=$Name; exit=$exitCode; seconds=[Math]::Round(((Get-Date)-$started).TotalSeconds, 3) })
     ConvertTo-Json -InputObject $summary -Depth 5 | Set-Content -LiteralPath (Join-Path $evidence 'summary.json') -Encoding utf8
@@ -59,7 +59,7 @@ try {
     Run-Step 'workspace-unit' $Python @('-X', 'utf8', '-B', '-m', 'unittest', 'discover', '-s', 'tests/workspace', '-p', 'test_*.py', '-v') 2400
     Run-Step 'web-navigation' $Node @('tests/frontend/test_workspace_navigation.cjs')
     Run-Step 'web-regression' $Node @('tests/frontend/test_viz_modules.cjs')
-    foreach ($name in @('remote-workspace', 'workspace', 'inbox', 'projects', 'changes', 'review-preview', 'review', 'refactor', 'validation', 'auth', 'remote-compat', 'foundation')) {
+    foreach ($name in @('remote-workspace', 'workspace', 'inbox', 'projects', 'changes', 'review-preview', 'review', 'refactor', 'validation', 'auth', 'remote-compat', 'foundation', 'collab-run')) {
         Run-Step "electron-$name" $electron @("dist/tests/$name.e2e.js") 420 (Join-Path $repo 'desktop')
     }
     Run-Step 'documents' $Python @('-X', 'utf8', '-B', 'docs/audit/check_documents.py')

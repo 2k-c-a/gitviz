@@ -66,7 +66,8 @@ class CloudReviewTests(WorkspaceFixture):
         payload = {'phase': 'authorize-local', 'profileId': 'gpt-5.4-v1', 'credentialRef': self.reference, 'credentialVersion': 1}
         request = {'protocolVersion': 1, 'requestId': str(uuid.uuid4()), 'projectId': self.project_id, 'operation': 'workspace.reviews.cloudContext'}
         validate('request', request | {'payload': payload})
-        for extra in ({'apiKey': 'must-never-cross-stdio'}, {'proof': {}}):
+        extras: tuple[dict[str, object], ...] = ({'apiKey': 'must-never-cross-stdio'}, {'proof': {}})
+        for extra in extras:
             with self.subTest(extra=extra), self.assertRaises(Exception):
                 validate('request', request | {'payload': payload | extra})
         self.reviews.cloud.authorize(self.project_id, payload)

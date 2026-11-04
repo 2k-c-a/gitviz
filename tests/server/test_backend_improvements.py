@@ -79,7 +79,7 @@ class Backend(unittest.TestCase):
         for table in list(Base.metadata.tables.values())+[User.__table__]:
             actual={c['name'] for c in inspector.get_columns(table.name)}
             self.assertFalse(set(table.columns.keys())-actual,table.name)
-        self.assertEqual(self.db.execute(text('SELECT version_num FROM alembic_version')).scalar(),'d4f6a8c0e2b3')
+        self.assertEqual(self.db.execute(text('SELECT version_num FROM alembic_version')).scalar(),'39b676ca36f2')
 
     def test_priority_policy_with_actual_postgres_snapshot_scope(self):
         from app.services.analysis_snapshots import analysis_parameters, SnapshotInput
@@ -152,7 +152,7 @@ class Backend(unittest.TestCase):
                 self.assertEqual(connection.execute(text('SELECT github_login FROM users')).scalar(),'preserved-user')
                 self.assertIn('on_default_branch',{c['name'] for c in inspect(connection).get_columns('commits',schema=schema)})
                 self.assertIn('triggered_by_user_id',{c['name'] for c in inspect(connection).get_columns('analysis_jobs',schema=schema)})
-                self.assertEqual(connection.execute(text('SELECT version_num FROM alembic_version')).scalar(),'d4f6a8c0e2b3')
+                self.assertEqual(connection.execute(text('SELECT version_num FROM alembic_version')).scalar(),'39b676ca36f2')
             finally:
                 connection.rollback()
                 connection.execute(text('RESET search_path'))
@@ -264,6 +264,13 @@ class Backend(unittest.TestCase):
             self.assertEqual(client.get(url+f'/compare?before={a.id}&after={foreign.id}').status_code,404)
             self.assertEqual(compare_snapshots(a,a)['changes'],[])
             with self.assertRaises(HTTPException):compare_snapshots(a,foreign)
+            # 공개로 저장된 저장소는 조회 때 GitHub에 다시 묻지 않는다. GitHub에서 비공개로 바뀌어도
+            # 다음 분석·재분석·등록으로 저장값이 갱신될 때까지 읽힌다(2026-11-03 소유자 결정).
+            with patch('app.services.repository_access.github_metadata',return_value={'id':self.repo.id,'private':True}) as remote:
+                self.assertEqual(client.get(url).status_code,200)
+                self.assertEqual(remote.call_count,0)
+            # 비공개로 저장된 저장소는 조회 때마다 GitHub 권한을 확인하고 실패하면 닫힌다.
+            self.repo.is_private=True;self.db.commit()
             with patch('app.services.repository_access.github_metadata',return_value={'id':self.repo.id,'private':True}):
                 self.assertEqual(client.get(url).status_code,404)
             with patch('app.services.repository_access.github_metadata',side_effect=HTTPException(404,'revoked')):
@@ -272,6 +279,38 @@ class Backend(unittest.TestCase):
             corrupted.payload_sha256='0'*64
             self.db.add(corrupted);self.db.commit()
             self.assertEqual(client.get(url+f'/compare?before={a.id}&after={corrupted.id}').status_code,409)
+
+    def test_remove_from_my_projects_over_http(self):
+        from app.api.repositories import router as repositories_router
+        from app.api.auth import router as auth_router
+        from app.api.ai.dependencies import ai_error_response
+        from app.services.ai.access import AIError
+        from app.models.analysis_snapshot import RepositoryAccess
+        me,other=uuid4(),uuid4()
+        self.db.add_all([RepositoryAccess(repository_id=self.repo.id,user_id=me),
+                         RepositoryAccess(repository_id=self.repo.id,user_id=other)]);self.db.commit()
+        app=FastAPI();app.add_middleware(SessionMiddleware,secret_key='test')
+        app.add_exception_handler(AIError,ai_error_response)
+        app.include_router(repositories_router);app.include_router(auth_router)
+        viewer={'id':me}
+        mine=lambda client:[r['id'] for r in client.get('/repositories/mine').json()]
+        with TestClient(app) as client, patch('app.api.repositories._get_session_user_id',side_effect=lambda request:viewer['id']), \
+                patch('app.services.repository_access.github_metadata',side_effect=AssertionError('공개 저장소 목록은 GitHub에 묻지 않는다')):
+            self.assertIn(self.repo.id,mine(client))
+            target=f'/repositories/mine/{self.repo.id}'
+            self.assertEqual(client.delete(target,headers={'Origin':'http://localhost:8000'}).status_code,403)  # CSRF 토큰 없음
+            token=client.get('/api/auth/csrf').json()['token']
+            self.assertEqual(client.delete(target,headers={'Origin':'https://evil.example','X-CSRF-Token':token}).status_code,403)
+            self.assertIn(self.repo.id,mine(client))
+            self.assertEqual(client.delete(target,headers={'Origin':'http://localhost:8000','X-CSRF-Token':token}).status_code,204)
+            self.assertNotIn(self.repo.id,mine(client))
+            self.assertEqual(client.delete(target,headers={'Origin':'http://localhost:8000','X-CSRF-Token':token}).status_code,204)  # 반복해도 같은 결과
+            viewer['id']=other
+            self.assertIn(self.repo.id,mine(client))  # 다른 사용자의 목록은 그대로
+            viewer['id']=None
+            self.assertEqual(client.delete(target,headers={'Origin':'http://localhost:8000','X-CSRF-Token':token}).status_code,401)
+        self.db.expire_all()
+        self.assertIsNotNone(self.db.get(Repository,self.repo.id))  # 저장소는 지우지 않는다
 
     def test_snapshot_is_immutable_and_head_is_repeatable(self):
         item=snapshot(self.repo.id);self.db.add(item);self.db.commit()
@@ -287,7 +326,8 @@ class Backend(unittest.TestCase):
         event.listen(engine,'before_cursor_execute',prohibit_ddl)
         try:
             import app.main
-            self.assertFalse(app.main.app.router.on_startup)
+            # 시작 hook은 AI 유지관리 스레드(AD-33: 실행자를 잃은 작업 정리·기한 삭제)만 허용한다. schema는 바꾸지 않는다.
+            self.assertEqual([f.__name__ for f in app.main.app.router.on_startup], ['_start_ai_maintenance'])
         finally:event.remove(engine,'before_cursor_execute',prohibit_ddl)
 
     def test_local_async_auth_database_connects(self):

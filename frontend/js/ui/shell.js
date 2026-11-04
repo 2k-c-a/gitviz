@@ -1,11 +1,12 @@
 import { parseRoute as parseAiRoute, buildRoute as buildAiRoute } from '../ai-state.js';
 import { parseState, nextQuery } from '../viz-state.js';
 import { element, createIcon, enhanceTooltips, observeActions } from './components.js';
+import { SETTINGS_ENTRY_URL } from '../platform/workspace-navigation.js';
 import './motion.js';
 
 const webRoot = new URL('../../', import.meta.url);
-const pages = { overview: '분석 개요', network: '협업 네트워크', 'code-analysis': '파일 분석', history: '분석 이력', 'ai-review': 'AI 리뷰' };
-const glyphs = { overview: '▦', network: '◎', 'code-analysis': '▤', history: '◷', 'ai-review': '◇' };
+const pages = { overview: '분석 개요', network: '협업 네트워크', 'code-analysis': '파일 분석', history: '분석 이력', 'ai-insights': 'AI 분석', 'ai-review': 'AI 분석' };
+const glyphs = { overview: '▦', network: '◎', 'code-analysis': '▤', history: '◷', 'ai-insights': '✦', 'ai-review': '◇' };
 export function pageUrl(page, search = location.search) {
   const url = new URL(`pages/${page}.html`, webRoot);
   const state = parseState(search);
@@ -78,8 +79,8 @@ export function mountShell({ local = false, account = null } = {}) {
   link('저장소 탐색', '⌕', new URL('pages/search.html', webRoot).href, currentPage === 'search');
   link('최근·내 분석', '▦', new URL('pages/myprojects.html', webRoot).href, currentPage === 'myprojects');
   link('URL로 분석 시작', '↗', new URL('index.html', webRoot).href, !local && currentPage === 'index');
-  // The same seven entries on web pages and in the local workspace, so the rail never changes when moving between them.
-  const aiLink = link('AI 리뷰', '◇', pageUrl('ai-review'), currentPage === 'ai-review');
+  // The same six entries on web pages and in the local workspace, so the rail never changes when moving between them.
+  // AI review by commit/PR lives under the repository's AI 분석 (its third tab), not as a top-level entry.
   link('커뮤니티', '☷', new URL('pages/community.html', webRoot).href, currentPage === 'community');
   const toView = (a, view) => {
     a.dataset.wsView = view;
@@ -87,8 +88,11 @@ export function mountShell({ local = false, account = null } = {}) {
     return a;
   };
   const settingsHref = () => { const url = new URL(pageUrl('settings')); if (currentPage === 'ai-review') url.searchParams.set('return', buildAiRoute(parseAiRoute(location.search))); return url.href; };
-  // In the workspace, 설정 is its own settings view (AI model, keys, editor); web pages keep the server-side settings page.
-  const settingsLink = local ? toView(link('설정', '⚙', '#'), 'settings') : link('설정', '⚙', settingsHref(), currentPage === 'settings');
+  // In the app, 설정 always opens the app's settings view (AI keys and models, editor; AD-33) from every screen —
+  // the same place as 'API 키 저장하러 가기'. The web keeps its own settings page.
+  const inApp = location.protocol === 'gitviz:';
+  const settingsLink = local ? toView(link('설정', '⚙', '#'), 'settings')
+    : link('설정', '⚙', inApp ? SETTINGS_ENTRY_URL : settingsHref(), !inApp && currentPage === 'settings');
   if (local) toView(link('프로젝트', '▣', '#'), 'projects');
   else if (location.protocol === 'gitviz:') link('프로젝트', '▣', new URL('../index.html', webRoot).href);
   const repositoryNav = element('div', 'app-repository-nav'); nav.append(repositoryNav);
@@ -100,8 +104,9 @@ export function mountShell({ local = false, account = null } = {}) {
     if (!local && state.repo) {
       repositoryNav.append(element('p', 'app-nav-group', '현재 저장소'));
       for (const [page, label] of Object.entries(pages)) {
-        if (page === 'ai-review') continue; // Already a top-level entry.
-        const a = link(label, glyphs[page], pageUrl(page), currentPage === page, repositoryNav);
+        if (page === 'ai-review') continue; // A tab inside AI 분석.
+        const selected = currentPage === page || (page === 'ai-insights' && currentPage === 'ai-review');
+        const a = link(label, glyphs[page], pageUrl(page), selected, repositoryNav);
         a.dataset.shellPage = page; repositoryLinks.push(a);
       }
     }
@@ -121,16 +126,15 @@ export function mountShell({ local = false, account = null } = {}) {
     const state = parseState(location.search);
     if (!local) {
       if (state.repo !== repositoryId) buildRepositoryLinks();
-      const title = document.querySelector('#tl-repo-name, .js-repo-title, #hist-repo-title, #ai-title');
+      const title = document.querySelector('#tl-repo-name, .js-repo-title, #hist-repo-title, #ai-title, #insight-title');
       const name = title?.dataset.repositoryLabel || title?.textContent?.trim();
-      repo.textContent = state.repo ? (name && name !== '—' && name !== 'AI 리뷰' ? name : `저장소 #${state.repo}`) : '저장소를 선택하세요';
+      repo.textContent = state.repo ? (name && name !== '—' && name !== 'AI 리뷰' && name !== 'AI 분석' ? name : `저장소 #${state.repo}`) : '저장소를 선택하세요';
       const banner = document.getElementById('analysis-context');
       const period = banner?.querySelector('.ctx-item')?.textContent;
       context.textContent = state.snapshot ? `결과 #${state.snapshot}${period ? ` · ${period}` : ''}` : state.repo ? '저장소 맥락' : '검색 또는 최근 분석에서 선택';
       status.textContent = document.getElementById('load-error') ? '결과 조회 실패 · 본문에서 확인' : banner ? '저장 결과 조회됨 · 수집 범위는 본문 참조' : '원격 분석';
-      settingsLink.href = settingsHref();
+      if (!inApp) settingsLink.href = settingsHref();
       for (const a of repositoryLinks) a.href = pageUrl(a.dataset.shellPage);
-      aiLink.href = pageUrl('ai-review');
     }
   };
   if (!local) {

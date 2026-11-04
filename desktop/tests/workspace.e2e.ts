@@ -42,8 +42,10 @@ void app.whenReady().then(async () => {
     await wait(`!!document.querySelector('.app-nav [aria-label="프로젝트"]')`);
     assert.equal(await evaluate('typeof workspace'), 'undefined');
     // The rail matches the workspace rail; its 프로젝트 entry opens the local project list.
-    assert.equal(await evaluate(`[...document.querySelectorAll('.app-nav > .app-nav-link')].map(a=>a.getAttribute('aria-label')).join()`), '저장소 탐색,최근·내 분석,URL로 분석 시작,AI 리뷰,커뮤니티,설정,프로젝트');
+    assert.equal(await evaluate(`[...document.querySelectorAll('.app-nav > .app-nav-link')].map(a=>a.getAttribute('aria-label')).join()`), '저장소 탐색,최근·내 분석,URL로 분석 시작,커뮤니티,설정,프로젝트');
     assert.equal(await evaluate(`document.querySelector('.app-nav [aria-label="프로젝트"]').href`), 'gitviz://app/index.html');
+    // 설정 opens the app's settings view from every screen, not the web settings page.
+    assert.equal(await evaluate(`document.querySelector('.app-nav [aria-label="설정"]').href`), 'gitviz://app/index.html?view=settings');
     phase = 'context-banner';
     await evaluate(`import('/web/js/page-context.js').then(m=>m.renderContextBanner({snapshot:{id:7,target_sha:'fixture',window_end:'2026-10-28T00:00:00Z',analyzed_at:'2026-10-28T00:00:00Z',formula_version:'fixture'},data_quality:{}}))`);
     assert.equal(await evaluate(`document.querySelector('#analysis-context [data-workspace-entry]').href`), 'gitviz://app/index.html?view=inbox&remoteRepositoryId=2&remoteSnapshotId=7');
@@ -53,6 +55,11 @@ void app.whenReady().then(async () => {
     assert.equal(await evaluate(`typeof workspace.getHealth`), 'function');
     assert.equal(await evaluate(`document.getElementById('project-picker').value`), '');
     assert.equal(requests.some(path => path.includes('/repositories/2')), false, 'hints do not trigger remote reads or connection');
-    process.stdout.write('PASS workspace navigation: web bridge absent, app-only entries, explicit untrusted context, no automatic connection/execution\n');
+    phase = 'settings-from-web';
+    await window.loadURL('gitviz://app/web/pages/overview.html?repo=2&snapshot=7');
+    await wait(`!!document.querySelector('.app-nav [aria-label="설정"]')`);
+    await evaluate(`document.querySelector('.app-nav [aria-label="설정"]').click()`);
+    await wait(`location.href==='gitviz://app/index.html?view=settings' && document.getElementById('settings-title')?.offsetParent !== null`);
+    process.stdout.write('PASS workspace navigation: web bridge absent, app-only entries, settings from web pages, explicit untrusted context, no automatic connection/execution\n');
   } finally { desktop(); health(); window.destroy(); clearTimeout(deadline); }
 }).then(() => app.exit(0)).catch(error => { process.stderr.write(`FAIL workspace navigation (${phase}): ${error instanceof Error ? error.message : 'assertion'}\n`); app.exit(1); });

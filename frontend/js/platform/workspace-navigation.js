@@ -38,3 +38,6 @@ export function readWorkspaceEntry(raw) {
     return snapshotId !== null && repositoryId === null ? null : { repositoryId, snapshotId };
   } catch { return null; }
 }
+/* App settings (API keys are kept by the app, AD-33). Exactly this URL opens the settings view; nothing else is carried. */
+export const SETTINGS_ENTRY_URL = 'gitviz://app/index.html?view=settings';
+export function isSettingsEntry(raw) { return appUrl(raw)?.href === SETTINGS_ENTRY_URL; }

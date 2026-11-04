@@ -1,6 +1,6 @@
 # 최종 이동·변경 계획 (3차 확정 · 4차 작업의 단일 기준)
 
-작성일: 2026-10-30 · 기준 커밋: `65f1b62` · 상태: **확정 설계. 어떤 파일도 변경하지 않았다.** 4차는 사용자의 명시적 승인 후에만 시작한다.
+작성일: 2026-10-30 · 기준 커밋: `65f1b62` · 상태(2026-11-04 갱신): **S0~S9 적용 완료**(2026-10-30, [구현 기록](IMPLEMENTATION_LOG.md) · [이동 이력](MIGRATION_HISTORY.md)). S10(§2 삭제 후보)은 일부만 진행했다([최종 아키텍처](FINAL_ARCHITECTURE.md) §6). 본문은 작성 당시의 계획이다.
 
 함께 읽기: [최종 아키텍처](FINAL_ARCHITECTURE.md) · [디렉터리 구조](FINAL_DIRECTORY_TREE.md) · [결정 기록](ARCHITECTURE_DECISIONS.md) · [환경 매트릭스](../deployment/FINAL_ENVIRONMENT_MATRIX.md) · [릴리스 이행 계획](../deployment/RELEASE_MIGRATION_PLAN.md) · 1차 [이동 후보](FILE_MIGRATION_CANDIDATES.md)(이 문서가 대체)
 

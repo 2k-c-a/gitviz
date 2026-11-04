@@ -88,6 +88,10 @@ function fakeLaunch() {
 }
 const removal = { updateExe: update, args: ['--removeShortcut', 'GitVizWorkspace.exe'] };
 
+// The cleanup script path comes from os.tmpdir(). The Windows gate points TEMP at a long per-run folder, which (correctly) exceeds the
+// schtasks /TR limit, so the scheduling tests pin a short TEMP instead of depending on the runner. The script write is faked; the folder need not exist.
+process.env.TEMP = process.env.TMP = 'C:\\Temp';
+
 test('uninstall removes the shortcut, then starts the helper through WMI outside our process tree, then finishes', () => {
   const plan = cleanupPlan(exec, present)!;
   const { calls, launch, log, write, logged, written } = fakeLaunch(); let done = 0;
@@ -182,4 +186,17 @@ test('every way the scheduling can fail is logged and still lets the uninstall f
   runSquirrel({ ...removal, cleanup: plan }, () => { done++; }, launch, throwing.log, throwing.write);
   updater.emit('close', 0);
   assert.equal(done, 1); assert.match(throwing.logged.join('|'), /could not be launched: blocked/);
+});
+
+test('a TEMP too long for the schtasks /TR limit is not scheduled, and the uninstall still finishes', () => {
+  const plan = cleanupPlan(exec, present)!;
+  const saved = process.env.TEMP;
+  process.env.TEMP = process.env.TMP = `C:\\${'t'.repeat(120)}`;
+  try {
+    const long = fakeLaunch(); let done = 0;
+    runSquirrel({ ...removal, cleanup: plan }, () => { done++; }, long.launch, long.log, long.write);
+    long.calls[0].child.emit('close', 0);
+    assert.equal(long.calls.length, 1); assert.equal(long.written.length, 0); assert.equal(done, 1);
+    assert.match(long.logged.join('|'), /cleanup not scheduled: unsuitable script path/);
+  } finally { process.env.TEMP = process.env.TMP = saved; }
 });

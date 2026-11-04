@@ -142,7 +142,7 @@
 4. 사용자 영향: 키를 어디에 저장했는지, 교체가 어느 리뷰에 영향을 주는지 혼동 가능성.
 5. 개선: 설정에 계정/모델·키/로컬 환경/진단을 모으고, '서버 저장 키'와 '이번 로컬 리뷰 전용'을 명시. 리뷰에서 key 상태 요약과 설정 return link 제공. 현재 없는 영구 로컬 키 저장은 이번 재설계의 기정 기능으로 넣지 않는다.
 6. 우선순위: **P1**.
-7. 관련: [ai-review.js](../../../frontend/js/ai-review.js)의 `renderKeys`, [cloud-review.ts](../../../desktop/src/cloud-review.ts), [credentials.py](../../../app/services/ai/credentials.py).
+7. 관련: [ai-review.js](../../../frontend/js/ai-review.js)의 `renderKeys`, [cloud-review.ts](../../../desktop/src/cloud-review.ts), credentials.py(`credentials.py`, AD-33에서 삭제).
 
 ## U15. 데이터 제한 설명이 본문을 많이 점유
 

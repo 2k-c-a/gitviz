@@ -10,7 +10,7 @@
 - 서명 없는 설치기의 설치·실행·0.7.0→0.7.1 업그레이드·제거는 clean VM(표준 사용자)에서 확인했다(`tools/vm/test_installer_vm.ps1`, [기록](../migration/validation/p10-partial-2026-10-28.md)). 개발 PC에는 설치하지 않았다.
 - 제거 뒤 설치 폴더에 파일이 남던 문제는 고쳤다(대화형·무인 제거 모두, [K-05](../deployment/KNOWN_ISSUES.md)). 사용자 데이터(`%APPDATA%\gitviz-workspace`)는 제거 후에도 보존된다. 0.7.0은 서명 없는 배포이며 판정은 [최종 배포 판정](../deployment/FINAL_RELEASE_REVIEW_0.7.0.md)을 따른다.
 - 사용 PC에는 Git for Windows가 기본 경로에 설치되어 있어야 로컬 프로젝트 기능이 동작한다([설치 가이드 §0](../deployment/INSTALLATION_GUIDE.md)).
-- 앱 로그는 `%APPDATA%\gitviz-workspace\logs\app.log`다(2026-11-03, 회전·비밀값 미기록).
+- 앱 로그는 `%APPDATA%\gitviz-workspace\logs\app.log`다(2026-11-04, 1 MB × 5개 순환, 비밀·경로 가림).
 - 알려진 한계: Windows Smart App Control이 강제 모드이면 서명 없는 설치기가 차단될 수 있다(미시험).
 
 ## 설치기 빌드
