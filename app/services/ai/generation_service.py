@@ -1,17 +1,18 @@
 """설명·리뷰 생성 실행(summary / review handler).
 
-순서: 처리권·권한·정책·동의·키·만료 확인 → 입력 복호화·프롬프트 → 로컬 한도 검사 → **재검증 → count_tokens**(코드가 외부로
+순서: 처리권·권한·정책·동의·만료 확인 → 고정 코드 다시 가져오기(해시 대조)·프롬프트 → 로컬 한도 검사 → **재검증 → count_tokens**(코드가 외부로
 나가는 첫 호출) → **재검증 → 비용 예약 → 호출** → 정산 → 출력 검증 → 접근 재확인 → 결과·상태 commit.
 
-- 외부로 코드가 나가는 호출(count_tokens·생성) 직전마다 권한(저장소 접근·전송 허용·정책)·동의(manifest)·입력 유효기간·
-  모델 허용·사용자 key(삭제·파기)·취소를 다시 확인한다. 이전 확인에 기대지 않는다.
+- 외부로 코드가 나가는 호출(count_tokens·생성) 직전마다 권한(저장소 접근·정책)·동의(manifest)·입력 유효기간·
+  모델 허용·취소를 다시 확인한다. 이전 확인에 기대지 않는다.
+- 사용자 API key는 앱이 실행 요청 헤더로 보낸 값이며 이 실행(JobContext)의 메모리에만 있다(AD-33).
+- 코드 원문은 저장하지 않는다. 고정 SHA에서 다시 가져와 확정 때의 파일별 해시와 같을 때만 보낸다(다르면 PREVIEW_CHANGED).
 - 호출 시간 동안 DB transaction은 열려 있지 않다(세션은 확인·기록마다 짧게 열고 닫는다).
 - 호출이 일어났다면 결과가 어떻든 비용을 정산한다. 결과를 알 수 없으면(outcome_uncertain) 예약을 남겨 자동 재호출을 막는다.
 - 취소·처리권 상실·접근 상실 이후에는 결과를 성공으로 공개하지 않는다. 결과 저장 실패는 자동으로 다시 호출하지 않는다.
 - summary와 review는 독립된 호출이다. review 프롬프트에 summary 결과를 코드 사실로 넣지 않는다.
 - 로그에는 식별자·분류 코드만 남긴다(코드·모델 출력·key 없음).
 """
-import hashlib
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
@@ -22,19 +23,17 @@ from sqlalchemy import select, text
 
 from app.models.ai_input import AIInput, AIInputFile
 from app.schemas.ai import InputManifest
-from app.services.ai import credentials, history_context, prompts, result_store, token_budget, usage_service, validators
+from app.services.ai import (history_context, input_prepare, prompts, result_store, token_budget, usage_service,
+                             validators)
 from app.services.ai.access import AIAction, AIError, authorize_ai
-from app.services.ai.crypto import InputCryptoError, decrypt_input
 from app.services.ai.job_runner import HandlerResult, JobContext, JobFailed, RetryableError
 from app.services.ai.lease import CancelRequested, LeaseLost
 from app.services.ai.providers import registry
 from app.services.ai.providers.base import GenerationRequest, ProviderError, ProviderFailure, TokenLimitExceeded
-from app.services.ai.credentials import CredentialUnavailable
 
 logger = logging.getLogger('gitviz.ai.generate')
 
 _RETRYABLE_ACCESS = {'ACCESS_CHECK_UNAVAILABLE', 'UPSTREAM_RATE_LIMIT'}
-_PROFILE_REASONS = {'profile_changed', 'profile_unknown'}
 _FINISH_ERRORS = {'truncated': 'OUTPUT_TRUNCATED', 'refused': 'PROVIDER_REFUSED', 'empty': 'OUTPUT_INVALID',
                   'incomplete': 'OUTPUT_INVALID'}
 
@@ -50,6 +49,9 @@ class JobInfo:
     consent_hash: str | None
     revision_id: UUID
     policy_version: str
+    provider: str | None = None
+    model: str | None = None
+    profile_fingerprint: str | None = None
     history_snapshot_id: int | None = None
 
 
@@ -57,7 +59,8 @@ def _load_job(ctx: JobContext) -> JobInfo:
     with ctx.session_factory() as db:
         row = db.execute(text("""
             SELECT j.owner_user_id, j.repository_id, j.input_id, j.kind, j.provider_profile, j.consent_manifest_hash,
-                   j.deleted_at, j.request_options, i.revision_id, i.policy_version
+                   j.deleted_at, j.request_options, j.provider, j.model,
+                   j.profile_fingerprint, i.revision_id, i.policy_version
             FROM ai_jobs j JOIN ai_inputs i ON i.id = j.input_id WHERE j.id = :j"""),
                          {'j': ctx.lease.job_id}).one_or_none()
     if row is None or row.deleted_at is not None or row.provider_profile is None:
@@ -65,7 +68,8 @@ def _load_job(ctx: JobContext) -> JobInfo:
     return JobInfo(job_id=ctx.lease.job_id, owner_id=row.owner_user_id, repository_id=row.repository_id,
                    input_id=row.input_id, kind=row.kind, profile_id=row.provider_profile,
                    consent_hash=row.consent_manifest_hash, revision_id=row.revision_id,
-                   policy_version=row.policy_version,
+                   policy_version=row.policy_version, provider=row.provider, model=row.model,
+                   profile_fingerprint=row.profile_fingerprint,
                    history_snapshot_id=(row.request_options or {}).get('history_snapshot_id'))
 
 
@@ -95,8 +99,8 @@ def _check_alive(ctx: JobContext) -> None:
 def revalidate(ctx: JobContext, job: JobInfo) -> None:
     """코드를 외부로 보내는 호출 직전의 재검증.
 
-    가장 오래 걸리는 접근 권한·전송 정책 확인(GitHub)을 먼저 하고, 마지막에 처리권·취소·입력·동의·모델·key를 한 번에 확인한다.
-    그래야 느린 확인 중에 일어난 key 삭제·취소가 호출 직전 확인에 반영된다.
+    가장 오래 걸리는 접근 권한·전송 정책 확인(GitHub)을 먼저 하고, 마지막에 처리권·취소·입력·동의·모델을 한 번에 확인한다.
+    그래야 느린 확인 중에 일어난 취소가 호출 직전 확인에 반영된다.
     """
     profile = registry.get_profile(job.profile_id)
     _authorize(ctx, job, AIAction.local_generate if profile.execution_location == 'local' else AIAction.generate, retryable=True)
@@ -104,9 +108,6 @@ def revalidate(ctx: JobContext, job: JobInfo) -> None:
     with ctx.session_factory() as db:
         inp = db.execute(text("""SELECT status, valid_until, manifest_hash FROM ai_inputs WHERE id = :i"""),
                          {'i': job.input_id}).one_or_none()
-        key = db.execute(text("""SELECT v.status, v.encrypted_key IS NOT NULL AS has_secret
-                                 FROM ai_jobs j JOIN ai_credential_versions v ON v.id = j.credential_version_id
-                                 WHERE j.id = :j"""), {'j': job.job_id}).one_or_none()
         now = db.execute(text('SELECT now()')).scalar()
     if inp is None or inp.status != 'ready' or inp.valid_until is None or inp.valid_until <= now:
         raise JobFailed('INPUT_EXPIRED')
@@ -114,39 +115,46 @@ def revalidate(ctx: JobContext, job: JobInfo) -> None:
         raise JobFailed('PREVIEW_CHANGED')              # 동의한 코드 범위와 다르다
     if not registry.is_allowed(job.profile_id):
         raise JobFailed('PROFILE_NOT_ALLOWED')
-    if profile.requires_api_key and (key is None or key.status == 'deleted' or not key.has_secret):
-        raise JobFailed('CREDENTIAL_UNAVAILABLE')       # 삭제·파기된 key로는 보내지 않는다
+    if profile.requires_api_key and not ctx.api_key:
+        raise JobFailed('CREDENTIAL_REQUIRED')          # 실행 요청에 key가 없었다(서버는 key를 보관하지 않는다)
 
 
-def _credential_failure(reason: str) -> JobFailed:
-    return JobFailed('PROFILE_CHANGED' if reason in _PROFILE_REASONS else 'CREDENTIAL_UNAVAILABLE')
+def _provider(ctx: JobContext, job: JobInfo):
+    """작업에 고정된 profile과 이 실행의 key로 provider를 만든다. 다른 모델로 대체하지 않는다."""
+    try:
+        profile = registry.get_profile(job.profile_id)
+    except registry.UnknownProfile:
+        raise JobFailed('PROFILE_CHANGED') from None
+    if (profile.fingerprint() != job.profile_fingerprint or profile.provider != job.provider
+            or profile.model != job.model):
+        raise JobFailed('PROFILE_CHANGED')              # 고정한 모델·가격·한도가 달라졌다. 같은 동의로 보낼 수 없다
+    return registry.create_provider(profile, api_key=ctx.api_key if profile.requires_api_key else None)
+
+
+def _fetch(ctx: JobContext, job: JobInfo, row: AIInput) -> dict:
+    """고정 코드를 다시 가져온다(DB 세션 밖에서). 해시가 다르면 사용자가 확인한 코드가 아니다."""
+    try:
+        with ctx.session_factory() as db:
+            source = input_prepare.code_source(db, row, job.owner_id)
+        return input_prepare.fetch_code(source)
+    except AIError as exc:
+        if exc.retryable:
+            raise RetryableError(exc.code.value) from None
+        raise JobFailed(exc.code.value) from None
 
 
 def _prepare(ctx: JobContext, job: JobInfo):
-    """고정된 key로 provider를 만들고(평문 key는 provider 안에만 있다) 보낼 자료를 복호화·렌더링한다."""
+    """provider를 만들고(key는 provider 안에만 있다) 보낼 코드를 다시 가져와 렌더링한다."""
+    provider = _provider(ctx, job)
     with ctx.session_factory() as db:
-        try:
-            provider = credentials.provider_for_job(db, job.job_id)
-        except CredentialUnavailable as exc:
-            raise _credential_failure(exc.reason) from None
         row = db.execute(select(AIInput).where(AIInput.id == job.input_id)).scalar_one()
         manifest = InputManifest(**row.manifest)
         input_coverage = dict(row.coverage)
-        stored = db.execute(select(AIInputFile).where(AIInputFile.input_id == row.id)).scalars().all()
-        payloads, file_ids = {}, {}
-        for f in stored:
-            file_ids[f.path] = f.id
-            if f.content_state != 'read':
-                continue
-            if f.encrypted_payload is None:
-                raise JobFailed('INPUT_EXPIRED')
-            try:
-                plain = decrypt_input(bytes(f.encrypted_payload), f.key_version, aad=f'{row.id}:{f.id}'.encode())
-            except InputCryptoError:
-                raise JobFailed('INPUT_INTEGRITY') from None
-            if hashlib.sha256(plain).hexdigest() != f.content_hash:
-                raise JobFailed('INPUT_INTEGRITY')
-            payloads[f.path] = plain
+        file_ids = {f.path: f.id for f in db.execute(
+            select(AIInputFile).where(AIInputFile.input_id == row.id)).scalars().all()}
+        db.expunge(row)
+    payloads = _fetch(ctx, job, row)
+    ctx.raise_if_stopped()
     sent = prompts.build_sent_input(manifest, payloads, file_ids)
     if not sent.files:
         raise JobFailed('NO_REVIEWABLE_CONTENT')
@@ -174,13 +182,8 @@ def _count_tokens(provider, request: GenerationRequest) -> int:
 
 
 def _reserve(ctx: JobContext, job: JobInfo, amount: Decimal) -> None:
-    """key 행을 먼저 잠그고(삭제와 직렬화) 작업 행을 잠가 취소·처리권을 확인하면서 예산을 예약한다."""
+    """작업 행을 잠가 취소·처리권을 확인하면서 이 호출의 최대 비용을 사용 기록에 예약한다(호출 결과 불명 추적용)."""
     with ctx.session_factory() as db:
-        locked = db.execute(text("""SELECT v.status, v.encrypted_key IS NOT NULL AS has_secret
-                                    FROM ai_credential_versions v WHERE v.id = (SELECT credential_version_id FROM ai_jobs
-                                    WHERE id = :j) FOR SHARE"""), {'j': job.job_id}).one_or_none()
-        if registry.get_profile(job.profile_id).requires_api_key and (locked is None or locked.status == 'deleted' or not locked.has_secret):
-            raise JobFailed('CREDENTIAL_UNAVAILABLE')
         try:
             usage_service.reserve_attempt(db, ctx.lease, amount)
         except AIError as exc:
@@ -225,7 +228,7 @@ def _after_failed_call(ctx: JobContext, err: ProviderError):
 
 def generate_handler(ctx: JobContext) -> HandlerResult:
     job = _load_job(ctx)
-    revalidate(ctx, job)                                   # 1. 코드를 읽기 전에
+    revalidate(ctx, job)                                   # 1. 코드를 가져오기 전에
     provider, request, sent, coverage = _prepare(ctx, job)
     profile = provider.profile
     revalidate(ctx, job)                                   # 2. count_tokens 직전(코드가 처음 외부로 나간다)
@@ -273,3 +276,12 @@ def generate_handler(ctx: JobContext) -> HandlerResult:
             history_context.attach_safely(db, result_id, job.history_snapshot_id)
         return result_id
     return HandlerResult(work=save, storage_retryable=False)
+
+
+def _register() -> None:
+    from app.services.ai import job_runner
+    job_runner.register_handler('summary', generate_handler)
+    job_runner.register_handler('review', generate_handler)
+
+
+_register()

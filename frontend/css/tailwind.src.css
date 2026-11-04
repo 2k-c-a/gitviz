@@ -1,0 +1,103 @@
+/* Tailwind CSS v4 source. tailwind.css next to this file is generated from it and committed, so the app stays
+   build-free at runtime and offline (no CDN, no node_modules inside frontend/). Regenerate after changing
+   utility classes in pages, index.html or the js folder, from the frontend/ directory:
+
+     npx --yes @tailwindcss/cli@4.3.3 -i css/tailwind.src.css -o css/tailwind.css --minify
+
+   Only the theme below and the utilities are used. The Tailwind preflight reset is deliberately not imported:
+   tokens.css / components.css already own the base styles, and the desktop workspace shares them. */
+@theme {
+  --font-sans: var(--ui-font);
+  --font-mono: var(--ui-mono);
+  --spacing: 0.25rem;
+  --breakpoint-sm: 40rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 80rem;
+  --breakpoint-2xl: 96rem;
+
+  /* shadcn/ui semantic colors, resolved at runtime from tokens.css so light/dark switch without `dark:` variants. */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--ui-success);
+  --color-success-soft: var(--ui-success-soft);
+  --color-warning: var(--ui-warning);
+  --color-warning-soft: var(--ui-warning-soft);
+  --color-error: var(--ui-error);
+  --color-error-soft: var(--ui-error-soft);
+  --color-info: var(--ui-info);
+  --color-info-soft: var(--ui-info-soft);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --radius-sm: 6px;
+  --radius-md: var(--ui-radius-sm);
+  --radius-lg: var(--ui-radius-md);
+  --radius-xl: var(--ui-radius-lg);
+  --radius-2xl: 20px;
+  --shadow-xs: var(--ui-shadow-xs);
+  --shadow-sm: var(--ui-shadow-sm);
+  --shadow-md: 0 4px 12px -2px rgb(17 24 39 / 12%), 0 2px 4px -2px rgb(17 24 39 / 8%);
+  --shadow-lg: var(--ui-shadow);
+
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl: 2.5rem;
+  --text-4xl--line-height: 1.15;
+  --text-5xl: 3.25rem;
+  --text-5xl--line-height: 1.08;
+  --tracking-tight: -0.02em;
+  --tracking-tighter: -0.035em;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
+
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --default-transition-duration: 150ms;
+  --default-transition-timing-function: cubic-bezier(.2, .8, .2, 1);
+  --animate-fade-in: fade-in .5s var(--ease-out) both;
+  --animate-float: float 7s ease-in-out infinite;
+  @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+}
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@source "../index.html";
+@source "../pages";
+@source "../js";
+@source not "../vendor";
+
+@tailwind utilities;

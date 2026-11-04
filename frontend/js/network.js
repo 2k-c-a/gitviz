@@ -1,5 +1,6 @@
 import { bindPanel, action } from './ui/analytics-view.js';
-import { element } from './ui/components.js';
+import { element, setText } from './ui/components.js';
+import { esc, num } from './fmt.js';
 /* ── 협업 네트워크 페이지: Network API → DOM/force-directed 그래프 연동 ──
    net-graph-svg가 있을 때(=Network 페이지)만 동작한다. */
 import { getRepoId, fetchNetwork, fetchNetworkTopPairs } from './api.js';
@@ -8,9 +9,6 @@ import { assessDataQuality } from './policy.js';
 
 const svgEl = document.getElementById('net-graph-svg');
 
-
-const num = (n) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt3 = (n) => n == null ? '—' : Number(n).toFixed(3);
 const avatarLetter = (name) => esc((name || '?')[0].toUpperCase());
 
@@ -242,10 +240,6 @@ function renderTopPairs(pairs, dq) {
   }).join('');
 }
 
-function setText(id, text) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = text;
-}
 
 if (svgEl && typeof d3 !== 'undefined') {
   initNetworkPage().catch(err => {

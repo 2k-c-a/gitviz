@@ -13,7 +13,7 @@ import httpx2
 
 from app.core.ai_settings import get_ai_settings, test_provider_url_problem
 from app.services.ai import prompts, token_budget
-from app.services.ai.providers.base import (GenerationRequest, ProviderError, ProviderFailure, ProviderProfile,
+from app.services.ai.providers.base import (INSIGHT_KINDS, GenerationRequest, ProviderError, ProviderFailure, ProviderProfile,
                                             ProviderResponse, TokenLimitExceeded, Usage, parse_json_object)
 
 _SAFE_CONNECT_ERRORS = (httpx2.ConnectError, httpx2.ConnectTimeout, httpx2.PoolTimeout, httpx2.ProxyError,
@@ -103,8 +103,8 @@ class AnthropicProvider:
 
     def generate(self, request: GenerationRequest) -> ProviderResponse:
         profile = self.profile
-        if request.kind not in ('summary', 'review'):
-            raise ValueError('kind는 summary 또는 review여야 합니다.')
+        if request.kind not in ('summary', 'review', *INSIGHT_KINDS):
+            raise ValueError('kind는 summary, review 또는 인사이트 종류여야 합니다.')
         params_max = self._max_output(request)
         try:                                              # 한도를 넘는 입력은 호출(과금) 전에 거부한다
             token_budget.check_input_limit(profile, self.estimate_tokens(request), params_max)

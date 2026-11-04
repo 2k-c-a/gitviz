@@ -19,8 +19,18 @@ def repository_path(repository_id: int) -> Path:
     return path
 
 
+# git이 실행·네트워크 접속에 필요한 값만 넘긴다. DB 주소·세션 비밀키·OAuth 값 같은 서버 환경변수는 넘기지 않는다.
+_GIT_ENV_NAMES = (
+    'PATH', 'PATHEXT', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'ComSpec', 'COMSPEC',
+    'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'APPDATA', 'LOCALAPPDATA', 'ProgramData',
+    'LANG', 'LC_ALL', 'LC_CTYPE',
+    'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'no_proxy', 'all_proxy',
+    'GIT_SSL_CAINFO', 'GIT_SSL_CAPATH', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'GIT_EXEC_PATH',
+)
+
+
 def git_environment(token=None):
-    env = os.environ.copy()
+    env = {name: os.environ[name] for name in _GIT_ENV_NAMES if name in os.environ}
     env['GIT_TERMINAL_PROMPT'] = '0'
     env['GCM_INTERACTIVE'] = 'never'
     if token:
@@ -91,7 +101,8 @@ def clone_repository(github_url: str, repository_id: int, token=None):
             subprocess.run(['git', 'reset', '--hard', f'origin/{branch}'], cwd=path,
                            env=env, check=True, capture_output=True)
         else:
-            Repo.clone_from(url, str(path), env=env)
+            # GitPython의 clone_from은 env를 os.environ 위에 덧붙이므로, 환경을 제한하려면 git을 직접 실행한다.
+            subprocess.run(['git', 'clone', '--quiet', url, str(path)], env=env, check=True, capture_output=True)
         fetched = fetch_recent_pr_heads(str(path), env)
         print(f"🔀 PR head ref 수집: {fetched}개")
     except Exception:

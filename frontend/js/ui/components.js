@@ -1,4 +1,6 @@
 /* Small DOM primitives. Text is always assigned as textContent, never interpreted as markup. */
+import { lucideIcon, GLYPH_ICONS } from './icons.js';
+
 export function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -6,28 +8,15 @@ export function element(tag, className, text) {
   return node;
 }
 
-export function createIcon(symbol) {
-  const paths = {
-    '⌕': 'M10.5 18a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15Zm5.5-2 5 5',
-    '▦': 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
-    '↗': 'M5 19 19 5M8 5h11v11',
-    '▥': 'M4 20V5m0 15h17M9 16v-5m5 5V7m5 9v-8',
-    '◎': 'M7 7h10M6 9l5 9M18 9l-5 9M7 5a2 2 0 1 0 0 .1M19 5a2 2 0 1 0 0 .1M13 20a2 2 0 1 0 0 .1',
-    '▤': 'M5 3h9l5 5v13H5zM14 3v6h5M8 13h8M8 17h6',
-    '◷': 'M4 7a9 9 0 1 1-1 8M3 3v5h5M12 7v5l4 2',
-    '◇': 'm12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z',
-    '☷': 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM2 21v-1a7 7 0 0 1 14 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6',
-    '▣': 'M3 6h7l2 2h9v12H3zM3 6V4h7l2 2',
-    '⚙': 'M9 3h6l1 4 4 1v8l-4 1-1 4H9l-1-4-4-1V8l4-1zM15 12a3 3 0 1 0-6 0 3 3 0 0 0 6 0',
-    '◔': 'M6 17v-6a6 6 0 0 1 12 0v6l1.5 2h-15zM10 21a2 2 0 0 0 4 0',
-    '◉': 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21c.7-4 4-6 8-6s7.3 2 8 6',
-    '☀': 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
-    '☾': 'M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z',
-    '·': 'M8 12h8',
-  };
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', width: '19', height: '19', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) svg.setAttribute(key, value);
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', paths[symbol] || paths['·']); svg.append(path); return svg;
+/* Sets the text of the element with this id; a page that lacks the element is left alone. */
+export function setText(id, text) {
+  const node = document.getElementById(id);
+  if (node) node.textContent = text;
+}
+
+/* Accepts a legacy text glyph (⌕ ▦ ...) or a Lucide icon name. */
+export function createIcon(symbol, size = 19) {
+  return lucideIcon(GLYPH_ICONS[symbol] || symbol, { size });
 }
 
 export function createState({ kind = 'empty', title, message, retry, retryLabel = '다시 시도' }) {

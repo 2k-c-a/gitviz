@@ -21,14 +21,16 @@ const assets: Record<string, { file: string; mime: string }> = {
   '/ai-settings.js': { file: 'ai-settings.js', mime: 'text/javascript; charset=utf-8' },
   '/auto-compare.js': { file: 'auto-compare.js', mime: 'text/javascript; charset=utf-8' },
 };
-const documents = new Set(['/index.html', '/web/index.html', ...['overview', 'timeline', 'network', 'code-analysis', 'search', 'myprojects', 'history', 'ai-review', 'settings', 'community'].map(name => `/web/pages/${name}.html`)]);
+const documents = new Set(['/index.html', '/web/index.html', ...['overview', 'timeline', 'network', 'code-analysis', 'search', 'myprojects', 'history', 'ai-insights', 'ai-review', 'settings', 'community'].map(name => `/web/pages/${name}.html`)]);
 export function isAppDocument(value: string): boolean {
   try { const url = new URL(value); return url.protocol === 'gitviz:' && url.host === 'app' && !url.username && !url.password &&
     documents.has(url.pathname) && url.search.length <= 4096 && !url.hash; } catch { return false; }
 }
 export const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
 export function registerScheme(): void {
-  protocol.registerSchemesAsPrivileged([{ scheme: 'gitviz', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+  protocol.registerSchemesAsPrivileged([{ scheme: 'gitviz', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+    // Co-editing preview (AD-34): served only inside each preview's own session, from memory (collab-preview.ts).
+    { scheme: 'gitviz-preview', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
 }
 export async function serveAssets(directory: string): Promise<void> {
   let bundled: Record<string, { file: string; mime: string }> = {};

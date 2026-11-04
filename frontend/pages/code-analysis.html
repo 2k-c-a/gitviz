@@ -15,10 +15,10 @@
 <div class="page active" id="page-code-analysis">
   <div class="dash-head">
     <div><div class="dash-title js-repo-title">—</div><div class="dash-sub" id="cx-dash-sub">코드 분석 — 점수 · 주요 수정자 수 · 함께 수정 정도</div></div>
-    <div style="display:flex;align-items:center;gap:10px;">
-      <div style="display:flex;align-items:center;gap:7px;">
+    <div class="flex items-center gap-2.5">
+      <div class="flex items-center gap-[7px]">
         <div class="status-dot" style="background:#639922;"></div>
-        <span id="cx-status" style="font-size:12px;color:var(--text2);">결과 조회 중</span>
+        <span id="cx-status" class="text-xs text-muted-foreground">결과 조회 중</span>
       </div>
       <button class="btn-secondary" data-auth="1" id="btn-reanalyze" data-action="openReanalyzeToast">재분석</button>
     </div>
@@ -42,12 +42,12 @@
     <div class="p-note" id="cx-policy-note">지표 설명을 불러오는 중입니다.</div>
 
     <!-- 디렉토리 트리 -->
-    <div class="panel" style="margin-bottom:14px;">
-      <div class="p-head" style="margin-bottom:6px;">
+    <div class="panel mb-3.5">
+      <div class="p-head mb-1.5">
         <div class="p-title">디렉토리 트리</div>
         <div class="range-btns" id="cx-sort-toggle"></div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+      <div class="flex flex-wrap items-center gap-2 mb-3">
         <button class="rbtn" id="cx-root-btn" title="펼친 폴더를 모두 접고 처음 상태로 되돌리기">⌂ 처음으로</button>
         <button class="rbtn" id="cx-expand-btn" title="모든 폴더 펼치기">모두 펼치기</button>
       </div>
@@ -63,10 +63,10 @@
               <button id="cx-zoom-fit" title="화면에 맞추기">⤢</button>
             </div>
           </div>
-          <div class="legend" id="cx-legend" style="margin-top:10px;"></div>
+          <div class="legend mt-2.5" id="cx-legend"></div>
         </div>
         <div class="metric-card">
-          <div class="p-title" style="margin-bottom:10px;">선택한 노드</div>
+          <div class="p-title mb-2.5">선택한 노드</div>
           <div id="cx-detail-path" class="cx-detail-empty">노드에 마우스를 올려보세요</div>
           <div id="cx-detail-metrics"></div>
         </div>
@@ -74,10 +74,10 @@
     </div>
 
     <!-- 전체 파일 목록 -->
-    <div class="panel" style="margin-bottom:14px;">
-      <div class="p-head" style="margin-bottom:6px;">
+    <div class="panel mb-3.5">
+      <div class="p-head mb-1.5">
         <div class="p-title">전체 파일 목록</div>
-        <div style="font-size:var(--ui-text-xs);color:var(--text2);" id="cx-list-note">정렬 기준을 불러오는 중</div>
+        <div class="text-xs text-muted-foreground" id="cx-list-note">정렬 기준을 불러오는 중</div>
       </div>
       <div class="p-note">파일 경로를 선택하면 상세 패널에서 점수 구성·기여 분포·함께 변경된 파일을 볼 수 있습니다. GitHub 링크는 원본 코드를 엽니다. 파일별 마지막 수정 시각은 제공되지 않아 날짜순 목록은 표시하지 않습니다. 점수가 없는 파일(—)은 0이 아니라 관측 변경 없음 또는 자료 부족이며 항상 순위 뒤에 둡니다.</div>
       <input type="search" id="cx-search" class="cx-search" placeholder="파일 경로 검색 (예: api/, analytics)" autocomplete="off" aria-label="파일 경로 검색">
@@ -98,10 +98,10 @@
     </div>
 
     <!-- 기여 분포 -->
-    <div class="panel" style="margin-bottom:14px;">
-      <div class="p-head" style="margin-bottom:6px;">
+    <div class="panel mb-3.5">
+      <div class="p-head mb-1.5">
         <div class="p-title">기여 분포 (주요 수정자 수)</div>
-        <div style="font-size:var(--ui-text-xs);color:var(--text2);">관측 구간의 파일 변경 기여 집중도</div>
+        <div class="text-xs text-muted-foreground">관측 구간의 파일 변경 기여 집중도</div>
       </div>
       <div class="p-note">주요 수정자 수는 관측 구간에서 파일 변경 커밋의 80%를 차지하는 최소 기여자 수입니다(식별된 기여 기준). 1은 한 명에게 관측 변경 기여가 집중됐다는 뜻이며 실제 지식 보유 인원이 아닙니다. 기여 분산도가 높다고 위험하다는 뜻은 아니어서 색을 붙이지 않았습니다. 기여자가 1명이면 정규화 기여 분산도는 0, 식별된 기여가 없으면 값이 없습니다(—).</div>
       <div id="cx-bf-body"><div class="cx-empty">불러오는 중...</div></div>
@@ -109,7 +109,7 @@
 
     <!-- 함께 수정 -->
     <div class="panel">
-      <div class="p-head" style="margin-bottom:6px;">
+      <div class="p-head mb-1.5">
         <div class="p-title">함께 수정 (함께 변경된 파일 후보)</div>
         <div class="range-btns" id="cx-cp-toggle"></div>
       </div>

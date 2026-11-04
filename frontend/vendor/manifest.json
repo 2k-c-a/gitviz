@@ -84,6 +84,25 @@
       "url": "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/webfonts/fa-v4compatibility.ttf",
       "bytes": 10832,
       "sha256": "ff8f525fb050c5d24519ccc8f5723d85b2e51edd3f9bc6548af55aebadd4f269"
+    },
+    {
+      "file": "motion-14.9.0/motion.js",
+      "url": "https://cdn.jsdelivr.net/npm/motion@14.9.0/dist/motion.js",
+      "bytes": 179011,
+      "sha256": "08423884b313dacbd12fdaff2d002a5b862c8009c17da285a8460efad98d63c3"
+    },
+    {
+      "file": "motion-14.9.0/LICENSE.md",
+      "url": "https://cdn.jsdelivr.net/npm/motion@14.9.0/LICENSE.md",
+      "bytes": 1100,
+      "sha256": "1bf0dc3f7727723e5a032ed12164a47cf92c05204cb1a3485f123c24e2833ed1"
+    },
+    {
+      "file": "lucide-1.66.0/LICENSE",
+      "url": "https://cdn.jsdelivr.net/npm/lucide@1.66.0/LICENSE",
+      "bytes": 3208,
+      "sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57"
     }
-  ]
+  ],
+  "approval2": "Motion 14.9.0 (MIT) and Lucide 1.66.0 (ISC) added at the user's request 2026-11-02; Lucide ships as a curated subset in js/ui/icon-data.js, only its LICENSE is vendored verbatim"
 }

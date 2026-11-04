@@ -43,16 +43,62 @@ class Regression(unittest.TestCase):
         self.assertEqual(first.status_code,200);self.assertEqual(first.json()['value'],1)
         self.assertEqual(self.client.get('/repositories/2/analytics/summary?snapshot_id=1').status_code,404)
         self.assertEqual(first.headers['cache-control'],'private, no-store')
+    def mark_private(self,rid,value=True):
+        with self.Session() as db:
+            db.get(Repository,rid).is_private=value;db.commit()
     def test_private_denies_shared_token_and_anonymous(self):
+        self.mark_private(1)
         with patch('app.services.repository_access.github_metadata',return_value={'id':1,'private':True}):
             self.assertEqual(self.client.get('/repositories/1/analytics/summary').status_code,404)
             with self.Session() as db, patch('app.services.repository_access.user_github_token',return_value='personal'):
                 self.assertEqual(verify_repository_access(db,1,'user')[0].id,1)
     def test_revocation_and_replaced_identity_fail_closed(self):
-        with patch('app.services.repository_access.github_metadata',side_effect=HTTPException(404,'revoked')):
-            self.assertEqual(self.client.get('/repositories/1/analytics/summary').status_code,404)
-        with patch('app.services.repository_access.github_metadata',return_value={'id':999,'private':False}):
-            self.assertEqual(self.client.get('/repositories/1/analytics/summary').status_code,404)
+        # 비공개이거나 공개 여부가 확인되지 않은 저장소는 조회 때마다 GitHub에 확인한다.
+        for stored in (True, None):
+            self.mark_private(1,stored)
+            with patch('app.services.repository_access.github_metadata',side_effect=HTTPException(404,'revoked')):
+                self.assertEqual(self.client.get('/repositories/1/analytics/summary').status_code,404)
+            with patch('app.services.repository_access.github_metadata',return_value={'id':999,'private':False}):
+                self.assertEqual(self.client.get('/repositories/1/analytics/summary').status_code,404)
+        # 쓰기·live 확인은 저장된 공개 여부와 관계없이 GitHub에 묻는다.
+        self.mark_private(1,False)
+        with self.Session() as db, patch('app.services.repository_access.github_metadata',side_effect=HTTPException(404,'revoked')), \
+                patch('app.services.repository_access.user_github_token',return_value='personal'):
+            for kwargs in ({'live':True},{'write':True}):
+                with self.assertRaises(HTTPException) as exc:verify_repository_access(db,1,'user',**kwargs)
+                self.assertEqual(exc.exception.status_code,404)
+    def test_remove_from_my_projects_hides_until_analyzed_again(self):
+        import uuid
+        from app.models.analysis_snapshot import RepositoryAccess
+        from app.services.repository_access import hide_from_my_projects, remember_access
+        from app.api.ai.dependencies import require_csrf
+        from app.api.repositories import router as repositories_router
+        RepositoryAccess.__table__.create(self.engine)
+        user,other=uuid.uuid4(),uuid.uuid4()
+        with self.Session() as db:
+            with self.assertRaises(HTTPException) as exc:hide_from_my_projects(db,1,user)
+            self.assertEqual(exc.exception.status_code,404)  # 내 목록에 없던 저장소
+            db.add_all([RepositoryAccess(repository_id=1,user_id=user),RepositoryAccess(repository_id=1,user_id=other)]);db.commit()
+            hide_from_my_projects(db,1,user);db.commit()
+            rows={r.user_id:r.hidden_at for r in db.query(RepositoryAccess)}
+            self.assertIsNotNone(rows[user]);self.assertIsNone(rows[other])  # 다른 사용자 목록은 그대로
+            self.assertEqual(db.query(Repository).count(),2)  # 저장소·결과는 지우지 않는다
+            repo=db.get(Repository,1)
+            remember_access(db,repo,{'id':1,'private':False,'canonical_url':repo.url},user);db.commit()
+            self.assertIsNone(db.query(RepositoryAccess).filter_by(user_id=user).one().hidden_at)
+        route=next(r for r in repositories_router.routes if r.path=='/repositories/mine/{repository_id}')
+        self.assertEqual(route.methods,{'DELETE'})
+        self.assertIn(require_csrf,[d.call for d in route.dependant.dependencies])
+    def test_stored_public_reads_survive_github_outage(self):
+        # 공개로 저장된 저장소의 조회는 GitHub 장애·호출 한도와 무관하게 저장된 결과를 돌려준다.
+        for failure in (HTTPException(502,'down'),HTTPException(429,'limit')):
+            with patch('app.services.repository_access.github_metadata',side_effect=failure) as remote:
+                self.assertEqual(self.client.get('/repositories/1/analytics/summary').status_code,200)
+                self.assertEqual(remote.call_count,0)
+        with self.Session() as db:
+            repo,metadata=verify_repository_access(db,1)
+            self.assertEqual((repo.id,metadata['id'],metadata['private'],metadata['canonical_url']),
+                             (1,1,False,'https://github.com/owner1/same'))
     def test_missing_snapshot_and_invalid_filters(self):
         self.assertEqual(self.client.get('/repositories/1/analytics/summary?snapshot_id=-1').status_code,422)
         self.assertEqual(self.client.get('/repositories/1/analytics/summary?limit=nan').status_code,422)
@@ -71,6 +117,15 @@ class Regression(unittest.TestCase):
         for rid in [0,-1,True,'../a']:
             with self.assertRaises(ValueError):repository_path(rid)
         self.assertNotIn('personal',git_environment('personal')['GIT_CONFIG_VALUE_0'])
+    def test_git_environment_passes_only_what_git_needs(self):
+        secrets={'DATABASE_URL':'postgresql://u:p@h/db','SESSION_SECRET_KEY':'s','GITHUB_CLIENT_SECRET':'c',
+                 'TOKEN_ENCRYPTION_KEY':'k','GITHUB_TOKEN':'t','PATH':'/usr/bin','HTTPS_PROXY':'http://proxy:3128'}
+        with patch.dict('os.environ',secrets):
+            env=git_environment('personal')
+        for name in ('DATABASE_URL','SESSION_SECRET_KEY','GITHUB_CLIENT_SECRET','TOKEN_ENCRYPTION_KEY','GITHUB_TOKEN'):
+            self.assertNotIn(name,env)
+        self.assertEqual((env['PATH'],env['HTTPS_PROXY'],env['GIT_TERMINAL_PROMPT']),('/usr/bin','http://proxy:3128','0'))
+        self.assertTrue(env['GIT_CONFIG_VALUE_0'].startswith('AUTHORIZATION: basic '))
     def test_fixed_period_and_future_exclusion_sql(self):
         parameters=analysis_parameters('2024-01-01T00:00:00Z','2025-10-01T00:00:00Z')
         class Capture:

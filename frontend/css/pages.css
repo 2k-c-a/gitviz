@@ -1,0 +1,71 @@
+/* Web page polish, loaded after the shared rules (tokens/components/shell) and before the Tailwind utilities.
+   The desktop workspace does not load this file; anything it also needs belongs in components.css or shell.css. */
+
+/* ── Landing ─────────────────────────────────────────────── */
+.app-main .landing-hero { position: relative; isolation: isolate; overflow: hidden; display: flex; flex-direction: column; align-items: center; padding: clamp(40px, 8vh, 88px) 24px 48px; text-align: center;
+  background: radial-gradient(60% 80% at 50% -10%, color-mix(in srgb, var(--ui-primary) 14%, transparent), transparent 70%), var(--ui-canvas); border-bottom: 1px solid var(--ui-border); }
+.app-main .landing-hero::before { content: ''; position: absolute; inset: 0; z-index: -1; opacity: .5;
+  background-image: linear-gradient(var(--ui-border) 1px, transparent 1px), linear-gradient(90deg, var(--ui-border) 1px, transparent 1px); background-size: 44px 44px;
+  mask-image: radial-gradient(70% 70% at 50% 0%, #000 0%, transparent 75%); -webkit-mask-image: radial-gradient(70% 70% at 50% 0%, #000 0%, transparent 75%); }
+.landing-eyebrow { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 20px; padding: 4px 12px; border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-surface); box-shadow: var(--ui-shadow-xs); color: var(--ui-muted); font-size: var(--ui-text-xs); font-weight: var(--ui-medium); }
+.landing-eyebrow .ui-icon { color: var(--ui-accent); }
+.app-main .landing-hero h1 { margin: 0 0 14px; font-size: clamp(30px, 4.4vw, 46px); font-weight: var(--ui-bold); letter-spacing: -0.035em; line-height: 1.15; text-wrap: balance; }
+.landing-accent { background: linear-gradient(100deg, var(--ui-primary), color-mix(in srgb, var(--chart-3) 80%, var(--ui-primary))); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.app-main .landing-hero > p { max-width: 560px; margin: 0 0 30px; color: var(--ui-muted); font-size: var(--ui-text-lg); line-height: 1.7; text-wrap: pretty; }
+.landing-hero .landing-card p { margin: 4px 0 0; max-width: none; font-size: var(--ui-text-sm); line-height: 1.55; color: var(--ui-muted); }
+.landing-hero .landing-card h2 { margin: 0; }
+.app-main .landing-hero h1, .app-main .landing-hero > p, .landing-hero .landing-card { word-break: keep-all; overflow-wrap: break-word; }
+.dash-title, .ui-page-title { word-break: keep-all; overflow-wrap: anywhere; }
+.url-form { max-width: 600px; }
+.url-row { padding: 6px; border: 1px solid var(--ui-border); border-radius: calc(var(--ui-radius-md) + 4px); background: var(--ui-surface); box-shadow: var(--ui-shadow-sm); transition: border-color var(--ui-normal) var(--ui-ease), box-shadow var(--ui-normal) var(--ui-ease); }
+.url-row:focus-within { border-color: var(--ui-focus); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-focus) 20%, transparent), var(--ui-shadow-sm); }
+.url-row input { min-height: 44px; border: 0; background: transparent; box-shadow: none; font-size: var(--ui-text-md); }
+.url-row input:focus-visible { box-shadow: none; }
+.url-row .btn-primary { min-height: 44px; border-radius: var(--ui-radius-sm); }
+.url-feedback { text-align: left; }
+@media (max-width: 480px) { .url-row .btn-primary { padding-inline: 14px; } .url-row input { min-width: 0; } }
+.app-main .recent-section { max-width: 760px; margin: 0 auto; padding: 32px 24px 56px; }
+.recent-section h3 { margin-bottom: 14px; color: var(--ui-muted); font-size: var(--ui-text-xs); font-weight: var(--ui-semibold); letter-spacing: .06em; text-transform: uppercase; }
+
+/* ── Lists of repositories ───────────────────────────────── */
+.repo-item { padding: 14px 18px; margin-bottom: 10px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); box-shadow: var(--ui-shadow-xs); transition: transform var(--ui-normal) var(--ui-ease), border-color var(--ui-normal) var(--ui-ease), box-shadow var(--ui-normal) var(--ui-ease), background var(--ui-normal) var(--ui-ease); }
+.repo-item:not(.pending):hover { background: var(--ui-surface); border-color: var(--ui-border-strong); box-shadow: var(--ui-shadow-sm); transform: translateY(-2px); }
+.repo-name { font-weight: var(--ui-semibold); letter-spacing: -0.01em; }
+.repo-name:hover { text-decoration: none; }
+.repo-meta { font-variant-numeric: tabular-nums; }
+.search-card { padding: 16px 20px; transition: transform var(--ui-normal) var(--ui-ease), border-color var(--ui-normal) var(--ui-ease), box-shadow var(--ui-normal) var(--ui-ease); }
+.search-card[data-registered="1"]:hover { background: var(--ui-surface); border-color: var(--ui-border-strong); box-shadow: var(--ui-shadow-sm); transform: translateY(-2px); }
+.search-card-name { letter-spacing: -0.01em; }
+.score-ring { box-shadow: var(--ui-shadow-xs); }
+
+/* ── Analysis pages ──────────────────────────────────────── */
+.dash-head { padding: 18px 24px; border-bottom: 1px solid var(--ui-border); }
+.dash-title { font-size: var(--ui-text-xl); font-weight: var(--ui-bold); letter-spacing: -0.02em; }
+.dash-sub { margin-top: 4px; font-size: var(--ui-text-sm); color: var(--ui-muted); }
+.sub-tabs { gap: 4px; }
+.sub-tab { position: relative; border-bottom: 0; font-weight: var(--ui-medium); border-radius: var(--ui-radius-sm) var(--ui-radius-sm) 0 0; transition: color var(--ui-fast) var(--ui-ease), background var(--ui-fast) var(--ui-ease); }
+.sub-tab::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--ui-accent); transform: scaleX(0); transition: transform var(--ui-normal) var(--ui-ease); }
+.sub-tab:hover { background: var(--ui-raised); color: var(--ui-text); }
+.sub-tab.active { color: var(--ui-accent); font-weight: var(--ui-semibold); }
+.sub-tab.active::after { transform: scaleX(1); }
+.metrics-4, .metrics-3 { gap: 14px; }
+.m-up { color: var(--ui-success); }
+.risk-row, .coup-row { transition: background var(--ui-fast) var(--ui-ease); }
+.risk-row { padding: 8px 12px; }
+.risk-bar-wrap, .pr-bar-wrap, .prog-wrap { background: var(--ui-raised); }
+.prog-fill, .pr-bar-fill { transition: width .6s var(--ui-ease); }
+.rel-dot { box-shadow: 0 0 0 3px var(--ui-surface); }
+.bus-card { transition: border-color var(--ui-normal) var(--ui-ease), transform var(--ui-normal) var(--ui-ease); }
+.bus-card:hover { transform: translateY(-1px); border-color: var(--ui-border-strong); }
+.chip, .search-example-chip { transition: background var(--ui-fast) var(--ui-ease), border-color var(--ui-fast) var(--ui-ease), color var(--ui-fast) var(--ui-ease); }
+.search-example-chip:hover { background: var(--ui-accent-soft); border-color: color-mix(in srgb, var(--ui-accent) 40%, transparent); color: var(--ui-accent); }
+.avatar { box-shadow: 0 0 0 2px var(--ui-surface); }
+
+@media (prefers-reduced-motion: reduce) {
+  .repo-item, .search-card, .bus-card, .landing-card { transition: none; transform: none !important; }
+}
+
+/* 최근·내 분석: 분석한 프로젝트 / 내 GitHub 저장소 탭 */
+.myproj-tabs { width: fit-content; margin-bottom: 14px; }
+.myproj-github-note { margin: 0 0 10px; font-size: 12px; color: var(--text3); }
+.myproj-github-more { display: flex; justify-content: center; margin-top: 12px; }

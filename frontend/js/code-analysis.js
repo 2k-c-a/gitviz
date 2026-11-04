@@ -1,4 +1,4 @@
-import { createState, element } from './ui/components.js';
+import { createState, element, setText } from './ui/components.js';
 import { action, loadPanel } from './ui/analytics-view.js';
 /* ── 코드분석 페이지: /tree API → 트리 다이어그램 + 종합 리스트 + 기여 분포 + 함께 수정 ──
    cx-svg가 있을 때(=코드분석 페이지)만 동작한다.
@@ -907,11 +907,6 @@ function renderCoupling(data, body) {
   body.querySelectorAll('.cx-pair-file').forEach(el => {
     el.addEventListener('click', () => { if (window.openFileDrilldown) window.openFileDrilldown(parseInt(el.dataset.fileId, 10)); });
   });
-}
-
-function setText(id, text) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = text;
 }
 
 if (svgEl && typeof d3 !== 'undefined') {

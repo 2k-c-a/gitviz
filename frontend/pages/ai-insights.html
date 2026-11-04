@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <script src="../js/ui/theme.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../css/index.css">
+    <link rel="stylesheet" href="../css/ai-review.css">
+    <link rel="stylesheet" href="../css/ai-insights.css">
+    <title>GitViz · AI 분석</title>
+</head>
+<body>
+    <div id="navbar-container"></div>
+    <div id="modal-container"></div>
+    <!-- ═══════════ AI 분석 (자동 분석 리포트 · 대화형 분석 · 커밋·PR 단위 분석) ═══════════
+         커밋·PR 단위 분석은 ai-review.html(같은 탭 줄)로 이동한다. ?tab=chat이면 대화형 분석을 연다.
+         주소 ?repo=<id>&snapshot=<id> 의 저장된 분석 결과만 읽는다. AI는 GitViz가 계산한 값을 읽기 전용 도구로 조회해 해석한다. -->
+    <div class="page active" id="page-ai-insights">
+      <div class="dash-head">
+        <div>
+          <div class="dash-title" id="insight-title">AI 분석</div>
+          <div class="dash-sub">저장된 분석 결과(기준 커밋·관측 구간 고정)를 AI가 읽기 전용 도구로 조회해 해석합니다. 근거 수치는 GitViz가 계산한 값이고, 해석과 추천은 AI의 의견입니다.</div>
+        </div>
+      </div>
+      <div class="body ai-body">
+        <div id="insight-notice" aria-live="polite"></div>
+        <section id="insight-setup"></section>
+        <div class="ai-tabs" role="tablist" aria-label="AI 분석 방식">
+          <button type="button" class="ai-tab active" role="tab" id="insight-tab-auto" aria-controls="insight-auto" aria-selected="true">자동 분석</button>
+          <button type="button" class="ai-tab" role="tab" id="insight-tab-chat" aria-controls="insight-chat" aria-selected="false">대화형 분석</button>
+          <button type="button" class="ai-tab" role="tab" id="insight-tab-review" aria-selected="false">커밋·PR 단위 분석</button>
+        </div>
+        <section id="insight-auto" role="tabpanel" aria-labelledby="insight-tab-auto"></section>
+        <section id="insight-chat" role="tabpanel" aria-labelledby="insight-tab-chat" hidden></section>
+      </div>
+    </div>
+</body>
+
+<script type="module" src="../js/main.js"></script>
+<script type="module" src="../js/ai-insights.js"></script>
+</html>

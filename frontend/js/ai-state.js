@@ -218,7 +218,7 @@ export function coverageLines(cov, { beforeRun = false } = {}) {
 export const coverageLimitations = (cov) => (cov?.limitations || []).map(limitationLabel);
 
 /* ── 전송 동의 ── */
-export function consentBlockers(preview) {
+export function consentBlockers(preview, keys = null) {
   const out = [];
   if (!preview) return ['미리보기를 불러오지 못했습니다.'];
   if (preview.status === 'building') out.push('코드를 준비하는 중입니다.');
@@ -230,8 +230,9 @@ export function consentBlockers(preview) {
   const t = preview.transfer;
   if (!t) out.push('전송 대상(제공자·모델)을 확인할 수 없습니다.');
   else {
-    if (t.execution_location !== 'local' && !t.external_transfer_allowed) out.push('이 서버는 코드의 외부 전송을 허용하지 않습니다.');
-    if (t.requires_api_key !== false && !t.credential_configured) out.push(`${t.provider} API 키를 먼저 등록해야 합니다.`);
+    // API 키는 앱이 보관하고 실행 요청에만 붙인다(AD-33). keys는 앱의 저장 여부({provider: boolean}), 웹에서는 null이다.
+    if (t.requires_api_key !== false && !keys) out.push('외부 AI 리뷰는 GitViz 앱에서만 실행할 수 있습니다(API 키를 앱에만 보관합니다).');
+    else if (t.requires_api_key !== false && !keys[t.provider]) out.push(`앱 설정에서 ${t.provider} API 키를 먼저 저장해야 합니다.`);
   }
   if (preview.token_estimate && preview.token_estimate.within_limit === false) {
     out.push('선택한 모델의 입력 토큰 한도를 넘습니다. 파일을 줄이거나 다른 모델을 고르세요.');
@@ -240,12 +241,12 @@ export function consentBlockers(preview) {
 }
 
 /* 미리보기가 준 값을 그대로 동의 본문으로 쓴다(화면이 값을 조합하지 않는다) */
-export function buildConsent(preview) {
-  if (!preview || consentBlockers(preview).length) return null;
+export function buildConsent(preview, keys = null) {
+  if (!preview || consentBlockers(preview, keys).length) return null;
   const t = preview.transfer;
   return {
     input_id: preview.input_id, manifest_hash: preview.manifest_hash, provider: t.provider, profile_id: t.profile_id,
-    credential_version: t.credential_version, policy_version: preview.policy_version,
+    policy_version: preview.policy_version,
     ...(t.profile_fingerprint ? { profile_fingerprint: t.profile_fingerprint } : {}),
   };
 }
@@ -256,7 +257,7 @@ export function consentStatement(preview) {
   const files = (preview.files || []).filter((f) => f.content_state === 'read').length;
   if (t.execution_location === 'local') return `선택한 ${files}개 파일의 코드와 변경 제목·설명을 같은 PC의 ${t.model}에서 처리하는 데 동의합니다. 외부 AI 제공자에게 전송하지 않으며 API 요금은 없습니다(전력·하드웨어 비용 별도). ${t.model_digest ? `모델 digest: ${t.model_digest}.` : '모델 ID를 고정합니다. 이 런타임의 모델 파일 해시는 검증하지 않습니다.'}`;
   return `선택한 ${files}개 파일의 코드(변경 diff와 주변 줄)와 변경 제목·설명이 ${t.provider} / ${t.model}(으)로 보내는 데 동의합니다. `
-    + `사용할 키: ${t.key_hint || '—'} (v${t.credential_version ?? '?'}), 전송 정책 ${preview.policy_version}.`;
+    + `비용은 앱에 저장한 내 ${t.provider} API 키의 계정에 청구됩니다(키는 이 실행에만 쓰이고 서버에 저장되지 않습니다). 전송 정책 ${preview.policy_version}.`;
 }
 
 /* ── 오류 → 안내 ── */
@@ -274,15 +275,15 @@ export function describeError(err) {
     case 'RESOURCE_NOT_FOUND':
       if (reason === 'JOB_DELETED') return out('삭제된 작업입니다', '이 요청으로 만들어진 작업은 삭제됐습니다. 필요하면 새로 요청해 주세요.', 'home');
       return out('열 수 없습니다', '접근 권한이 없거나, 삭제됐거나, 이 서버에서 AI 기능을 쓸 수 없습니다. 어느 쪽인지는 알려 드리지 않습니다.', 'home');
-    case 'TRANSFER_NOT_ALLOWED': return out('코드를 외부로 보낼 수 없습니다', '서버 설정, 비공개 저장소, 또는 전송 정책 때문에 허용되지 않았습니다.', null);
+    case 'TRANSFER_NOT_ALLOWED': return out('코드를 외부로 보낼 수 없습니다', '전송 정책 때문에 허용되지 않았습니다.', null);
     case 'PR_CHANGED': return out('PR이 바뀌었습니다', '선택한 시점 이후 PR의 SHA가 달라졌습니다. 파일을 새 SHA로 다시 선택하세요.', 'reselect');
-    case 'PREVIEW_CHANGED': return out('확인한 내용과 달라졌습니다', '코드 범위·모델·API 키 중 하나가 바뀌었습니다. 미리보기를 다시 확인하고 다시 동의해 주세요.', 'reload_preview', 'warn');
+    case 'PREVIEW_CHANGED': return out('확인한 내용과 달라졌습니다', '코드 범위나 모델이 바뀌었거나, 고정한 커밋의 코드를 다시 가져와 보니 확인한 내용과 달랐습니다. 미리보기를 다시 확인하고 다시 동의해 주세요.', 'reload_preview', 'warn');
     case 'VERSION_CONFLICT': return out('다른 곳에서 먼저 바뀌었습니다', '최신 내용을 다시 불러왔습니다. 확인 후 다시 저장해 주세요.', 'reload_findings', 'warn');
     case 'IDEMPOTENCY_CONFLICT': return out('같은 요청 번호로 다른 요청을 보냈습니다', '화면을 새로고침한 뒤 다시 시도해 주세요.', 'reload');
     case 'INPUT_EXPIRED': return out('입력이 만료됐거나 삭제됐습니다', '원문 코드가 더 이상 없어 이 입력으로는 실행할 수 없습니다. 파일을 다시 선택해 새로 준비하세요.', 'reselect');
     case 'RESULT_EXPIRED': return out('결과 보관 기간이 지났습니다', '이 결과는 더 이상 열 수 없습니다. 필요하면 다시 실행해 주세요.', 'home');
     case 'INPUT_TOO_LARGE': return out('너무 큽니다', '선택한 파일이 많거나 커서 처리할 수 없습니다. 파일 수를 줄이거나 더 큰 한도의 모델을 고르세요.', null);
-    case 'CREDENTIAL_REQUIRED': return out('API 키가 필요합니다', '제공자 API 키를 등록한 뒤 다시 시도해 주세요.', 'keys');
+    case 'CREDENTIAL_REQUIRED': return out('API 키가 필요합니다', '앱 설정에서 이 제공자의 API 키를 저장한 뒤 다시 시도해 주세요.', 'keys');
     case 'CREDENTIAL_INVALID': return out('API 키를 쓸 수 없습니다', reason === 'model_unavailable'
       ? '이 키로는 선택한 모델을 쓸 수 없습니다. 다른 모델을 고르거나 키를 확인하세요.'
       : '제공자가 키를 거부했습니다. 키와 결제 상태를 확인해 주세요.', 'keys');
@@ -322,18 +323,20 @@ export const JOB_ERRORS = {
   OUTPUT_INVALID: { title: '모델 출력을 쓸 수 없습니다', body: '출력이 비었거나 형식이 올바르지 않아 저장하지 않았습니다. 호출 비용은 발생했습니다.', retry: true, costRisk: true },
   OUTPUT_TRUNCATED: { title: '모델 출력이 잘렸습니다', body: '출력 한도에 걸려 결과를 쓸 수 없습니다. 호출 비용은 발생했습니다. 파일을 줄여 다시 시도해 보세요.', retry: true, costRisk: true },
   PROVIDER_REFUSED: { title: '모델이 요청을 거절했습니다', body: '안전 정책에 따라 거절됐습니다. 호출 비용은 발생했을 수 있습니다. 다른 모델을 고르면 새로 동의해야 합니다.', retry: true, costRisk: true },
-  PROVIDER_AUTH: { title: 'API 키가 거부됐습니다', body: '제공자가 키를 거부했습니다. 키를 교체한 뒤 다시 실행해 주세요.', retry: true, action: 'keys' },
+  PROVIDER_AUTH: { title: 'API 키가 거부됐습니다', body: '제공자가 키를 거부했습니다. 앱 설정에서 키를 교체한 뒤 다시 실행해 주세요.', retry: true, action: 'keys' },
   PROVIDER_REJECTED: { title: '제공자가 요청을 거절했습니다', body: '모델을 쓸 수 없거나 요청이 허용되지 않았습니다. 비용은 발생하지 않았습니다.', retry: true },
   PROVIDER_RATE_LIMITED: { title: '제공자 요청 한도에 걸렸습니다', body: '재시도 한도를 넘었습니다. 잠시 후 다시 실행해 주세요. 비용은 발생하지 않았습니다.', retry: true },
   PROVIDER_UNAVAILABLE: { title: '제공자가 응답하지 않습니다', body: '재시도 한도를 넘었습니다. 잠시 후 다시 실행해 주세요. 비용은 발생하지 않았습니다.', retry: true },
-  CREDENTIAL_UNAVAILABLE: { title: '사용할 API 키가 없습니다', body: '이 작업에 고정된 키가 삭제됐거나 파기됐습니다. 키를 다시 등록한 뒤 새로 실행해 주세요.', retry: true, action: 'keys' },
+  CREDENTIAL_UNAVAILABLE: { title: '사용할 API 키가 없습니다', body: '앱 설정에서 키를 저장한 뒤 새로 실행해 주세요.', retry: true, action: 'keys' },
+  CREDENTIAL_REQUIRED: { title: 'API 키 없이 실행됐습니다', body: '실행 요청에 API 키가 없었습니다. 앱 설정에서 키를 저장한 뒤 다시 실행해 주세요. 비용은 발생하지 않았습니다.', retry: true, action: 'keys' },
+  INTERRUPTED: { title: '실행이 중단됐습니다', body: '서버가 다시 시작되는 등으로 실행이 끊겼습니다. API 키는 서버에 남지 않으므로 이어서 실행할 수 없습니다. 다시 실행해 주세요.', retry: true },
   PROFILE_CHANGED: { title: '모델 설정이 바뀌었습니다', body: '동의했을 때와 모델의 가격·한도가 달라져 실행하지 않았습니다. 새로 확인하고 동의해 주세요.', retry: true },
   PROFILE_NOT_ALLOWED: { title: '허용되지 않은 모델입니다', body: '관리자가 이 모델을 더 이상 허용하지 않습니다. 다른 모델을 선택해 다시 동의해 주세요.', retry: true },
   ACCESS_REVOKED: { title: '저장소 접근 권한을 잃었습니다', body: '실행 도중 권한이 없어져 결과를 공개하지 않았습니다. 호출 비용은 발생했을 수 있습니다.', retry: false, costRisk: true },
   REAUTH_REQUIRED: { title: 'GitHub 인증이 필요합니다', body: '다시 로그인한 뒤 새로 실행해 주세요.', retry: true, action: 'login' },
-  TRANSFER_NOT_ALLOWED: { title: '코드를 외부로 보낼 수 없습니다', body: '서버 설정·비공개 저장소·정책 때문에 전송이 허용되지 않아 보내지 않았습니다.', retry: false },
+  TRANSFER_NOT_ALLOWED: { title: '코드를 외부로 보낼 수 없습니다', body: '전송 정책 때문에 허용되지 않아 보내지 않았습니다.', retry: false },
   INPUT_EXPIRED: { title: '입력이 만료됐습니다', body: '실행 유효기간이 지나 보내지 않았습니다. 파일을 다시 선택해 새로 준비하세요.', retry: false, action: 'reselect' },
-  PREVIEW_CHANGED: { title: '동의한 내용과 달라졌습니다', body: '동의한 코드 범위와 달라 보내지 않았습니다. 다시 확인하고 동의해 주세요.', retry: false, action: 'reselect' },
+  PREVIEW_CHANGED: { title: '동의한 내용과 달라졌습니다', body: '고정한 커밋에서 다시 가져온 코드가 동의한 내용과 달라 보내지 않았습니다. 다시 준비하고 동의해 주세요.', retry: false, action: 'reselect' },
   INPUT_INTEGRITY: { title: '보관된 코드를 확인할 수 없습니다', body: '무결성을 확인하지 못해 보내지 않았습니다. 새로 준비해 주세요.', retry: false, action: 'reselect' },
   NO_REVIEWABLE_CONTENT: { title: 'AI에 보낼 파일이 없습니다', body: '선택한 파일이 모두 제외돼 보낼 코드가 없습니다.', retry: false, action: 'reselect' },
   INPUT_TOO_LARGE: { title: '모델 입력 한도를 넘습니다', body: '파일을 줄이거나 더 큰 한도의 모델을 고르세요. 비용은 발생하지 않았습니다.', retry: false, action: 'reselect' },

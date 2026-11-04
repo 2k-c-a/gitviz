@@ -16,10 +16,10 @@
 <div class="page active" id="page-network">
   <div class="dash-head">
     <div><div class="dash-title js-repo-title">—</div><div class="dash-sub">협업 네트워크 — 방향과 가중치가 있는 그래프 (공동 수정 0.6 + 리뷰 0.4)</div></div>
-    <div style="display:flex;align-items:center;gap:10px;">
-      <div style="display:flex;align-items:center;gap:7px;">
+    <div class="flex items-center gap-2.5">
+      <div class="flex items-center gap-[7px]">
         <div class="status-dot" id="net-status-dot" style="background:var(--gray);"></div>
-        <span id="net-status" style="font-size:12px;color:var(--text2);">결과 조회 중</span>
+        <span id="net-status" class="text-xs text-muted-foreground">결과 조회 중</span>
       </div>
       <button class="btn-secondary" data-auth="1" id="btn-reanalyze" data-action="openReanalyzeToast">재분석</button>
     </div>
@@ -39,10 +39,10 @@
     </div>
 
     <!-- Force-directed 협업 그래프 -->
-    <div class="panel" style="margin-bottom:14px;">
-      <div class="p-head" style="margin-bottom:6px;">
+    <div class="panel mb-3.5">
+      <div class="p-head mb-1.5">
         <div class="p-title">협업 네트워크</div>
-        <div style="font-size:var(--ui-text-xs);color:var(--text2);">선 굵기 = 관측 강도 · 노드 크기 = 커밋 수 · 색 = 클러스터 · 굵은 테두리 = 허브(매개 중심성 상위)</div>
+        <div class="text-xs text-muted-foreground">선 굵기 = 관측 강도 · 노드 크기 = 커밋 수 · 색 = 클러스터 · 굵은 테두리 = 허브(매개 중심성 상위)</div>
       </div>
       <div id="net-empty-note"></div>
       <svg class="network-svg" id="net-graph-svg"></svg>
@@ -51,9 +51,9 @@
 
     <!-- 상위 협업 쌍 -->
     <div class="panel">
-      <div class="p-head" style="margin-bottom:14px;">
+      <div class="p-head mb-3.5">
         <div class="p-title">상위 협업 쌍</div>
-        <div style="font-size:var(--ui-text-xs);color:var(--text2);">협업 강도 기준</div>
+        <div class="text-xs text-muted-foreground">협업 강도 기준</div>
       </div>
       <div id="net-top-pairs"></div>
     </div>

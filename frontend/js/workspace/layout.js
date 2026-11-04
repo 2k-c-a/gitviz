@@ -2,7 +2,7 @@
  * Presentation only. Every action still runs through the original module handlers and element ids;
  * this module never calls the agent or the network and never executes or approves anything.
  */
-import { readWorkspaceEntry } from '/web/js/platform/workspace-navigation.js';
+import { isSettingsEntry, readWorkspaceEntry } from '/web/js/platform/workspace-navigation.js';
 
 const $ = id => document.getElementById(id);
 const main = document.querySelector('main');
@@ -264,4 +264,5 @@ watch($('status'), () => {
 
 const entry = readWorkspaceEntry(location.href);
 syncReviewFields(); renderProjects(); syncProjectLabels(); syncState();
-show(entry ? 'inbox' : 'projects', 'overview', { user: !!entry });
+const settingsEntry = !entry && isSettingsEntry(location.href);
+show(entry ? 'inbox' : settingsEntry ? 'settings' : 'projects', 'overview', { user: !!entry || settingsEntry });

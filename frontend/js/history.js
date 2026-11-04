@@ -1,4 +1,5 @@
 import { request } from './platform/transport.js';
+import { setText } from './ui/components.js';
 /* ── 분석 이력 · 두 결과 비교 페이지 ──
    hist-tbody가 있을 때(=분석 이력 페이지)만 동작한다.
    - GET /repositories/{id}/snapshots        : 메타데이터만 최신순, before_id 페이지네이션(결과 payload는 받지 않는다)
@@ -22,7 +23,6 @@ let CURRENT = null;       // 지금 보고 있던 결과 (주소의 snapshot)
 let CMP = null;           // {before, after, data, changes, filter, loading}
 
 const tag = (tone, text, title = '') => `<span class="cx-tag ${tone}"${title ? ` title="${esc(title)}"` : ''}>${esc(text)}</span>`;
-const setText = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
 
 function showError(err) {
   const box = document.getElementById('hist-error');

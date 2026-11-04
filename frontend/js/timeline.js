@@ -1,9 +1,9 @@
 import { bindPanel, chart, contributorList, action } from './ui/analytics-view.js';
-import { element } from './ui/components.js';
+import { element, setText } from './ui/components.js';
 /* ── 분석 개요의 개발 활동 영역: 결과 API → DOM/차트 연동 ──
    chart-timeline 캔버스가 있을 때(=분석 개요 페이지)만 동작한다. */
 import { textC, tooltipBg, tooltipBorder } from './utils.js';
-import { fmtWindow, windowDays } from './fmt.js';
+import { esc, num, fmtWindow, windowDays } from './fmt.js';
 import { renderLoadError } from './page-context.js';
 import {
   getRepoId,
@@ -26,8 +26,6 @@ if (timelineCanvas && typeof Chart !== 'undefined') {
 }
 
 /* ── helpers ── */
-const num = (n) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmtDate = (iso) => {
   if (!iso) return '';
   const d = new Date(iso);
@@ -86,13 +84,35 @@ function renderHeader(s, snap) {
 }
 
 /* ── 타임라인 차트 ── */
+// 세 지표를 같은 월 축의 작은 그래프 3개로 함께 보여 준다. 단위와 크기가 달라(건·명·%) 한 그래프의 여러 y축에 겹치지 않는다.
+const TIMELINE_SERIES = [
+  { key: 'commits', label: '커밋 수 (건)', color: 1, type: 'bar' },
+  { key: 'active_contributors', label: '활성 기여자 (명)', color: 2, type: 'line', id: 'chart-timeline-contributors' },
+  { key: 'bugfix_pct', label: '버그 수정 분류 비율 (%)', color: 4, type: 'line', percent: true, id: 'chart-timeline-bugfix' },
+];
+
+function timelineCanvases() {
+  const first = timelineCanvas.parentElement;
+  first.classList.add('activity-chart-multi');
+  if (!first.previousElementSibling?.classList.contains('activity-chart-title')) first.before(element('div', 'activity-chart-title', TIMELINE_SERIES[0].label));
+  let last = first;
+  return TIMELINE_SERIES.map((series, i) => {
+    if (i === 0) return timelineCanvas;
+    let canvas = document.getElementById(series.id);
+    if (!canvas) {
+      const wrap = element('div', 'activity-chart activity-chart-multi');
+      canvas = element('canvas'); canvas.id = series.id; wrap.append(canvas);
+      last.after(element('div', 'activity-chart-title', series.label), wrap);
+    }
+    last = canvas.parentElement;
+    return canvas;
+  });
+}
+
 function renderTimelineChart(t) {
   const panel = timelineCanvas.closest('.panel');
   const controls = element('div', 'analysis-toolbar');
-  const metric = element('select'); metric.setAttribute('aria-label', '월별 지표');
-  for (const [key, label] of [['commits', '커밋 수 (건)'], ['active_contributors', '활성 기여자 (명)'], ['bugfix_pct', '버그 수정 분류 비율 (%)']]) {
-    const option = element('option', '', label); option.value = key; metric.append(option);
-  }
+  const canvases = timelineCanvases();
   const range = element('select'); range.setAttribute('aria-label', '스냅샷 내 표시할 관측 월 수');
   for (const [value, label] of [[0, '관측 구간 전체'], [3, '마지막 3개 관측 월'], [6, '마지막 6개 관측 월']]) {
     const option = element('option', '', label); option.value = value; range.append(option);
@@ -102,18 +122,22 @@ function renderTimelineChart(t) {
   const rows = element('div', 'analysis-list'); numbers.append(rows);
   const draw = () => {
     const offset = Number(range.value) ? Math.max(0, t.months.length - Number(range.value)) : 0;
-    const months = t.months.slice(offset), values = (t[metric.value] || []).slice(offset);
+    const months = t.months.slice(offset);
     const select = i => { selected.textContent = `${months[i]} · 커밋 ${num(t.commits[offset+i])}건 · 활성 기여자 ${num(t.active_contributors?.[offset+i])}명 · 버그 수정 분류 ${t.bugfix_pct?.[offset+i] == null ? '—' : t.bugfix_pct?.[offset+i] + '%'}`; };
-    timelineCanvas.parentElement.hidden = !months.length;
-    if (!months.length) Chart.getChart(timelineCanvas)?.destroy();
-    else chart(timelineCanvas, { labels: months, values, label: metric.selectedOptions[0].textContent, color: metric.value === 'commits' ? 1 : metric.value === 'active_contributors' ? 2 : 4, percent: metric.value === 'bugfix_pct', type: metric.value === 'commits' ? 'bar' : 'line', onSelect: select });
-    rows.replaceChildren(...months.map((month, i) => action(`${month} · ${values[i] == null ? '—' : values[i]}`, () => select(i))));
+    TIMELINE_SERIES.forEach((series, i) => {
+      const canvas = canvases[i];
+      canvas.parentElement.hidden = !months.length; canvas.parentElement.previousElementSibling.hidden = !months.length;
+      if (!months.length) { Chart.getChart(canvas)?.destroy(); return; }
+      chart(canvas, { labels: months, values: (t[series.key] || []).slice(offset), label: series.label, color: series.color, percent: !!series.percent, type: series.type, onSelect: select, alignBars: true });
+    });
+    const value = (key, i) => t[key]?.[offset + i] == null ? '—' : num(t[key][offset + i]);
+    rows.replaceChildren(...months.map((month, i) => action(`${month} · 커밋 ${value('commits', i)}건 · 활성 기여자 ${value('active_contributors', i)}명 · 버그 수정 ${value('bugfix_pct', i)}%`, () => select(i))));
     selected.textContent = months.length ? '차트의 데이터 또는 월별 수치를 선택하세요. 표시 범위는 현재 스냅샷 안에서만 바뀝니다.' : '관측 구간에 커밋이 없습니다.';
   };
   controls.hidden = !t.months.length; numbers.hidden = !t.months.length;
-  controls.append(metric, range); panel.querySelector('.p-note').after(controls);
+  controls.append(range); panel.querySelector('.p-note').after(controls);
   panel.querySelector('.legend')?.remove(); panel.append(selected, numbers);
-  metric.addEventListener('change', draw); range.addEventListener('change', draw); draw();
+  range.addEventListener('change', draw); draw();
 }
 
 /* ── 커밋 유형 도넛 + 범례 ── */
@@ -216,7 +240,3 @@ function renderHeatmap(data) {
   wrap.append(details);
 }
 
-function setText(id, text) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = text;
-}

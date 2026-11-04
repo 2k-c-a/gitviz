@@ -7,6 +7,11 @@ PENDING_TIMEOUT_SECONDS = 15 * 60
 RUNNING_TIMEOUT_SECONDS = 6 * 3600
 RATE_LIMIT_GRACE_SECONDS = 120
 LOCK_NAMESPACE = 1735289201
+# 분석 작업의 Celery 시간 제한. 강제 종료 시각을 응답 없음 판정(RUNNING_TIMEOUT_SECONDS)과 맞춰, 작업이
+# 응답 없음으로 보일 때는 워커가 이미 끝났고 저장소 잠금도 풀려 있게 한다. 소프트 제한은 그보다 10분 먼저
+# 걸려 작업을 실패로 기록할 시간을 준다. prefork 풀에서만 동작한다(solo 풀·Windows에서는 Celery가 적용하지 않음).
+ANALYSIS_TIME_LIMIT_SECONDS = RUNNING_TIMEOUT_SECONDS
+ANALYSIS_SOFT_TIME_LIMIT_SECONDS = RUNNING_TIMEOUT_SECONDS - 600
 
 
 def _utc(value):

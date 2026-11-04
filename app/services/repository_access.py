@@ -82,7 +82,15 @@ def github_metadata(url, token=None, *, public_fallback=False):
     return data
 
 
-def verify_repository_access(db, repository_id, user_id=None, *, write=False):
+def verify_repository_access(db, repository_id, user_id=None, *, write=False, live=None):
+    """저장소 접근을 확인한다.
+
+    live=False(쓰기가 아닌 조회의 기본값): 마지막 확인에서 공개(is_private=False)로 저장된 저장소는
+    GitHub에 다시 묻지 않고 저장된 값을 믿는다. 그래서 GitHub 장애·호출 한도 중에도 저장된 결과를 볼 수 있다.
+    공개 여부는 분석·재분석·등록 때(remember_access) 갱신되므로, 그 사이에 비공개로 바뀐 저장소는
+    다음 갱신 전까지 공개로 취급된다(2026-11-03 소유자 결정).
+    비공개이거나 아직 확인되지 않은(None) 저장소, 쓰기, live=True 호출은 항상 GitHub에 확인한다.
+    """
     repo = db.query(Repository).filter(Repository.id == repository_id).first()
     if not repo:
         raise HTTPException(404, "저장소를 찾을 수 없거나 접근 권한이 없습니다.")
@@ -90,6 +98,11 @@ def verify_repository_access(db, repository_id, user_id=None, *, write=False):
         raise HTTPException(409,"이전 저장소의 GitHub 식별 정보가 확인되지 않았습니다. 저장소 URL을 새로 등록해 주세요.")
     if write and not user_id:
         raise HTTPException(401, "분석을 요청하려면 로그인해 주세요.")
+    if live is None:
+        live = write
+    if not live and repo.is_private is False:
+        return repo, {"id": repo.github_id, "private": False, "canonical_url": repo.url,
+                      "default_branch": repo.default_branch, "name": repo.name}
     personal = user_github_token(db, user_id) if user_id else None
     # 공용 토큰은 공개 여부 확인만 수행한다. private=true이면 개인 인증으로 재확인한다.
     metadata = github_metadata(repo.url, personal or os.getenv("GITHUB_TOKEN"), public_fallback=not personal)
@@ -114,5 +127,18 @@ def remember_access(db, repo, metadata, user_id):
     repo.is_private = metadata["private"]
     repo.visibility_checked_at = datetime.now(timezone.utc)
     repo.default_branch = metadata.get("default_branch") or repo.default_branch
-    if user_id and not db.query(RepositoryAccess).filter_by(repository_id=repo.id, user_id=user_id).first():
-        db.add(RepositoryAccess(repository_id=repo.id, user_id=user_id))
+    if user_id:
+        access = db.query(RepositoryAccess).filter_by(repository_id=repo.id, user_id=user_id).first()
+        if not access:
+            db.add(RepositoryAccess(repository_id=repo.id, user_id=user_id))
+        elif access.hidden_at is not None:
+            access.hidden_at = None  # 다시 분석을 요청하면 '내 분석 프로젝트'에 다시 보인다.
+
+
+def hide_from_my_projects(db, repository_id, user_id):
+    """'내 분석 프로젝트' 목록에서만 숨긴다. 접근 기록·분석 결과·커뮤니티는 건드리지 않는다."""
+    access = db.query(RepositoryAccess).filter_by(repository_id=repository_id, user_id=user_id).first()
+    if not access:
+        raise HTTPException(404, "내 분석 프로젝트에 없는 저장소입니다.")
+    if access.hidden_at is None:
+        access.hidden_at = datetime.now(timezone.utc)

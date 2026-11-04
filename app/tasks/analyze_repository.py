@@ -3,7 +3,6 @@ from bisect import bisect_right
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional
 
-from cryptography.exceptions import InvalidTag
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 
@@ -41,29 +40,16 @@ from app.collectors.github.graphql_pr_collector import (
 from app.collectors.github.release_collector import collect_releases
 from app.collectors.identity.resolver import run_identity_resolution
 from app.tasks.progress import ProgressReporter
-from app.services.job_lifecycle import TERMINAL_STATUSES
+from celery.exceptions import SoftTimeLimitExceeded
+
+from app.services.job_lifecycle import (TERMINAL_STATUSES, ANALYSIS_TIME_LIMIT_SECONDS,
+                                        ANALYSIS_SOFT_TIME_LIMIT_SECONDS)
+from app.utils.normalize import normalize_hash, normalize_path
 
 
 # -----------------------
-# 유틸: 정규화 및 헬퍼
+# 유틸: 헬퍼
 # -----------------------
-def normalize_hash(h: str) -> str:
-    if not h:
-        return ""
-    return h.strip().lower()
-
-
-def normalize_path(p: str) -> str:
-    if not p:
-        return ""
-    p = p.strip()
-    p = p.replace("\\", "/")
-    p = os.path.normpath(p).replace("\\", "/")
-    if p == ".":
-        return ""
-    return p
-
-
 def chunked(iterable: List, size: int):
     """Yield successive chunks from iterable."""
     for i in range(0, len(iterable), size):
@@ -115,7 +101,7 @@ def _resolve_github_token(db, user_id: Optional[str], is_private=False) -> Optio
 # -----------------------
 # 메인 태스크
 # -----------------------
-@celery.task
+@celery.task(time_limit=ANALYSIS_TIME_LIMIT_SECONDS, soft_time_limit=ANALYSIS_SOFT_TIME_LIMIT_SECONDS)
 def analyze_repository(repository_id: int, user_id: str | None = None, job_id: int | None = None):
     """
     Repository 분석 태스크
@@ -158,7 +144,8 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
             return  # 완료/실패/교체된 작업의 지연 전달은 새 작업을 되살리지 않는다.
         if str(job.triggered_by_user_id or "") != str(user_id or ""):
             raise RuntimeError("작업 요청자와 수집 인증 사용자가 일치하지 않습니다.")
-        repository, metadata = verify_repository_access(db,repository_id,user_id)
+        # 수집 직전에는 저장된 공개 여부를 믿지 않고 GitHub에 확인해 저장값을 갱신한다.
+        repository, metadata = verify_repository_access(db,repository_id,user_id,live=True)
         remember_access(db,repository,metadata,job.triggered_by_user_id)
         existing_parameters = job.parameters or {}
         job.parameters = {**existing_parameters, **analysis_parameters(existing_parameters.get('window_start'), existing_parameters.get('window_end'))}
@@ -179,7 +166,6 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
         github_token = _resolve_github_token(db, user_id, repository.is_private)
 
         # 2) Clone repo (private 이면 토큰으로 인증)
-        repo_name = repository.url.rstrip("/").split("/")[-1].removesuffix(".git")
         repo_path = clone_repository(repository.url, repository.id, token=github_token)
         print("📁 repo_path:", repo_path)
 
@@ -731,9 +717,6 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
         }
         print(f"  PRs already collected (skip): {len(prs_with_details)}")
 
-        def normalize_sha(h):
-            return h.strip().lower() if h else ""
-
         def _flush_pr_rows():
             nonlocal pr_commit_rows, pr_review_rows, pr_file_rows
             if pr_commit_rows:
@@ -761,7 +744,7 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
 
             # PR Commits
             for sha_raw in details["commits"]:
-                sha = normalize_sha(sha_raw)
+                sha = normalize_hash(sha_raw)
                 key = (pr_id, sha)
                 if key in existing_pr_commit_keys:
                     continue
@@ -1024,7 +1007,9 @@ def analyze_repository(repository_id: int, user_id: str | None = None, job_id: i
             )
             if failed_job:
                 failed_job.status = "failed"
-                failed_job.error_message = str(e)
+                failed_job.error_message = (
+                    f"분석 시간 제한({ANALYSIS_TIME_LIMIT_SECONDS // 3600}시간)을 넘어 중단했습니다."
+                    if isinstance(e, SoftTimeLimitExceeded) else str(e))
                 failed_job.completed_at = datetime.now(timezone.utc)
             db.commit()
         except Exception:

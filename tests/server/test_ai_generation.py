@@ -24,10 +24,9 @@ import httpx2  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 from app.schemas.ai import ErrorCode, canonical_hash  # noqa: E402
-from app.services.ai import credentials, generation_service, input_store, job_runner, job_service, token_budget  # noqa: E402
+from app.services.ai import generation_service, input_store, job_runner, job_service, token_budget  # noqa: E402
 from app.services.ai.access import AIError  # noqa: E402
 from app.services.ai.providers import registry  # noqa: E402
-from app.tasks import ai_generate  # noqa: E402,F401  (summary·review handler 등록)
 
 PROFILE = registry.get_profile(C.OPUS)
 USER_KEY = 'sk-ant-api03-GENERATIONKEY0123456789abcdef'
@@ -50,7 +49,8 @@ def message(text_, usage=USAGE, stop='end_turn'):
 class Gen(S.InputCase):
     def setUp(self):
         super().setUp()
-        self._env2 = S.ai_env(AI_ALLOW_EXTERNAL_TRANSFER=1, AI_USER_MONTHLY_BUDGET=20, AI_SERVER_MONTHLY_BUDGET=0)
+        self._env2 = S.ai_env()
+        job_runner.load_handlers()                  # summary·review handler 등록(generation_service)
         self._env2.start()
         self.events, self.http, self.api_keys = [], [], []
         self.fail_authorize = {}          # n번째 authorize 호출에서 낼 오류
@@ -116,7 +116,6 @@ class Gen(S.InputCase):
                   force=False, manifest_hash=None):
         if input_id is None:
             _, _, input_id, _ = self.prepared(owner, repo, now=datetime.now(timezone.utc), pr_number=pr_number)
-        C.ensure_credential(self.db, owner, key=key, profile_id=profile_id)
         manifest_hash = manifest_hash or self.input_row(input_id)['manifest_hash'].strip()
         pinned = C.pinned_for(self.db, owner, repo, input_id, profile_id=profile_id, manifest_hash=manifest_hash)
         job = job_service.create_job(
@@ -124,10 +123,12 @@ class Gen(S.InputCase):
             fingerprint=canonical_hash([kind, str(uuid4())]), route='POST /api/ai/v1/jobs', idempotency_key=uuid4().hex,
             body_hash=canonical_hash(str(uuid4())), pinned=pinned, force_regenerate=force).job
         self.output = self.output or self.valid_output(kind, job.id)
-        return SimpleNamespace(owner=owner, repo=repo, input_id=input_id, job=job, kind=kind)
+        # AD-33: 서버는 key를 저장하지 않는다. 앱이 실행 요청 헤더로 보낸 key가 실행 스레드에 메모리로만 넘어간다.
+        return SimpleNamespace(owner=owner, repo=repo, input_id=input_id, job=job, kind=kind, key=key)
 
     def handle_of(self, job_id, path='main.py'):
-        stub = SimpleNamespace(session_factory=S.Session, lease=SimpleNamespace(job_id=job_id))
+        stub = SimpleNamespace(session_factory=S.Session, lease=SimpleNamespace(job_id=job_id), api_key=USER_KEY,
+                               raise_if_stopped=lambda: None)
         info = generation_service._load_job(stub)
         _, _, sent, _ = generation_service._prepare(stub, info)
         return next(f.handle for f in sent.files if f.path == path)
@@ -149,9 +150,10 @@ class Gen(S.InputCase):
         base.update(over)
         return base
 
-    def run_job(self, world):
+    def run_job(self, world, api_key=...):
         self.db.rollback()
-        return job_runner.run_job(world.job.id, session_factory=S.Session)
+        key = getattr(world, 'key', USER_KEY) if api_key is ... else api_key
+        return job_runner.run_job(world.job.id, session_factory=S.Session, api_key=key)
 
     def rows(self, sql, **params):
         self.db.rollback()
@@ -341,54 +343,22 @@ class Revalidation(Gen):
         self.assertEqual((self.http, self.job_row(w.job.id)['status']), ([], 'retry_wait'))
         self.fail_authorize[2] = AIError(ErrorCode.REAUTH_REQUIRED, 'login')
 
-    def test_key_deleted_while_access_is_being_checked_cancels_before_any_transfer(self):
+    def test_run_without_a_key_fails_without_calling_the_provider(self):
+        # 앱이 key를 보내지 않은 실행(서버 재시작 뒤 이어받기 등)은 제공자를 부르지 않고 CREDENTIAL_REQUIRED로 닫는다.
         w = self.world('review')
-
-        def delete_key():
-            with S.Session() as db:
-                credentials.delete_credential(db, w.owner, 'anthropic')
-        self.on_authorize[2] = delete_key                                                  # count_tokens 직전 확인 중에 삭제
-        self.assertEqual(self.run_job(w), 'cancelled')
-        self.assertEqual(self.http, [])
-        self.assertEqual(self.job_row(w.job.id)['status'], 'cancelled')
-        self.assertNoResult()
-        self.assertEqual(self.rows('SELECT count(*) AS n FROM ai_credential_versions WHERE encrypted_key IS NOT NULL')[0]['n'], 0)
-
-    def test_key_deleted_after_count_tokens_prevents_the_generation_call(self):
-        w = self.world('review')
-
-        def delete_key():
-            with S.Session() as db:
-                credentials.delete_credential(db, w.owner, 'anthropic')
-        self.on_http['/count_tokens'] = delete_key
-        self.assertEqual(self.run_job(w), 'cancelled')
-        self.assertEqual([h[0].rsplit('/', 1)[-1] for h in self.http], ['count_tokens'])
-        self.assertEqual((self.reservations(), self.budget()), ([], {}))
-        self.assertNoResult()
-
-    def test_purged_key_without_a_cancel_is_still_refused(self):
-        """삭제가 key 파기를 먼저 커밋하고 취소는 뒤에 하는 사이: 파기만으로도 호출하지 않는다."""
-        w = self.world('review')
-
-        def purge():
-            with S.Session() as db:
-                db.execute(text("""UPDATE ai_credential_versions SET status = 'deleted', encrypted_key = NULL,
-                                   key_version = NULL, secret_purged_at = now(), retired_at = now()"""))
-                db.commit()
-        self.on_http['/count_tokens'] = purge
-        self.assertEqual(self.run_job(w), 'failed')
-        self.assertEqual(self.job_row(w.job.id)['error_code'], 'CREDENTIAL_UNAVAILABLE')
-        self.assertEqual([h[0].rsplit('/', 1)[-1] for h in self.http], ['count_tokens'])
+        self.assertEqual(self.run_job(w, api_key=None), 'failed')
+        self.assertEqual((self.http, self.job_row(w.job.id)['error_code']), ([], 'CREDENTIAL_REQUIRED'))
         self.assertEqual(self.reservations(), [])
+        self.assertNoResult()
 
-    def test_deleted_key_before_start_fails_without_calling_the_provider(self):
+    def test_key_is_never_written_to_the_database(self):
         w = self.world('review')
-        with S.Session() as db:
-            db.execute(text("""UPDATE ai_credential_versions SET status = 'deleted', encrypted_key = NULL,
-                               key_version = NULL, secret_purged_at = now(), retired_at = now()"""))
-            db.commit()
-        self.assertEqual(self.run_job(w), 'failed')
-        self.assertEqual((self.http, self.job_row(w.job.id)['error_code']), ([], 'CREDENTIAL_UNAVAILABLE'))
+        self.assertEqual(self.run_job(w), 'succeeded')
+        dump = ' '.join(str(dict(r)) for table in ('ai_jobs', 'ai_attempts', 'ai_results', 'audit_events', 'ai_inputs',
+                                                   'ai_input_files', 'usage_reservations')
+                        for r in self.rows(f'SELECT * FROM {table}'))
+        self.assertNotIn(USER_KEY, dump)
+        self.assertEqual(self.rows('SELECT count(*) AS n FROM ai_credential_versions')[0]['n'], 0)
 
     def test_cancel_requested_before_count_tokens_sends_nothing(self):
         w = self.world('review')
@@ -427,7 +397,8 @@ class Revalidation(Gen):
         self.bypass("UPDATE ai_input_files SET content_hash = repeat('0', 64) WHERE input_id = :i AND path = 'main.py'",
                     i=w.input_id)
         self.assertEqual(self.run_job(w), 'failed')
-        self.assertEqual((self.http, self.job_row(w.job.id)['error_code']), ([], 'INPUT_INTEGRITY'))
+        # 고정 SHA에서 다시 가져온 코드가 사용자가 확인한 코드와 다르면 보내지 않는다(AD-33, 원문 미보관)
+        self.assertEqual((self.http, self.job_row(w.job.id)['error_code']), ([], 'PREVIEW_CHANGED'))
 
     def test_count_tokens_over_the_limit_is_rejected_before_any_reservation(self):
         w = self.world('review')
@@ -496,20 +467,12 @@ class Failures(Gen):
         self.assertEqual(self.run_job(w), 'skipped')                                         # 같은 작업은 다시 실행되지 않는다
         self.assertEqual(len(self.messages_calls()), 1)
 
-    def test_budget_limit_stops_before_the_call(self):
+    def test_no_server_spending_cap_applies_to_the_users_own_key(self):
+        # AD-33: 비용은 사용자의 제공자 계정에서 통제한다. 예전 예산 환경변수가 남아 있어도 막지 않고 사용 기록만 남긴다.
         w = self.world('review')
-        with S.ai_env(AI_USER_MONTHLY_BUDGET='0.01'):
-            self.assertEqual(self.run_job(w), 'failed')
-        self.assertEqual(self.job_row(w.job.id)['error_code'], 'BUDGET_LIMIT')
-        self.assertEqual(([h[0].rsplit('/', 1)[-1] for h in self.http], self.reservations()), (['count_tokens'], []))
-
-    def test_shared_server_budget_applies_only_when_enabled(self):
-        w = self.world('review')
-        with S.ai_env(AI_SERVER_MONTHLY_BUDGET='0.01'):
-            self.assertEqual(self.run_job(w), 'failed')
-        self.assertEqual(self.job_row(w.job.id)['error_code'], 'BUDGET_LIMIT')
-        w2 = self.world('review', pr_number=9)
-        self.assertEqual(self.run_job(w2), 'succeeded')                                      # 꺼져 있으면(0) 서버 예산과 무관
+        with S.ai_env(AI_USER_MONTHLY_BUDGET='0.01', AI_SERVER_MONTHLY_BUDGET='0.01'):
+            self.assertEqual(self.run_job(w), 'succeeded')
+        self.assertEqual(self.budget(), {'user': (0, self.expected_cost())})
 
     def test_regeneration_after_a_failed_attempt_reserves_again_and_keeps_costs_separate(self):
         w = self.world('review')
@@ -602,7 +565,7 @@ class Recovery(Gen):
                 self.run_job(w)
         self.assertEqual(self.reservations(), ['settled'])
         stats = self.expire_and_recover(w)
-        self.assertEqual((stats['result_lost'], stats['retried']), (1, 0))
+        self.assertEqual((stats['result_lost'], stats['interrupted']), (1, 0))
         job = self.job_row(w.job.id)
         self.assertEqual((job['status'], job['error_code']), ('failed', 'RESULT_LOST'))
         self.assertEqual(self.run_job(w), 'skipped')                                          # 다시 실행되지 않는다
@@ -611,13 +574,14 @@ class Recovery(Gen):
         self.assertEqual(self.budget()['user'], (0, self.expected_cost()))                    # 비용은 한 번만 기록
         self.assertEqual(self.rows('SELECT status FROM ai_attempts WHERE job_id = :j', j=w.job.id)[0]['status'], 'failed')
 
-    def test_crash_before_the_call_is_still_retried_and_after_the_call_never_by_fail_job(self):
+    def test_crash_before_the_call_is_closed_as_interrupted(self):
+        # key는 사라진 실행 스레드의 메모리에만 있었으므로 이어서 실행하지 않는다. 사용자가 앱에서 다시 실행한다.
         w = self.world('review')
         with patch('app.services.ai.generation_service._reserve', side_effect=WorkerCrash()):
             with self.assertRaises(WorkerCrash):                                             # 예약 전 중단: 호출 없음
                 self.run_job(w)
-        self.assertEqual(self.expire_and_recover(w)['retried'], 1)
-        self.assertEqual(self.job_row(w.job.id)['status'], 'retry_wait')
+        self.assertEqual(self.expire_and_recover(w)['interrupted'], 1)
+        self.assertEqual((self.job_row(w.job.id)['status'], self.job_row(w.job.id)['error_code']), ('failed', 'INTERRUPTED'))
         self.assertEqual(self.http[-1][0].rsplit('/', 1)[-1], 'count_tokens')                # 생성 호출은 없었다
         self.assertEqual(self.messages_calls(), [])
 

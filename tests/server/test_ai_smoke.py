@@ -54,7 +54,7 @@ class Smoke(unittest.TestCase):
 
     def setUp(self):
         requests.post(self.base + '/__reset', timeout=5)
-        self._env = patch.dict(os.environ, {'AI_TEST_PROVIDER_BASE_URL': self.base, 'AI_ENABLED': '0'})
+        self._env = patch.dict(os.environ, {'AI_TEST_PROVIDER_BASE_URL': self.base})
         self._env.start()
 
     def tearDown(self):

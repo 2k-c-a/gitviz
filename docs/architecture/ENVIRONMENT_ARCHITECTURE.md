@@ -1,6 +1,8 @@
-# 환경 분리 아키텍처 (2차 · 설계만, 적용 없음)
+# 환경 분리 아키텍처 (2차 설계)
 
 작성일: 2026-10-30 · 기준 커밋: `65f1b62` · [문서 안내](../index.md)
+
+상태(2026-11-04 갱신): 2차 설계 기록이다. 결정은 3차 문서([최종 아키텍처](FINAL_ARCHITECTURE.md)·[환경 매트릭스](../deployment/FINAL_ENVIRONMENT_MATRIX.md))가 대체했다. 본문의 `scripts/…`·`dist/`·`desktop/out` 경로는 4차 이전 위치이며, 지금은 `tools/`·`tests/`·`build-output/`에 있다. 그 뒤 구현된 내용은 §2.4처럼 "확인 (날짜 변경)"으로 덧붙인다. 환경 가드(§3.3, R1)와 데이터 경로 이전(§3.2, R3)은 아직 적용되지 않았다.
 
 선행 문서(1차): [구조 감사](PROJECT_STRUCTURE_AUDIT.md) · [현재 아키텍처](CURRENT_ARCHITECTURE.md) · [의존성 분석](DEPENDENCY_ANALYSIS.md) · [제안 아키텍처](PROPOSED_ARCHITECTURE.md) · [이동 후보](FILE_MIGRATION_CANDIDATES.md)
 같은 2차 문서: [개발 환경 설정](../development/DEVELOPMENT_SETUP.md) · [빌드와 릴리스](../deployment/BUILD_AND_RELEASE.md) · [설치 안내](../deployment/INSTALLATION_GUIDE.md) · [데이터 저장 정책](../deployment/DATA_STORAGE_POLICY.md)
@@ -111,7 +113,7 @@ Roaming이 부적절한 이유:
 | 앱 버전, 업데이트 릴리스 URL 접두어, 서명 주체(publisher) | 가능 | 빌드 설정 |
 | JSON Schema, 엔드포인트 허용 목록 | 가능 | 번들(이미 그러함) |
 | `DATABASE_URL*`, DB 비밀번호 | **불가** | 서버 시크릿 저장소 |
-| `GITHUB_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `SESSION_SECRET_KEY`, `DESKTOP_AUTH_RESPONSE_KEY`, `VOICE_TURN_SECRET`, `AI_*_ENCRYPTION_KEYS` | **불가** | 서버 시크릿 저장소 |
+| `GITHUB_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `SESSION_SECRET_KEY`, `DESKTOP_AUTH_RESPONSE_KEY`, `VOICE_TURN_SECRET` | **불가** | 서버 시크릿 저장소 (AI 암호화 키는 AD-33에서 없어졌다) |
 | 코드 서명 인증서와 비밀번호(`GITVIZ_SIGN_PFX*`) | **불가** | 빌드 환경 시크릿(CI 시크릿) |
 | 사용자의 AI 제공자 키 | 사용자 기기에서 DPAPI로 암호화해 저장 | `data\`의 보호 저장소 |
 
@@ -127,7 +129,7 @@ Roaming이 부적절한 이유:
 | 디버그 | 개발자 도구 허용 | 비허용 | 비허용(`--remote-debugging-port`·`--inspect` 등을 주면 패키지 실행이 즉시 종료, `desktop/src/debug-guard.ts`) |
 | 저장 경로 | 개발 전용 데이터 폴더(임시/`GitViz-Dev`) | 임시 폴더 | `%LOCALAPPDATA%\GitViz\Workspace\…` |
 | 세션 쿠키 | `SESSION_COOKIE_SECURE=0` 허용 | 테스트용 | 반드시 `1`, `https_only` |
-| AI | 기본 꺼짐, 필요 시 로컬 모델 | 가짜 제공자(`ai_fake_provider.py`) | 정책에 따름(`AI_ALLOW_EXTERNAL_TRANSFER` 명시) |
+| AI | 앱 설정의 사용자 key 또는 로컬 모델 | 가짜 제공자(`ai_fake_provider.py`) | 앱 설정의 사용자 key(서버 AI key 없음, AD-33) |
 | 데스크톱 인증 | 선택 | 선택 | `DESKTOP_AUTH_ENABLED=1` + 응답 키 설정 필수 |
 | 업데이트 | 비활성 | 비활성 | 현재 비활성(수동 검증만) |
 

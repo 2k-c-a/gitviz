@@ -42,14 +42,13 @@ def require_test_database(env=None):
         'AI_DAILY_JOB_LIMIT': 'daily_job_limit',
         'AI_USER_MONTHLY_BUDGET': 'user_monthly_budget',
         'AI_SERVER_MONTHLY_BUDGET': 'server_monthly_budget',
-        'AI_CREDENTIAL_VERIFY_LIMIT_PER_HOUR': 'credential_verify_limit_per_hour',
-        'AI_ENABLED': 'enabled',
-        'AI_ALLOW_EXTERNAL_TRANSFER': 'allow_external_transfer',
     }.items():
         value = getattr(defaults, field)
         env[name] = str(int(value)) if isinstance(value, bool) else str(value)
     # Not an AISettings field: registry's dynamic local-runtime flag defaults to '0'.
     env['AI_KOBOLDCPP_ENABLED'] = '0'
+    # 테스트가 정리 시점을 직접 정한다(API 프로세스의 주기 정리 스레드를 띄우지 않는다).
+    env['AI_MAINTENANCE_INTERVAL_SECONDS'] = '0'
     return url
 
 

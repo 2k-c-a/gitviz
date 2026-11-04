@@ -103,6 +103,8 @@ export function createAiClient({ fetchImpl = (u, o) => request(u, o), now = () =
       });
     } catch (e) {
       if (e?.name === 'AbortError') throw e;
+      // 앱: main이 저장된 AI key를 찾지 못하면 요청을 보내지 않는다(AI 분석 BYOK).
+      if (/AI_KEY_REQUIRED/.test(String(e?.message || ''))) throw new AiApiError('앱 설정에서 이 AI 제공자의 API 키를 먼저 저장하세요.', { status: 0, code: 'AI_KEY_REQUIRED' });
       throw new AiApiError('서버에 연결할 수 없습니다.', { status: 0, code: 'NETWORK', retryable: true });
     }
     try {
@@ -149,12 +151,6 @@ export function createAiClient({ fetchImpl = (u, o) => request(u, o), now = () =
       try { return await res.json(); } catch { throw new AiApiError('서버 응답을 해석할 수 없습니다.', { status: res.status, code: 'BAD_RESPONSE' }); }
     },
     providers: (signal) => get(`${BASE}/providers`, null, signal),
-    credentials: (signal) => get(`${BASE}/credentials`, null, signal),
-    putCredential: (provider, { apiKey, profileId, verify = true }, signal) =>
-      send('PUT', `${BASE}/credentials/${id(provider)}`, { body: { api_key: apiKey, profile_id: profileId || null, verify }, signal }),
-    setPreferredProfile: (provider, profileId, signal) =>
-      send('PATCH', `${BASE}/credentials/${id(provider)}`, { body: { profile_id: profileId }, signal }),
-    deleteCredential: (provider, signal) => send('DELETE', `${BASE}/credentials/${id(provider)}`, { signal }),
     usage: (signal) => get(`${BASE}/usage`, null, signal),
 
     pulls: (repositoryId, { state = 'open', cursor = null, limit = 30 } = {}, signal) =>
@@ -193,5 +189,20 @@ export function createAiClient({ fetchImpl = (u, o) => request(u, o), now = () =
     putFeedback: (findingId, { verdict, note, expectedVersion }, signal) =>
       send('PUT', `${BASE}/findings/${id(findingId)}/feedback`,
         { body: { verdict, note: note || null, expected_version: expectedVersion }, signal }),
+
+    /* AI 인사이트: 자동 분석 리포트와 대화형 분석(저장된 분석 결과를 읽기 전용 도구로 조회한다) */
+    insightModels: (signal) => get(`${BASE}/insights/models`, null, signal),
+    insightReports: (repositoryId, signal) => get(`${BASE}/insights/reports`, { repository_id: repositoryId }, signal),
+    // provider: 앱 main이 이 제공자의 저장된 key를 붙인다(서버는 key를 저장하지 않는다).
+    createInsightReport: ({ repositoryId, snapshotId = null, profileId, provider, includeCode = false }, signal) =>
+      send('POST', `${BASE}/insights/reports`, { body: { repository_id: repositoryId, snapshot_id: snapshotId, profile_id: profileId, provider, include_code: !!includeCode }, signal }),
+    insightReport: (reportId, signal) => get(`${BASE}/insights/reports/${id(reportId)}`, null, signal),
+    insightConversations: (repositoryId, signal) => get(`${BASE}/insights/conversations`, { repository_id: repositoryId }, signal),
+    createInsightConversation: ({ repositoryId, snapshotId = null, profileId, includeCode = false }, signal) =>
+      send('POST', `${BASE}/insights/conversations`, { body: { repository_id: repositoryId, snapshot_id: snapshotId, profile_id: profileId, include_code: !!includeCode }, signal }),
+    insightConversation: (conversationId, signal) => get(`${BASE}/insights/conversations/${id(conversationId)}`, null, signal),
+    askInsight: (conversationId, question, provider, signal) =>
+      send('POST', `${BASE}/insights/conversations/${id(conversationId)}/messages`, { body: { question, provider }, signal }),
+    deleteInsightConversation: (conversationId, signal) => send('DELETE', `${BASE}/insights/conversations/${id(conversationId)}`, { signal }),
   };
 }

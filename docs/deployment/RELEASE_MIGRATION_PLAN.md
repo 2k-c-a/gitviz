@@ -1,6 +1,6 @@
 # 릴리스 이행 계획: 빌드·배포 통합과 사용자 데이터 이전 (3차 확정)
 
-작성일: 2026-10-30 · 기준 커밋: `65f1b62` · 상태: **확정 설계 (미적용)**
+작성일: 2026-10-30 · 기준 커밋: `65f1b62` · 상태(2026-11-04 갱신): **확정 설계, 일부 적용.** 4차(S0~S9)는 완료되었다. R1·R3은 미적용이고 R2·R4는 일부만 적용되었다(항목별 상태는 [최종 아키텍처](../architecture/FINAL_ARCHITECTURE.md) §6).
 
 함께 읽기: [최종 아키텍처](../architecture/FINAL_ARCHITECTURE.md) · [이동 계획](../architecture/FINAL_MIGRATION_PLAN.md) · [환경 매트릭스](FINAL_ENVIRONMENT_MATRIX.md) · [결정 기록](../architecture/ARCHITECTURE_DECISIONS.md) · [빌드와 릴리스](BUILD_AND_RELEASE.md) · [설치 안내](INSTALLATION_GUIDE.md) · [데이터 저장 정책](DATA_STORAGE_POLICY.md)
 

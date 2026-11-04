@@ -693,51 +693,15 @@ class SupportedProvider(_Strict):
 
 class ProvidersResponse(_Strict):
     providers: list[SupportedProvider]
-    external_transfer_allowed: bool
-
-
-class RegisterKeyRequest(_Strict):
-    api_key: SecretStr = Field(min_length=16, max_length=400)
-    profile_id: ProfileId | None = None       # 이 key로 기본 사용할 모델(지원 목록의 profile)
-    verify: bool = True                        # 제공자에 key를 확인한다(코드는 보내지 않는다)
-
-
-class CredentialView(_Strict):
-    provider: str
-    status: Literal["active"] = "active"
-    version: int = Field(ge=1)
-    key_hint: str                              # 마스킹된 힌트(sk-ant-…a1b2). 전체 key는 어디에도 돌려주지 않는다
-    preferred_profile_id: str | None = None
-    validated_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
-    in_flight_jobs: int = Field(ge=0, default=0)
-
-
-class CredentialChange(_Strict):
-    credential: CredentialView
-    changed: bool                              # 같은 key를 다시 보냈으면 false(새 버전을 만들지 않는다)
-    previous_version: int | None = None
-
-
-class CredentialList(_Strict):
-    credentials: list[CredentialView]
-
-
-class CredentialDeleted(_Strict):
-    provider: str
-    status: Literal["deleted"] = "deleted"
-    jobs_cancelled: int = Field(ge=0)
 
 
 class TransferConsent(_Strict):
-    """전송 동의: 사용자가 확인한 코드 범위(manifest_hash)와 제공자·모델·key 버전."""
+    """전송 동의: 사용자가 확인한 코드 범위(manifest_hash)와 제공자·모델. key는 앱이 헤더로 따로 보낸다(AD-33)."""
     profile_fingerprint: Sha256Hex | None = None
     input_id: UUID
     manifest_hash: Sha256Hex
     provider: str
     profile_id: ProfileId
-    credential_version: int | None = Field(default=None, ge=1)
     policy_version: ShortText
 
 
@@ -750,10 +714,6 @@ class TransferView(_Strict):
     provider: str
     profile_id: str
     model: str
-    external_transfer_allowed: bool
-    credential_configured: bool
-    credential_version: int | None = None
-    key_hint: str | None = None
 
 
 InputPreview.model_rebuild()   # 뒤에 정의된 TransferView 참조를 확정한다
@@ -762,7 +722,7 @@ InputPreview.model_rebuild()   # 뒤에 정의된 TransferView 참조를 확정�
 # ── 생성·결과·피드백 API (S8) ───────────────────────────────────────────
 
 class CreateJobRequest(_Strict):
-    """POST /jobs: 동의한 전송 내용(코드 범위·제공자·모델·key 버전)으로 설명·리뷰 생성을 접수한다."""
+    """POST /jobs: 동의한 전송 내용(코드 범위·제공자·모델)으로 설명·리뷰 생성을 접수한다. key는 X-GitViz-AI-Key 헤더."""
     kind: Literal["summary", "review"]
     consent: TransferConsent
     force_regenerate: bool = False        # 이미 성공한 같은 설정의 결과가 있어도 새 generation을 만든다
@@ -968,13 +928,6 @@ class PullFilesView(_Strict):
     next_cursor: str | None = None
 
 
-class UpdateCredentialRequest(_Strict):
-    """PATCH /credentials/{provider}: key는 그대로 두고 기본 모델만 바꾼다."""
-    profile_id: ProfileId
-
-
-# ── GitViz 이력 근거 (S11) ──────────────────────────────────────────────
-
 class HistoryOptionView(_Strict):
     """이력 근거로 고를 수 있는 분석 snapshot. eligible=false이면 이유와 함께 근거로 쓸 수 없다."""
     snapshot_id: int
@@ -1021,3 +974,28 @@ class HistoryEvidenceList(_Strict):
 HANDOVER_ITEM_KEYS = ("assignee", "description", "run_method", "verify_method", "joint_review", "receiver_run")
 
 InputManifest.model_rebuild()
+
+
+# ── AI 인사이트(자동 분석 리포트·대화형 분석) 요청 ─────────────────────────
+
+class CreateInsightReportRequest(_Strict):
+    """POST /insights/reports. snapshot_id가 없으면 저장소의 최신 분석 결과를 쓴다."""
+    repository_id: int = Field(gt=0)
+    snapshot_id: int | None = Field(default=None, gt=0)
+    profile_id: ProfileId
+    provider: str = Field(pattern=r'^[a-z][a-z0-9_-]{1,31}$')   # 모델의 제공자. 앱은 이 제공자의 저장된 key를 헤더로 붙인다
+    include_code: bool = False                # 기준 커밋의 소스 코드 일부를 AI가 읽도록 허용(클라우드는 공개 저장소만)
+
+
+class CreateInsightConversationRequest(_Strict):
+    """POST /insights/conversations. 대화는 시작할 때의 분석 결과(스냅샷)와 모델에 묶인다."""
+    repository_id: int = Field(gt=0)
+    snapshot_id: int | None = Field(default=None, gt=0)
+    profile_id: ProfileId
+    include_code: bool = False                # 기준 커밋의 소스 코드 일부를 AI가 읽도록 허용(클라우드는 공개 저장소만)
+
+
+class AskInsightQuestionRequest(_Strict):
+    """POST /insights/conversations/{id}/messages."""
+    question: str = Field(min_length=1, max_length=1000)
+    provider: str = Field(pattern=r'^[a-z][a-z0-9_-]{1,31}$')   # 대화 모델의 제공자(서버가 대화의 모델과 일치하는지 확인)

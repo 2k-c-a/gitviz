@@ -1,6 +1,6 @@
 # 데이터 저장 정책
 
-작성일 2026-10-30 · 기준 커밋 `65f1b62` · 상태: 설계 문서 (코드 변경 없음)
+작성일 2026-10-30 · 기준 커밋 `65f1b62` · 상태(2026-11-04 갱신): 설계 문서. 데이터 경로 이전(R3)은 아직 적용되지 않았다. 실제 데이터 위치는 지금도 `%APPDATA%\gitviz-workspace`다(K-06).
 표기: **[현재]** 검증된 동작, **[제안]** 설계안, **[결정 필요]** 사용자 결정 사항.
 
 관련 문서: [환경 아키텍처](../architecture/ENVIRONMENT_ARCHITECTURE.md) · [설치 가이드](INSTALLATION_GUIDE.md) · [빌드와 릴리스](BUILD_AND_RELEASE.md)
@@ -79,7 +79,7 @@
 
 ## 7. 서버 측 데이터 (참고)
 
-서버 PostgreSQL은 사용자 클라이언트 데이터와 분리한다. 운영 DB는 Alembic 단일 head(`d4f6a8c0e2b3`, 2026-11-01 커뮤니티·채팅 추가)로만 변경하고, 마이그레이션은 배포 절차에서 사람이 실행한다. 개발/테스트 코드는 `assert_database_allowed`로 운영 DB 접속을 거부한다 ([환경 아키텍처 §3.3](../architecture/ENVIRONMENT_ARCHITECTURE.md)). 운영 비밀값(`SESSION_SECRET_KEY` 등)은 서버 환경에만 두고 클라이언트 빌드에 넣지 않는다.
+서버 PostgreSQL은 사용자 클라이언트 데이터와 분리한다. 운영 DB는 Alembic 단일 head(`e7a9c1d3f5b4`, 2026-11-01 커뮤니티·채팅, 2026-11-03 AI 분석·내 분석 프로젝트 숨김 추가)로만 변경하고, 마이그레이션은 배포 절차에서 사람이 실행한다. 개발/테스트 코드는 `assert_database_allowed`로 운영 DB 접속을 거부한다 ([환경 아키텍처 §3.3](../architecture/ENVIRONMENT_ARCHITECTURE.md)). 운영 비밀값(`SESSION_SECRET_KEY` 등)은 서버 환경에만 두고 클라이언트 빌드에 넣지 않는다.
 
 ## 8. 권한과 보안
 
