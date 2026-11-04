@@ -170,7 +170,7 @@ void app.whenReady().then(async () => {
   }
   try {
     phase = 'settings delayed usage'; usageDelay = true; await load('settings', ''); await wait(`document.getElementById('ai-keys').textContent.includes('키 없음')`);
-    await check('settings has no server key form (keys live in the app)', `!document.querySelector('input[type="password"]') && document.getElementById('ai-main').textContent.includes('GitViz 앱에만 저장')`);
+    await check('settings has no server key form (keys live in the app)', `!document.querySelector('input[type="password"]') && !document.getElementById('ai-main').textContent.includes('저장 위치와 적용 범위')`);
     assert.ok(releaseUsage); (releaseUsage as () => void)(); usageDelay=false; await new Promise(resolve=>setTimeout(resolve,200));
     await check('P1 late usage response fills the usage line without re-rendering the panel', `document.getElementById('ai-usage').textContent.length>0 && document.getElementById('ai-keys').textContent.includes('키 없음')`);
     await capture('settings-600-dark.png',600,400,'dark');

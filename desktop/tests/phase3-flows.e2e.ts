@@ -331,7 +331,7 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`window.closeDrilldown()`);
     phase = 'settings-app-keys';
     await window.loadURL('gitviz://app/web/pages/settings.html');
-    await wait(`!!document.querySelector('.app-shell') && document.getElementById('ai-main').textContent.includes('GitViz 앱에만 저장')`);
+    await wait(`!!document.querySelector('.app-shell') && document.getElementById('ai-main').textContent.includes('커밋·PR 단위 분석으로 돌아가기') && !document.getElementById('ai-main').textContent.includes('저장 위치')`);
     assert.equal(await window.webContents.executeJavaScript(`!!document.querySelector('input[type="password"]')`), false, 'the server-side key form is gone');
     assert.ok(await window.webContents.executeJavaScript(`document.getElementById('ai-keys').textContent.includes('키 없음')`));
     phase = 'AI-commit-preview-consent-result';

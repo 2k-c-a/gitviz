@@ -130,7 +130,8 @@ async function load() {
   if (settingsMode) {
     const returnState = S.parseRoute(new URLSearchParams(location.search).get('return') || S.buildRoute({ repo: route.repo }));
     const back = new URL('./ai-review.html', location.href); back.search = S.buildRoute(returnState);
-    mount($('ai-main'), h('section', { class: 'ai-card' }, h('h2', { text: '저장 위치와 적용 범위' }), h('p', { text: 'AI 리뷰에 쓰는 API 키는 GitViz 앱에만 저장합니다(Windows 계정 보호). 리뷰를 실행할 때만 그 요청에 실어 서버로 보내고, 서버는 그 실행에만 쓰고 저장하지 않습니다. 키 입력·교체·삭제는 앱의 설정 화면(계정 메뉴 → 설정 → AI)에서 합니다.' }), h('p', { class: 'ai-muted', text: '라이트·다크 테마는 상단의 해·달 버튼으로 바꿀 수 있습니다.' }), h('a', { href: back.href, class: 'btn-secondary ai-btn', text: 'AI 리뷰로 돌아가기' })));
+    // 키 저장 상태는 위 '모델과 API 키'(#ai-keys)에 있다. 여기에는 돌아가는 길만 둔다.
+    mount($('ai-main'), h('p', null, h('a', { href: back.href, class: 'btn-secondary ai-btn', text: '커밋·PR 단위 분석으로 돌아가기' })));
     return;
   }
   const views = {

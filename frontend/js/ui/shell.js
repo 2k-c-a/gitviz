@@ -1,6 +1,7 @@
 import { parseRoute as parseAiRoute, buildRoute as buildAiRoute } from '../ai-state.js';
 import { parseState, nextQuery } from '../viz-state.js';
 import { element, createIcon, enhanceTooltips, observeActions } from './components.js';
+import { SETTINGS_ENTRY_URL } from '../platform/workspace-navigation.js';
 import './motion.js';
 
 const webRoot = new URL('../../', import.meta.url);
@@ -87,8 +88,11 @@ export function mountShell({ local = false, account = null } = {}) {
     return a;
   };
   const settingsHref = () => { const url = new URL(pageUrl('settings')); if (currentPage === 'ai-review') url.searchParams.set('return', buildAiRoute(parseAiRoute(location.search))); return url.href; };
-  // In the workspace, 설정 is its own settings view (AI model, keys, editor); web pages keep the server-side settings page.
-  const settingsLink = local ? toView(link('설정', '⚙', '#'), 'settings') : link('설정', '⚙', settingsHref(), currentPage === 'settings');
+  // In the app, 설정 always opens the app's settings view (AI keys and models, editor; AD-33) from every screen —
+  // the same place as 'API 키 저장하러 가기'. The web keeps its own settings page.
+  const inApp = location.protocol === 'gitviz:';
+  const settingsLink = local ? toView(link('설정', '⚙', '#'), 'settings')
+    : link('설정', '⚙', inApp ? SETTINGS_ENTRY_URL : settingsHref(), !inApp && currentPage === 'settings');
   if (local) toView(link('프로젝트', '▣', '#'), 'projects');
   else if (location.protocol === 'gitviz:') link('프로젝트', '▣', new URL('../index.html', webRoot).href);
   const repositoryNav = element('div', 'app-repository-nav'); nav.append(repositoryNav);
@@ -129,7 +133,7 @@ export function mountShell({ local = false, account = null } = {}) {
       const period = banner?.querySelector('.ctx-item')?.textContent;
       context.textContent = state.snapshot ? `결과 #${state.snapshot}${period ? ` · ${period}` : ''}` : state.repo ? '저장소 맥락' : '검색 또는 최근 분석에서 선택';
       status.textContent = document.getElementById('load-error') ? '결과 조회 실패 · 본문에서 확인' : banner ? '저장 결과 조회됨 · 수집 범위는 본문 참조' : '원격 분석';
-      settingsLink.href = settingsHref();
+      if (!inApp) settingsLink.href = settingsHref();
       for (const a of repositoryLinks) a.href = pageUrl(a.dataset.shellPage);
     }
   };

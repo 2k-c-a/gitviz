@@ -85,7 +85,7 @@ void app.whenReady().then(async () => {
   }
   try {
     for (const [page, ready] of [
-      ['settings', `document.getElementById('ai-title')?.textContent.includes('설정') && document.getElementById('ai-main')?.textContent.includes('저장 위치')`],
+      ['settings', `document.getElementById('ai-title')?.textContent.includes('설정') && document.getElementById('ai-main')?.textContent.includes('돌아가기') && !document.getElementById('ai-main').textContent.includes('저장 위치')`],
       ['overview', `document.getElementById('tl-m-commits')?.textContent==='1' && !!Chart.getChart('chart-timeline') && document.getElementById('overview-collaboration')?.textContent.includes('전체 기여자 1명')`],
       ['network', `document.getElementById('net-status')?.textContent==='결과 조회 완료' && !!document.querySelector('#net-graph-svg circle')`],
       ['code-analysis', `document.getElementById('cx-status')?.textContent.includes('#7')`],
