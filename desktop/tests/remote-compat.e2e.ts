@@ -53,6 +53,14 @@ const http: Http = async (path, method, _body, givenToken) => {
   else if (p.endsWith('/snapshots')) body = { repository_id: 2, snapshots: [snapshot], next_before_id: null };
   else if (p === '/api/ai/v1/providers') body = { providers: [] };
   else if (p === '/api/ai/v1/usage') body = { period_start: '2026-10-01', currency: 'USD', user_spent: '0', user_reserved: '0', user_limit: '20', user_remaining: '20', server_budget_enabled: true, uncertain_reservations: 0, daily_jobs_used: 0, daily_job_limit: 30 };
+  else if (p === '/search/my-github-repositories') {
+    const page = Number(url.searchParams.get('page'));
+    body = page === 1
+      ? { page: 1, per_page: 30, has_next: true, results: [
+        { owner: 'fixture', repo_name: 'p03', url: repo.url, description: 'Analyzed fixture', stars: 1, forks: 0, private: false, is_registered: true },
+        { owner: 'fixture-org', repo_name: 'secret', url: 'https://github.com/fixture-org/secret', description: '<b>raw</b>', stars: 0, forks: 0, private: true, fork: true, is_registered: false }] }
+      : { page: 2, per_page: 30, has_next: false, results: [{ owner: 'fixture', repo_name: 'page-two', url: 'https://github.com/fixture/page-two', is_registered: false }] };
+  }
   else if (p === '/search/github-repositories') body = { query: 'fixture', total_count: 1, results: [{ owner: 'fixture', repo_name: 'p03', url: repo.url, description: 'Search fixture', stars: 1, forks: 0, is_registered: true }] };
   return { status: method === 'DELETE' ? 204 : 200, body, headers: {} };
 };
@@ -105,6 +113,25 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`document.getElementById('search-input').value='fixture'; document.getElementById('search-btn').click()`);
     await wait(`!!document.querySelector('.search-start-btn') && document.getElementById('search-results').textContent.includes('fixture/p03')`);
     assert.equal(requestMethods.slice(beforeSelect).some(method => method !== 'GET'), false, 'search is read-only');
+    phase = 'my-github-repositories';
+    // 최근·내 분석의 '내 GitHub 저장소' 탭: 열 때만 불러오고, 분석된 저장소는 결과로, 나머지는 분석 시작으로 연결한다.
+    const beforeGithub = requests.length;
+    await window.loadURL('gitviz://app/web/pages/myprojects.html');
+    await wait(`document.getElementById('myproj-list')?.textContent.includes('fixture/p03') && document.getElementById('myproj-github')?.hidden === true`);
+    assert.equal(requests.slice(beforeGithub).some(path => path.includes('my-github-repositories')), false, 'loads only when the tab opens');
+    await window.webContents.executeJavaScript(`document.getElementById('myproj-tab-github').click()`);
+    await wait(`document.getElementById('myproj-github-list')?.textContent.includes('fixture-org/secret') && !document.getElementById('myproj-github-more').hidden`);
+    assert.equal(await window.webContents.executeJavaScript(`[document.getElementById('myproj-analyzed').hidden, document.getElementById('myproj-tab-github').getAttribute('aria-selected'), location.search]`).then(v => JSON.stringify(v)), JSON.stringify([true, 'true', '?tab=github']));
+    assert.equal(await window.webContents.executeJavaScript(`[...document.querySelectorAll('.myproj-github-card')].map(c => c.querySelector('[data-action="goPage"]') ? 'result' : c.querySelector('.myproj-github-start') ? 'start' : '-').join()`), 'result,start');
+    assert.match(await window.webContents.executeJavaScript(`document.querySelectorAll('.myproj-github-card')[1].textContent`), /비공개[\s\S]*포크[\s\S]*<b>raw<\/b>/, 'badges shown; description escaped');
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('#myproj-github-list b').length`), 0);
+    await window.webContents.executeJavaScript(`document.getElementById('myproj-github-more').click()`);
+    await wait(`document.getElementById('myproj-github-list').textContent.includes('fixture/page-two') && document.getElementById('myproj-github-more').hidden`);
+    assert.equal(requestMethods.slice(beforeGithub).some(method => method !== 'GET'), false, 'listing is read-only');
+    await window.webContents.executeJavaScript(`document.querySelector('.myproj-github-start').click()`);
+    await wait(`document.getElementById('url-input')?.value === 'https://github.com/fixture-org/secret' && document.getElementById('job-modal')?.classList.contains('open') && document.getElementById('modal-repo')?.textContent.includes('secret')`);
+    await window.loadURL('gitviz://app/web/pages/myprojects.html?tab=github');
+    await wait(`document.getElementById('myproj-analyzed')?.hidden === true && document.getElementById('myproj-github-list')?.textContent.includes('fixture/p03')`);
     phase = 'delegated-navigation';
     // The old activity address still lands on the merged overview with the same result.
     await window.loadURL('gitviz://app/web/pages/timeline.html?repo=2&snapshot=7');

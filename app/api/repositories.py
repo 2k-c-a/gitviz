@@ -392,6 +392,94 @@ def search_github_repositories(
     }
 
 
+
+_GITHUB_USER_REPOS_URL = "https://api.github.com/user/repos"
+# github.com/repos와 같은 범위: 내가 소유하거나, 협업자로 초대됐거나, 속한 조직의 저장소(비공개 포함).
+_MY_REPOS_AFFILIATION = "owner,collaborator,organization_member"
+_MY_REPOS_PAGE_LIMIT = 100
+
+
+@router.get("/search/my-github-repositories")
+def my_github_repositories(request: Request, per_page: int = 30, page: int = 1, db: Session = Depends(get_db)):
+    """로그인한 사용자가 GitHub에서 접근할 수 있는 저장소 목록(최근 push 순).
+
+    로그인 사용자의 GitHub 토큰으로 GET /user/repos를 한 번 부른다. 검색과 같이 재시도하지 않고,
+    한도에 걸리면 바로 429로 응답한다. GitHub는 전체 개수를 주지 않으므로 다음 페이지 여부(has_next)만 돌려준다.
+    결과는 저장하지 않는다.
+    """
+    user_id = _get_session_user_id(request)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
+    token = user_github_token(db, user_id)
+    if not token:
+        raise HTTPException(status_code=401, detail="GitHub 인증을 갱신해 주세요.")
+
+    per_page = max(1, min(per_page, 100))
+    page = max(1, min(page, _MY_REPOS_PAGE_LIMIT))
+    params = {"affiliation": _MY_REPOS_AFFILIATION, "sort": "pushed", "direction": "desc",
+              "per_page": per_page, "page": page}
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Authorization": f"Bearer {token}",
+    }
+    try:
+        response = requests.get(_GITHUB_USER_REPOS_URL, params=params, headers=headers, timeout=_SEARCH_TIMEOUT_SECONDS)
+    except RequestException as exc:
+        logger.warning("GitHub user repos request failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="GitHub에 연결할 수 없습니다.")
+
+    if response.status_code == 401:
+        raise HTTPException(status_code=401, detail="GitHub 인증을 갱신해 주세요.")
+    if response.status_code in (403, 429):
+        raise HTTPException(status_code=429, detail="GitHub API 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.")
+    if not response.ok:
+        logger.warning("GitHub user repos returned %s", response.status_code)
+        raise HTTPException(status_code=502, detail=f"GitHub 저장소 목록을 가져오지 못했습니다 ({response.status_code}).")
+
+    items = response.json()
+    if not isinstance(items, list):
+        raise HTTPException(status_code=502, detail="GitHub 응답 형식이 올바르지 않습니다.")
+    registered_urls = {_normalize_github_url(r.url) for r in visible_repository_query(db, user_id).all()}
+    now = datetime.now(timezone.utc)
+
+    results = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        owner = item.get("owner") or {}
+        html_url = item.get("html_url", "")
+        metadata = {
+            "language": item.get("language"),
+            "stars": item.get("stargazers_count", 0),
+            "open_issues": item.get("open_issues_count", 0),
+            "pushed_at": item.get("pushed_at"),
+        }
+        results.append({
+            "owner": owner.get("login"),
+            "repo_name": item.get("name"),
+            "url": html_url,
+            "description": item.get("description"),
+            "language": metadata["language"],
+            "stars": metadata["stars"],
+            "forks": item.get("forks_count", 0),
+            "open_issues": metadata["open_issues"],
+            "pushed_at": metadata["pushed_at"],
+            "private": bool(item.get("private")),
+            "fork": bool(item.get("fork")),
+            "archived": bool(item.get("archived")),
+            "is_registered": _normalize_github_url(html_url) in registered_urls,
+            "scores": compute_lightweight_score(metadata, now=now),
+        })
+
+    links = response.headers.get("Link", "") if getattr(response, "headers", None) else ""
+    return {
+        "page": page,
+        "per_page": per_page,
+        "has_next": 'rel="next"' in links and page < _MY_REPOS_PAGE_LIMIT,
+        "results": results,
+    }
+
 @router.post("/repositories/{repository_id}/reanalyze")
 def reanalyze_repository(repository_id: int, request: Request, analysis_start: str | None = None,
                          analysis_end: str | None = None, db: Session = Depends(get_db)):
