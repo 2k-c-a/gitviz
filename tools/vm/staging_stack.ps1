@@ -6,8 +6,10 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $root = Join-Path $repo '.validation\staging'
 $python = Join-Path $repo '.venv\Scripts\python.exe'
-# Below the dynamic range (49152+), where Hyper-V/WinNAT reserve blocks that move on every reboot and binding fails.
-$pgPort = 15440; $redisPort = 16390; $httpsPort = 8443
+# PostgreSQL and Redis stay below the Windows dynamic port range (49152-65535): Hyper-V/WSL/Docker reserve blocks there
+# (netsh excludedportrange), and Redis on 56390 once landed in such a block (bind: Permission denied).
+# 5440/6390 also avoid the dev compose ports 5432/6379.
+$pgPort = 5440; $redisPort = 6390; $httpsPort = 8443
 $origin = "https://localhost:$httpsPort"
 $cluster = Join-Path $root 'pg'; $tls = Join-Path $root 'tls'; $logs = Join-Path $root 'logs'; $pids = Join-Path $root 'pids'
 $generated = Join-Path $root 'generated.env'; $userEnv = Join-Path $root 'staging.env'
