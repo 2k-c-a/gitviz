@@ -197,6 +197,26 @@
 .community-collab-editor { height: min(65vh, 600px); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg3); }
 .community-collab-editor .cm-editor { height: 100%; }
 .community-collab-editor .cm-scroller { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.community-collab-workspace { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: 8px; margin-top: 8px; }
+.community-collab-workspace .community-collab-editor { min-width: 0; }
+.community-collab-tree { display: flex; flex-direction: column; gap: 2px; max-height: min(65vh, 600px); overflow: auto; }
+.community-collab-file { text-align: left; font-size: 12px; padding: 4px 8px; border: 1px solid transparent; border-radius: 6px; background: none; color: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.community-collab-file:hover { background: var(--bg3); }
+.community-collab-file.is-active { border-color: var(--border); background: var(--bg3); font-weight: 600; }
+.community-collab-file.is-loading { opacity: .6; }
+.community-collab-asset { padding: 12px; overflow: auto; height: 100%; }
+.community-collab-asset img { max-width: 100%; max-height: 50vh; display: block; margin-bottom: 8px; background: repeating-conic-gradient(#8882 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+.community-collab-files { margin: 6px 0 10px; padding-left: 18px; font-size: 13px; }
+.community-collab-files .is-entry { font-weight: 600; }
+.community-collab-subtitle { margin: 12px 0 0; font-size: 14px; }
+.community-collab-report { margin: 6px 0; font-size: 13px; }
+.community-collab-report summary { cursor: pointer; }
+.community-collab-report-list { margin: 4px 0; padding-left: 18px; overflow-wrap: anywhere; }
+.community-collab-pending { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg3); font-size: 13px; }
+.community-collab-pending-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; overflow-wrap: anywhere; }
+.community-collab-preview-note { margin: 4px 0; }
+.community-collab .btn-small { padding: 2px 8px; font-size: 12px; }
+@media (max-width: 720px) { .community-collab-workspace { grid-template-columns: 1fr; } .community-collab-tree { flex-direction: row; flex-wrap: wrap; max-height: none; } }
 @media (max-width: 760px) { .community-layout, .community-chat-layout { grid-template-columns: 1fr; } }
 
 .search-card { display: flex; align-items: center; gap: 16px; }

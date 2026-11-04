@@ -275,7 +275,7 @@
   },
   "CreateCollabSessionRequest": {
     "additionalProperties": false,
-    "description": "The host shares one local file by name only; its content never goes to the server.",
+    "description": "The host shares local files by the start file's name only; their content never goes to the server.\nfile_count (AD-34) is how many files the shared set holds, for the session list; absent means one file (AD-29).",
     "properties": {
       "file_name": {
         "maxLength": 200,
@@ -289,6 +289,20 @@
         "pattern": "^(plain|javascript|typescript|jsx|tsx|python|json|markdown|css|html)$",
         "title": "Language",
         "type": "string"
+      },
+      "file_count": {
+        "anyOf": [
+          {
+            "maximum": 60,
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "File Count"
       }
     },
     "required": [
@@ -314,7 +328,7 @@
   },
   "CollabRelayRequest": {
     "additionalProperties": false,
-    "description": "One Yjs message: a document update, a sync request/reply (state vector / diff) or a cursor (awareness) update.",
+    "description": "One Yjs message: a document update, a sync request/reply (state vector / diff) or a cursor (awareness) update.\nIn a file set (AD-34) `path` names the file (root-relative, absent for the set's file list), and `asset`/`asset-request`\ncarry a read-only image or font in pieces from the host to one seat.",
     "properties": {
       "seat_id": {
         "pattern": "^[A-Za-z0-9_-]{22}$",
@@ -335,7 +349,7 @@
         "title": "To"
       },
       "kind": {
-        "pattern": "^(update|sync-request|sync|awareness)$",
+        "pattern": "^(update|sync-request|sync|awareness|asset|asset-request)$",
         "title": "Kind",
         "type": "string"
       },
@@ -345,6 +359,21 @@
         "pattern": "^[A-Za-z0-9+/]+={0,2}$",
         "title": "Data",
         "type": "string"
+      },
+      "path": {
+        "anyOf": [
+          {
+            "maxLength": 400,
+            "minLength": 1,
+            "pattern": "^[^/\\\\\\x00-\\x1f:*?\"<>|][^\\\\\\x00-\\x1f:*?\"<>|]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Path"
       }
     },
     "required": [

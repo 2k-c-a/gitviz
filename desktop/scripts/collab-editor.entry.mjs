@@ -1,5 +1,7 @@
 // Bundled by build.mjs into dist/ui/web/js/collab-editor.bundle.js (IIFE, global GitVizCollab) for the app only.
-// Real-time co-editing (AD-29): CodeMirror 6 editor bound to a Yjs document with remote cursors via awareness.
+// Real-time co-editing: CodeMirror 6 editors bound to Yjs documents with remote cursors via awareness.
+// A file set (AD-34) is one "manifest" document (which files and images/fonts exist, which file to preview) plus one
+// document per text file, so each file syncs on its own and stays within one relay message.
 import { basicSetup } from 'codemirror';
 import { EditorState, Compartment } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
@@ -23,24 +25,41 @@ const LANGUAGES = {
 /** Remote edits and cursors carry this origin so they are not sent back out. */
 export const REMOTE = 'remote';
 
-export function createCollabEditor({ parent, text = null, language = 'plain', user, readOnly = false }) {
+/** The set's file list: files (path → language), assets (path → { sha256, size, mime }), meta (entry, pending). Only the host writes it. */
+export function createManifest() {
+  const doc = new Y.Doc();
+  return { doc, files: doc.getMap('files'), assets: doc.getMap('assets'), meta: doc.getMap('meta') };
+}
+
+/** One shared text file. Only the host seeds the text; guests start empty and fill from the host's state. */
+export function createFile(text = null) {
   const doc = new Y.Doc();
   const ytext = doc.getText('code');
-  // Only the host seeds the document; guests start empty and fill from the host's state.
   if (typeof text === 'string' && text) ytext.insert(0, text);
-  const awareness = new Awareness(doc);
-  awareness.setLocalStateField('user', { name: user.name, color: user.color, colorLight: `${user.color}33` });
+  return { doc, ytext, awareness: new Awareness(doc) };
+}
+
+/** An editor view on one file. The file (document and awareness) outlives the view: switching files only swaps views. */
+export function createEditor({ parent, file, language = 'plain', readOnly = false }) {
   const editable = new Compartment();
-  const extensions = [basicSetup, keymap.of([indentWithTab]), EditorView.lineWrapping, yCollab(ytext, awareness),
+  const extensions = [basicSetup, keymap.of([indentWithTab]), EditorView.lineWrapping, yCollab(file.ytext, file.awareness),
     editable.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)])];
   if (LANGUAGES[language]) extensions.push(LANGUAGES[language]());
-  const view = new EditorView({ parent, state: EditorState.create({ doc: ytext.toString(), extensions }) });
+  const view = new EditorView({ parent, state: EditorState.create({ doc: file.ytext.toString(), extensions }) });
   return {
-    doc, ytext, awareness, view,
+    view,
     setReadOnly(value) { view.dispatch({ effects: editable.reconfigure([EditorState.readOnly.of(value), EditorView.editable.of(!value)]) }); },
-    destroy() { removeAwarenessStates(awareness, [doc.clientID], 'local'); awareness.destroy(); view.destroy(); doc.destroy(); },
+    destroy() { view.destroy(); },
   };
 }
+
+/** Shows (user) or hides (null) my cursor in one file; hiding sends a removal to the others. */
+export function setPresence(awareness, user) {
+  // setLocalStateField does nothing once the state is null, so set the whole state.
+  if (user) awareness.setLocalState({ ...(awareness.getLocalState() ?? {}), user: { name: user.name, color: user.color, colorLight: `${user.color}33` } });
+  else awareness.setLocalState(null);
+}
+export function destroyFile(file) { removeAwarenessStates(file.awareness, [file.doc.clientID], 'local'); file.awareness.destroy(); file.doc.destroy(); }
 
 export const encodeStateVector = doc => Y.encodeStateVector(doc);
 export const encodeStateAsUpdate = (doc, vector) => Y.encodeStateAsUpdate(doc, vector);

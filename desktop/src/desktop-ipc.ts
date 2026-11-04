@@ -1,7 +1,9 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { trustedSender } from './ipc';
 import type { DesktopAuth } from './auth';
+import type { CollabBundles } from './collab-bundle';
 import type { CollabFiles } from './collab-files';
+import type { Previews } from './collab-preview';
 import type { CommunityLive, LiveEvent } from './community-live';
 import type { Remote } from './remote';
 import type { AiKeyVault } from './secrets';
@@ -54,8 +56,9 @@ export function registerCommunityLive(window: BrowserWindow, create: ((emit: (ev
   };
 }
 
-/** Co-editing file access (AD-29) for the community page only. Any navigation or closing the window forgets every open file. */
-export function registerCollabFiles(window: BrowserWindow, files: CollabFiles): () => void {
+/** Co-editing file access (AD-29) and file sets with preview (AD-34) for the community page only.
+ *  Any navigation or closing the window forgets every open file and set and closes the previews. */
+export function registerCollabFiles(window: BrowserWindow, files: CollabFiles, bundles: CollabBundles | null = null, previews: Previews | null = null): () => void {
   const fromCommunity = (event: IpcMainInvokeEvent) => {
     if (!trustedSender(event, window)) return false;
     try { return new URL(event.senderFrame?.url ?? '').pathname === '/web/pages/community.html'; } catch { return false; }
@@ -65,19 +68,36 @@ export function registerCollabFiles(window: BrowserWindow, files: CollabFiles): 
     'desktop:collab-save': args => { if (args.length !== 1) throw new Error('ACCESS_DENIED'); return files.save(args[0]); },
     'desktop:collab-close': args => { if (args.length !== 1) throw new Error('ACCESS_DENIED'); return files.close(args[0]); },
   };
+  const one = (run: (value: unknown) => unknown) => (args: unknown[]) => { if (args.length !== 1) throw new Error('ACCESS_DENIED'); return run(args[0]); };
+  if (bundles) Object.assign(channels, {
+    'desktop:collab-bundle-open': (args: unknown[]) => { if (args.length) throw new Error('ACCESS_DENIED'); return bundles.open(); },
+    'desktop:collab-bundle-widen': one(value => bundles.widen(value)),
+    'desktop:collab-bundle-add': one(value => bundles.add(value)),
+    'desktop:collab-bundle-scan': one(value => bundles.scan(value)),
+    'desktop:collab-bundle-approve': one(value => bundles.approve(value)),
+    'desktop:collab-bundle-save': one(value => bundles.save(value)),
+    'desktop:collab-bundle-close': one(value => bundles.close(value)),
+  });
+  if (previews) Object.assign(channels, {
+    'desktop:collab-preview-open': one(value => previews.open(value)),
+    'desktop:collab-preview-update': one(value => previews.update(value)),
+    'desktop:collab-preview-close': one(value => previews.close(value)),
+  });
   for (const [channel, run] of Object.entries(channels)) ipcMain.handle(channel, async (event, ...args: unknown[]) => {
     if (!fromCommunity(event)) throw new Error('ACCESS_DENIED');
     try { return await run(args); }
     catch (error) {
-      const allowed = /^(?:ACCESS_DENIED|INVALID_REQUEST|INVALID_FILE|FILE_TOO_LARGE|NOT_TEXT|NOT_OPEN|FILE_CHANGED|SAVE_FAILED)$/;
+      const allowed = /^(?:ACCESS_DENIED|INVALID_REQUEST|INVALID_FILE|FILE_TOO_LARGE|NOT_TEXT|NOT_OPEN|FILE_CHANGED|SAVE_FAILED|NOT_ALLOWED|OUTSIDE_ROOT|CANNOT_WIDEN|NOT_PENDING|LIMIT)$/;
+      const fallback = channel === 'desktop:collab-open' || channel === 'desktop:collab-bundle-open' ? 'INVALID_FILE' : channel.startsWith('desktop:collab-preview-') ? 'PREVIEW_FAILED' : 'SAVE_FAILED';
       // eslint-disable-next-line preserve-caught-error -- Never expose OS paths or raw file system errors.
-      throw new Error(error instanceof Error && allowed.test(error.message) ? error.message : channel === 'desktop:collab-open' ? 'INVALID_FILE' : 'SAVE_FAILED');
+      throw new Error(error instanceof Error && allowed.test(error.message) ? error.message : fallback);
     }
   });
-  const navigate = (details: { isMainFrame: boolean; isSameDocument: boolean }) => { if (details.isMainFrame && !details.isSameDocument) files.closeAll(); };
+  const forget = () => { files.closeAll(); bundles?.closeAll(); previews?.closeAll(); };
+  const navigate = (details: { isMainFrame: boolean; isSameDocument: boolean }) => { if (details.isMainFrame && !details.isSameDocument) forget(); };
   window.webContents.on('did-start-navigation', navigate);
   return () => {
-    files.closeAll();
+    forget();
     if (!window.isDestroyed()) window.webContents.off('did-start-navigation', navigate);
     for (const channel of Object.keys(channels)) ipcMain.removeHandler(channel);
   };

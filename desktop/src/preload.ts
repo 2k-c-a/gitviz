@@ -21,6 +21,18 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
     open: () => ipcRenderer.invoke('desktop:collab-open'),
     save: (options: unknown) => ipcRenderer.invoke('desktop:collab-save', options),
     close: (options: unknown) => ipcRenderer.invoke('desktop:collab-close', options),
+    // File sets (AD-34): an opaque bundle id and root-relative paths only; absolute paths stay in main.
+    openBundle: () => ipcRenderer.invoke('desktop:collab-bundle-open'),
+    widenBundle: (options: unknown) => ipcRenderer.invoke('desktop:collab-bundle-widen', options),
+    addToBundle: (options: unknown) => ipcRenderer.invoke('desktop:collab-bundle-add', options),
+    scanBundle: (options: unknown) => ipcRenderer.invoke('desktop:collab-bundle-scan', options),
+    approveInBundle: (options: unknown) => ipcRenderer.invoke('desktop:collab-bundle-approve', options),
+    saveBundle: (options: unknown) => ipcRenderer.invoke('desktop:collab-bundle-save', options),
+    closeBundle: (options: unknown) => ipcRenderer.invoke('desktop:collab-bundle-close', options),
+    // Sandboxed preview window of the shared HTML/CSS/JS (AD-34).
+    openPreview: (options: unknown) => ipcRenderer.invoke('desktop:collab-preview-open', options),
+    updatePreview: (options: unknown) => ipcRenderer.invoke('desktop:collab-preview-update', options),
+    closePreview: (options: unknown) => ipcRenderer.invoke('desktop:collab-preview-close', options),
   }),
 }));
 if (location.protocol === 'gitviz:' && location.host === 'app' && location.pathname === '/index.html') contextBridge.exposeInMainWorld('workspace', Object.freeze({

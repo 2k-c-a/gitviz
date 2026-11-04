@@ -6,7 +6,7 @@ import { basename, dirname, extname, join } from 'node:path';
 
 export const MAX_FILE_BYTES = 100 * 1024;
 const MAX_TEXT = 400 * 1024;
-const LANGUAGES: Record<string, string> = {
+export const LANGUAGES: Record<string, string> = {
   '.js': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript', '.ts': 'typescript', '.mts': 'typescript', '.cts': 'typescript',
   '.jsx': 'jsx', '.tsx': 'tsx', '.py': 'python', '.json': 'json', '.md': 'markdown', '.css': 'css', '.html': 'html', '.htm': 'html',
 };
@@ -14,9 +14,9 @@ const LANGUAGES: Record<string, string> = {
 export interface OpenedFile { handle: string; name: string; text: string; language: string }
 interface Entry { path: string; hash: string; crlf: boolean; bom: boolean }
 
-const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+export const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
-async function readText(path: string): Promise<{ bytes: Buffer; text: string; bom: boolean }> {
+export async function readText(path: string): Promise<{ bytes: Buffer; text: string; bom: boolean }> {
   const info = await lstat(path);
   if (!info.isFile() || info.isSymbolicLink()) throw new Error('INVALID_FILE');
   if (info.size > MAX_FILE_BYTES) throw new Error('FILE_TOO_LARGE');
@@ -27,6 +27,20 @@ async function readText(path: string): Promise<{ bytes: Buffer; text: string; bo
   if (text.includes('\u0000')) throw new Error('NOT_TEXT');
   const bom = text.startsWith('﻿');
   return { bytes, text: bom ? text.slice(1) : text, bom };
+}
+
+/** Writes shared text back with the file's original line endings and BOM, through a temp file and rename. Returns the new hash. */
+export async function writeText(entry: { path: string; crlf: boolean; bom: boolean }, text: string): Promise<string> {
+  const body = Buffer.from((entry.bom ? '﻿' : '') + (entry.crlf ? text.replace(/\r?\n/g, '\r\n') : text), 'utf8');
+  const temporary = join(dirname(entry.path), `.${basename(entry.path)}.${randomUUID()}.gitviz-tmp`);
+  try {
+    await writeFile(temporary, body, { flag: 'wx' });
+    await rename(temporary, entry.path);
+  } catch {
+    await unlink(temporary).catch(() => {});
+    throw new Error('SAVE_FAILED');
+  }
+  return digest(body);
 }
 
 export class CollabFiles {
@@ -54,16 +68,7 @@ export class CollabFiles {
     try { current = digest((await readText(entry.path)).bytes); } catch { current = null; }
     // Someone changed (or removed) the file on disk since it was opened or last saved: the host decides in a native dialog.
     if (current !== entry.hash && !(await this.confirmOverwrite(basename(entry.path)))) throw new Error('FILE_CHANGED');
-    const body = Buffer.from((entry.bom ? '﻿' : '') + (entry.crlf ? text.replace(/\r?\n/g, '\r\n') : text), 'utf8');
-    const temporary = join(dirname(entry.path), `.${basename(entry.path)}.${randomUUID()}.gitviz-tmp`);
-    try {
-      await writeFile(temporary, body, { flag: 'wx' });
-      await rename(temporary, entry.path);
-    } catch (error) {
-      await unlink(temporary).catch(() => {});
-      throw error instanceof Error && error.message === 'FILE_CHANGED' ? error : new Error('SAVE_FAILED');
-    }
-    entry.hash = digest(body);
+    entry.hash = await writeText(entry, text);
     return { saved: true };
   }
 
