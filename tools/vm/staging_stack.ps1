@@ -109,8 +109,10 @@ switch ($Mode) {
         if (-not (Is-Listening $redisPort)) {
             # Settings go in a config file: cmd.exe drops the empty argument of `--save ""`, and Redis then exits at startup.
             $redisConf = Join-Path $root 'redis.conf'
-            @("port $redisPort", 'bind 127.0.0.1', 'save ""', 'appendonly no', "dir `"$($root.Replace('\', '/'))`"") | Set-Content -LiteralPath $redisConf -Encoding ascii
-            [void](Start-Clean $redis @($redisConf) @{} 'redis')
+            # Paths are relative to the repository (Start-Clean's working directory): an msys2/cygwin build (winget
+            # redis-windows-fork) reads C:\... and C:/... as relative paths, while native builds accept relative ones too.
+            @("port $redisPort", 'bind 127.0.0.1', 'save ""', 'appendonly no', 'dir ".validation/staging"') | Set-Content -LiteralPath $redisConf -Encoding ascii
+            [void](Start-Clean $redis @('.validation/staging/redis.conf') @{} 'redis')
             for ($i = 0; $i -lt 10 -and -not (Is-Listening $redisPort); $i++) { Start-Sleep 1 }
             if (-not (Is-Listening $redisPort)) { throw "Redis did not start on port $redisPort; see $logs\redis.out.log and redis.err.log" }
         }
