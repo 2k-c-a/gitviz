@@ -43,7 +43,7 @@ function Run-Step([string]$Name, [string]$Executable, [string[]]$Arguments, [int
     if ($timedOut) { $process.Kill($true) }
     $process.WaitForExit()
     $exitCode = if ($timedOut) { 124 } else { $process.ExitCode }
-    "CMD: $Executable $($Arguments -join ' ')`nSTDOUT:`n$($stdout.GetAwaiter().GetResult())`nSTDERR:`n$($stderr.GetAwaiter().GetResult())" | Set-Content -LiteralPath (Join-Path $evidence "$Name.log") -Encoding utf8
+    "CMD: $Executable $($Arguments -join ' ')`nSTDOUT:`n$($stdout.GetAwaiter().GetResult())`nSTDERR:`n$($stderr.GetAwaiter().GetResult())" | Set-Content -LiteralPath (Join-Path $evidence "$($Name -replace '[^A-Za-z0-9._-]', '-').log") -Encoding utf8
     $process.Dispose()
     $summary.Add([ordered]@{ step=$Name; exit=$exitCode; seconds=[Math]::Round(((Get-Date)-$started).TotalSeconds, 3) })
     ConvertTo-Json -InputObject $summary -Depth 5 | Set-Content -LiteralPath (Join-Path $evidence 'summary.json') -Encoding utf8
