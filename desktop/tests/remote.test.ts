@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RemoteContracts, endpoints } from '../src/remote-contracts';
-import { Remote, httpsClient, type Http } from '../src/remote';
+import { Remote, REMOTE_CONCURRENCY, REMOTE_QUEUE_LIMIT, httpsClient, type Http } from '../src/remote';
 import { DesktopAuth } from '../src/auth';
 
 const bodies = JSON.parse(readFileSync(join(__dirname, '../schema/ai-bodies.json'), 'utf8')) as Record<string, Record<string, unknown>>;
@@ -150,4 +150,32 @@ test('offline logout quarantines encrypted session across restart and prevents a
   assert.equal(restarted.identity(), null); await assert.rejects(restarted.start(), /REVOCATION_REQUIRED/);
   offline = false; await restarted.logout(); assert.equal(stored, null);
   assert.deepEqual(methods, ['GET', 'DELETE', 'DELETE', 'DELETE']);
+});
+
+test('a page that loads many panels at once gets every response: 8 in flight, the rest wait in order, BUSY only past the queue', async () => {
+  let inFlight = 0, peak = 0;
+  const gates: (() => void)[] = [];
+  const order: string[] = [];
+  const http: Http = async (path) => {
+    inFlight++; peak = Math.max(peak, inFlight); order.push(path);
+    await new Promise<void>(resolve => gates.push(resolve));
+    inFlight--;
+    return { status: 200, body: {}, headers: {} };
+  };
+  const remote = new Remote(contracts, http, () => ({ token, generation: 1 }), () => {});
+  const ask = (n: number) => remote.request({ endpointKey: 'repository', path: { repositoryId: n }, query: {} });
+  const requests = Array.from({ length: REMOTE_CONCURRENCY + REMOTE_QUEUE_LIMIT }, (_, i) => ask(i + 1));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(inFlight, REMOTE_CONCURRENCY);
+  await assert.rejects(ask(999), /BUSY/);
+  while (gates.length || inFlight) { gates.splice(0).forEach(open => open()); await new Promise(resolve => setImmediate(resolve)); }
+  const results = await Promise.all(requests);
+  assert.equal(results.length, REMOTE_CONCURRENCY + REMOTE_QUEUE_LIMIT);
+  assert.ok(results.every(result => result.status === 200));
+  assert.equal(peak, REMOTE_CONCURRENCY);
+  assert.deepEqual(order, Array.from({ length: requests.length }, (_, i) => `/repositories/${i + 1}`));
+  // A failure inside a request still frees its slot.
+  const failing = new Remote(contracts, async () => { throw new Error('NETWORK_UNAVAILABLE'); }, () => ({ token, generation: 1 }), () => {});
+  for (let i = 0; i < REMOTE_CONCURRENCY + 2; i++) await assert.rejects(failing.request({ endpointKey: 'repository', path: { repositoryId: 1 }, query: {} }), /NETWORK_UNAVAILABLE/);
+  await assert.rejects(new Remote(contracts, http, () => null, () => {}).request({ endpointKey: 'repository', path: { repositoryId: 1 }, query: {} }), /AUTH_REQUIRED/);
 });
