@@ -64,7 +64,7 @@ npm --prefix desktop run package
 
 추가 준비물:
 
-- PostgreSQL 18 (기본 경로 `C:\Program Files\PostgreSQL\18\bin`), winget으로 설치한 Redis(`redis-server.exe`)
+- PostgreSQL 16 이상 (`C:\Program Files\PostgreSQL\<버전>\bin` 중 가장 높은 버전을 자동으로 쓴다. 스테이징 DB를 이미 만들었다면 그때 쓴 버전을 쓴다), winget으로 설치한 Redis(`redis-server.exe`)
 - GitHub OAuth App: Homepage URL `https://localhost:8443`, Authorization callback URL `https://localhost:8443/api/auth/callback`
 
 ```powershell
