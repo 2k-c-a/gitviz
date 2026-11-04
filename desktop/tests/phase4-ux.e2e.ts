@@ -225,7 +225,7 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`document.querySelector('#net-top-pairs button').click()`);await wait(`document.getElementById('dd-title').textContent==='Fixture'`);
     await window.webContents.executeJavaScript(`document.querySelector('#dd-body [data-action="__ddPushFile"]').click()`);await wait(`document.getElementById('dd-title').textContent==='fixture.ts'`);await window.webContents.executeJavaScript(`window.closeDrilldown()`);
     checks.push({name:'C top pair → contributor → related file',passed:true});
-    await load('ai-review','?repo=2'); await wait(`document.querySelectorAll('[role="tab"]').length===3`);
+    await load('ai-review','?repo=2'); await wait(`document.querySelectorAll('#ai-main [role="tab"]').length===3`);
     await window.webContents.executeJavaScript(`document.getElementById('ai-pr-tab-open').focus()`);
     window.webContents.sendInputEvent({type:'keyDown',keyCode:'Right'});window.webContents.sendInputEvent({type:'keyUp',keyCode:'Right'});
     await wait(`document.getElementById('ai-pr-tab-closed').getAttribute('aria-selected')==='true'`);

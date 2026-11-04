@@ -132,6 +132,20 @@ void app.whenReady().then(async () => {
     await wait(`document.getElementById('url-input')?.value === 'https://github.com/fixture-org/secret' && document.getElementById('job-modal')?.classList.contains('open') && document.getElementById('modal-repo')?.textContent.includes('secret')`);
     await window.loadURL('gitviz://app/web/pages/myprojects.html?tab=github');
     await wait(`document.getElementById('myproj-analyzed')?.hidden === true && document.getElementById('myproj-github-list')?.textContent.includes('fixture/p03')`);
+    phase = 'ai-analysis-tabs';
+    // 커밋·PR 단위 분석(AI 리뷰)은 왼쪽 목록의 최상위 항목이 아니라 현재 저장소 AI 분석의 세 번째 탭이다.
+    await window.loadURL('gitviz://app/web/pages/ai-insights.html?repo=2&snapshot=7');
+    await wait(`[...document.querySelectorAll('#page-ai-insights .ai-tabs [role="tab"]')].map(t=>t.textContent).join()==='자동 분석,대화형 분석,커밋·PR 단위 분석'`);
+    assert.equal(await window.webContents.executeJavaScript(`[...document.querySelectorAll('.app-nav-link')].some(a=>a.getAttribute('aria-label')==='AI 리뷰')`), false, 'no top-level AI review entry');
+    await window.webContents.executeJavaScript(`document.getElementById('insight-tab-chat').click()`);
+    await wait(`location.search.includes('tab=chat') && document.getElementById('insight-auto').hidden && !document.getElementById('insight-chat').hidden`);
+    await window.webContents.executeJavaScript(`document.getElementById('insight-tab-review').click()`);
+    await wait(`location.pathname.endsWith('/ai-review.html') && location.search==='?repo=2' && !document.getElementById('ai-analysis-tabs').hidden`);
+    await wait(`document.querySelector('.app-nav-link[aria-current="page"]')?.getAttribute('aria-label')==='AI 분석' && document.getElementById('ai-tab-review').getAttribute('aria-selected')==='true'`);
+    await window.webContents.executeJavaScript(`document.querySelector('#ai-analysis-tabs [data-insight-tab="chat"]').click()`);
+    await wait(`location.pathname.endsWith('/ai-insights.html') && location.search==='?repo=2&tab=chat' && document.getElementById('insight-tab-chat')?.getAttribute('aria-selected')==='true' && !document.getElementById('insight-chat').hidden`);
+    await window.loadURL('gitviz://app/web/pages/ai-review.html');
+    await wait(`!!document.getElementById('ai-main')?.textContent.trim() && document.getElementById('ai-analysis-tabs').hidden`);
     phase = 'delegated-navigation';
     // The old activity address still lands on the merged overview with the same result.
     await window.loadURL('gitviz://app/web/pages/timeline.html?repo=2&snapshot=7');

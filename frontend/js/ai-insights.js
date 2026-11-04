@@ -391,14 +391,26 @@ function main(page) {
   }
 
   /* ── 탭·시작 ── */
+  // 자동·대화형은 이 화면의 패널이고, 커밋·PR 단위 분석은 같은 저장소의 AI 리뷰 화면이다.
   function selectTab(name) {
     for (const [tab, panel] of [['insight-tab-auto', 'insight-auto'], ['insight-tab-chat', 'insight-chat']]) {
       const on = tab === `insight-tab-${name}`;
       $(tab).classList.toggle('active', on); $(tab).setAttribute('aria-selected', String(on)); $(panel).hidden = !on;
     }
+    const url = new URL(location.href);
+    if (name === 'chat') url.searchParams.set('tab', 'chat'); else url.searchParams.delete('tab');
+    history.replaceState(history.state, '', url);
+  }
+  // 설정 문제로 자동·대화형을 쓸 수 없어도 커밋·PR 단위 분석(자체 모델·키 설정)으로는 갈 수 있게 한다.
+  function hideInsightTabs() {
+    for (const id of ['insight-tab-auto', 'insight-tab-chat', 'insight-auto', 'insight-chat']) $(id).hidden = true;
   }
   $('insight-tab-auto').addEventListener('click', () => selectTab('auto'));
   $('insight-tab-chat').addEventListener('click', () => selectTab('chat'));
+  $('insight-tab-review').addEventListener('click', () => {
+    location.href = new URL(`ai-review.html?repo=${repo}`, location.href).href;
+  });
+  if (new URLSearchParams(location.search).get('tab') === 'chat') selectTab('chat');
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { reportPoller?.nudge(); chatPoller?.nudge(); } });
 
   (async () => {
@@ -414,7 +426,7 @@ function main(page) {
       title.dataset.repositoryLabel = state.repoName;
     }).catch(() => {});
     getRepoGithubInfo(repo).then((info) => { state.github = info; }).catch(() => {});
-    if (!(await loadSetup())) { page.querySelector('.ai-tabs').hidden = true; return; }
+    if (!(await loadSetup())) { hideInsightTabs(); return; }
     renderAuto(); renderChat();
     await Promise.all([loadReports(), loadConversations()]);
   })();

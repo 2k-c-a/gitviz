@@ -140,6 +140,14 @@ async function load() {
 }
 
 window.addEventListener('popstate', () => { load(); });
+// AI 분석의 자동·대화형 탭: 같은 저장소의 ai-insights.html로 간다(진행 중인 PR·입력·작업 상태는 가져가지 않는다).
+document.getElementById('ai-analysis-tabs')?.addEventListener('click', (event) => {
+  const tab = event.target.closest('[data-insight-tab]');
+  if (!tab || !route?.repo) return;
+  const url = new URL(`ai-insights.html?repo=${route.repo}`, location.href);
+  if (tab.dataset.insightTab === 'chat') url.searchParams.set('tab', 'chat');
+  location.href = url.href;
+});
 document.addEventListener('visibilitychange', () => { if (!document.hidden && poller) poller.nudge(); });
 window.addEventListener('pagehide', () => { stopAll(); projectPicker.close(); });
 
@@ -153,7 +161,10 @@ function renderHeader() {
   const title = $('ai-title');
   title.dataset.repositoryLabel = repoLabel();
   if (settingsMode) { title.textContent = '설정 · AI 리뷰'; $('ai-steps').hidden = true; return; }
-  title.textContent = route.repo ? `AI 리뷰 · ${repoLabel()}` : 'AI 리뷰';
+  title.textContent = route.repo ? `${repoLabel()} · AI 분석` : 'AI 분석 · 커밋·PR 단위 분석';
+  // AI 분석의 세 탭(자동·대화형은 ai-insights.html). 저장소가 정해졌을 때만 보인다.
+  const tabs = $('ai-analysis-tabs');
+  if (tabs) tabs.hidden = !route.repo;
   const steps = [['home', 'PR·커밋 선택'], ['files', '파일 선택'], ['preview', '미리보기·동의'], ['job', '실행·결과']];
   const at = { [S.VIEWS.HOME]: 0, [S.VIEWS.FILES]: 1, [S.VIEWS.PREVIEW]: 2, [S.VIEWS.JOB]: 3 }[route.view];
   mount($('ai-steps'), steps.map(([, label], i) => h('li', { class: `ai-step${i === at ? ' current' : i < at ? ' done' : ''}`, 'aria-current': i === at ? 'step' : null }, `${i + 1}. ${label}`)));

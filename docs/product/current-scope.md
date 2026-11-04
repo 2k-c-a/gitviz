@@ -37,7 +37,7 @@
 | 제공자 | Anthropic·OpenAI·Gemini BYOK 및 같은 PC의 Ollama·LM Studio·KoboldCpp | [현재 profile 안내](../operations/providers.md) |
 | 결과 공유 | 현재 저장소 접근 권한으로 다른 작성자의 결과·판단·메모를 읽는 별도 GET 경로. 쓰기는 작성자 전용 | [공유 API](../../app/api/ai/shared.py), [미확정 정책 D01](../decisions/index.md#d01) |
 
-AI 리뷰·AI 분석은 앱 설정에 저장한 사용자 API key로 실행하고 서버에는 AI key·암호화 키 설정이 없다([AD-33](../architecture/ARCHITECTURE_DECISIONS.md)). 기능이 구현되어 있다는 사실은 실제 모델 품질·운영 배포·인증 E2E가 검증됐다는 뜻이 아니다. 커뮤니티 채팅·음성·공동 편집도 실제 여러 계정·여러 네트워크에서의 사용은 아직 시험하지 않았다. [현재 검증 상태](../validation/current-status.md)를 별도로 읽는다.
+화면 배치(2026-11-04): AI 리뷰(커밋·PR 단위 분석)는 왼쪽 목록의 최상위 항목이 아니라 현재 저장소 "AI 분석"의 세 번째 탭이다(자동 분석·대화형 분석·커밋·PR 단위 분석). AI 리뷰·AI 분석은 앱 설정에 저장한 사용자 API key로 실행하고 서버에는 AI key·암호화 키 설정이 없다([AD-33](../architecture/ARCHITECTURE_DECISIONS.md)). 기능이 구현되어 있다는 사실은 실제 모델 품질·운영 배포·인증 E2E가 검증됐다는 뜻이 아니다. 커뮤니티 채팅·음성·공동 편집도 실제 여러 계정·여러 네트워크에서의 사용은 아직 시험하지 않았다. [현재 검증 상태](../validation/current-status.md)를 별도로 읽는다.
 
 ## 폐기·보류와 보존
 
