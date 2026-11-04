@@ -8,7 +8,8 @@ import { CollabRunner, JOB_TIMEOUT_EXIT, RUN_LIMITS, javaMainClass, jobScript, l
 
 registerScheme(); app.on('window-all-closed', () => {});
 let phase = 'startup';
-const deadline = setTimeout(() => { process.stderr.write(`FAIL collab run deadline (${phase})\n`); app.exit(1); }, 240000);
+// The C/C++/Java part compiles and runs several programs; a cold CI runner needs minutes. Stay under the gate step limit (600 s).
+const deadline = setTimeout(() => { process.stderr.write(`FAIL collab run deadline (${phase})\n`); app.exit(1); }, 540000);
 const skipped: string[] = [];
 
 void app.whenReady().then(async () => {
