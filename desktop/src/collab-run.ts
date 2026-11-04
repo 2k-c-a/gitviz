@@ -17,7 +17,7 @@ import { log } from './app-log';
 export const RUN_SCHEME = 'gitviz-run';
 export type RunLanguage = 'python' | 'c' | 'cpp' | 'java';
 export const RUN_LIMITS = { files: 40, fileChars: 400 * 1024, totalChars: 2 * 1024 * 1024, stdin: 64 * 1024, output: 200 * 1024,
-  pythonSeconds: 20, compileSeconds: 60, runSeconds: 10, memory: 512 * 1024 * 1024, javaMemory: 1024 * 1024 * 1024, processes: 8 };
+  pythonSeconds: 20, compileSeconds: 60, runSeconds: 10, setupSeconds: 60, memory: 512 * 1024 * 1024, javaMemory: 1024 * 1024 * 1024, processes: 8 };
 export interface RunResult { language: RunLanguage; phase: 'compile' | 'run'; exitCode: number | null; timedOut: boolean; truncated: boolean;
   stdout: string; stderr: string; durationMs: number; tool: string }
 export interface Runtimes { python: string; c: string | null; cpp: string | null; java: string | null }
@@ -181,7 +181,10 @@ class PythonSandbox {
 // PowerShell puts itself in a new Job Object (kill on close, per-process memory, process count) and starts the program,
 // which inherits the job and this pipe's stdin/stdout/stderr. Killing PowerShell closes the job and ends everything in it.
 const quotePs = (value: string) => `'${value.replace(/'/g, "''")}'`;
-export function jobScript(exe: string, args: string, cwd: string, memory: number, processes: number): string {
+// The program's time limit starts once it runs inside the job: PowerShell start-up and the first Add-Type compile
+// (seconds on a cold machine) do not count. On timeout PowerShell exits, and closing the job kills the program tree.
+export const JOB_TIMEOUT_EXIT = 198;
+export function jobScript(exe: string, args: string, cwd: string, memory: number, processes: number, seconds: number): string {
   return `$ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 try {
@@ -216,7 +219,7 @@ $start.Arguments = ${quotePs(args)}
 $start.WorkingDirectory = ${quotePs(cwd)}
 $start.UseShellExecute = $false
 $process = [System.Diagnostics.Process]::Start($start)
-$process.WaitForExit()
+if (-not $process.WaitForExit(${seconds * 1000})) { [Console]::Error.WriteLine('GITVIZ_RUN_TIMEOUT'); exit ${JOB_TIMEOUT_EXIT} }
 exit $process.ExitCode
 `;
 }
@@ -342,11 +345,16 @@ export class CollabRunner {
           stdout: compile.stdout, stderr: compile.stderr.split(`${directory}\\`).join(''), durationMs: Date.now() - started, tool: label };
       }
       const powershell = join(this.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-      const script = jobScript(program, programArgs.map(quoteArg).join(' '), directory, memory, RUN_LIMITS.processes);
+      const script = jobScript(program, programArgs.map(quoteArg).join(' '), directory, memory, RUN_LIMITS.processes, RUN_LIMITS.runSeconds);
       const run = await this.spawnCapture(powershell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
-        directory, RUN_LIMITS.runSeconds + 5, request.stdin, stop => { cancel = stop; });
+        // Safety net only: the job script enforces runSeconds itself; this also covers PowerShell start-up and Add-Type.
+        directory, RUN_LIMITS.runSeconds + RUN_LIMITS.setupSeconds, request.stdin, stop => { cancel = stop; });
       if (cancelled) throw new Error('STOPPED');
       if (run.exitCode === 197 && run.stderr.includes('GITVIZ_JOB_UNAVAILABLE')) throw new Error('SANDBOX_UNAVAILABLE');
+      if (run.exitCode === JOB_TIMEOUT_EXIT && run.stderr.includes('GITVIZ_RUN_TIMEOUT')) {
+        return { language, phase: 'run', exitCode: null, timedOut: true, truncated: run.truncated, stdout: run.stdout,
+          stderr: run.stderr.replace(/\r?\n?GITVIZ_RUN_TIMEOUT\r?\n?/, ''), durationMs: Date.now() - started, tool: label };
+      }
       return { language, phase: 'run', exitCode: run.exitCode, timedOut: run.timedOut, truncated: run.truncated, stdout: run.stdout, stderr: run.stderr,
         durationMs: Date.now() - started, tool: label };
     } finally {
