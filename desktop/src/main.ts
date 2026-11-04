@@ -1,6 +1,6 @@
 import { app, dialog, safeStorage, shell, type BrowserWindow } from 'electron';
 import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { getCACertificates, setDefaultCACertificates } from 'node:tls';
 import { DesktopAuth, SessionVault } from './auth';
 import { Remote, httpsClient } from './remote';
@@ -57,6 +57,10 @@ else {
     page: (() => { try { return new URL(contents.getURL()).pathname; } catch { return ''; } })() }));
   app.on('child-process-gone', (_event, details) => log('error', 'child-process-gone', { type: details.type, reason: details.reason, exitCode: details.exitCode }));
   app.on('will-quit', () => log('info', 'app-quit'));
+  // Git for Windows is required for local projects (K-12). Same two locations the agent searches
+  // (app/workspace/git_service.py installed_git); only found / not found is logged, never a path.
+  log('info', 'git-check', { found: [join(process.env.ProgramFiles ?? 'C:/Program Files', 'Git', 'cmd', 'git.exe'),
+    ...(process.env.LOCALAPPDATA ? [join(process.env.LOCALAPPDATA, 'Programs', 'Git', 'cmd', 'git.exe')] : [])].some(path => existsSync(path)) });
   // Per-user (HKCU) registration, refreshed on every start so it follows updates.
   if (protocol) { try { app.setAsDefaultProtocolClient(protocol.scheme, protocol.path, protocol.args); } catch { /* links then simply do not open the app */ } }
   let pendingInvite = inviteFromArgv(process.argv);

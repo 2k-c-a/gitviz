@@ -114,7 +114,7 @@ npm --prefix desktop run build; npm --prefix desktop run package
 npm --prefix desktop run make   # build-output\desktop\make\squirrel.windows\x64\GitVizWorkspaceSetup.exe
 ```
 
-현재 앱(배포한 0.7.0, 다음 0.8.0)은 코드 서명이 없어 설치 때 Windows SmartScreen 경고가 나온다. 설치는 사용자별(`%LOCALAPPDATA%\GitVizWorkspace`)이고 설치본은 `gitviz-join://` 초대 링크를 연다. 설치·업데이트 상태는 [Windows 데스크톱 안내](docs/operations/windows-desktop.md)를 따른다.
+현재 앱(배포한 0.7.0, 다음 0.8.0)은 코드 서명이 없어 설치 때 Windows SmartScreen 경고가 나온다. 설치는 사용자별(`%LOCALAPPDATA%\GitVizWorkspace`)이고 설치본은 `gitviz-join://` 초대 링크를 연다. 설치본을 쓰는 PC에도 Git for Windows가 기본 경로에 있어야 로컬 프로젝트 기능이 동작한다([설치 가이드 §0](docs/deployment/INSTALLATION_GUIDE.md)). 앱 로그는 `%APPDATA%\gitviz-workspace\logs\app.log`에 남는다. 설치·업데이트 상태는 [Windows 데스크톱 안내](docs/operations/windows-desktop.md)를 따른다.
 
 ### 앱 테스트
 

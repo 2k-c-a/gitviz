@@ -29,6 +29,8 @@
 | 브라우저 캐시류 | `Cache`, `Code Cache`, `GPUCache`, `Local Storage` 등 | Chromium이 만든 파일 |
 | 업그레이드 백업 | `pre-v8-{uuid}.sqlite3` | 업그레이드 시에만 생성 |
 
+앱 로그: `%APPDATA%\gitviz-workspace\logs\app.log`(2026-11-04, K-02). `workspace\`가 아니라 사용자 데이터 폴더 바로 아래다. 한 줄에 JSON 한 건이고, 1 MB를 넘으면 `app.1.log`~`app.4.log`로 밀어 최대 5개(약 5 MB)만 둔다. 기록 항목: 시작·종료 버전, Git for Windows 설치 여부(`git-check`, 찾음/못 찾음만), main 예외·거부, 렌더러·하위 프로세스 종료, 에이전트 시작 실패·비정상 종료, 서버·공동 편집 IPC 실패 코드, 공동 편집 실행 결과(언어·종료 코드·시간). 토큰·키·이메일·사용자 폴더 경로는 가리고 값은 300자로 자른다(`desktop/src/app-log.ts`). 렌더러는 쓸 수 없고 진단 내보내기에도 넣지 않는다. 에이전트(Python) 쪽 로그는 아직 없다.
+
 문제점: Roaming은 도메인 환경에서 프로필 동기화 대상이 될 수 있고, 캐시와 DB와 키가 한 폴더에 섞여 있다. DPAPI 키는 기기/사용자에 묶이므로 Roaming 동기화와 맞지 않는다.
 
 ## 3. [제안] 데이터 종류별 위치
