@@ -1,6 +1,8 @@
-# 환경 분리 아키텍처 (2차 · 설계만, 적용 없음)
+# 환경 분리 아키텍처 (2차 설계)
 
 작성일: 2026-10-30 · 기준 커밋: `65f1b62` · [문서 안내](../index.md)
+
+상태(2026-11-04 갱신): 2차 설계 기록이다. 결정은 3차 문서([최종 아키텍처](FINAL_ARCHITECTURE.md)·[환경 매트릭스](../deployment/FINAL_ENVIRONMENT_MATRIX.md))가 대체했다. 본문의 `scripts/…`·`dist/`·`desktop/out` 경로는 4차 이전 위치이며, 지금은 `tools/`·`tests/`·`build-output/`에 있다. 그 뒤 구현된 내용은 §2.4처럼 "확인 (날짜 변경)"으로 덧붙인다. 환경 가드(§3.3, R1)와 데이터 경로 이전(§3.2, R3)은 아직 적용되지 않았다.
 
 선행 문서(1차): [구조 감사](PROJECT_STRUCTURE_AUDIT.md) · [현재 아키텍처](CURRENT_ARCHITECTURE.md) · [의존성 분석](DEPENDENCY_ANALYSIS.md) · [제안 아키텍처](PROPOSED_ARCHITECTURE.md) · [이동 후보](FILE_MIGRATION_CANDIDATES.md)
 같은 2차 문서: [개발 환경 설정](../development/DEVELOPMENT_SETUP.md) · [빌드와 릴리스](../deployment/BUILD_AND_RELEASE.md) · [설치 안내](../deployment/INSTALLATION_GUIDE.md) · [데이터 저장 정책](../deployment/DATA_STORAGE_POLICY.md)
