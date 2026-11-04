@@ -32,7 +32,7 @@ if (typeof Chart !== 'undefined') {
       chart.options.color = token('--ui-muted');
       chart.options.font = { ...chart.options.font, family: token('--ui-font', 'Segoe UI'), size: 12 };
       if (chart.options.plugins?.tooltip) {
-        Object.assign(chart.options.plugins.tooltip, { backgroundColor: token('--ui-surface'), borderColor: token('--ui-border-strong'), titleColor: token('--ui-text'), bodyColor: token('--ui-text'), borderWidth: 1 });
+        Object.assign(chart.options.plugins.tooltip, { backgroundColor: token('--ui-surface'), borderColor: token('--ui-border-strong'), titleColor: token('--ui-text'), bodyColor: token('--ui-text'), footerColor: token('--ui-text'), borderWidth: 1 });
       }
       const cartesian = ['bar', 'line'].includes(chart.config.type);
       for (const [axis, scale] of Object.entries(chart.options.scales || {})) {

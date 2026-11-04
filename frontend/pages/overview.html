@@ -40,15 +40,15 @@
       <div class="p-head">
         <div class="p-title">커밋 활동량 타임라인</div>
       </div>
-      <div class="p-note" id="tl-window-note">월별 커밋 수 · 활성 기여자 수 · 버그 수정 비율. 관측 구간 안의 기록만 보여주며 전체 누적 수가 아닙니다.</div>
-      <div class="activity-chart">
+      <div class="p-note" id="tl-window-note">월별 커밋 수 · 활성 기여자 수 · 버그 수정 분류 비율. 관측 구간 전체의 기록이며 전체 누적 수가 아닙니다.</div>
+      <div class="activity-chart activity-bands">
         <canvas id="chart-timeline"></canvas>
       </div>
       <div class="legend">
-        <div class="leg-item"><div class="leg-line" style="background:var(--chart-1);"></div>커밋 수</div>
-        <div class="leg-item"><div class="leg-line" style="background:var(--chart-2);"></div>활성 기여자 수</div>
-        <div class="leg-item"><div class="leg-line" style="background:var(--chart-4);border-top:2px dashed var(--chart-4);height:0;"></div>버그 수정 비율</div>
-        <div class="leg-item"><div class="leg-dot" style="background:var(--red);"></div>릴리즈</div>
+        <div class="leg-item"><div class="leg-line" style="background:var(--chart-1);"></div>커밋 수 (위 띠, 건)</div>
+        <div class="leg-item"><div class="leg-line" style="background:var(--chart-2);"></div>활성 기여자 수 (가운데 띠, 명)</div>
+        <div class="leg-item"><div class="leg-line" style="background:var(--chart-4);"></div>버그 수정 분류 비율 (아래 띠, %)</div>
+        <div class="leg-item"><span class="leg-release" aria-hidden="true">◆</span>릴리즈 (커밋 띠 위, 태그는 툴팁)</div>
       </div>
     </div>
 
@@ -58,7 +58,7 @@
         <div class="panel">
           <div class="p-head mb-2.5">
             <div class="p-title">기여자별 활동 히트맵</div>
-            <div class="text-xs text-muted-foreground">분석 종료 시점 기준 최근 16주</div>
+            <div class="text-xs text-muted-foreground" id="tl-heatmap-range">관측 구간 전체</div>
           </div>
           <div class="act-hm" id="act-heatmap">
             <div style="font-size:12px;color:var(--text3);text-align:center;padding:24px 8px;">불러오는 중…</div>

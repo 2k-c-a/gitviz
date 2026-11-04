@@ -90,7 +90,13 @@ void app.whenReady().then(async () => {
     await capture('overview-1440-light.png', 1440, 1080, 'light');
     await capture('overview-1440-dark.png', 1440, 1080, 'dark');
     await capture('overview-900-light.png', 900, 640, 'light');
-    writeFileSync(join(output, 'preview-result.json'), JSON.stringify({ status: 'passed', fixtureOnly: true, rendering: 'Electron offscreen software paint', captures: ['activity-900-light.png', 'activity-900-dark.png', 'detail-1280-dark.png', 'overview-1440-light.png', 'overview-1440-dark.png', 'overview-900-light.png'] }));
+    await window.setContentSize(1440, 1080);
+    await wait(`innerWidth===1440 && Math.abs(Chart.getChart('chart-timeline').width - document.getElementById('chart-timeline').parentElement.clientWidth) < 2`);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    await window.webContents.executeJavaScript(`(() => { const c = Chart.getChart('chart-timeline'); const el = c.getDatasetMeta(0).data[4], r = c.canvas.getBoundingClientRect(); c.canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: r.left + el.x, clientY: r.top + c.chartArea.top + 40, bubbles: true })); })()`);
+    await wait(`Chart.getChart('chart-timeline').tooltip.getActiveElements().length===3 && Chart.getChart('chart-timeline').$gitvizReleases?.size > 0 && Chart.getChart('chart-timeline').tooltip.footer?.join('').includes('v0.6.0')`);
+    await capture('overview-hover-1440-light.png', 1440, 1080, 'light');
+    writeFileSync(join(output, 'preview-result.json'), JSON.stringify({ status: 'passed', fixtureOnly: true, rendering: 'Electron offscreen software paint', captures: ['activity-900-light.png', 'activity-900-dark.png', 'detail-1280-dark.png', 'overview-1440-light.png', 'overview-1440-dark.png', 'overview-900-light.png', 'overview-hover-1440-light.png'] }));
     process.stdout.write(`PASS UI preview: ${output}\n`);
   } finally { unregister(); window.destroy(); clearTimeout(deadline); }
 }).then(() => app.exit(0)).catch(error => { process.stderr.write(`FAIL UI preview (${phase}): ${String(error)}\n`); app.exit(1); });

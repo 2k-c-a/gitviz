@@ -85,9 +85,8 @@
 .app-main .metrics-4 > .metric-card { padding: 12px; }
 .app-main .network-svg, .app-main .coup-svg.cx-canvas { height: clamp(240px, 48dvh, 440px); }
 .activity-chart { position: relative; height: clamp(176px, 28dvh, 260px); }
-/* 커밋 활동량 타임라인: 같은 월 축의 작은 그래프 3개(커밋·활성 기여자·버그 수정 비율)를 위아래로 */
-.activity-chart.activity-chart-multi { height: clamp(112px, 16dvh, 150px); }
-.activity-chart-title { margin: 10px 0 2px; font-size: var(--ui-text-xs); font-weight: 600; color: var(--text2); }
+.activity-chart.activity-bands { height: clamp(300px, 46dvh, 440px); }
+.leg-release { font-size: 11px; line-height: 1; color: var(--ui-text); }
 @media (width < 1280px) {
   .app-shell { --nav-width: 56px; }
   .app-shell.has-detail { grid-template-columns: var(--nav-width) minmax(0, 1fr); }

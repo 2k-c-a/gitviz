@@ -28,6 +28,7 @@ const uid = '11111111-1111-4111-8111-111111111111';
 const token = 'f'.repeat(64);
 const user = { id: uid, github_login: 'fixture', display_name: 'P03 Fixture', avatar_url: null, email: null };
 const issued = { sessionToken: token, sessionId: uid, user, expiresAt: new Date(Date.now() + 300000).toISOString(), capabilities: ['remote-v1'], apiCapabilities: { desktopProtocol: 1, aiContract: '1.9' } };
+let heatmapWeeksAsked = '';
 const snapshot = { id: 7, repository_id: 2, target_sha: 'a'.repeat(40), payload_sha256: 'b'.repeat(64), formula_version: 'v1', window_start: '2026-01-01T00:00:00Z', window_end: '2026-06-01T00:00:00Z', analyzed_at: '2026-06-01T00:00:00Z' };
 const repo = { id: 2, url: 'https://github.com/fixture/p03', name: 'P03 Fixture', status: 'done', default_branch: 'main', last_analyzed_at: snapshot.analyzed_at, latest_snapshot_id: 7 };
 const requests: string[] = [];
@@ -151,7 +152,7 @@ function communityFixture(p: string, method: string, payload: Record<string, unk
   if (post && parts.length === 3) return { status: 200, body: postView(post, true) };
   return { status: 403, body: { detail: { code: 'INVITE_REQUIRED', message: '이 저장소의 기여자가 아니면 초대 링크로만 참여할 수 있습니다.' } } };
 }
-const files =Array.from({ length: 52 }, (_, i) => ({ file_id: 999 + i, path: i ? `src/module-${i}.ts` : 'src/fixture.ts', name: i ? `module-${i}.ts` : 'fixture.ts', observation_count: 100 - i, maintenance_priority: 0.5, risk_score: 0.5, evidence_status: 'observed', bus_factor: 1, coupling_score: 0.5, coupling_support: 3, coupled_file_count: 1 }));
+const files =Array.from({ length: 52 }, (_, i) => ({ file_id: 999 + i, path: i ? `src/module-${i}.ts` : 'src/fixture.ts', name: i ? `module-${i}.ts` : 'fixture.ts', observation_count: 100 - i, churn: i === 51 ? 9000 : i === 50 ? null : 1000 - i, bugfix_count: i === 7 ? 40 : i === 50 ? null : i % 5, maintenance_priority: 0.5, risk_score: 0.5, evidence_status: 'observed', bus_factor: 1, coupling_score: 0.5, coupling_support: 3, coupled_file_count: 1 }));
 const preview = () => ({ input_id: inputId, repository_id: 2, source_type: inputSource, pr_number: inputSource === 'pr' ? 1 : null, pr_title: 'Fixture change', base_sha: 'b'.repeat(40), head_sha: 'a'.repeat(40), status: 'ready', execution_valid: true, reviewable: true, manifest_hash: 'c'.repeat(64), policy_version: 'code-transfer-v1', files: [{ file_id: sourceId, path: 'src/fixture.ts', content_state: 'read', change_type: 'modified', byte_count: 50, hunks: [] }], coverage: { pr_total_files: 1, selected_files: 1, inventory_coverage: 'complete', selected_content_coverage: 'complete', analysis_coverage: 'complete', limitations: [] }, transfer: { ...model }, token_estimate: { input_tokens: 20, max_output_tokens: 100, within_limit: true, estimated_max_cost: '0.01' } });
 
 const http: Http = async (path, method, _body, givenToken, _idempotency, aiKey) => {
@@ -173,7 +174,7 @@ const http: Http = async (path, method, _body, givenToken, _idempotency, aiKey) 
   else if (p.endsWith('/timeline')) body = { months: ['2026-05'], commits: [1], active_contributors: [1], bugfix_pct: [0] };
   else if (p.endsWith('/commit-types') && typeFailure) return { status: 503, body: { detail: 'fixture temporary error' }, headers: {} };
   else if (p.endsWith('/commit-types')) body = { types: [{ type: 'feature', count: 1, pct: 100 }] };
-  else if (p.endsWith('/contributor-heatmap')) body = { weeks: [], contributors: [] };
+  else if (p.endsWith('/contributor-heatmap')) { heatmapWeeksAsked = url.searchParams.get('weeks') ?? ''; body = { weeks: [], contributors: [] }; }
   else if (p.endsWith('/top-contributors')) body = { contributors: [{ id: 1, github_login: 'Fixture', commit_count: 1 }] };
   else if (p.endsWith('/releases')) body = { releases: [] };
   else if (p.endsWith('/network')) body = { nodes: [{ id: 1, name: 'Fixture', commit_count: 1 }, { id: 2, name: 'Reviewer', commit_count: 1 }], edges: [{ source: 1, target: 2, edge_weight: 0.8 }], metrics: { total_contributor_count: 1, total_edge_count: 0 }, data_quality: {} };
@@ -298,10 +299,17 @@ void app.whenReady().then(async () => {
     await wait(`document.getElementById('dd-title').textContent==='fixture.ts'`);
     await window.webContents.executeJavaScript(`document.getElementById('dd-back-btn').click()`);
     await wait(`document.getElementById('dd-title').textContent==='Fixture'`);
-    // 타임라인은 커밋 수·활성 기여자·버그 수정 비율을 같은 월 축의 그래프 3개로 함께 보여 준다(지표 선택 없음).
+    // 히트맵은 관측 구간(2026-01-01 목 ~ 2026-06-01 월, 151일) 전체: 6/1 주부터 1/1이 든 주까지 23주를 요청한다. 텍스트 보기는 없다.
+    assert.equal(heatmapWeeksAsked, '23');
+    assert.equal(await window.webContents.executeJavaScript(`JSON.stringify([document.getElementById('tl-heatmap-range').textContent, document.getElementById('act-heatmap').closest('.panel').textContent.includes('텍스트로 보기')])`), JSON.stringify(['관측 구간 전체 · 최근 151일', false]));
+    // 결과 상단에는 '결과 조회 성공·일부만 수집·근거 제한적·점검 우선순위 (v3)' 같은 상태 칩을 두지 않는다. 확인할 항목은 '수집 범위·분석 기준' 안에 남는다.
+    assert.equal(await window.webContents.executeJavaScript(`JSON.stringify([document.querySelectorAll('#analysis-context .ctx-chip').length, /결과 조회 성공|근거 제한적|일부만 수집/.test(document.getElementById('analysis-context').textContent), document.querySelector('#analysis-context .ctx-details summary').textContent.startsWith('수집 범위·분석 기준'), [...document.querySelectorAll('#analysis-context .info-table .key')].map(e => e.textContent).filter(k => ['계산 버전', '표본 부족 기준', '수집 범위 주의'].includes(k)).length, !!document.querySelector('#analysis-context .info-table .key')])`), JSON.stringify([0, false, true, 0, true]));
+    // 타임라인은 한 카드 안에 띠 3개(커밋 막대·활성 기여자 선·버그 수정 % 선)를 위아래로 쌓는다. 월 축은 하나, 세로 축은 띠마다 따로(범위·지표 선택 없음).
     await window.webContents.executeJavaScript(`window.closeDrilldown()`);
-    assert.equal(await window.webContents.executeJavaScript(`JSON.stringify(['chart-timeline','chart-timeline-contributors','chart-timeline-bugfix'].map(id => { const c = Chart.getChart(id); return [c.config.type, c.data.datasets.length, c.options.scales.y.max ?? null]; }))`), JSON.stringify([['bar', 1, null], ['line', 1, null], ['line', 1, 100]]));
-    assert.equal(await window.webContents.executeJavaScript(`[...document.querySelectorAll('.activity-chart-title')].map(e => e.textContent).join()`), '커밋 수 (건),활성 기여자 (명),버그 수정 분류 비율 (%)');
+    assert.equal(await window.webContents.executeJavaScript(`(() => { const c = Chart.getChart('chart-timeline'); const band = id => [c.scales[id].top, c.scales[id].bottom]; return JSON.stringify([c.data.datasets.map(d => [d.type, d.yAxisID]), ['y', 'yContributors', 'yBugfix'].map(id => c.options.scales[id].stack), c.options.scales.yBugfix.max, band('y')[1] <= band('yContributors')[0] + 1 && band('yContributors')[1] <= band('yBugfix')[0] + 1, c.options.interaction.mode, ['chart-timeline-contributors','chart-timeline-bugfix'].map(id => !!document.getElementById(id)), !!c.canvas.closest('.panel').querySelector('select')]); })()`), JSON.stringify([[['bar', 'y'], ['line', 'yContributors'], ['line', 'yBugfix']], ['timeline', 'timeline', 'timeline'], 100, true, 'index', [false, false], false]));
+    // 한 달을 가리키면 세로 기준선 하나와 세 값이 한 툴팁에 나온다.
+    await window.webContents.executeJavaScript(`(() => { const c = Chart.getChart('chart-timeline'); const el = c.getDatasetMeta(0).data[0], r = c.canvas.getBoundingClientRect(); c.canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: r.left + el.x, clientY: r.top + c.chartArea.top + 10, bubbles: true })); })()`);
+    await wait(`JSON.stringify(Chart.getChart('chart-timeline').tooltip.getActiveElements().map(a => a.datasetIndex))==='[0,1,2]' && Chart.getChart('chart-timeline').tooltip.body?.length===3`);
     assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('[aria-label="월별 지표"]').length`), 0);
     await window.webContents.executeJavaScript(`document.querySelector('.analysis-list button').click()`);
     await wait(`document.querySelector('[role="status"]').textContent.includes('2026-05') || [...document.querySelectorAll('[role="status"]')].some(e=>e.textContent.includes('2026-05'))`);
@@ -318,8 +326,16 @@ void app.whenReady().then(async () => {
     phase = 'file-search-pagination-views';
     await window.loadURL('gitviz://app/web/pages/code-analysis.html?repo=2&snapshot=7');
     await wait(`document.querySelectorAll('#cx-list-tbody tr').length===50 && !!document.getElementById('cx-list-next')`);
+    // 목록 정렬은 수정량 순(기본)·버그 수정 순 두 가지다. 수정량이 가장 큰 파일이 맨 위, 수정량 없는 파일은 맨 뒤.
+    assert.equal(await window.webContents.executeJavaScript(`JSON.stringify([[...document.getElementById('cx-list-order').options].map(o => o.textContent), document.getElementById('cx-list-order').value, document.querySelector('#cx-list-tbody tr .cx-file-detail').textContent, document.querySelector('#cx-list-tbody tr').children[2].textContent])`), JSON.stringify([['수정량 순', '버그 수정 순'], 'churn', 'src/module-51.ts', '9,000줄']));
     await window.webContents.executeJavaScript(`document.getElementById('cx-list-next').click()`);
     assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('#cx-list-tbody tr').length`), 2);
+    assert.equal(await window.webContents.executeJavaScript(`[...document.querySelectorAll('#cx-list-tbody tr .cx-file-detail')].pop().textContent`), 'src/module-50.ts');
+    await window.webContents.executeJavaScript(`(() => { const o=document.getElementById('cx-list-order'); o.value='bugfix'; o.dispatchEvent(new Event('change')); })()`);
+    assert.equal(await window.webContents.executeJavaScript(`JSON.stringify([document.querySelector('#cx-list-tbody tr .cx-file-detail').textContent, document.querySelector('#cx-list-tbody tr').children[3].textContent, document.getElementById('cx-list-note').textContent.startsWith('버그 수정 순')])`), JSON.stringify(['src/module-7.ts', '40회', true]));
+    // 트리 위 버튼은 정렬이 아니라 색 기준이라 '…순' 없이 지표 이름만 쓴다(이 fixture는 계산 버전이 없어 '분석 점수').
+    assert.equal(await window.webContents.executeJavaScript(`[...document.querySelectorAll('#cx-sort-toggle')].map(e => e.getAttribute('aria-label') + ':' + e.textContent).join()`), '트리 색 기준:색 기준분석 점수함께 수정 정도주요 수정자 수');
+    await window.webContents.executeJavaScript(`(() => { const o=document.getElementById('cx-list-order'); o.value='churn'; o.dispatchEvent(new Event('change')); })()`);
     await window.webContents.executeJavaScript(`const search=document.getElementById('cx-search');search.value='fixture.ts';search.dispatchEvent(new Event('input'));document.querySelector('.cx-file-detail').click()`);
     await wait(`document.getElementById('dd-title').textContent==='fixture.ts'`);
     await window.webContents.executeJavaScript(`window.closeDrilldown(); document.querySelector('[data-view="tree"]').click()`);
