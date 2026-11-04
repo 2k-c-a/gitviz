@@ -1,8 +1,8 @@
 # 공동 편집 파일 묶음·미리보기 설계 (AD-34)
 
-작성일: 2026-11-04 · 코드 기준: `dc68209` · 상태: **설계 확정, 미구현** · 결정 기록: [AD-34](ARCHITECTURE_DECISIONS.md) · 현재 공동 편집: AD-29 · [문서 안내](../index.md)
+작성일: 2026-11-04 · 코드 기준: `dc68209` · 상태: **1단계 구현(2026-11-04, `feat/collab-file-set`)**, 2·3단계 미구현 · 결정 기록: [AD-34](ARCHITECTURE_DECISIONS.md) · 현재 공동 편집: AD-29 · [문서 안내](../index.md)
 
-이 문서는 확정된 설계를 구현 전에 정리한 것이다. 코드는 아직 바꾸지 않았다. 새 의존성·IPC 채널·서버 스키마 변경은 구현 단계에서 다시 승인을 받는다.
+이 문서는 확정된 설계와 1단계 구현을 정리한 것이다. 구현에서 설계와 달라진 점과 남은 한계는 §10에 있다.
 
 소유자 결정(2026-11-04):
 - "폴더 대신 파일을 고르면 그 파일과 import 관계인 파일만 공동 편집", "HTML은 분리된 CSS·JS도 작동".
@@ -145,7 +145,7 @@
 - CSP 예: `default-src gitviz-preview: https: data: blob: 'unsafe-inline' 'unsafe-eval'; connect-src gitviz-preview: https: wss:; frame-ancestors 'none'; form-action gitviz-preview:`.
 - 위험 수준: 보는 사람이 외부 웹 페이지 하나를 여는 것과 비슷하다. 외부 사이트는 보는 사람의 IP와 공유된 코드가 보내는 내용을 볼 수 있다. preload·Node가 없어 앱 기능·PC 파일에는 닿지 않는다.
 
-## 7. 바뀌는 곳 (구현 단계 예상)
+## 7. 바뀐 곳 (1단계 구현)
 
 | 영역 | 변경 |
 |---|---|
@@ -153,7 +153,7 @@
 | IPC | 묶음 열기·루트 넓히기·파일 추가·새 참조 승인·자산 받기·미리보기 열기/갱신/외부 연결 끄기 채널 추가(기존 `desktop:collab-open|save|close` 이름은 유지, 새 채널을 더함) |
 | 화면 | 공동 편집 화면에 파일 트리·찾지 못한 참조·승인 대기·미리보기, 편집기 번들(`collab-editor.entry.mjs`)에 `Y.Map` 구조와 자산 수신 |
 | 서버 | relay `kind`(`asset`·`asset-request`)와 선택 필드 `path`, 사용자당 바이트 상한, 세션 생성의 `file_count`. 내용 저장 없음, DB 변경 없음 |
-| 새 의존성 | desktop devDependencies `parse5`, `es-module-lexer`(정확한 버전 고정, 번들·main에만). **설치 전 승인 필요** |
+| 새 의존성 | desktop `dependencies` `parse5` 8.0.1, `es-module-lexer` 3.0.4(정확한 버전 고정, 2026-11-04 설치 승인). main 프로세스가 실행 중에 쓰므로 패키지에 들어가야 해서 devDependencies가 아니다 |
 | 테스트 | 경계 규칙(루트 밖·루트 넓히기 한도·링크·숨김·확장자·시그니처·크기), 참조 분석 표본, 새 참조 승인 없이는 읽지 않음, 미리보기 CSP·이동 차단·사설 주소 차단, 파일별 동기화·자산 해시 확인, 서버 relay 형식·바이트 상한 |
 | 문서 | AD-34 확정, [현재 범위](../product/current-scope.md), 커뮤니티 계약 문서 |
 
@@ -175,3 +175,18 @@
 | 4 | 외부 연결 범위 | **https 리소스와 https·wss 연결 허용, http·사설 주소 차단, 보는 사람별 끄기** | CDN 라이브러리와 외부 API 예제가 동작하고, 남의 코드가 내 PC·내부망을 두드리는 것만 막는다 | 리소스만 허용하고 `fetch`는 차단 / CDN 허용 목록 |
 | 5 | 이미지·폰트 한도 | **파일당 2MB, 30개, 합계 10MB** | 웹 예제 자산에 충분하고 relay 한도(분당 1200회) 안에서 1분 안에 동기화된다 | 더 크게(서버 중계 부하가 커짐) |
 | 6 | 상대 경로가 서버를 지남 | **허용(예외 범위에 포함)** | 상대 경로는 Yjs 메시지 안에 실려 서버를 지나지만 저장되지 않는다. 참여자에게 경로를 보여 주는 결정과 같은 수준 | 경로를 해시로 바꿔 보내기(디버깅이 어려워짐) |
+
+## 10. 1단계 구현 기록 (2026-11-04)
+
+구현 위치:
+- 앱 main: [collab-refs.ts](../../desktop/src/collab-refs.ts)(참조 분석), [collab-bundle.ts](../../desktop/src/collab-bundle.ts)(루트·경계·한도·승인 대기·저장), [collab-preview.ts](../../desktop/src/collab-preview.ts)(미리보기 창·`gitviz-preview` 프로토콜·요청 차단), [desktop-ipc.ts](../../desktop/src/desktop-ipc.ts)(`desktop:collab-bundle-*`, `desktop:collab-preview-*` 채널, 커뮤니티 페이지에서만).
+- 화면: [community.js](../../frontend/js/community.js)의 공동 편집 절, 편집기 번들 `desktop/scripts/collab-editor.entry.mjs`(목록 문서 + 파일별 문서).
+- 서버: `CollabRelayRequest`에 `path`·`asset`·`asset-request`, `CreateCollabSessionRequest.file_count`, 사용자당 분당 relay 문자 수 상한(`RELAY_BYTES`, 약 20MB). 계약 [community-bodies.json](../../contracts/desktop/v1/community-bodies.json) 재생성.
+
+설계와 달라진 점·남은 한계:
+- 루트 금지 폴더(드라이브·사용자 폴더·바탕 화면 등)는 **넓힐 때만** 적용한다. 시작 파일이 바탕 화면에 바로 있으면 그 폴더는 기본 루트로 쓸 수 있다(호스트가 그 파일을 직접 골랐고, 참조된 파일만 들어간다).
+- 새 참조 승인 화면에 "추가한 사람"은 표시하지 않는다(Yjs 변경에서 작성자를 확정할 수 없다). 경로만 보여 준다.
+- 미리보기의 사설 주소 차단은 URL의 호스트 이름·IP 표기 기준이다. 공개 이름이 사설 IP로 풀리는 DNS 재바인딩은 막지 못한다.
+- 미리보기 상단 표시 대신 미리보기 창 제목과 공동 편집 화면에 외부 연결 호스트를 보여 준다. "외부 연결 끄기"는 공동 편집 화면의 버튼이다.
+- 문서 구조가 바뀌어 AD-29(파일 하나) 방식의 이전 앱과는 함께 편집할 수 없다. `file_count`가 없는 세션에 참여하면 안내만 하고 나온다.
+- 시험: 앱 단위 테스트 `desktop/tests/collab-bundle.test.ts`(참조·경계·승인·넓히기·한도·차단 규칙), e2e `phase3-flows`(실제 두 번째 Yjs 편집기와 묶음 확인·후보 추가·파일별 동기화·이미지 조각 전송·새 참조 승인·미리보기 CSS·이미지·차단·저장·손님 동기화), 서버 `test_community`(path 형식·자산 전달·바이트 상한). 실제 두 PC·실제 서버에서의 사용은 시험하지 않았다.

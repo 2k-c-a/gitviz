@@ -12,7 +12,7 @@
 | 커밋 전 AI 리뷰·리팩터링 | 로컬 모델 또는 DPAPI로 저장한 내 키(BYOK)로 리뷰, 제안 → ‘적용’ 버튼 한 번으로 해시 확인 후 적용, 영향 분석, 테스트·린트 전후 비교. 전송 동의 체크박스·native 확인은 없앴고 화면 버튼이 승인이다([AD-23](../architecture/ARCHITECTURE_DECISIONS.md)) | [proposals](../../desktop/src/proposals.ts), [cloud-review](../../desktop/src/cloud-review.ts) |
 | 로그인 | 시스템 브라우저 GitHub 로그인 → 루프백(`127.0.0.1` 임의 포트)으로 돌아와 앱 전용 bearer 세션. 확인 코드·승인 버튼 없음([AD-24](../architecture/ARCHITECTURE_DECISIONS.md)) | [auth.ts](../../desktop/src/auth.ts), [서버](../../app/api/desktop/auth.py) |
 | 서버 기능 | 저장소 검색(페이지 이동)·분석·결과 화면을 서버 API로 사용. 원격 분석 연결·알림함 | [remote-contracts](../../desktop/src/remote-contracts.ts) |
-| 공동 편집 | 호스트 PC의 파일 하나를 3명까지 실시간 편집(CodeMirror 6 + Yjs). 저장은 호스트만, 서버는 전달만([AD-29](../architecture/ARCHITECTURE_DECISIONS.md)) | [collab-files](../../desktop/src/collab-files.ts), [화면](../../frontend/js/community.js) |
+| 공동 편집 | 호스트가 고른 시작 파일과 그 파일이 불러오는 HTML·CSS·JS(이미지·글꼴은 읽기 전용)를 3명까지 실시간 편집(CodeMirror 6 + Yjs). 편집 중 새 참조는 호스트 승인 후 공유, HTML은 앱 안 격리된 창에서 미리보기. 저장은 호스트만, 서버는 전달만([AD-29](../architecture/ARCHITECTURE_DECISIONS.md), [AD-34](../architecture/collab-file-set-design.md)) | [collab-files](../../desktop/src/collab-files.ts), [화면](../../frontend/js/community.js) |
 | 배포 | 서명 없는 0.7.0 설치 파일(Squirrel, 사용자별 설치), 서명 확인 후 수동 업데이트. 로컬 스테이징 빌드는 서버 주소·인증서를 넣어 탐색기 더블클릭으로 동작([AD-30](../architecture/ARCHITECTURE_DECISIONS.md)) | [설치·업데이트](../operations/windows-desktop.md) |
 
 ## 확인한 구현 — 커뮤니티 (웹·앱 공용 화면, 공동 편집은 앱 전용)
