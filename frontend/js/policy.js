@@ -13,7 +13,6 @@ const PRIORITY = {
   kind: 'priority',
   scoreName: '유지보수 점검 우선순위',
   scoreShort: '점검 우선순위',
-  sortLabel: '점검 우선순위순',
   versionLabel: '점검 우선순위 (v3)',
   leadText: '점검 우선순위는 변경 횟수·수정량·버그 수정 횟수의 백분위 평균으로 저장소 안에서 상대적으로 계산한 점수입니다. 결함 확률이 아니며 0도 안전을 뜻하지 않습니다.',
   summaryText:
@@ -28,7 +27,6 @@ const LEGACY = {
   kind: 'legacy',
   scoreName: 'Risk Score (이전 계산 버전)',
   scoreShort: 'Risk Score',
-  sortLabel: 'Risk Score순',
   versionLabel: '이전 버전 (v2)',
   leadText: '이전 계산 버전(v2)의 Risk Score입니다. 새 정책(점검 우선순위)과 직접 비교할 수 없으며 결함 확률이 아닙니다.',
   summaryText:
@@ -42,7 +40,6 @@ const UNKNOWN = {
   kind: 'unknown',
   scoreName: '분석 점수',
   scoreShort: '분석 점수',
-  sortLabel: '점수순',
   versionLabel: '알 수 없는 버전',
   leadText: '이 화면이 알지 못하는 계산 버전입니다. 점수는 저장소 안의 상대 값이며 결함 확률이 아닙니다.',
   summaryText:

@@ -54,18 +54,18 @@ const nullsLast = (get, dir) => (a, b) => {
 const couplingOf = (f) => (f.coupling_support === 0 ? null : f.coupling_score);
 
 const METRICS = {
-  risk:     { key: 'avgRisk',     color: riskColor,     label: '점검 우선순위순', compare: comparePriority,
+  risk:     { key: 'avgRisk',     color: riskColor,     label: '점검 우선순위', compare: comparePriority,
               legendTitle: '점검 우선순위', legendItems: [] },
-  coupling: { key: 'avgCoupling', color: couplingColor, label: '함께 수정순', compare: nullsLast(couplingOf, 'desc'),
+  coupling: { key: 'avgCoupling', color: couplingColor, label: '함께 수정 정도', compare: nullsLast(couplingOf, 'desc'),
               legendTitle: '함께 수정 정도', legendItems: [['후보 없음', NO_VALUE], ['낮음 (0~0.4)', '#378ADD'], ['0.4~0.7', '#EF9F27'], ['자주 함께 수정 (≥0.7)', '#E24B4A']] },
-  bf:       { key: 'avgBF',       color: bfColor,       label: '주요 수정자순', compare: nullsLast((f) => f.bus_factor, 'asc'),
+  bf:       { key: 'avgBF',       color: bfColor,       label: '주요 수정자 수', compare: nullsLast((f) => f.bus_factor, 'asc'),
               legendTitle: '주요 수정자 수', legendItems: [['식별된 기여 없음', NO_VALUE], ['1 (한 명에게 집중)', BF_COLORS[1]], ['2', BF_COLORS[2]], ['3', BF_COLORS[3]], ['4', BF_COLORS[4]], ['5+', BF_COLORS[5]]] },
 };
 
 /* 계산 버전에 맞춰 점수 지표의 이름·범례를 바꾼다 */
 function applyPolicyToMetrics() {
   const m = METRICS.risk;
-  m.label = POLICY.sortLabel;
+  m.label = POLICY.scoreShort;
   m.legendTitle = POLICY.scoreShort;
   m.legendItems = [['점수 없음', NO_VALUE], ['<0.3', '#639922'], ['0.3~0.5', '#378ADD'], ['0.5~0.7', '#EF9F27'], [`≥${DISPLAY_THRESHOLD} (표시 임계값)`, '#E24B4A']];
 }
@@ -78,8 +78,14 @@ let SNAP = null;          // 지금 열려 있는 저장 결과의 메타 (id, w
 let DQ = {};              // data_quality — 수집 범위·표본 정보
 let REPO_ID = null;
 let searchText = new URLSearchParams(location.search).get('file_q') || '';
-let listOrder = new URLSearchParams(location.search).get('file_order') || 'changes';
-if (!['changes', 'risk', 'coupling', 'bf'].includes(listOrder)) listOrder = 'changes';
+// 파일 목록 정렬: 수정량 순·버그 수정 순. 예전 주소의 다른 정렬(changes·risk·coupling·bf)은 수정량 순으로 연다.
+// 값이 없는 파일(수정량·버그 수정 수를 싣기 전에 만든 결과 등)은 0으로 보지 않고 뒤에 둔다.
+const LIST_ORDERS = {
+  churn:  { label: '수정량 순', compare: nullsLast(f => f.churn, 'desc') },
+  bugfix: { label: '버그 수정 순', compare: nullsLast(f => f.bugfix_count, 'desc') },
+};
+let listOrder = new URLSearchParams(location.search).get('file_order') || 'churn';
+if (!LIST_ORDERS[listOrder]) listOrder = 'churn';
 let listPage = Math.max(0, Number(new URLSearchParams(location.search).get('file_page')) || 0);
 
 /* 폴더명/파일명 클릭 → GitHub 이동에 필요한 레포 정보 (summary에서 가져옴) */
@@ -222,7 +228,9 @@ function renderSummary() {
 function renderSortToggle() {
   const wrap = document.getElementById('cx-sort-toggle');
   if (!wrap) return;
-  wrap.innerHTML = Object.entries(METRICS).map(([key, m]) =>
+  // 트리 원의 색을 정하는 기준이다(정렬이 아님). 목록 정렬은 전체 파일 목록의 선택 상자가 따로 정한다.
+  wrap.setAttribute('role', 'group'); wrap.setAttribute('aria-label', '트리 색 기준');
+  wrap.innerHTML = '<span class="cx-color-label">색 기준</span>' + Object.entries(METRICS).map(([key, m]) =>
     `<button type="button" class="rbtn${key === currentMetric ? ' active' : ''}" aria-pressed="${key === currentMetric}" data-metric="${key}">${m.label}</button>`
   ).join('');
   wrap.querySelectorAll('[data-metric]').forEach(el => {
@@ -605,6 +613,8 @@ const SCORE_NA = {
 };
 const scoreNaReason = (f) => SCORE_NA[f.evidence_status] || '점수가 없습니다';
 const BF_NA = '식별된 기여가 없어 주요 수정자 수를 계산하지 못했습니다 (0이 아님)';
+const BUGFIX_NA = '관측 변경이 없거나 버그 수정 수를 싣기 전에 만든 결과라 값이 없습니다 (0이 아님). 버그 수정 순에서는 뒤에 둡니다';
+const CHURN_NA = '관측 변경이 없거나 줄 수를 알 수 없는 변경이 있어, 또는 수정량을 싣기 전에 만든 결과라 수정량이 없습니다 (0이 아님). 수정량 순에서는 뒤에 둡니다';
 const ENTROPY_NA = '식별된 기여가 없어 계산하지 못했습니다 (기여자 1명이면 0, 없으면 값 없음)';
 
 /* 트리 노드에 마우스를 올리거나 클릭하면 우측 카드에 점수/주요 수정자 수/함께 수정 정도를 한번에 보여준다 */
@@ -679,7 +689,7 @@ function renderList() {
   const note = document.getElementById('cx-list-note');
   if (!tbody) return;
 
-  const metric = listOrder === 'changes' ? { label: '관측 구간 변경 횟수순', compare: nullsLast(f => f.observation_count, 'desc') } : METRICS[listOrder] || METRICS.risk;
+  const metric = LIST_ORDERS[listOrder] || LIST_ORDERS.churn;
   const q = searchText.trim().toLowerCase();
   const matched = q ? FILES.filter(f => f.path.toLowerCase().includes(q)) : FILES;
   const limit = LIST_LIMIT;
@@ -690,15 +700,15 @@ function renderList() {
   if (document.getElementById('cx-list-page')) document.getElementById('cx-list-page').textContent = `${matched.length}개 · ${listPage + 1} / ${Math.max(1, Math.ceil(matched.length / limit))}페이지`;
   saveFileListContext();
   if (note) {
-    note.textContent = `${metric.label} · ${num(matched.length)}개 중 ${num(sorted.length)}개 표시 · 변경 횟수는 스냅샷 관측 기간 기준`;
+    note.textContent = `${metric.label} · ${num(matched.length)}개 중 ${num(sorted.length)}개 표시 · 변경 횟수·수정량·버그 수정 수는 스냅샷 관측 기간 기준`;
   }
 
   if (!FILES.length) {
-    tbody.innerHTML = '<tr><td class="hm-td" colspan="6" style="text-align:center;color:var(--text3);padding:24px;">파일 데이터가 없습니다.</td></tr>';
+    tbody.innerHTML = '<tr><td class="hm-td" colspan="8" style="text-align:center;color:var(--text3);padding:24px;">파일 데이터가 없습니다.</td></tr>';
     return;
   }
   if (!sorted.length) {
-    tbody.innerHTML = `<tr><td class="hm-td" colspan="6" style="text-align:center;color:var(--text3);padding:24px;">'${esc(searchText.trim())}'와 일치하는 파일이 없습니다.</td></tr>`;
+    tbody.innerHTML = `<tr><td class="hm-td" colspan="8" style="text-align:center;color:var(--text3);padding:24px;">'${esc(searchText.trim())}'와 일치하는 파일이 없습니다.</td></tr>`;
     return;
   }
 
@@ -716,6 +726,8 @@ function renderList() {
     return `<tr style="cursor:pointer;" data-file-id="${f.file_id}" title="수정한 사람·함께 변경된 파일 보기">
       <td class="hm-td file" title="${esc(f.path)}">${pathHtml}${bfBadge}${couplingBadge}<div class="cx-notes">${fileNotes(f)}</div></td>
       <td class="hm-td">${f.observation_count == null ? DASH : num(f.observation_count)}회</td>
+      <td class="hm-td">${f.churn == null ? na(CHURN_NA) : `${num(f.churn)}줄`}</td>
+      <td class="hm-td">${f.bugfix_count == null ? na(BUGFIX_NA) : `${num(f.bugfix_count)}회`}</td>
       <td class="hm-td">${sc != null ? `<span class="hm-val" style="background:${riskColor(sc)}22;color:${riskColor(sc)};font-weight:600;">${fmt2(sc)}</span>` : na(scoreNaReason(f))}</td>
       <td class="hm-td" style="text-align:center;">${f.bus_factor != null ? f.bus_factor : na(BF_NA)}</td>
       <td class="hm-td">${cp != null ? `<span class="hm-val" style="background:${couplingColor(cp)}22;color:${couplingColor(cp)};">${fmt2(cp)}</span>` : na('함께 수정 2건 이상인 함께 수정된 후보가 없습니다')}</td>
@@ -742,7 +754,7 @@ function setupSearch() {
   input.addEventListener('input', () => { searchText = input.value; listPage = 0; renderList(); });
   const controls = element('div', 'analysis-toolbar');
   const order = element('select'); order.id = 'cx-list-order'; order.setAttribute('aria-label', '파일 목록 정렬');
-  [['changes', '관측 구간 변경 횟수순'], ...Object.entries(METRICS).map(([key, m]) => [key, m.label])].forEach(([key, label]) => { const option = element('option', '', label); option.value = key; order.append(option); });
+  Object.entries(LIST_ORDERS).map(([key, m]) => [key, m.label]).forEach(([key, label]) => { const option = element('option', '', label); option.value = key; order.append(option); });
   order.value = listOrder; order.addEventListener('change', () => { listOrder = order.value; listPage = 0; renderList(); });
   const prev = action('이전', () => { listPage--; renderList(); }); prev.id = 'cx-list-prev';
   const next = action('다음', () => { listPage++; renderList(); }); next.id = 'cx-list-next';

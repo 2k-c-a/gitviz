@@ -5,25 +5,23 @@
      3) 분석 근거   : 이 결과를 해석할 표본이 있는가
    긴 ISO 시각·SHA·해시 같은 기술 정보는 접어 두고 필요할 때 펼친다. */
 import { esc, fmtDateTime, fmtWindow, windowDays, num } from './fmt.js';
-import { policyOf, assessDataQuality, COLLECTION_TEXT, EVIDENCE_TEXT, STATUS_TONE, COLLECTION_NOTE, evidenceNote } from './policy.js';
+import { policyOf, assessDataQuality } from './policy.js';
 import { parseState, buildQuery } from './viz-state.js';
 import { workspaceEntryUrl } from './platform/workspace-navigation.js';
 
 const host = () => document.querySelector('.page.active .body') || document.querySelector('.page.active') || document.querySelector('main') || document.body;
 
 function techRows(snap, dq) {
+  // 계산 버전·표본 부족 기준·수집 범위 주의는 사용자에게 뜻이 잘 전달되지 않아 보여 주지 않는다(2026-11-04).
   const rows = [
     ['분석 구간', `${snap.window_start ? fmtDateTime(snap.window_start) : '전체 이력'} ~ ${fmtDateTime(snap.window_end)} (종료 시각 제외)`],
     ['분석 실행 시각', fmtDateTime(snap.analyzed_at)],
     ['기준 SHA', snap.target_sha],
-    ['계산 버전', snap.formula_version],
     ['결과 해시', (snap.payload_sha256 || '').slice(0, 16)],
     ['관측 커밋', `${num(dq.commit_count)}개 · 작성자 미식별 ${num(dq.unidentified_commits)}개 · 기여자 ${num(dq.contributor_count)}명 (GitHub 계정 미연결 ${num(dq.github_account_unlinked)}명)`],
     ['병합 PR', `${num(dq.merged_pr_count)}개 중 파일 상세 ${num(dq.prs_with_files)}개 · 커밋 연결 ${num(dq.prs_with_linked_commits)}개`],
     ['기준 SHA 파일', `${num(dq.collected_target_file_count)} / ${num(dq.target_tree_file_count)}개 결과에 포함`],
-    ['표본 부족 기준', `변경 ${num(dq.low_support_threshold ?? 5)}건 미만 (표시 정책이며 통계적 신뢰수준이 아님)`],
   ];
-  if (dq.coverage_scope) rows.push(['수집 범위 주의', dq.coverage_scope]);
   return rows.map(([k, v]) => `<tr><td class="key">${esc(k)}</td><td class="val">${esc(v)}</td></tr>`).join('');
 }
 
@@ -54,9 +52,6 @@ export function renderContextBanner(data) {
     ...a.unverified.map(r => `수집 범위: ${r}를 확인할 수 없음`),
     ...(a.evidence !== 'no_limits_found' ? a.evidenceReasons.map(r => `분석 근거: ${r}`) : []),
   ];
-  const collectionTip = a.collectionReasons.length || a.unverified.length
-    ? [...a.collectionReasons, ...a.unverified.map(r => `${r} 확인 불가`)].join(' / ')
-    : `${COLLECTION_NOTE} ${dq.coverage_scope || ''}`.trim();
   const legacy = policy.kind !== 'priority'
     ? `<div class="ctx-legacy">${policy.kind === 'legacy' ? '이전 계산 버전(v2)으로 저장된 결과입니다.' : '이 화면이 알지 못하는 계산 버전입니다.'} 최신 정책(점검 우선순위 v3)과 직접 비교할 수 없습니다.</div>`
     : '';
@@ -67,12 +62,6 @@ export function renderContextBanner(data) {
       <span class="ctx-item"><b>관측 기간</b> ${esc(windowText)}</span>
       <span class="ctx-item"><b>지표 정책</b> ${esc(policy.versionLabel)}</span>
       <a class="ctx-link" href="#" data-action="goPage" data-args="%5B%22history%22%5D">분석 이력·비교 →</a>
-    </div>
-    <div class="ctx-row">
-      <span class="ctx-chip ok" title="저장된 결과를 불러왔습니다. 수집이 끝났거나 분석 근거가 충분하다는 뜻이 아닙니다.">결과 조회 성공</span>
-      <span class="ctx-chip ${STATUS_TONE[a.collection]}" title="${esc(collectionTip)}">${COLLECTION_TEXT[a.collection]}</span>
-      <span class="ctx-chip ${STATUS_TONE[a.evidence]}" title="${esc(a.evidenceReasons.join(' / ') || evidenceNote(a.threshold))}">${EVIDENCE_TEXT[a.evidence]}</span>
-      <span class="ctx-note">${esc(policy.versionLabel)}</span>
     </div>
     ${legacy}
     <details class="ctx-details"><summary>수집 범위·분석 기준${reasons.length ? ` · 확인할 항목 ${reasons.length}개` : ''}</summary>

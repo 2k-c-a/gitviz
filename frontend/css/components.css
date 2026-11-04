@@ -53,6 +53,7 @@ pre { max-width: 100%; overflow: auto; }
 .rbtn { min-height: 28px; padding: 2px 10px; font-size: var(--ui-text-xs); }
 .range-btns { gap: 4px; padding: 3px; border: 1px solid var(--ui-border); border-radius: calc(var(--ui-radius-sm) + 3px); background: var(--ui-raised); }
 .range-btns .rbtn { border-color: transparent; background: transparent; box-shadow: none; color: var(--ui-muted); }
+.range-btns .cx-color-label { padding: 0 6px 0 8px; font-size: var(--ui-text-xs); color: var(--ui-muted); }
 .range-btns .rbtn:hover { color: var(--ui-text); background: color-mix(in srgb, var(--ui-surface) 70%, transparent); }
 .range-btns .rbtn.active { background: var(--ui-surface); color: var(--ui-text); border-color: var(--ui-border); box-shadow: var(--ui-shadow-sm); }
 
@@ -68,7 +69,8 @@ pre { max-width: 100%; overflow: auto; }
 .app-body .hm-val { font-size: var(--ui-text-xs); }
 .app-body .act-label { flex: 0 0 96px; width: 96px; }
 .app-body .act-months { padding-left: 100px; }
-.app-body .act-m, .app-body .act-cell { flex: 0 0 18px; width: 18px; }
+/* 관측 구간 전체(약 26주)를 패널 너비에 맞춰 보여 준다. 좁으면 가로로 스크롤된다. */
+.app-body .act-m, .app-body .act-cell { flex: 1 1 0; min-width: 12px; max-width: 22px; width: auto; }
 .app-body .act-cell { height: 18px; border-radius: 4px; }
 .app-body :is(.act-row, .act-months) { gap: 4px; }
 .m-label { font-size: var(--ui-text-xs); font-weight: var(--ui-medium); color: var(--ui-muted); }

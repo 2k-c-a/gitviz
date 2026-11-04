@@ -1205,6 +1205,8 @@ def _build_tree(files: list[dict]) -> dict:
             "coupled_file_count": f["coupled_file_count"],
             "coupling_support": f["coupling_support"],
             "observation_count": f["observation_count"],
+            "churn": f["churn"],
+            "bugfix_count": f["bugfix_count"],
             "evidence_status": f["evidence_status"],
             **{k:f[k] for k in ("maintenance_priority","entropy_normalized","top_owner_share",
                                "contributor_count","unidentified_share","ownership_low_support")},
@@ -1265,6 +1267,10 @@ def get_repo_tree(repository_id: int, db: Session = Depends(get_db)):
             "unidentified_share":risk["unidentified_share"] if risk else None,
             "ownership_low_support":risk["ownership_low_support"] if risk else True,
             "observation_count": risk["change_freq"] if risk else 0,
+            # 관측 구간 수정량(추가+삭제 줄). 줄 수를 모르는 변경이 섞이면 None — 0으로 채우지 않는다.
+            "churn": risk["churn"] if risk else None,
+            # 관측 구간에서 이 파일을 바꾼 버그 수정 분류 커밋 수(커밋 메시지 기반 분류).
+            "bugfix_count": risk["bugfix_count"] if risk else None,
             "evidence_status":risk["evidence_status"] if risk else "no_history",
         })
 
