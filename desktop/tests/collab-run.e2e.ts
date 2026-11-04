@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { app, BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import { registerScheme } from '../src/app-protocol';
-import { CollabRunner, RUN_LIMITS, javaMainClass, languageFor, quoteArg, readRequest, type RunResult } from '../src/collab-run';
+import { CollabRunner, JOB_TIMEOUT_EXIT, RUN_LIMITS, javaMainClass, jobScript, languageFor, quoteArg, readRequest, type RunResult } from '../src/collab-run';
 
 registerScheme(); app.on('window-all-closed', () => {});
 let phase = 'startup';
@@ -72,8 +72,14 @@ void app.whenReady().then(async () => {
       assert.equal(result.phase, 'compile'); assert.notEqual(result.exitCode, 0); assert.match(result.stderr, /a\.c:1:.*nope/);
       assert.ok(!result.stderr.includes('gitviz-run-'), 'no temp folder in messages');
       phase = 'c-limits';
+      // The time limit is measured inside the job, after PowerShell start-up and the Add-Type compile (slow on a cold machine).
+      const script = jobScript('p.exe', '', 'C:\\x', 1, 1, RUN_LIMITS.runSeconds);
+      assert.ok(script.indexOf(`WaitForExit(${RUN_LIMITS.runSeconds * 1000})`) > script.indexOf('[GitVizJob]::Enter'));
+      assert.ok(script.includes(`exit ${JOB_TIMEOUT_EXIT}`));
       result = await run('spin.c', { 'spin.c': 'int main(void){ for(;;){} }\n' });
-      assert.equal(result.timedOut, true);
+      assert.equal(result.timedOut, true); assert.equal(result.exitCode, null);
+      assert.ok(!result.stderr.includes('GITVIZ_RUN_TIMEOUT'));
+      assert.ok(result.durationMs < (RUN_LIMITS.runSeconds + 30) * 1000, 'the job ends the program, not the safety net');
       // Allocating past the memory limit fails inside the job.
       result = await run('mem.c', { 'mem.c': '#include <stdlib.h>\n#include <string.h>\n#include <stdio.h>\nint main(void){ for (int i = 0; i < 64; i++) { char *p = malloc(64 << 20); if (!p) { puts("limited"); return 0; } memset(p, 1, 64 << 20); } puts("unlimited"); return 0; }\n' });
       assert.equal(result.stdout.trim(), 'limited', `${result.exitCode} ${result.stderr}`);

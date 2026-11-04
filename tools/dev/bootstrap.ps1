@@ -7,7 +7,7 @@
     pwsh tools/dev/bootstrap.ps1 -App -Staging     로컬 HTTPS 서버(https://localhost:8443)를 준비·실행하고, 그 서버 주소와
                                                    인증서를 넣어 앱을 빌드한다. 이후 탐색기에서 exe를 더블클릭해도 로그인,
                                                    저장소 탐색, 커뮤니티·채팅·음성·공동 편집이 된다. -Run을 붙이면 실행까지.
-                                                   PostgreSQL 18, Redis, .validation\staging\staging.env의 GitHub OAuth 값이 필요하다.
+                                                   PostgreSQL 16+, Redis, .validation\staging\staging.env의 GitHub OAuth 값이 필요하다.
     pwsh tools/dev/bootstrap.ps1 -Staging          서버만 켠다(재부팅 뒤 등). 빌드하지 않는다. -Run을 붙이면 앱도 실행.
                                                    서버 인증서(14일)가 갱신돼 앱을 다시 빌드해야 하면 알려 준다.
     하는 일: 도구 확인(Git, Python 3.12, Node 24.20+) -> desktop npm ci(필요할 때만) -> 작업 에이전트 빌드
