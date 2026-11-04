@@ -65,7 +65,8 @@ def authorize_ai(db, user_id: UUID, repo_id: int, action: AIAction, policy_versi
     if not (settings.insights_enabled if insight else settings.enabled):
         raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '사용할 수 없는 기능입니다.')
     try:
-        repo, metadata = verify_repository_access(db, repo_id, user_id)
+        # 코드가 모델로 전송될 수 있으므로 저장된 공개 여부가 아니라 현재 GitHub 권한으로 확인한다.
+        repo, metadata = verify_repository_access(db, repo_id, user_id, live=True)
     except HTTPException as exc:
         raise _from_http(exc) from None
     except Exception:

@@ -10,6 +10,7 @@ export const endpoints: Record<string, Endpoint> = {
   me: definition('GET', '/api/auth/me'),
   repositories: definition('GET', '/repositories', {}, { limit: 'number' }),
   mine: definition('GET', '/repositories/mine'),
+  removeMine: definition('DELETE', '/repositories/mine/{repositoryId}', { repositoryId: 'id' }),
   repository: definition('GET', '/repositories/{repositoryId}', { repositoryId: 'id' }),
   repositoryIdentity: definition('GET', '/api/desktop/v1/repositories/{repositoryId}/identity', { repositoryId: 'id' }),
   registerRepository: definition('POST', '/repositories', {}, { github_url: 'text' }),

@@ -98,7 +98,7 @@ function actionButtons(repo, repoName, cardId) {
     return `
       <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-action="goPage" data-args="${encodeURIComponent(JSON.stringify(['overview', repo.id]))}">결과 보기</button>
       <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" data-action="openReanalyzeToast" data-args="${encodeURIComponent(JSON.stringify([repo.id]))}">재분석</button>
-      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId]))}">제거</button>`;
+      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId,repo.id]))}">제거</button>`;
   }
   if (['running', 'pending', 'rate_limited'].includes(repo.status)) {
     return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-action="openJobModal" data-args="${encodeURIComponent(JSON.stringify(['poll', repo.id]))}">진행 확인</button>`;
@@ -112,9 +112,9 @@ function actionButtons(repo, repoName, cardId) {
     return `
       ${last}
       <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" data-auth="1" data-action="openReanalyzeToast" data-args="${encodeURIComponent(JSON.stringify([repo.id]))}">재시도</button>
-      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId]))}">제거</button>`;
+      <button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId,repo.id]))}">제거</button>`;
   }
-  return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId]))}">제거</button>`;
+  return `<button class="btn-secondary" style="font-size:12px;padding:5px 10px;color:var(--red-dark);border-color:var(--red-mid);" data-action="openRemoveRepoModal" data-args="${encodeURIComponent(JSON.stringify([repoName,cardId,repo.id]))}">제거</button>`;
 }
 
 function buildCard(repo) {

@@ -46,7 +46,7 @@ flowchart LR
 | 데스크톱 세션 | 토큰은 해시만 저장, 8시간, 쿠키와 혼용 거부 | [모델](../../app/models/desktop_session.py) |
 | 커뮤니티 | 멤버·초대(토큰 해시)·글·댓글·채팅 기록은 PostgreSQL, 소프트 삭제. 음성·공동 편집 자리는 Redis(없으면 메모리) 만료 항목, DB 없음 | [모델](../../app/models/community.py), [API](../../app/api/community.py) |
 
-서버 import/startup의 스키마 설치 대신 Alembic을 먼저 적용한다. 정적 migration 그래프의 단일 head는 `f1b3d5e7a9c2`(ai_insights, AD-32)이다. 그 앞은 `d4f6a8c0e2b3`(community_chat)· `c3e5a7b9d1f2`(community)·`b7e1d9c3a502`(desktop_sessions)·`a9d2f4c6e8b0`(commit_reviews). 운영 DB가 이 revision인지 이번에 조회하지 않았다.
+서버 import/startup의 스키마 설치 대신 Alembic을 먼저 적용한다. 정적 migration 그래프의 단일 head는 `e7a9c1d3f5b4`(repository_access_hidden, 2026-11-03)이다. 그 앞은 `f1b3d5e7a9c2`(ai_insights, AD-32)·`d4f6a8c0e2b3`(community_chat)·`c3e5a7b9d1f2`(community)·`b7e1d9c3a502`(desktop_sessions)·`a9d2f4c6e8b0`(commit_reviews). 운영 DB가 이 revision인지 이번에 조회하지 않았다.
 
 추정: 상세 DB·API 제안 전체를 현재 아키텍처에 복사하지 않고, 실제 등록·저장 경계와 과거 설계를 연결하는 방식을 유지한다.
 

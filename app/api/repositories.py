@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import requests
 from requests.exceptions import RequestException
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
 
@@ -18,10 +18,11 @@ from app.models.pull_request import PullRequest
 from app.models.file import File
 from app.tasks.analyze_repository import analyze_repository
 from app.api.auth import _get_session_user_id
+from app.api.ai.dependencies import require_csrf
 from app.models.analysis_snapshot import AnalysisSnapshot
 from app.services.analysis_snapshots import analysis_parameters, load_snapshot
 from app.services.repository_access import (canonical_github_url, github_metadata, user_github_token,
-    visible_repository_query, verify_repository_access, remember_access)
+    visible_repository_query, verify_repository_access, remember_access, hide_from_my_projects)
 from app.services.lightweight_score import compute_lightweight_score
 from app.services.job_lifecycle import job_staleness, ACTIVE_STATUSES, LOCK_NAMESPACE
 
@@ -123,7 +124,7 @@ def list_my_repositories(request: Request, db: Session = Depends(get_db)):
             SELECT a.repository_id, COALESCE(MAX(j.created_at), MAX(a.created_at)) AS my_last_triggered_at
             FROM repository_access a
             LEFT JOIN analysis_jobs j ON j.repository_id=a.repository_id AND j.triggered_by_user_id=a.user_id
-            WHERE a.user_id = :uid
+            WHERE a.user_id = :uid AND a.hidden_at IS NULL
             GROUP BY a.repository_id
             ORDER BY my_last_triggered_at DESC
             """
@@ -211,6 +212,18 @@ def list_my_repositories(request: Request, db: Session = Depends(get_db)):
         })
 
     return result
+
+
+@router.delete("/repositories/mine/{repository_id}", status_code=204, dependencies=[Depends(require_csrf)])
+def remove_from_my_repositories(repository_id: int, request: Request, db: Session = Depends(get_db)):
+    """'내 분석 프로젝트'에서 제거한다. 이 사용자의 목록에서만 숨기며 저장소·분석 결과·접근 권한은
+    그대로 둔다(다른 사용자도 쓰는 전역 리소스). 같은 저장소를 다시 분석하면 목록에 돌아온다."""
+    user_id = _get_session_user_id(request)
+    if not user_id:
+        raise HTTPException(401, "로그인이 필요합니다.")
+    hide_from_my_projects(db, repository_id, user_id)
+    db.commit()
+    return Response(status_code=204)
 
 
 def _trigger_analysis(db: Session, repository_id: int, user_id, parameters=None):

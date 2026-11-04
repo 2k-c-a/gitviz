@@ -15,7 +15,8 @@ def repository_identity(repository_id: int, request: Request, db=Depends(get_db)
     user_id = _get_session_user_id(request)
     if user_id is None:
         raise HTTPException(401, '로그인이 필요합니다.')
-    repository, metadata = verify_repository_access(db, repository_id, user_id)
+    # 로컬 프로젝트 연결의 신원 증명이므로 현재 GitHub 정보로 확인한다.
+    repository, metadata = verify_repository_access(db, repository_id, user_id, live=True)
     github_id = metadata.get('id')
     if type(github_id) is not int or github_id <= 0 or github_id != repository.github_id:
         raise HTTPException(409, '저장소 식별 정보를 확인할 수 없습니다.')
