@@ -563,6 +563,9 @@ const FILE_ERRORS = {
   NOT_ALLOWED: '공유할 수 없는 파일입니다(숨김 파일, 링크, 지원하지 않는 형식 등).', OUTSIDE_ROOT: '공유 범위(루트 폴더) 밖의 파일입니다. 먼저 범위를 넓히세요.',
   CANNOT_WIDEN: '더 넓힐 수 없습니다(Git 저장소 루트, 세 단계 위, 드라이브·사용자 폴더 제한).', NOT_PENDING: '추가할 수 있는 파일이 아닙니다.',
   LIMIT: '묶음 한도를 넘습니다(텍스트 20개·1MB, 이미지·글꼴 30개·10MB).', PREVIEW_FAILED: '미리보기를 열지 못했습니다.',
+  EXISTS: '이미 있는 파일입니다. ‘파일 추가’로 넣으세요.', BUSY: '다른 실행이 끝난 뒤 다시 실행하세요.', STOPPED: '실행을 멈췄습니다.',
+  NO_COMPILER: '이 PC에 필요한 컴파일러가 없습니다.', SANDBOX_UNAVAILABLE: '실행 제한(Job Object)을 걸 수 없어 실행하지 않았습니다. PowerShell이 제한 모드인지 확인하세요.',
+  RUN_UNAVAILABLE: '실행 환경을 시작하지 못했습니다.',
 };
 const fileError = error => FILE_ERRORS[(error?.message || '').replace(/^.*Error: /, '')] || error?.message || '파일을 다루지 못했습니다.';
 const REASONS = { outside: '공유 범위 밖', hidden: '숨김·제외 폴더', link: '링크·바로 가기', type: '지원하지 않는 형식', size: '크기 초과', missing: '파일 없음', limit: '묶음 한도 초과',
@@ -720,7 +723,8 @@ async function renderCollab(target) {
       if (mine.preview) actions.append(button(mine.previewExternal ? '외부 연결 끄기' : '외부 연결 켜기', 'btn-secondary', () => void toggleExternal()));
     }
     if (mine.ended) actions.append(button('목록으로', 'btn-secondary', () => { closeSession(); renderList(); }));
-    else if (mine.host) actions.append(button('저장', 'btn-primary', () => void save()), button('파일 추가', 'btn-secondary', () => void hostAdd()), confirmButton('공유 끝내기', () => leave()));
+    else if (mine.host) actions.append(button('저장', 'btn-primary', () => void save()), button('파일 추가', 'btn-secondary', () => void hostAdd()),
+      button('새 파일', 'btn-secondary', () => showCreate()), confirmButton('공유 끝내기', () => leave()));
     else actions.append(button('나가기', 'btn-secondary', () => void leave()));
     const notices = [];
     if (mine.preview) notices.push(element('p', 'p-sub community-collab-preview-note', !mine.previewExternal ? '미리보기: 외부 연결 꺼짐(묶음 안의 파일만)'
@@ -737,16 +741,20 @@ async function renderCollab(target) {
       }
       notices.push(box);
     }
+    if (mine.host && mine.createForm && !mine.ended) notices.push(mine.createForm);
     if (mine.host) {
       const extra = [
+        reportList('없는 파일을 참조함(새로 만들 수 있음)', (mine.scan.missing ?? []).filter(path => !mine.files.has(path)),
+          path => [element('span', null, `${path} `), button('만들기', 'btn-secondary btn-small', () => void createFile(path))]),
         reportList('추가 후보(페이지 링크·fetch)', mine.scan.candidates.filter(item => !mine.files.has(item.path) && !mine.manifest.assets.has(item.path)),
           item => [element('span', null, `${item.path} `), button('추가', 'btn-secondary btn-small', () => void hostAdd(item.path))]),
         reportList('찾지 못한 참조(동적 경로·패키지)', mine.scan.unresolved, item => `${item.spec} ← ${item.from}:${item.line}`),
       ].filter(Boolean);
       notices.push(...extra);
     }
-    main.replaceChildren(head, actions, status, ...notices, mine.workspace);
+    main.replaceChildren(head, actions, status, ...notices, mine.workspace, mine.runPanel);
     renderTree();
+    renderRun();
   }
   function renderTree() {
     const mine = current;
@@ -756,7 +764,7 @@ async function renderCollab(target) {
     tree.replaceChildren();
     for (const path of [...paths, ...assets]) {
       const asset = mine.manifest.assets.has(path);
-      const kind = asset ? (/^font\//.test(mine.manifest.assets.get(path)?.mime) ? ' (글꼴)' : ' (이미지)') : '';
+      const kind = asset ? (/^font\//.test(mine.manifest.assets.get(path)?.mime) ? ' (글꼴)' : ' (이미지)') : mine.created.has(path) ? ' (새 파일)' : '';
       const item = button(`${path}${kind}`, `community-collab-file${path === mine.active ? ' is-active' : ''}`, () => select(path));
       item.title = asset ? '읽기 전용(이미지·글꼴)' : path;
       if (!asset && !mine.files.get(path)?.synced) item.classList.add('is-loading');
@@ -787,6 +795,7 @@ async function renderCollab(target) {
       mine.mount.replaceChildren(box);
     } else mine.mount.replaceChildren(element('p', 'p-sub', '파일을 고르세요.'));
     renderTree();
+    renderRun();
   }
 
   /* ── 문서 연결 ── */
@@ -891,8 +900,13 @@ async function renderCollab(target) {
       hostSeat: reply.session.seats?.find(seat => seat.host)?.seat_id ?? null,
       manifest: lib.createManifest(), files: new Map(), assets: new Map(), chunks: new Map(), active: null, editor: null,
       workspace, tree, mount, synced: host, queue: new Map(), flush: new Map(), outbox: Promise.resolve(), ended: false, timer: null, retry: null,
-      preview: null, previewExternal: true, previewTimer: null, scan: { pending: [], unresolved: [], candidates: [] }, scanTimer: null };
+      preview: null, previewExternal: true, previewTimer: null, scan: { pending: [], missing: [], unresolved: [], candidates: [] }, scanTimer: null,
+      created: new Set(), createForm: null, runPanel: element('section', 'community-collab-run'), stdin: element('textarea', 'community-collab-stdin-input'),
+      runtimes: null, running: false, output: null, confirmRun: null, lastRun: new Map() };
     const mine = current;
+    mine.runPanel.hidden = true;
+    mine.stdin.rows = 3; mine.stdin.placeholder = '프로그램에 줄 입력(한 줄에 하나)'; mine.stdin.setAttribute('aria-label', '실행 입력(stdin)');
+    void loadRuntimes(mine);
     watchDoc(mine, '', mine.manifest.doc);
     if (host) {
       mine.manifest.doc.transact(() => {
@@ -956,13 +970,14 @@ async function renderCollab(target) {
       if (data.kind === 'asset') { if (!mine.host && fromHost) void receiveAsset(path, bytes); return; }
       if (!mine.manifest.files.has(path)) return;
       const file = mine.files.get(path) ?? addFile(mine, path);
-      if (data.kind === 'update') collabLib.applyUpdate(file.doc, bytes);
+      if (data.kind === 'update') { collabLib.applyUpdate(file.doc, bytes); file.othersChanged = true; }
       else if (data.kind === 'awareness') collabLib.applyAwareness(file.awareness, bytes);
       else if (data.kind === 'sync-request') {
         void send('sync', collabLib.encodeStateAsUpdate(file.doc, bytes), data.from, path);
         if (mine.active === path) void send('awareness', collabLib.encodeAwareness(file.awareness, [file.doc.clientID]), data.from, path);
       } else if (data.kind === 'sync') {
         collabLib.applyUpdate(file.doc, bytes);
+        file.othersChanged = true;
         if (!file.synced) {
           file.synced = true;
           if (mine.active === path) { mine.editor?.setReadOnly(false); void send('awareness', collabLib.encodeAwareness(file.awareness, [file.doc.clientID]), null, path); }
@@ -1029,8 +1044,8 @@ async function renderCollab(target) {
       try {
         const found = await desktop.scanBundle({ bundle: mine.bundle, files: textsOf(mine) });
         if (current !== mine) return;
-        const changed = found.pending.join() !== mine.scan.pending.join() || found.candidates.length !== mine.scan.candidates.length || found.unresolved.length !== mine.scan.unresolved.length;
-        mine.scan = found;
+        const changed = found.pending.join() !== mine.scan.pending.join() || (found.missing ?? []).join() !== (mine.scan.missing ?? []).join() || found.candidates.length !== mine.scan.candidates.length || found.unresolved.length !== mine.scan.unresolved.length;
+        mine.scan = { ...found, missing: found.missing ?? [] };
         if (found.pending.join() !== (mine.manifest.meta.get('pending') ?? []).join()) mine.manifest.meta.set('pending', found.pending);
         if (changed) renderSession();
       } catch { /* 다음 편집 때 다시 확인한다 */ }
@@ -1076,6 +1091,151 @@ async function renderCollab(target) {
     renderSession();
   }
 
+  /* ── 새 파일 (호스트): 디스크에는 저장할 때 만든다 ── */
+  function showCreate(path = '') {
+    const mine = current;
+    if (!mine?.host) return;
+    const form = element('form', 'community-collab-create');
+    const input = element('input', 'community-collab-create-input');
+    input.type = 'text'; input.value = path; input.placeholder = '예: js/util.js, src/helper.py'; input.setAttribute('aria-label', '새 파일 경로(공유 범위 기준)');
+    form.append(element('label', 'p-sub', '새 파일 경로(공유 범위 기준)'), input, button('만들기', 'btn-primary btn-small', () => {}), button('취소', 'btn-secondary btn-small', () => { mine.createForm = null; renderSession(); }));
+    form.querySelector('.btn-primary').type = 'submit';
+    form.addEventListener('submit', event => { event.preventDefault(); void createFile(input.value); });
+    mine.createForm = form;
+    renderSession();
+    input.focus();
+  }
+  async function createFile(path) {
+    const mine = current;
+    if (!mine?.host || !path.trim()) return;
+    try {
+      const view = await desktop.createInBundle({ bundle: mine.bundle, path: path.trim() });
+      if (current !== mine) return;
+      const before = new Set(mine.files.keys());
+      include(view);
+      const made = [...mine.files.keys()].find(name => !before.has(name));
+      if (made) { mine.created.add(made); mine.scan.missing = (mine.scan.missing ?? []).filter(item => item !== made); }
+      mine.createForm = null;
+      status.textContent = made ? `${made} 파일을 만들었습니다. 저장하면 디스크에 생깁니다.` : '이미 공유 중인 파일입니다.';
+      renderSession();
+      if (made) select(made);
+    } catch (error) { status.textContent = fileError(error); }
+  }
+
+  /* ── 실행 (AD-34 2·3단계): 누구나 자기 앱에서 지금 내용으로 실행하고, 결과는 공유하지 않는다 ── */
+  const runLanguage = path => /\.py$/i.test(path || '') ? 'python' : /\.c$/i.test(path || '') ? 'c' : /\.(?:cpp|cc|cxx)$/i.test(path || '') ? 'cpp' : /\.java$/i.test(path || '') ? 'java' : null;
+  function runTarget(mine) {
+    if (runLanguage(mine.active) && mine.files.has(mine.active)) return mine.active;
+    const entry = mine.manifest.meta.get('entry');
+    return runLanguage(entry) && mine.files.has(entry) ? entry : null;
+  }
+  async function loadRuntimes(mine) {
+    if (mine.runtimes || !desktop.runtimes) return;
+    try { mine.runtimes = await desktop.runtimes(); } catch { mine.runtimes = { python: null, c: null, cpp: null, java: null }; }
+    if (current === mine && !mine.ended) renderRun();
+  }
+  function renderRun() {
+    const mine = current;
+    if (!mine) return;
+    const panel = mine.runPanel;
+    const target = runTarget(mine);
+    if (!target || !desktop.run) { panel.hidden = true; panel.replaceChildren(); return; }
+    panel.hidden = false;
+    const language = runLanguage(target);
+    const tool = mine.runtimes?.[language];
+    const head = element('div', 'ui-toolbar community-collab-run-head');
+    const start = button(mine.running ? '실행 중…' : '실행', 'btn-primary', () => void startRun());
+    start.disabled = !!mine.running || !mine.synced || !!(mine.runtimes && !tool);
+    head.append(element('strong', null, `실행 · ${target}`), start);
+    if (mine.running) head.append(button('중지', 'btn-secondary', () => void desktop.stopRun().catch(() => {})));
+    const note = element('p', 'p-sub', !mine.runtimes ? '실행 환경을 확인하는 중…' : tool ? `${tool} · 결과는 나에게만 보입니다.`
+      : language === 'java' ? '이 PC에 JDK(javac·java)가 없어 실행할 수 없습니다.' : `이 PC에 ${language === 'c' ? 'gcc 또는 clang' : 'g++ 또는 clang++'}이 없어 실행할 수 없습니다.`);
+    const input = element('details', 'community-collab-stdin');
+    input.open = !!mine.stdin.value;
+    input.append(element('summary', null, '입력(stdin)'), mine.stdin);
+    panel.replaceChildren(...[head, note, input, mine.confirmRun, mine.output].filter(Boolean));
+  }
+  /* 같은 줄 수만큼 짝지어 빼고 남은 줄: 바뀐 내용을 훑어보기에 충분한 간단한 비교 */
+  function lineDiff(before, after) {
+    const count = lines => { const map = new Map(); for (const line of lines) map.set(line, (map.get(line) ?? 0) + 1); return map; };
+    const old = (before ?? '').split('\n'), now = after.split('\n');
+    const oldLeft = count(old), nowLeft = count(now);
+    const added = now.filter(line => { const n = oldLeft.get(line) ?? 0; if (n) { oldLeft.set(line, n - 1); return false; } return true; });
+    const removed = before === undefined ? [] : old.filter(line => { const n = nowLeft.get(line) ?? 0; if (n) { nowLeft.set(line, n - 1); return false; } return true; });
+    return { added, removed };
+  }
+  function changedByOthers(mine) {
+    const out = [];
+    for (const [path, file] of mine.files) {
+      if (!file.othersChanged) continue;
+      const before = mine.lastRun.get(path), after = file.ytext.toString();
+      if (before === after) continue;
+      out.push({ path, before, ...lineDiff(before, after) });
+    }
+    return out;
+  }
+  function showRunConfirm(mine, changed) {
+    const box = element('div', 'community-collab-confirm');
+    box.append(element('strong', null, '다른 사람이 쓰거나 바꾼 코드를 이 PC에서 실행합니다'),
+      element('p', 'p-sub', 'C/C++·Java는 이 PC의 컴파일러로 임시 폴더에서 실행됩니다. 메모리·프로세스 수·시간은 제한하지만 네트워크와 내 파일에는 접근할 수 있습니다. 바뀐 줄을 확인하세요.'));
+    for (const item of changed.slice(0, 10)) {
+      const details = element('details', 'community-collab-diff');
+      details.open = changed.length <= 3;
+      details.append(element('summary', null, `${item.path}${item.before === undefined ? ' · 처음 실행(전체)' : ''} · +${item.added.length} −${item.removed.length}`));
+      const shown = [...item.removed.slice(0, 100).map(line => `- ${line}`), ...item.added.slice(0, 200).map(line => `+ ${line}`)];
+      details.append(element('pre', null, shown.join('\n') + (item.added.length > 200 || item.removed.length > 100 ? '\n…' : '')));
+      box.append(details);
+    }
+    if (changed.length > 10) box.append(element('p', 'p-sub', `외 ${changed.length - 10}개 파일`));
+    const actions = element('div', 'ui-toolbar');
+    actions.append(button('확인하고 실행', 'btn-primary', () => void startRun(true)), button('취소', 'btn-secondary', () => { mine.confirmRun = null; renderRun(); }));
+    box.append(actions);
+    mine.confirmRun = box;
+    renderRun();
+  }
+  const EXIT_NAMES = { 3221225477: '메모리 접근 오류', 3221225725: '스택 넘침', 3221225495: '메모리 부족', 3221226505: '비정상 종료' };
+  function runSummary(result) {
+    const seconds = (result.durationMs / 1000).toFixed(1);
+    if (result.timedOut) return `시간 제한으로 멈췄습니다(${seconds}초).`;
+    if (result.phase === 'compile') return `컴파일하지 못했습니다 · 종료 코드 ${result.exitCode ?? '—'}`;
+    const name = EXIT_NAMES[result.exitCode];
+    return `끝났습니다 · 종료 코드 ${result.exitCode ?? '—'}${name ? ` (${name})` : ''} · ${seconds}초${result.truncated ? ' · 출력이 길어 일부만 표시' : ''}`;
+  }
+  function renderOutput(result) {
+    const box = element('div', 'community-collab-output');
+    box.append(element('p', 'p-sub community-collab-run-summary', runSummary(result)));
+    if (result.stdout) box.append(element('pre', 'community-collab-stdout', result.stdout));
+    if (result.stderr) box.append(element('pre', 'community-collab-stderr', result.stderr));
+    if (!result.stdout && !result.stderr) box.append(element('p', 'p-sub', '출력이 없습니다.'));
+    return box;
+  }
+  async function startRun(confirmed = false) {
+    const mine = current;
+    const target = mine && runTarget(mine);
+    if (!mine || !target || mine.running) return;
+    // Python은 앱 안 격리 환경이라 묻지 않는다. 내 PC 컴파일러로 도는 언어만, 남이 바꾼 내용이 있으면 먼저 보여 준다.
+    if (runLanguage(target) !== 'python' && !confirmed) {
+      const changed = changedByOthers(mine);
+      if (changed.length) { showRunConfirm(mine, changed); return; }
+    }
+    const files = textsOf(mine);
+    // 확인 기준은 내 PC에서 직접 실행한 내용이다. 격리된 Python 실행은 확인한 것으로 치지 않는다.
+    if (runLanguage(target) !== 'python') {
+      for (const [path, text] of Object.entries(files)) mine.lastRun.set(path, text);
+      for (const file of mine.files.values()) file.othersChanged = false;
+    }
+    mine.confirmRun = null; mine.running = true; mine.output = element('p', 'p-sub', '실행하는 중…');
+    renderRun();
+    try {
+      const result = await desktop.run({ entry: target, files, stdin: mine.stdin.value });
+      if (current === mine) mine.output = renderOutput(result);
+    } catch (error) {
+      if (current === mine) mine.output = element('p', 'p-sub', fileError(error));
+    } finally {
+      if (current === mine) { mine.running = false; renderRun(); }
+    }
+  }
+
   /* ── 끝내기·저장 ── */
   function end(text) {
     const mine = current;
@@ -1092,6 +1252,7 @@ async function renderCollab(target) {
     const mine = current; current = null;
     clearInterval(mine.timer); clearInterval(mine.retry); clearTimeout(mine.previewTimer); clearTimeout(mine.scanTimer);
     for (const timer of mine.flush.values()) clearTimeout(timer);
+    if (mine.running) void desktop.stopRun().catch(() => {});
     mine.editor?.destroy();
     for (const file of mine.files.values()) collabLib.destroyFile(file);
     mine.manifest.doc.destroy();
@@ -1113,6 +1274,8 @@ async function renderCollab(target) {
     try {
       const { results } = await desktop.saveBundle({ bundle: mine.bundle, files: [...mine.files].map(([path, file]) => ({ path, text: file.ytext.toString() })) });
       const failed = results.filter(item => !item.saved);
+      for (const item of results) if (item.saved) mine.created.delete(item.path);
+      if (current === mine && !mine.ended) renderTree();
       const time = new Date().toLocaleTimeString();
       if (!failed.length) status.textContent = `저장했습니다 (${results.length}개 파일, ${time}).`;
       else {

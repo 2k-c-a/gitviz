@@ -30,7 +30,9 @@ export const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; con
 export function registerScheme(): void {
   protocol.registerSchemesAsPrivileged([{ scheme: 'gitviz', privileges: { standard: true, secure: true, supportFetchAPI: true } },
     // Co-editing preview (AD-34): served only inside each preview's own session, from memory (collab-preview.ts).
-    { scheme: 'gitviz-preview', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
+    { scheme: 'gitviz-preview', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+    // Co-editing Python runner (AD-34 phase 2): Pyodide in a hidden window, served only inside each run's own session (collab-run.ts).
+    { scheme: 'gitviz-run', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
 }
 export async function serveAssets(directory: string): Promise<void> {
   let bundled: Record<string, { file: string; mime: string }> = {};

@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
     scanBundle: (options: unknown) => ipcRenderer.invoke('desktop:collab-bundle-scan', options),
     approveInBundle: (options: unknown) => ipcRenderer.invoke('desktop:collab-bundle-approve', options),
     saveBundle: (options: unknown) => ipcRenderer.invoke('desktop:collab-bundle-save', options),
+    createInBundle: (options: unknown) => ipcRenderer.invoke('desktop:collab-bundle-create', options),
+    runtimes: (options: unknown) => ipcRenderer.invoke('desktop:collab-run-runtimes', options ?? {}),
+    run: (options: unknown) => ipcRenderer.invoke('desktop:collab-run', options),
+    stopRun: () => ipcRenderer.invoke('desktop:collab-run-stop'),
     closeBundle: (options: unknown) => ipcRenderer.invoke('desktop:collab-bundle-close', options),
     // Sandboxed preview window of the shared HTML/CSS/JS (AD-34).
     openPreview: (options: unknown) => ipcRenderer.invoke('desktop:collab-preview-open', options),

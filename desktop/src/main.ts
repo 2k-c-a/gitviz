@@ -9,6 +9,7 @@ import { registerCollabFiles, registerCommunityLive, registerDesktop } from './d
 import { CollabFiles } from './collab-files';
 import { CollabBundles } from './collab-bundle';
 import { Previews } from './collab-preview';
+import { CollabRunner } from './collab-run';
 import { CommunityLive, streamClient } from './community-live';
 import { Agent } from './agent';
 import { Contracts } from './contracts';
@@ -32,6 +33,7 @@ import { createUpdateService, DISABLED_UPDATE_POLICY } from './update';
 import { parentProcess, runSquirrel, squirrelAction } from './squirrel';
 import { communityJoinUrl, inviteFromArgv, protocolRegistration } from './deep-link';
 import { DEBUG_EXIT_CODE, forbiddenDebugSwitches } from './debug-guard';
+import { errorCode, log, startLog } from './app-log';
 
 // First thing: a packaged release refuses to run with a debugging port (see debug-guard.ts). process.exit stops this module synchronously.
 if (forbiddenDebugSwitches(app.isPackaged, process.argv).length > 0) process.exit(DEBUG_EXIT_CODE);
@@ -46,6 +48,15 @@ if (squirrel?.args[0] === '--removeShortcut' && protocol) { try { app.removeAsDe
 if (squirrel) runSquirrel(squirrel, () => app.quit());
 else if (!app.requestSingleInstanceLock()) app.quit();
 else {
+  startLog(join(app.getPath('userData'), 'logs'));
+  log('info', 'app-start', { version: app.getVersion(), packaged: app.isPackaged, electron: process.versions.electron, os: process.getSystemVersion() });
+  // Monitor only: the default crash behavior stays as it is.
+  process.on('uncaughtExceptionMonitor', error => log('error', 'main-uncaught', { code: errorCode(error) }));
+  process.on('unhandledRejection', reason => log('error', 'main-unhandled-rejection', { code: errorCode(reason) }));
+  app.on('render-process-gone', (_event, contents, details) => log('error', 'renderer-gone', { reason: details.reason, exitCode: details.exitCode,
+    page: (() => { try { return new URL(contents.getURL()).pathname; } catch { return ''; } })() }));
+  app.on('child-process-gone', (_event, details) => log('error', 'child-process-gone', { type: details.type, reason: details.reason, exitCode: details.exitCode }));
+  app.on('will-quit', () => log('info', 'app-quit'));
   // Per-user (HKCU) registration, refreshed on every start so it follows updates.
   if (protocol) { try { app.setAsDefaultProtocolClient(protocol.scheme, protocol.path, protocol.args); } catch { /* links then simply do not open the app */ } }
   let pendingInvite = inviteFromArgv(process.argv);
@@ -69,7 +80,7 @@ else {
   void app.whenReady().then(async () => {
     await serveAssets(join(__dirname, '../ui'));
     const contracts = new Contracts(join(__dirname, '../schema'));
-    agent = new Agent(contracts);
+    agent = new Agent(contracts, undefined, app.getVersion());
     const directory = join(app.getPath('userData'), 'workspace');
     window = createWindow(true, join(directory, 'window.json'));
     const unregister = registerHealth(window, () => agent!.health());
@@ -111,7 +122,8 @@ else {
     const confirmCollabOverwrite = async (name: string) => (await dialog.showMessageBox(window!, { type: 'warning', title: '파일이 바뀌었습니다',
       message: `${name} 파일이 공유한 뒤 다른 곳에서 바뀌었습니다. 공동 편집한 내용으로 덮어쓸까요?`, buttons: ['취소', '덮어쓰기'], defaultId: 0, cancelId: 0 })).response === 1;
     window.once('closed', registerCollabFiles(window, new CollabFiles(() => pickCollabFile(), confirmCollabOverwrite),
-      new CollabBundles(pickCollabFile, confirmCollabOverwrite), new Previews(!app.isPackaged)));
+      new CollabBundles(pickCollabFile, confirmCollabOverwrite), new Previews(!app.isPackaged),
+      new CollabRunner(join(__dirname, '../../node_modules/pyodide'))));
     window.once('closed', registerCommunityLive(window, signedIn && origin
       ? emit => new CommunityLive(streamClient(origin), signedIn.identity, signedIn.invalidate, emit) : null));
     const remoteWorkspace = auth && remote && origin ? new RemoteWorkspace(agent, auth, remote, origin, detail => confirmRemote(window!, detail)) : null;
@@ -132,6 +144,7 @@ else {
       }));
       await auth?.restore();
       await remoteWorkspace?.resume();
-    } catch { /* Health exposes only unavailable, never exceptions or child stderr. */ }
-  }).catch(() => app.quit());
+      log('info', 'agent-ready');
+    } catch (error) { log('error', 'agent-start-failed', { code: errorCode(error), health: agent.health().errorCode ?? agent.health().state }); }
+  }).catch(error => { log('error', 'startup-failed', { code: errorCode(error) }); app.quit(); });
 }
