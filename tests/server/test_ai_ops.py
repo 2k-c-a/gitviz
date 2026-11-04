@@ -38,7 +38,7 @@ def now():
 class Ops(S.InputCase):
     def setUp(self):
         super().setUp()
-        self._env2 = S.ai_env(AI_ALLOW_EXTERNAL_TRANSFER=1)
+        self._env2 = S.ai_env()
         self._env2.start()
 
     def tearDown(self):
@@ -78,9 +78,9 @@ class Ops(S.InputCase):
         self.assertEqual(st['jobs']['review/failed'], 1)
         self.assertEqual(st['uncertain_reservations'], 1)
         self.assertEqual(Decimal(st['reserved_amount']) > 0, True)
-        self.assertEqual(st['inputs_expired_with_payload'], 1)
-        self.assertGreaterEqual(st['outbox_unpublished'], 1)
-        self.assertEqual(st['credentials_active'], 2)
+        # AD-33: 서버에는 코드 원문도 사용자 key도 남지 않는다. 운영자는 두 수가 늘 0인지 본다.
+        self.assertEqual((st['input_files_with_payload'], st['stored_api_keys']), (0, 0))
+        self.assertNotIn('outbox_unpublished', st)
         text_out = json.dumps(st)
         self.assertNotIn(C.TEST_KEY, text_out)
 
@@ -142,21 +142,18 @@ class Ops(S.InputCase):
         self.assertEqual(self.scalar("SELECT count(*) FROM audit_events WHERE action = 'result.expired_purged'"), 1)
 
     def test_check_flags_unsafe_or_missing_configuration(self):
-        env = {'REDIS_URL': 'redis://x'}
-        with patch('redis.Redis.from_url') as redis_from_url:
-            redis_from_url.return_value.ping.return_value = True
-            ok = {name: (passed, detail) for name, passed, detail in ai_ops.check(redis_url='redis://x', env=env)}
+        ok = {name: (passed, detail) for name, passed, detail in ai_ops.check(env={})}
         self.assertTrue(ok['AI 설정'][0], ok['AI 설정'])
         self.assertTrue(ok['DB migration'][0], ok['DB migration'])
-        self.assertTrue(ok['Redis'][0] and ok['제공자 주소 우회 없음'][0])
+        self.assertTrue(ok['제공자 주소 우회 없음'][0])
+        self.assertNotIn('Redis', ok)                                                               # AD-33: AI 작업 큐가 없다
         with patch.dict(os.environ, {'AI_TEST_PROVIDER_BASE_URL': 'http://127.0.0.1:1'}):
-            self.assertFalse({n: p for n, p, _ in ai_ops.check(redis_url=None, env=env)}['제공자 주소 우회 없음'])   # 운영에서는 비워야 한다
-        stray = {n: d for n, _, d in ai_ops.check(redis_url=None, env={'ANTHROPIC_BASE_URL': 'http://evil', 'ANTHROPIC_API_KEY': 'sk-x'})}
+            self.assertFalse({n: p for n, p, _ in ai_ops.check(env={})}['제공자 주소 우회 없음'])   # 운영에서는 비워야 한다
+        stray = {n: d for n, _, d in ai_ops.check(env={'ANTHROPIC_BASE_URL': 'http://evil', 'ANTHROPIC_API_KEY': 'sk-x'})}
         self.assertIn('ANTHROPIC_BASE_URL', stray['남은 제공자 환경변수'])
         self.assertNotIn('sk-x', json.dumps(stray))                                                 # 값은 출력하지 않는다
-        self.assertFalse({n: p for n, p, _ in ai_ops.check(redis_url=None, env={})}['Redis'])
-        with patch.dict(os.environ, {'AI_ENABLED': '0'}):
-            self.assertFalse({n: p for n, p, _ in ai_ops.check(redis_url=None, env=env)}['AI 설정'])
+        with patch.dict(os.environ, {'AI_PROVIDER_PROFILE': 'unknown-profile'}):
+            self.assertFalse({n: p for n, p, _ in ai_ops.check(env={})}['AI 설정'])
 
     def test_cli_commands(self):
         self.uncertain_job()

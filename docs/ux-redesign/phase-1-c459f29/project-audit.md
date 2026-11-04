@@ -136,7 +136,7 @@ Electron main.ts
 | 로컬 workspace cloud BYOK | [cloud-review.ts](../../../desktop/src/cloud-review.ts)가 미리보기 동안 main 메모리에만 키 보관. 계정·공개 저장소 연결 proof 확인 후 고정 HTTPS provider 호출 | 원격 저장 키 자동 재사용/영구 저장을 약속하면 안 됨 |
 | PC 모델 | 키 불필요. 로컬 workspace 기본 Ollama profile과 서버 provider registry의 local 실행 경로는 구별 | 서버가 원격이면 'local provider'가 사용자 PC라고 무조건 단정하지 않기. 실제 실행 위치 계약 확인 |
 
-근거: [ai-review](../../../frontend/js/ai-review.js)의 `renderKeys`, [credential service](../../../app/services/ai/credentials.py), [crypto](../../../app/services/ai/crypto.py), [workspace review](../../../frontend/js/workspace/review.js). API 키는 입력 코드용 키와 분리한 AES-256-GCM key bundle/AAD로 서버 암호화한다. Electron 세션 및 로컬 암호화 key 보호는 safeStorage/DPAPI 경로다. SQLite 전체가 암호화된 DB라는 주장은 하지 않는다.
+근거: [ai-review](../../../frontend/js/ai-review.js)의 `renderKeys`, credential service(`credentials.py`, AD-33에서 삭제), crypto(`crypto.py`, AD-33에서 삭제), [workspace review](../../../frontend/js/workspace/review.js). API 키는 입력 코드용 키와 분리한 AES-256-GCM key bundle/AAD로 서버 암호화한다. Electron 세션 및 로컬 암호화 key 보호는 safeStorage/DPAPI 경로다. SQLite 전체가 암호화된 DB라는 주장은 하지 않는다.
 
 **확인:** 원격 리뷰는 PR 또는 전체 SHA 커밋 선택·파일 목록 → 고정 base/head/manifest 입력 생성 → 코드 미리보기·모델/키 버전·전송/비용 동의 → AI job/outbox → 준비/생성 worker → 결과/finding/위치 검증·저장 → 사람 피드백 경로가 있다. [ai-api](../../../frontend/js/ai-api.js), [AI inputs](../../../app/api/ai/inputs.py), [job service](../../../app/services/ai/job_service.py), [generation](../../../app/services/ai/generation_service.py)가 분리되어 있다. AI는 기본 disabled이며 배포 설정에 따라 404가 가능하다. 실제 모델 응답 품질은 이번에 시험하지 않았다.
 

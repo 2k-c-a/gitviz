@@ -520,7 +520,6 @@ class WithGeneration(Gen):
         owner, repo = self.make_user(), self.make_repo()
         sid = snapshot_id if snapshot_id is not None else self.history_snapshot(repo, **(snapshot_kwargs or {}))
         _, _, input_id, _ = self.prepared(owner, repo, now=now(), pr_number=7)
-        C.ensure_credential(self.db, owner, key=C.TEST_KEY, profile_id=C.OPUS)
         pinned = C.pinned_for(self.db, owner, repo, input_id, manifest_hash=self.input_row(input_id)['manifest_hash'].strip())
         job = job_service.create_job(self.db, owner_id=owner, repository_id=repo, input_id=input_id, kind='review', fingerprint=canonical_hash(str(uuid4())),
                                      route='r', idempotency_key=uuid4().hex, body_hash=canonical_hash(str(uuid4())), request_options={'history_snapshot_id': sid},
@@ -602,7 +601,9 @@ class Api(Gen):
         self.token = self.client.get('/api/auth/csrf').json()['token']
 
     def headers(self, key=None):
-        return {'Origin': ORIGIN, 'X-CSRF-Token': self.token, **({'Idempotency-Key': key} if key else {})}
+        # AD-33: 앱 main이 실행 요청에 사용자 key를 헤더로 붙인다.
+        return {'Origin': ORIGIN, 'X-CSRF-Token': self.token, C.KEY_HEADER: USER_KEY,
+                **({'Idempotency-Key': key} if key else {})}
 
     def err(self, r, status, code):
         self.assertEqual(r.status_code, status, r.text)
@@ -672,11 +673,10 @@ class Api(Gen):
     def test_job_request_accepts_a_snapshot_of_the_same_repository_only(self):
         owner, repo = self.make_user(), self.make_repo()
         _, _, input_id, _ = self.prepared(owner, repo, now=now())
-        C.ensure_credential(self.db, owner, key=C.TEST_KEY)
         self.login(owner)
         row = self.input_row(input_id)
         consent = {'input_id': str(input_id), 'manifest_hash': row['manifest_hash'].strip(), 'provider': 'anthropic', 'profile_id': C.OPUS,
-                   'credential_version': 1, 'policy_version': 'code-transfer-v1'}
+                   'policy_version': 'code-transfer-v1'}
         foreign = self.snap(self.make_repo())
         self.err(self.client.post('/api/ai/v1/jobs', json={'kind': 'review', 'consent': consent, 'history_snapshot_id': foreign}, headers=self.headers('k1')),
                  422, 'INVALID_SELECTION')
@@ -691,10 +691,9 @@ class Api(Gen):
     def start_review(self, snapshot=None, key='r1'):
         owner, repo = self.make_user(), self.make_repo()
         _, _, input_id, _ = self.prepared(owner, repo, now=now(), pr_number=7)
-        C.ensure_credential(self.db, owner, key=USER_KEY)
         self.login(owner)
         consent = {'input_id': str(input_id), 'manifest_hash': self.input_row(input_id)['manifest_hash'].strip(), 'provider': 'anthropic', 'profile_id': C.OPUS,
-                   'credential_version': 1, 'policy_version': 'code-transfer-v1'}
+                   'policy_version': 'code-transfer-v1'}
         self.consent = consent
         return owner, repo, input_id, self.post_job(consent, snapshot, key)
 

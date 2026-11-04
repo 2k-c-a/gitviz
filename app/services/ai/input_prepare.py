@@ -1,11 +1,15 @@
-"""입력 준비 작업(prepare) handler. AI 제공자를 호출하지 않고 선택한 PR 코드를 고정해 암호화 저장한다.
+"""입력 준비 작업(prepare) handler와 고정 코드 다시 가져오기. AI 제공자를 호출하지 않는다.
 
-흐름: 권한 재확인 → PR 변경 재확인 → 고정 코드 취득(DB transaction 밖) → manifest·해시 조립 →
+준비 흐름: 권한 재확인 → PR 변경 재확인 → 고정 코드 취득(DB transaction 밖) → manifest·파일별 해시 조립 →
 작업 종료 확정과 같은 transaction에서 입력 확정. 취소가 접수되면 확정하지 않는다.
-이 모듈을 import하면 'prepare' handler가 등록된다(celery include에 포함).
+
+코드 원문은 저장하지 않는다(AD-33). manifest·파일별 content_hash·줄 수만 남기고, 생성 실행과 파일 미리보기 때
+같은 SHA에서 다시 가져와(fetch_code) 해시가 같을 때만 쓴다. 다르면 사용자가 확인한 코드가 아니므로 PREVIEW_CHANGED.
+이 모듈을 import하면 'prepare' handler가 등록된다(job_runner.load_handlers).
 """
 import logging
 import time
+from dataclasses import dataclass
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -15,10 +19,10 @@ from app.collectors.git import ai_diff_collector
 from app.collectors.github.ai_pr_collector import RepoRef, verify_unchanged
 from app.collectors.github.github_client import GitHubClient
 from app.core.ai_settings import get_ai_settings
-from app.models.ai_input import AIInput, PRRevision as PRRevisionRow
+from app.models.ai_input import AIInput, AIInputFile, PRRevision as PRRevisionRow
 from app.models.ai_job import AIJob
 from app.models.repository import Repository
-from app.schemas.ai import PRRevision
+from app.schemas.ai import ErrorCode, PRRevision
 from app.services.ai import input_builder, input_store, job_runner
 from app.services.ai.access import AIAction, AIError, authorize_ai
 from app.services.ai.lease import CancelRequested
@@ -114,6 +118,66 @@ def prepare_handler(ctx):
 def _total_files(metadata: dict):
     total = metadata.get('changed_files')
     return total if isinstance(total, int) and not isinstance(total, bool) and total >= 0 else None
+
+
+# ── 고정 코드 다시 가져오기 ───────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class CodeSource:
+    """입력이 고정한 코드의 위치. token은 GitHub 접근용(사용자 본인의 것)이며 저장하지 않는다."""
+    input_id: object
+    repo_url: str
+    merge_base_sha: str
+    head_sha: str
+    token: str | None
+    hashes: dict          # path -> content_hash (content_state='read'인 파일)
+
+
+def code_source(db, row: AIInput, owner_id) -> CodeSource:
+    revision = db.execute(select(PRRevisionRow).where(PRRevisionRow.id == row.revision_id)).scalar_one()
+    repo = db.execute(select(Repository).where(Repository.id == row.repository_id)).scalar_one()
+    files = db.execute(select(AIInputFile.path, AIInputFile.content_hash).where(
+        AIInputFile.input_id == row.id, AIInputFile.content_state == 'read')).all()
+    try:
+        token = user_github_token(db, owner_id)
+    except HTTPException:
+        raise AIError(ErrorCode.REAUTH_REQUIRED, 'GitHub 인증을 갱신해 주세요.') from None
+    return CodeSource(input_id=row.id, repo_url=canonical_github_url(repo.url),
+                      merge_base_sha=revision.merge_base_sha, head_sha=revision.head_sha, token=token,
+                      hashes={p: h for p, h in files})
+
+
+def fetch_code(source: CodeSource, paths=None) -> dict[str, bytes]:
+    """고정 SHA에서 코드를 다시 가져와 확정 때의 해시와 대조한다. DB 세션 밖에서 부른다.
+
+    반환: path -> 보낼 diff(UTF-8). 해시가 다르거나 파일을 얻지 못하면 PREVIEW_CHANGED(확인한 코드가 아니다),
+    네트워크·GitHub 일시 오류는 retryable AIError.
+    """
+    wanted = sorted(source.hashes if paths is None else (p for p in paths if p in source.hashes))
+    if not wanted:
+        return {}
+    settings = get_ai_settings()
+    try:
+        with ai_diff_collector.revision_workspace(input_builder.remote_url_for(source.repo_url), source.merge_base_sha,
+                                                  source.head_sha, token=source.token, protocols=PROTOCOLS) as work:
+            collected = ai_diff_collector.collect_selected_code(
+                work, source.merge_base_sha, source.head_sha, wanted, max_files=len(wanted),
+                max_bytes=settings.max_input_bytes, protocols=PROTOCOLS, pr_total_files=None)
+    except CollectionError as exc:
+        if exc.retryable:
+            raise AIError(ErrorCode.UPSTREAM_UNAVAILABLE, '고정한 코드를 GitHub에서 다시 가져오지 못했습니다.',
+                          retryable=True) from None
+        raise AIError(ErrorCode.PREVIEW_CHANGED, '확인한 코드를 다시 가져올 수 없습니다. 미리보기를 다시 준비해 주세요.',
+                      details={'reason': input_builder.error_code_for(exc)}) from None
+    out = {}
+    for item in collected.files:
+        path = item.manifest.path
+        if path in source.hashes and item.payload is not None and item.manifest.content_hash == source.hashes[path]:
+            out[path] = item.payload
+    if set(out) != set(wanted):
+        logger.warning('fixed code changed input=%s missing=%d', source.input_id, len(set(wanted) - set(out)))
+        raise AIError(ErrorCode.PREVIEW_CHANGED, '가져온 코드가 확인한 내용과 다릅니다. 미리보기를 다시 준비해 주세요.')
+    return out
 
 
 job_runner.register_handler('prepare', prepare_handler)

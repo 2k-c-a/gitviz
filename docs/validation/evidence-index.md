@@ -15,7 +15,7 @@
 | [PG 정책 검증](../archive/originals/docs/POSTGRES_VALIDATION_2026-10-03.md) | backend 14·정책 12 | PG18 전용 DB, GitHub·수집 대역 | 빈 설치·기존 upgrade·snapshot/HTTP. CI PG16과 별도 |
 | [WEB 통합](../archive/originals/docs/WEB_INTEGRATION_2026-10-03.md) | 실제 신규·재분석·화면 이동 성공 | 실제 사용자 OAuth, Redis DB14·별도 worker·PG18 | PR 상세 23/23은 존재율, 모든 페이지 완전성 아님. `.validation/web-evidence/` 증거의 정식 보존 미확정 |
 | [초기 AI 기획 검토](../archive/originals/docs/AI_ASSISTANT_PLAN_REVIEW_2026-10-07.md) | 선택 회귀 통과, snapshot 전체 중단 | `0ecbca71bcd2fe5f08400397990c18d16fbf50eb` 당시 코드 | 중단한 검사를 전체 통과로 쓰지 않음 |
-| [AI MVP 수용](../archive/originals/docs/AI_MVP_ACCEPTANCE.md) | 통합 16 등, 구조·안전 수용 | 일회용 PG16·Redis7·별도 API/worker/dispatcher, 가짜 provider·GitHub | [verify_ai_mvp_integration](../../tests/server/verify_ai_mvp_integration.py). 모델 정확도·실제 인증 제외 |
+| [AI MVP 수용](../archive/originals/docs/AI_MVP_ACCEPTANCE.md) | 통합 16 등, 구조·안전 수용 | 일회용 PG16·Redis7·별도 API/worker/dispatcher, 가짜 provider·GitHub | verify_ai_mvp_integration(`verify_ai_mvp_integration.py`, AD-33에서 삭제). 모델 정확도·실제 인증 제외 |
 | [provider 확장 기록](../archive/originals/docs/AI_PROVIDER_SUPPORT.md) | Python 484·Node 32 등 기록 | HTTP 대역·격리 PG·모의 브라우저 | 당시 묶음 집계, 현재 전체 통과·모델별 품질 아님 |
 
 ## Git에서 제외된 로컬 스냅샷 자료

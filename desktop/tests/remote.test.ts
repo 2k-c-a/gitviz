@@ -68,6 +68,29 @@ test('AI analysis (BYOK): main attaches only the saved key of the requested prov
   assert.ok(!JSON.stringify(response).includes(saved.anthropic));
 });
 
+test('AI review (BYOK, AD-33): job create/retry carry the saved key of consent.provider; server key routes are gone', async () => {
+  const seen: { path: string; aiKey?: string }[] = [];
+  const http: Http = async (path, _method, _body, _token, _key, aiKey) => { seen.push({ path, aiKey }); return { status: 202, body: {}, headers: {} }; };
+  const saved: Record<string, string> = { openai: 'sk-proj-' + 'b'.repeat(24) };
+  const keys = { get: async (provider: string) => saved[provider] ?? null };
+  const remote = new Remote(contracts, http, () => ({ token, generation: 1 }), () => {}, keys);
+  const consent = { input_id: uid, manifest_hash: 'c'.repeat(64), provider: 'openai', profile_id: 'gpt-5.4-v1', policy_version: 'code-transfer-v1' };
+  await remote.request({ endpointKey: 'createJob', path: {}, query: {}, body: { kind: 'review', consent }, idempotencyKey: 'k1' });
+  assert.deepEqual(seen.pop(), { path: '/api/ai/v1/jobs', aiKey: saved.openai });
+  await remote.request({ endpointKey: 'retryJob', path: { jobId: uid }, query: {}, body: { consent }, idempotencyKey: 'k2' });
+  assert.equal(seen.pop()?.aiKey, saved.openai);
+  await assert.rejects(remote.request({ endpointKey: 'createJob', path: {}, query: {}, body: { kind: 'review', consent: { ...consent, provider: 'anthropic', profile_id: 'claude-opus-5-5-v1' } }, idempotencyKey: 'k3' }), /AI_KEY_REQUIRED/);
+  assert.equal(seen.length, 0);
+  await remote.request({ endpointKey: 'createJob', path: {}, query: {}, body: { kind: 'review', consent: { ...consent, provider: 'ollama', profile_id: 'ollama-local-v1' } }, idempotencyKey: 'k4' });
+  assert.equal(seen.pop()?.aiKey, undefined);
+  await remote.request({ endpointKey: 'job', path: { jobId: uid }, query: {} });
+  assert.equal(seen.pop()?.aiKey, undefined);
+  // The old server key store is no longer reachable from the app, and consent no longer names a key version.
+  for (const endpointKey of ['credentials', 'putCredential', 'patchCredential', 'deleteCredential'])
+    assert.throws(() => contracts.route({ endpointKey, path: { provider: 'openai' }, query: {}, body: {} }), endpointKey);
+  assert.throws(() => contracts.route({ endpointKey: 'createJob', path: {}, query: {}, body: { kind: 'review', consent: { ...consent, credential_version: 1 } }, idempotencyKey: 'k5' }));
+});
+
 test('account generation drops a late response, 401 invalidates, mutations never retry automatically', async () => {
   let generation = 1, calls = 0, release: (() => void) | undefined;
   const http: Http = async () => { calls++; await new Promise<void>(resolve => { release = resolve; }); return { status: 200, body: {}, headers: {} }; };

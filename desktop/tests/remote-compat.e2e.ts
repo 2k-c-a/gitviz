@@ -51,8 +51,7 @@ const http: Http = async (path, method, _body, givenToken) => {
   }
   else if (p.endsWith('/risk-scores') || p.endsWith('/bus-factor') || p.endsWith('/coupling')) body = [];
   else if (p.endsWith('/snapshots')) body = { repository_id: 2, snapshots: [snapshot], next_before_id: null };
-  else if (p === '/api/ai/v1/providers') body = { providers: [], external_transfer_allowed: false };
-  else if (p === '/api/ai/v1/credentials') body = { credentials: [] };
+  else if (p === '/api/ai/v1/providers') body = { providers: [] };
   else if (p === '/api/ai/v1/usage') body = { period_start: '2026-10-01', currency: 'USD', user_spent: '0', user_reserved: '0', user_limit: '20', user_remaining: '20', server_budget_enabled: true, uncertain_reservations: 0, daily_jobs_used: 0, daily_job_limit: 30 };
   else if (p === '/search/github-repositories') body = { query: 'fixture', total_count: 1, results: [{ owner: 'fixture', repo_name: 'p03', url: repo.url, description: 'Search fixture', stars: 1, forks: 0, is_registered: true }] };
   return { status: method === 'DELETE' ? 204 : 200, body, headers: {} };

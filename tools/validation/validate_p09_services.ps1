@@ -72,7 +72,7 @@ try {
     if ($LASTEXITCODE -ne 0 -or $id -notmatch '^[0-9a-f]{64}$') { throw 'Owned fixture Redis start failed.' }
     $containerId = $id.Trim()
     Test-Step 'test_desktop_auth.py' @('--postgres')
-    foreach ($script in @('test_desktop_migration.py', 'test_backend_improvements.py', 'test_repository_snapshots.py', 'test_ai_history_context.py', 'test_ai_queue_integration.py', 'verify_ai_mvp_integration.py')) { Test-Step $script }
+    foreach ($script in @('test_desktop_migration.py', 'test_backend_improvements.py', 'test_repository_snapshots.py', 'test_ai_history_context.py')) { Test-Step $script }
     @{ status='passed'; postgresPort=$pgPort; redisPort=$redisPort; database=$database; scripts=$summary.Count; productionData=$false; externalProviders=$false } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $run 'result.json') -Encoding utf8
 } finally {
     $cleanupFailed = $false

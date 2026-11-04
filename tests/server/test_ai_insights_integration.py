@@ -3,7 +3,7 @@
 - 이 저장소(GitViz)의 main 브랜치를 임시 폴더로 복제하고 analyze_repository task를 그대로 실행한다.
   GitHub API(PR·릴리스·신원 통합)와 GitHub 접근 확인만 대역으로 바꾼다. 외부 네트워크를 쓰지 않는다.
 - AI 공급자는 tests/server/ai_fake_provider.py(로컬 HTTP)이고 Anthropic 어댑터는 실제 경로다.
-- 앱 BYOK(AD-32 ⑧): 서버 AI 설정(AI_ENABLED·외부 전송 허용·암호화 키)을 모두 끈 상태에서, 요청 헤더의 key로만 실행되고
+- 앱 BYOK(AD-32 ⑧, AD-33): 서버에 AI 키·암호화 키 설정이 없는 상태에서, 요청 헤더의 key로만 실행되고
   key가 DB 어디에도 남지 않는지 확인한다.
 - GITVIZ_TEST_DATABASE_URL(이름이 gitviz_test로 시작하는 격리 DB)이 필요하다.
 """
@@ -52,8 +52,7 @@ TEST_KEY = 'sk-ant-api03-TESTKEY0123456789abcdefABCDEF'
 OPUS = 'claude-opus-5-5-v1'
 # 서버 AI 설정이 전혀 없는 상태(.env를 읽어도 덮어쓰지 않도록 빈 값으로 고정). 가짜 제공자 주소만 시험용으로 둔다.
 os.environ.update({
-    'AI_ENABLED': '0', 'AI_ALLOW_EXTERNAL_TRANSFER': '0', 'AI_ALLOWED_ORIGINS': '', 'FRONTEND_URL': ORIGIN,
-    'AI_CREDENTIAL_ENCRYPTION_KEYS': '', 'AI_INPUT_ENCRYPTION_KEYS': '', 'AI_DAILY_JOB_LIMIT': '',
+    'AI_ALLOWED_ORIGINS': '', 'FRONTEND_URL': ORIGIN, 'AI_DAILY_JOB_LIMIT': '',
     'AI_INSIGHTS_ENABLED': '', 'AI_TEST_PROVIDER_BASE_URL': f'http://127.0.0.1:{PROVIDER_PORT}',
 })
 
@@ -439,8 +438,10 @@ class InsightIntegration(unittest.TestCase):
     def test_byok_runs_without_server_ai_settings_and_never_stores_the_key(self):
         from app.core.ai_settings import get_ai_settings
         settings = get_ai_settings()
-        self.assertFalse(settings.enabled or settings.allow_external_transfer)
-        self.assertEqual((settings.encryption_keys, settings.credential_keys, settings.daily_job_limit), ({}, {}, 0))
+        # AD-33: 서버에는 AI 스위치·외부 전송 설정·암호화 키가 없다.
+        for removed in ('enabled', 'allow_external_transfer', 'encryption_keys', 'credential_keys'):
+            self.assertFalse(hasattr(settings, removed), removed)
+        self.assertEqual(settings.daily_job_limit, 0)
         listed = self.client.get('/api/ai/v1/insights/models').json()['models']
         self.assertIn(('claude-opus-5-5-v4', 'anthropic', True), [(m['profile_id'], m['provider'], m['requires_api_key'])
                                                                   for m in listed])

@@ -1,4 +1,6 @@
-"""S9 PR·파일 선택 조회 API(/api/ai/v1/pulls)와 기본 모델 변경(PATCH /credentials) 테스트. GitHub와 DB 접근 확인은 대역이다."""
+"""S9 PR·파일 선택 조회 API(/api/ai/v1/pulls) 테스트. GitHub와 DB 접근 확인은 대역이다.
+
+기본 모델 변경(PATCH /credentials)은 AD-33에서 없어졌다. 모델은 앱이 실행마다 고른다."""
 import os
 import sys
 import unittest
@@ -10,14 +12,12 @@ import ai_test_support as support  # noqa: E402
 support.require_test_database()
 sys.path.insert(0, str(support.ROOT))
 
-import ai_credential_support as C  # noqa: E402
 import ai_input_support as S  # noqa: E402
 from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.exceptions import RequestValidationError  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from starlette.middleware.sessions import SessionMiddleware  # noqa: E402
 
-from app.api.ai import credentials as credentials_api  # noqa: E402
 from app.api.ai import pulls as pulls_api  # noqa: E402
 from app.api.ai import commits as commits_api
 from app.api.ai.dependencies import ai_error_response, ai_validation_error_response  # noqa: E402
@@ -40,7 +40,7 @@ def build_app():
     app.add_middleware(SessionMiddleware, secret_key='api-test', same_site='lax')
     app.add_exception_handler(AIError, ai_error_response)
     app.add_exception_handler(RequestValidationError, ai_validation_error_response)
-    for module in (auth_router, pulls_api, commits_api, credentials_api):
+    for module in (auth_router, pulls_api, commits_api):
         app.include_router(module.router)
 
     @app.post('/test/login/{user_id}')
@@ -62,7 +62,7 @@ def pr(number=7, **over):
 class Case(S.InputCase):
     def setUp(self):
         super().setUp()
-        self._env2 = S.ai_env(AI_ALLOW_EXTERNAL_TRANSFER=1)
+        self._env2 = S.ai_env()
         self._env2.start()
         self.calls, self.error = [], None
         self.denied = None
@@ -165,12 +165,10 @@ class Pulls(Case):
         after = self.scalar('SELECT count(*) FROM ai_jobs') + self.scalar('SELECT count(*) FROM ai_inputs')
         self.assertEqual(before, after)
 
-    def test_login_flag_validation_and_access(self):
+    def test_login_validation_and_access(self):
         anon = TestClient(build_app())
         self.err(anon.get('/api/ai/v1/pulls', params={'repository_id': 1}), 401, 'AUTH_REQUIRED')
         self.err(anon.get('/api/ai/v1/pulls/1/files', params={'repository_id': 1}), 401, 'AUTH_REQUIRED')
-        with S.ai_env(AI_ENABLED=0):
-            self.err(self.client.get('/api/ai/v1/pulls', params={'repository_id': self.repo}), 404, 'RESOURCE_NOT_FOUND')
         for params in ({}, {'repository_id': 0}, {'repository_id': self.repo, 'state': 'all'},
                        {'repository_id': self.repo, 'limit': 500}):
             self.err(self.client.get('/api/ai/v1/pulls', params=params), 422, 'INVALID_SELECTION')
@@ -187,40 +185,6 @@ class Pulls(Case):
                 r = self.err(self.client.get('/api/ai/v1/pulls', params={'repository_id': self.repo}), status, code)
                 if status == 429:
                     self.assertEqual(r.headers['retry-after'], '30')
-
-
-class PreferredProfile(Case):
-    def test_patch_changes_only_the_default_model(self):
-        self.err(self.client.patch('/api/ai/v1/credentials/anthropic', json={'profile_id': C.SONNET}, headers=self.headers()),
-                 404, 'RESOURCE_NOT_FOUND')                                              # key가 아직 없다
-        C.ensure_credential(self.db, self.owner, key=C.TEST_KEY, profile_id=C.OPUS)
-        before = self.client.get('/api/ai/v1/credentials').json()['credentials'][0]
-        r = self.client.patch('/api/ai/v1/credentials/anthropic', json={'profile_id': C.SONNET}, headers=self.headers())
-        self.assertEqual(r.status_code, 200, r.text)
-        self.assertEqual(r.headers['cache-control'], 'private, no-store')
-        body = r.json()
-        self.assertEqual((body['preferred_profile_id'], body['version'], body['key_hint']),
-                         (C.SONNET, before['version'], before['key_hint']))             # key 버전·힌트는 그대로
-        self.assertNotIn(C.TEST_KEY, r.text)
-        self.assertEqual(self.scalar('SELECT count(*) FROM ai_credential_versions'), 1)
-        for bad in ('gpt-5-v1', 'nope'):
-            self.err(self.client.patch('/api/ai/v1/credentials/anthropic', json={'profile_id': bad}, headers=self.headers()),
-                     422, 'INVALID_SELECTION')
-        with S.ai_env(AI_ALLOWED_PROFILES=C.OPUS, AI_ALLOW_EXTERNAL_TRANSFER=1):
-            self.err(self.client.patch('/api/ai/v1/credentials/anthropic', json={'profile_id': C.SONNET}, headers=self.headers()),
-                     422, 'INVALID_SELECTION')
-        self.err(self.client.patch('/api/ai/v1/credentials/anthropic', json={'profile_id': C.SONNET, 'x': 1}, headers=self.headers()),
-                 422, 'INVALID_SELECTION')
-
-    def test_patch_needs_csrf_and_is_per_user(self):
-        C.ensure_credential(self.db, self.owner, key=C.TEST_KEY, profile_id=C.OPUS)
-        self.err(self.client.patch('/api/ai/v1/credentials/anthropic', json={'profile_id': C.SONNET}), 403, 'CSRF_FAILED')
-        other = self.make_user()
-        self.login(other)
-        self.err(self.client.patch('/api/ai/v1/credentials/anthropic', json={'profile_id': C.SONNET}, headers=self.headers()),
-                 404, 'RESOURCE_NOT_FOUND')                                              # 남의 key는 바꿀 수 없다
-        self.login(self.owner)
-        self.assertEqual(self.client.get('/api/ai/v1/credentials').json()['credentials'][0]['preferred_profile_id'], C.OPUS)
 
 
 if __name__ == '__main__':

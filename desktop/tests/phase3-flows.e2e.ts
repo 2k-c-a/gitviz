@@ -32,7 +32,11 @@ const requestMethods: string[] = [];
 const unauthorized = false;
 const inputId = '22222222-2222-4222-8222-222222222222', jobId = '33333333-3333-4333-8333-333333333333', resultId = '44444444-4444-4444-8444-444444444444', sourceId = '55555555-5555-4555-8555-555555555555';
 const model = { provider: 'openai', profile_id: 'fixture-v1', model: 'fixture-model', display_name: 'Fixture model', allowed: true, execution_location: 'external', requires_api_key: true, input_price_per_mtok: '1', output_price_per_mtok: '1', max_input_tokens: 10000, max_output_tokens: 1000 };
-let credential: { provider: string; key_hint: string; version: number; preferred_profile_id: string; validated_at: string; in_flight_jobs: number } | null = null;
+// AI keys live in the app (AD-33): a fake vault stands in for DPAPI; the fixture server only sees the per-request header.
+const appKeys: Record<string, string> = {};
+const fakeVault = { get: async (provider: string) => appKeys[provider] ?? null,
+  status: async () => ({ anthropic: !!appKeys.anthropic, openai: !!appKeys.openai, gemini: !!appKeys.gemini }) };
+const jobKeys: (string | undefined)[] = [];
 let inputSource: 'commit' | 'pr' = 'commit';
 let typeFailure = false;
 // Community fixture: the fixture user starts as admin of repository 2 with one other member.
@@ -142,9 +146,9 @@ function communityFixture(p: string, method: string, payload: Record<string, unk
   return { status: 403, body: { detail: { code: 'INVITE_REQUIRED', message: '이 저장소의 기여자가 아니면 초대 링크로만 참여할 수 있습니다.' } } };
 }
 const files =Array.from({ length: 52 }, (_, i) => ({ file_id: 999 + i, path: i ? `src/module-${i}.ts` : 'src/fixture.ts', name: i ? `module-${i}.ts` : 'fixture.ts', observation_count: 100 - i, maintenance_priority: 0.5, risk_score: 0.5, evidence_status: 'observed', bus_factor: 1, coupling_score: 0.5, coupling_support: 3, coupled_file_count: 1 }));
-const preview = () => ({ input_id: inputId, repository_id: 2, source_type: inputSource, pr_number: inputSource === 'pr' ? 1 : null, pr_title: 'Fixture change', base_sha: 'b'.repeat(40), head_sha: 'a'.repeat(40), status: 'ready', execution_valid: true, reviewable: true, manifest_hash: 'c'.repeat(64), policy_version: 'code-transfer-v1', files: [{ file_id: sourceId, path: 'src/fixture.ts', content_state: 'read', change_type: 'modified', byte_count: 50, hunks: [] }], coverage: { pr_total_files: 1, selected_files: 1, inventory_coverage: 'complete', selected_content_coverage: 'complete', analysis_coverage: 'complete', limitations: [] }, transfer: { ...model, external_transfer_allowed: true, credential_configured: !!credential, credential_version: credential?.version || 1, key_hint: 'fixture-masked' }, token_estimate: { input_tokens: 20, max_output_tokens: 100, within_limit: true, estimated_max_cost: '0.01' } });
+const preview = () => ({ input_id: inputId, repository_id: 2, source_type: inputSource, pr_number: inputSource === 'pr' ? 1 : null, pr_title: 'Fixture change', base_sha: 'b'.repeat(40), head_sha: 'a'.repeat(40), status: 'ready', execution_valid: true, reviewable: true, manifest_hash: 'c'.repeat(64), policy_version: 'code-transfer-v1', files: [{ file_id: sourceId, path: 'src/fixture.ts', content_state: 'read', change_type: 'modified', byte_count: 50, hunks: [] }], coverage: { pr_total_files: 1, selected_files: 1, inventory_coverage: 'complete', selected_content_coverage: 'complete', analysis_coverage: 'complete', limitations: [] }, transfer: { ...model }, token_estimate: { input_tokens: 20, max_output_tokens: 100, within_limit: true, estimated_max_cost: '0.01' } });
 
-const http: Http = async (path, method, _body, givenToken) => {
+const http: Http = async (path, method, _body, givenToken, _idempotency, aiKey) => {
   requests.push(path); assert.equal(givenToken, token);
   requestMethods.push(method);
   if (unauthorized) return { status: 401, body: { detail: 'fixture signed out' }, headers: {} };
@@ -178,20 +182,14 @@ const http: Http = async (path, method, _body, givenToken) => {
   else if (p.endsWith('/coupling')) body = { meta: { co_change_unit: 'pr', sort_by: 'coupling', total_pairs: 1 }, pairs: [{ file_a_id: 999, file_b_id: 1000, file_a_path: 'src/fixture.ts', file_b_path: 'src/module-1.ts', co_change_count: 3, change_count_a: 4, change_count_b: 6, a_to_b_ratio: 0.75, b_to_a_ratio: 0.5, coupling_score: 0.75, adjusted_score: 0.6, low_support: true }] };
   else if (p.endsWith('/risk-scores') || p.endsWith('/bus-factor') || p.endsWith('/coupling')) body = [];
   else if (p.endsWith('/snapshots')) body = { repository_id: 2, snapshots: [snapshot], next_before_id: null };
-  else if (p === '/api/ai/v1/providers') body = { providers: [{ id: 'openai', display_name: 'Fixture provider', key_format: 'Fixture key', models: [model] }], external_transfer_allowed: true };
-  else if (p === '/api/ai/v1/credentials') body = { credentials: credential ? [credential] : [] };
-  else if (p === '/api/ai/v1/credentials/openai') {
-    if (method === 'PUT') { assert.equal(payload.api_key, 'fixture-test-value'); credential = { provider: 'openai', key_hint: 'fixture-masked', version: (credential?.version || 0) + 1, preferred_profile_id: 'fixture-v1', validated_at: snapshot.analyzed_at, in_flight_jobs: 0 }; body = { changed: true, credential }; }
-    else if (method === 'DELETE') { credential = null; body = { jobs_cancelled: 0 }; }
-    else body = { credential };
-  }
+  else if (p === '/api/ai/v1/providers') body = { providers: [{ id: 'openai', display_name: 'Fixture provider', key_format: 'Fixture key', models: [model] }] };
   else if (p === '/api/ai/v1/pulls') body = { items: [{ number: 1, title: 'Fixture PR', head_sha: 'a'.repeat(40), base_ref: 'main', head_ref: 'work' }], next_cursor: null };
   else if (p === '/api/ai/v1/commits') body = { items: [{ sha: 'a'.repeat(40), message: 'Fixture commit', committed_at: snapshot.analyzed_at }], next_cursor: null };
   else if (p.endsWith('/files') && (p.includes('/commits/') || p.includes('/pulls/'))) body = { base_sha: 'b'.repeat(40), head_sha: 'a'.repeat(40), pr_total_files: 1, inventory_coverage: 'complete', next_cursor: null, files: [{ path: 'src/fixture.ts', change_type: 'modified', has_patch: true, additions: 1, deletions: 1 }] };
   else if (p === '/api/ai/v1/inputs' && method === 'POST') { inputSource = payload.commit_sha ? 'commit' : 'pr'; body = { input_id: inputId, repository_id: 2 }; }
   else if (p === `/api/ai/v1/inputs/${inputId}`) body = preview();
   else if (p === `/api/ai/v1/inputs/${inputId}/files/${sourceId}`) body = { path: 'src/fixture.ts', lines: [{ kind: 'added', right_line: 1, left_line: null, text: 'return value;' }] };
-  else if (p === '/api/ai/v1/jobs' && method === 'POST') { assert.equal((payload.consent as Record<string, unknown>).manifest_hash, 'c'.repeat(64)); body = { job_id: jobId, repository_id: 2 }; }
+  else if (p === '/api/ai/v1/jobs' && method === 'POST') { assert.equal((payload.consent as Record<string, unknown>).manifest_hash, 'c'.repeat(64)); assert.equal('credential_version' in (payload.consent as Record<string, unknown>), false); jobKeys.push(aiKey); body = { job_id: jobId, repository_id: 2 }; }
   else if (p === '/api/ai/v1/jobs') body = { jobs: [], next_cursor: null };
   else if (p === `/api/ai/v1/jobs/${jobId}`) body = { job_id: jobId, repository_id: 2, result_id: resultId, input_id: inputId, status: 'succeeded', kind: 'review', created_at: snapshot.analyzed_at };
   else if (p === `/api/ai/v1/results/${resultId}`) body = { result_id: resultId, job_id: jobId, repository_id: 2, input_id: inputId, kind: 'review', finding_count: 2, human_validation: 'unverified', coverage: preview().coverage };
@@ -214,8 +212,8 @@ void app.whenReady().then(async () => {
   const contracts = new RemoteContracts(JSON.parse(readFileSync(join(__dirname, '../schema/ai-bodies.json'), 'utf8')) as Record<string, Record<string, unknown>>);
   const auth = new DesktopAuth('https://fixture.test', http, async () => { throw new Error('UNEXPECTED_EXTERNAL_BROWSER'); }, { read: async () => issued, write: async () => {} });
   await auth.restore();
-  const remote = new Remote(contracts, http, auth.identity, auth.invalidate);
-  const window = createWindow(false); const unregister = registerDesktop(window, auth, remote);
+  const remote = new Remote(contracts, http, auth.identity, auth.invalidate, fakeVault);
+  const window = createWindow(false); const unregister = registerDesktop(window, auth, remote, undefined, fakeVault);
   const unregisterLive = registerCommunityLive(window, emit => new CommunityLive(chatStream, auth.identity, auth.invalidate, emit));
   window.once('closed', unregisterLive);
   const collabDir = mkdtempSync(join(tmpdir(), 'gitviz-collab-e2e-')); const collabFile = join(collabDir, 'app.py');
@@ -315,13 +313,11 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`document.querySelector('#cx-cp-body .cx-pair-file').click()`);
     await wait(`document.getElementById('dd-title').textContent==='fixture.ts'`);
     await window.webContents.executeJavaScript(`window.closeDrilldown()`);
-    phase = 'settings-key-save';
+    phase = 'settings-app-keys';
     await window.loadURL('gitviz://app/web/pages/settings.html');
-    await wait(`!!document.getElementById('ai-key-input') && !!document.querySelector('.app-shell')`);
-    await window.webContents.executeJavaScript(`document.getElementById('ai-key-input').value='fixture-test-value'`); await clickText('키 확인 후 저장');
-    await wait(`document.getElementById('ai-keys').textContent.includes('키 등록됨')`);
-    assert.equal(await window.webContents.executeJavaScript(`document.getElementById('ai-key-input').value`), '');
-    assert.equal(await window.webContents.executeJavaScript(`document.body.textContent.includes('fixture-test-value') || JSON.stringify(localStorage).includes('fixture-test-value')`), false);
+    await wait(`!!document.querySelector('.app-shell') && document.getElementById('ai-main').textContent.includes('GitViz 앱에만 저장')`);
+    assert.equal(await window.webContents.executeJavaScript(`!!document.querySelector('input[type="password"]')`), false, 'the server-side key form is gone');
+    assert.ok(await window.webContents.executeJavaScript(`document.getElementById('ai-keys').textContent.includes('키 없음')`));
     phase = 'AI-commit-preview-consent-result';
     await window.loadURL('gitviz://app/web/pages/ai-review.html?repo=2');
     await wait(`document.getElementById('ai-main')?.textContent.includes('Fixture PR')`);
@@ -331,12 +327,15 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`document.querySelector('.ai-file input[type="checkbox"]').click()`); await clickText('미리보기 만들기');
     await wait(`!!document.getElementById('ai-consent-check')`);
     assert.equal(await window.webContents.executeJavaScript(`[...document.querySelectorAll('button')].find(e=>e.textContent==='코드 리뷰 생성').disabled`), true);
-    await clickText('API 키·설정');
-    await wait(`location.pathname.endsWith('/settings.html') && !!document.getElementById('ai-key-input')`);
-    await clickText('AI 리뷰로 돌아가기'); await wait(`!!document.getElementById('ai-consent-check')`);
-    assert.equal(await window.webContents.executeJavaScript(`document.getElementById('ai-consent-check').checked`), false, 'return requires fresh consent');
+    assert.ok(await window.webContents.executeJavaScript(`document.querySelector('.ai-blockers').textContent.includes('앱 설정에서 openai API 키')`));
+    assert.ok(await window.webContents.executeJavaScript(`!![...document.querySelectorAll('button')].find(e=>e.textContent==='API 키 저장하러 가기')`));
+    appKeys.openai = 'fixture-test-value-0123456789';                           // saved through the app's own settings
+    await window.webContents.executeJavaScript(`location.reload()`); await wait(`!!document.getElementById('ai-consent-check') && document.getElementById('ai-keys').textContent.includes('앱에 키 저장됨')`);
+    assert.equal(await window.webContents.executeJavaScript(`document.getElementById('ai-consent-check').checked`), false, 'reload requires fresh consent');
+    assert.equal(await window.webContents.executeJavaScript(`document.body.textContent.includes(${JSON.stringify(appKeys.openai)})`), false, 'renderer never shows the key');
     await window.webContents.executeJavaScript(`document.getElementById('ai-consent-check').click()`); await clickText('코드 리뷰 생성');
     await wait(`document.querySelectorAll('.ai-finding').length===2`);
+    assert.deepEqual(jobKeys, [appKeys.openai], 'main attached the saved key to the job request only');
     await window.webContents.executeJavaScript(`const select=document.querySelector('[aria-label="검토 순서 필터"]');select.value='1';select.dispatchEvent(new Event('change'))`);
     assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('.ai-finding').length`), 1);
     await window.webContents.executeJavaScript(`(() => { const note=document.querySelector('.ai-finding textarea'); note.value='Unsaved fixture note'; note.dispatchEvent(new Event('input')); const search=document.querySelector('[aria-label="불러온 지적의 파일 또는 제목 검색"]'); search.focus(); search.value='fixture'; search.dispatchEvent(new Event('input')); })()`);
@@ -349,15 +348,6 @@ void app.whenReady().then(async () => {
     await wait(`document.getElementById('ai-main')?.textContent.includes('Fixture PR')`); await clickText('파일 선택');
     await wait(`document.querySelectorAll('.ai-file input[type="checkbox"]').length>0`);
     assert.ok(requests.some(path => path.includes('/pulls/1/files')));
-    phase = 'key-replace-delete';
-    await window.loadURL('gitviz://app/web/pages/settings.html');
-    await wait(`!!document.getElementById('ai-key-input') && document.getElementById('ai-keys').textContent.includes('키 등록됨')`);
-    await window.webContents.executeJavaScript(`document.getElementById('ai-key-input').value='fixture-test-value'`); await clickText('키 교체(확인 후 저장)');
-    await wait(`document.getElementById('ai-keys').textContent.includes('v2')`);
-    await window.webContents.executeJavaScript(`window.confirm=()=>true;void 0`); await clickText('키 삭제');
-    await wait(`document.getElementById('ai-keys').textContent.includes('키 없음')`);
-    assert.equal(credential, null);
-
     phase = 'community';
     const js = (code: string) => window.webContents.executeJavaScript(code);
     await window.loadURL('gitviz://app/web/pages/community.html');
@@ -556,7 +546,7 @@ void app.whenReady().then(async () => {
     await wait(`document.getElementById('community-join-message').textContent==='참여했습니다.'`);
     assert.deepEqual(communityBodies.slice(0, 3),[{ title: '첫 글', body: markup }, { body: '댓글입니다' }, { expires_in_hours: 168, max_uses: 5 }]);
     assert.equal(errors.length, 0, `renderer errors: ${errors.join(',')}`);
-    process.stdout.write('PASS Phase 3 renderer: search/paging/selection/overview, community posts/comments/chat/voice (real WebRTC peer)/co-editing (real Yjs peer, host save, guest sync)/invites/admin handover, partial retry, contributor-file-back, monthly metric, graph zoom/filter/selection, file pagination/search/view restoration, credential save/erase, commit/PR selection, preview/fresh consent, review result/filter/code. Fixture transport only.\n');
+    process.stdout.write('PASS Phase 3 renderer: search/paging/selection/overview, community posts/comments/chat/voice (real WebRTC peer)/co-editing (real Yjs peer, host save, guest sync)/invites/admin handover, partial retry, contributor-file-back, monthly metric, graph zoom/filter/selection, file pagination/search/view restoration, app-held AI key status, commit/PR selection, preview/fresh consent, review result/filter/code. Fixture transport only.\n');
   } finally { unregisterCollab(); unregisterHealth(); unregister(); window.destroy(); rmSync(collabDir, { recursive: true, force: true }); clearTimeout(deadline); }
 }).then(() => app.exit(0)).catch(error => {
   if (process.env.GITVIZ_UI_REPORT) writeFileSync(process.env.GITVIZ_UI_REPORT, JSON.stringify({ status: 'failed', phase, message: error instanceof Error ? error.message : 'assertion' }));

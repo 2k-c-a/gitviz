@@ -59,7 +59,7 @@ docker compose up -d db redis
 | `REDIS_URL` | Celery 브로커·백엔드 |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `FRONTEND_URL`, `TOKEN_ENCRYPTION_KEY` | GitHub 로그인·토큰 보관 |
 
-선택: `AI_ENABLED`와 `AI_*`(기본 꺼짐), `DESKTOP_AUTH_ENABLED`·`DESKTOP_PUBLIC_ORIGIN`·`DESKTOP_AUTH_RESPONSE_KEY`(데스크톱 로그인), `SESSION_COOKIE_SECURE`(개발은 0), `VOICE_STUN_URLS`·`VOICE_TURN_URLS`·`VOICE_TURN_SECRET`(커뮤니티 음성 채팅. 예시와 스테이징은 공개 STUN, 비우면 같은 네트워크 안에서만 연결).
+선택: `AI_*`(AI 리뷰·분석 한도·로컬 모델. 사용자 key는 앱이 보내므로 서버 key·암호화 키는 없다, AD-33), `DESKTOP_AUTH_ENABLED`·`DESKTOP_PUBLIC_ORIGIN`·`DESKTOP_AUTH_RESPONSE_KEY`(데스크톱 로그인), `SESSION_COOKIE_SECURE`(개발은 0), `VOICE_STUN_URLS`·`VOICE_TURN_URLS`·`VOICE_TURN_SECRET`(커뮤니티 음성 채팅. 예시와 스테이징은 공개 STUN, 비우면 같은 네트워크 안에서만 연결).
 
 **[제안] 환경별 파일:**
 
@@ -137,12 +137,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 python -m celery -A app.core.celery_app:celery worker --loglevel=info --pool=solo      # 별도 터미널
 ```
 
-AI를 쓰려면(기본 꺼짐) 워커와 디스패처가 모두 필요하다.
-
-```powershell
-python -m celery -A app.core.celery_app:celery worker -Q ai_prepare,ai_generate,ai_maintenance --loglevel=info --pool=solo
-python -m app.tasks.ai_dispatch
-```
+AI 리뷰·AI 분석은 API 프로세스(`uvicorn`) 안의 스레드에서 실행하므로 별도 AI worker·dispatcher가 없다([AD-33](../architecture/ARCHITECTURE_DECISIONS.md)). 사용자 API key는 앱 설정에 저장하고 앱이 실행 요청마다 보낸다.
 
 반드시 **저장소 루트에서** 실행한다. `app/main.py`가 `StaticFiles(directory="frontend")`를 작업 디렉터리 기준으로 열기 때문이다.
 

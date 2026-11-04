@@ -32,7 +32,6 @@ from app.api import auth as auth_router  # noqa: E402
 from app.schemas.ai import ErrorCode  # noqa: E402
 from app.services.ai import access  # noqa: E402
 from app.services.ai.access import AIAction, AIError, authorize_ai, ensure_owner  # noqa: E402
-from app.services.ai.crypto import InputCryptoError, decrypt_input, encrypt_input  # noqa: E402
 
 KEY1, KEY2 = 'a1' * 32, 'b2' * 32
 ORIGIN = 'http://localhost:8000'
@@ -42,11 +41,9 @@ REMOTE_DB_ASYNC = 'postgresql+asyncpg://user.proj:dbsecretpw@pooler.example.com:
 
 
 def ai_env(**over):
-    env = {'AI_ENABLED': '1', 'AI_ALLOW_EXTERNAL_TRANSFER': '1', 'AI_INPUT_ENCRYPTION_KEYS': f'v1:{KEY1}',
-           'AI_INPUT_KEY_VERSION': 'v1', 'AI_ALLOWED_ORIGINS': ORIGIN, 'SESSION_COOKIE_SECURE': '0',
+    env = {'AI_ALLOWED_ORIGINS': ORIGIN, 'SESSION_COOKIE_SECURE': '0',
            'DATABASE_URL': LOCAL_DB, 'DATABASE_URL_ASYNC': LOCAL_DB.replace('postgresql://', 'postgresql+asyncpg://'),
-           'DATABASE_SSL_CA': '', 'AI_POLICY_VERSIONS': 'code-transfer-v1',
-           'AI_CREDENTIAL_ENCRYPTION_KEYS': f'c1:{KEY2}', 'AI_CREDENTIAL_KEY_VERSION': 'c1',
+           'DATABASE_SSL_CA': '', 'AI_POLICY_VERSIONS': 'code-transfer-v1', 'AI_INSIGHTS_ENABLED': '1',
            'AI_PROVIDER_PROFILE': 'claude-opus-5-5-v1', 'AI_ALLOWED_PROFILES': ''}
     env.update(over)
     return patch.dict(os.environ, env)
@@ -70,17 +67,11 @@ class SettingsValidation(unittest.TestCase):
         with ai_env(**over):
             return ai_settings.validate_ai_settings()
 
-    def test_disabled_needs_nothing(self):
-        self.assertEqual(self.problems(AI_ENABLED='0', AI_INPUT_ENCRYPTION_KEYS='', DATABASE_URL=''), [])
-
-    def test_valid_local_config(self):
+    def test_valid_local_config_needs_no_server_secret(self):
+        # AD-33: 사용자 key는 앱이 요청마다 보낸다. 서버에는 암호화 키·AI 스위치가 없다.
         self.assertEqual(self.problems(), [])
-
-    def test_key_problems(self):
-        self.assertTrue(self.problems(AI_INPUT_ENCRYPTION_KEYS=''))
-        self.assertTrue(self.problems(AI_INPUT_ENCRYPTION_KEYS='v1:abc'))        # 짧은 키
-        self.assertTrue(self.problems(AI_INPUT_ENCRYPTION_KEYS='v1:' + 'zz' * 32))  # hex 아님
-        self.assertTrue(self.problems(AI_INPUT_KEY_VERSION='v2'))                # 없는 버전
+        for removed in ('enabled', 'allow_external_transfer', 'encryption_keys', 'credential_keys', 'active_key_version'):
+            self.assertFalse(hasattr(ai_settings.AISettings(), removed), removed)
 
     def test_remote_origin_requires_secure_cookie(self):
         self.assertTrue(self.problems(AI_ALLOWED_ORIGINS='https://gitviz.example.com'))
@@ -111,19 +102,14 @@ class SettingsValidation(unittest.TestCase):
             with tempfile.TemporaryDirectory() as d:
                 ca = str(Path(d) / 'missing-secret-path.pem')
                 out = self.problems(DATABASE_URL=REMOTE_DB, DATABASE_URL_ASYNC=REMOTE_DB_ASYNC + 'x',
-                                    DATABASE_SSL_CA=ca, AI_INPUT_ENCRYPTION_KEYS=f'v9:{KEY2}')
-                with ai_env(DATABASE_URL=REMOTE_DB, DATABASE_SSL_CA=ca, AI_INPUT_KEY_VERSION='v0'):
-                    with self.assertRaises(RuntimeError) as ctx:
-                        ai_settings.require_valid_ai_settings()
+                                    DATABASE_SSL_CA=ca)
+                out += self.problems(DATABASE_URL=REMOTE_DB, DATABASE_SSL_CA=ca)
         finally:
             logging.getLogger().removeHandler(handler)
-        text = ' '.join(out) + str(ctx.exception) + ' '.join(r.getMessage() for r in records)
-        for secret in ('dbsecretpw', KEY1, KEY2, 'missing-secret-path'):
+        self.assertTrue(out)
+        text = ' '.join(out) + ' '.join(r.getMessage() for r in records)
+        for secret in ('dbsecretpw', 'missing-secret-path'):
             self.assertNotIn(secret, text)
-
-    def test_settings_repr_hides_keys(self):
-        with ai_env():
-            self.assertNotIn(KEY1, repr(ai_settings.get_ai_settings()))
 
 
 class RemoteDatabaseCA(unittest.TestCase):
@@ -158,56 +144,6 @@ class RemoteDatabaseCA(unittest.TestCase):
             self.assertEqual(_sync_connect_args(REMOTE_DB), {})
 
 
-class InputEncryption(unittest.TestCase):
-    def test_roundtrip_and_randomized(self):
-        with ai_env():
-            a, b = encrypt_input(b'secret code', 'v1'), encrypt_input(b'secret code', 'v1')
-            self.assertNotEqual(a, b)
-            self.assertNotIn(b'secret code', a)
-            self.assertEqual(decrypt_input(a, 'v1'), b'secret code')
-            self.assertEqual(decrypt_input(encrypt_input(b'', 'v1'), 'v1'), b'')
-
-    def test_tamper_truncation_and_aad(self):
-        with ai_env():
-            payload = encrypt_input(b'code', 'v1', aad=b'input-1')
-            self.assertEqual(decrypt_input(payload, 'v1', aad=b'input-1'), b'code')
-            flipped = bytearray(payload)
-            flipped[-1] ^= 1
-            for bad in (bytes(flipped), payload[:-1], payload[:12], b''):
-                with self.subTest(len=len(bad)), self.assertRaises(InputCryptoError):
-                    decrypt_input(bad, 'v1', aad=b'input-1')
-            with self.assertRaises(InputCryptoError):
-                decrypt_input(payload, 'v1', aad=b'input-2')   # 다른 행으로 옮긴 암호문
-
-    def test_wrong_and_unknown_key(self):
-        with ai_env():
-            payload = encrypt_input(b'code', 'v1')
-        with ai_env(AI_INPUT_ENCRYPTION_KEYS=f'v1:{KEY2}'):
-            with self.assertRaises(InputCryptoError):
-                decrypt_input(payload, 'v1')                    # 다른 키
-        with ai_env():
-            with self.assertRaises(InputCryptoError):
-                decrypt_input(payload, 'v9')
-            with self.assertRaises(InputCryptoError):
-                encrypt_input(b'x', 'v9')
-
-    def test_key_rotation_keeps_old_data_readable(self):
-        with ai_env():
-            old = encrypt_input(b'old', 'v1')
-        with ai_env(AI_INPUT_ENCRYPTION_KEYS=f'v1:{KEY1},v2:{KEY2}', AI_INPUT_KEY_VERSION='v2'):
-            self.assertEqual(decrypt_input(old, 'v1'), b'old')
-            self.assertEqual(decrypt_input(encrypt_input(b'new', 'v2'), 'v2'), b'new')
-
-    def test_errors_do_not_contain_plaintext_or_key(self):
-        with ai_env():
-            payload = bytearray(encrypt_input(b'plain-secret', 'v1'))
-            payload[-1] ^= 1
-            with self.assertRaises(InputCryptoError) as ctx:
-                decrypt_input(bytes(payload), 'v1')
-        self.assertNotIn('plain-secret', str(ctx.exception))
-        self.assertNotIn(KEY1, str(ctx.exception))
-
-
 USER, OTHER = uuid.uuid4(), uuid.uuid4()
 
 
@@ -232,9 +168,15 @@ class Authorization(unittest.TestCase):
         self.assertEqual(result, ('repo', {'id': 1, 'private': False}))
         self.assertEqual(m.call_args.args[1:3], (7, USER))  # 현재 사용자 기준으로 GitHub 권한 확인
 
-    def test_no_user_and_feature_off(self):
+    def test_no_user_and_insight_switch(self):
         self.assertEqual(self.code(user=None), ErrorCode.AUTH_REQUIRED)
-        self.assertEqual(self.code(AI_ENABLED='0'), ErrorCode.RESOURCE_NOT_FOUND)
+        # AI 리뷰에는 서버 스위치가 없다(AD-33). AI 분석만 AI_INSIGHTS_ENABLED로 끈다.
+        with ai_env(AI_INSIGHTS_ENABLED='0'), patch.object(access, 'verify_repository_access',
+                                                           return_value=('repo', {'private': False})):
+            self.assertEqual(authorize_ai(None, USER, 7, AIAction.generate, 'code-transfer-v1'), ('repo', {'private': False}))
+            with self.assertRaises(AIError) as ctx:
+                authorize_ai(None, USER, 7, AIAction.read, 'code-transfer-v1', insight=True)
+            self.assertEqual(ctx.exception.code, ErrorCode.RESOURCE_NOT_FOUND)
 
     def test_github_permission_lost_or_check_failure_never_allows(self):
         cases = {401: ErrorCode.REAUTH_REQUIRED, 404: ErrorCode.RESOURCE_NOT_FOUND,
@@ -249,22 +191,25 @@ class Authorization(unittest.TestCase):
         self.assertTrue(exc.retryable)
 
     def test_external_transfer_policy(self):
-        self.assertEqual(self.code(AI_ALLOW_EXTERNAL_TRANSFER='0'), ErrorCode.TRANSFER_NOT_ALLOWED)
         self.assertEqual(self.code(policy='unknown-v9'), ErrorCode.TRANSFER_NOT_ALLOWED)
-        # 입력 준비·조회는 외부 전송 허용 없이도 가능
+        # 입력 준비·조회는 전송 정책과 무관하다
         for action in (AIAction.prepare, AIAction.read, AIAction.delete):
-            result, _ = self.authorize(action=action, AI_ALLOW_EXTERNAL_TRANSFER='0', policy='anything')
+            result, _ = self.authorize(action=action, policy='anything')
             self.assertEqual(result, ('repo', {'id': 1, 'private': False}))
 
-    def test_private_repository_is_never_sent_externally(self):
-        # 외부 전송을 켜도 비공개(또는 공개 여부를 모르는) 저장소는 generate 불가
+    def test_private_repository_review_needs_per_run_consent_but_insight_never_sends(self):
+        # AI 리뷰: 사용자가 실행마다 보낼 코드를 확인하고 동의하면 비공개 저장소도 보낼 수 있다(2026-11-04 결정).
         for private in (True, None):
             with self.subTest(private=private):
-                self.assertEqual(self.code(private=private), ErrorCode.TRANSFER_NOT_ALLOWED)
-        # 비공개 저장소도 입력 준비·조회·삭제는 가능(외부 전송 없음)
-        for action in (AIAction.prepare, AIAction.read, AIAction.delete):
-            result, _ = self.authorize(action=action, private=True)
-            self.assertEqual(result, ('repo', {'id': 1, 'private': True}))
+                result, _ = self.authorize(private=private)
+                self.assertEqual(result, ('repo', {'id': 1, 'private': private}))
+        # AI 분석: 비공개(또는 공개 여부를 모르는) 저장소는 외부로 보내지 않는다.
+        for private in (True, None):
+            with self.subTest(insight=private), ai_env(), patch.object(
+                    access, 'verify_repository_access', return_value=('repo', {'private': private})):
+                with self.assertRaises(AIError) as ctx:
+                    authorize_ai(None, USER, 7, AIAction.generate, 'code-transfer-v1', insight=True)
+                self.assertEqual(ctx.exception.code, ErrorCode.TRANSFER_NOT_ALLOWED)
 
     def test_other_author_is_hidden_as_not_found(self):
         ensure_owner(USER, USER)
@@ -323,10 +268,10 @@ class CsrfAndSession(unittest.TestCase):
         self.assertEqual(r.headers['cache-control'], 'private, no-store')
         self.assertTrue(r.json()['error']['request_id'])
 
-    def test_feature_off_hides_endpoints_and_keeps_auth_csrf_endpoint(self):
-        with ai_env(AI_ENABLED='0'):
+    def test_logged_in_user_reaches_endpoints_without_server_switch(self):
+        with ai_env():
             self.client.post('/test/login')
-            self.assertEqual(self.client.get('/test/me').status_code, 404)
+            self.assertEqual(self.client.get('/test/me').status_code, 200)
             self.assertEqual(self.client.get('/api/auth/csrf').status_code, 200)
 
     def test_csrf_token_endpoint(self):
@@ -389,28 +334,24 @@ class CsrfAndSession(unittest.TestCase):
 class AppStartup(unittest.TestCase):
     def run_import(self, **env):
         base = {**os.environ, 'SESSION_SECRET_KEY': 'startup-test-secret', 'DATABASE_URL': LOCAL_DB,
-                'AI_INPUT_ENCRYPTION_KEYS': '', 'DATABASE_URL_ASYNC': '', 'AI_ENABLED': '0',
-                'PYTHONIOENCODING': 'utf-8'}
+                'DATABASE_URL_ASYNC': '', 'PYTHONIOENCODING': 'utf-8'}
         base.update(env)
         return subprocess.run([sys.executable, '-c', 'import app.main'], cwd=ROOT, env=base,
                               capture_output=True, text=True, encoding='utf-8')
 
-    def test_feature_off_keeps_existing_app_running(self):
-        r = self.run_import(AI_ENABLED='0')
+    def test_app_starts_without_any_ai_secret(self):
+        # AD-33: AI 리뷰·분석은 앱이 보낸 사용자 key로 실행하므로 서버 암호화 키 없이 시작한다.
+        r = self.run_import(AI_ALLOWED_ORIGINS='', FRONTEND_URL=ORIGIN)
         self.assertEqual(r.returncode, 0, r.stderr[-500:])
+        self.assertNotIn('startup-test-secret', r.stderr)
 
-    def test_enabled_with_insecure_config_refuses_to_start_without_leaking(self):
-        r = self.run_import(AI_ENABLED='1', DATABASE_URL=REMOTE_DB, SESSION_SECRET_KEY='startup-test-secret')
-        self.assertNotEqual(r.returncode, 0)
-        self.assertIn('AI 설정이 올바르지 않습니다', r.stderr)
-        for secret in ('dbsecretpw', 'startup-test-secret'):
-            self.assertNotIn(secret, r.stderr)
-
-    def test_enabled_with_valid_config_starts(self):
-        r = self.run_import(AI_ENABLED='1', DATABASE_URL=LOCAL_DB, AI_INPUT_ENCRYPTION_KEYS=f'v1:{KEY1}',
-                            AI_INPUT_KEY_VERSION='v1', FRONTEND_URL=ORIGIN, AI_ALLOWED_ORIGINS='',
-                            AI_CREDENTIAL_ENCRYPTION_KEYS=f'c1:{KEY2}', AI_CREDENTIAL_KEY_VERSION='c1')
+    def test_server_key_routes_are_gone(self):
+        r = subprocess.run([sys.executable, '-c', "import app.main as m; print(sorted({getattr(r, 'path', '') for r in m.app.routes}))"],
+                           cwd=ROOT, env={**os.environ, 'SESSION_SECRET_KEY': 'startup-test-secret', 'DATABASE_URL': LOCAL_DB,
+                                          'PYTHONIOENCODING': 'utf-8'}, capture_output=True, text=True, encoding='utf-8')
         self.assertEqual(r.returncode, 0, r.stderr[-500:])
+        self.assertNotIn('/api/ai/v1/credentials', r.stdout)
+        self.assertIn('/api/ai/v1/providers', r.stdout)
 
 
 if __name__ == '__main__':

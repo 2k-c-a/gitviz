@@ -113,7 +113,7 @@ Roaming이 부적절한 이유:
 | 앱 버전, 업데이트 릴리스 URL 접두어, 서명 주체(publisher) | 가능 | 빌드 설정 |
 | JSON Schema, 엔드포인트 허용 목록 | 가능 | 번들(이미 그러함) |
 | `DATABASE_URL*`, DB 비밀번호 | **불가** | 서버 시크릿 저장소 |
-| `GITHUB_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `SESSION_SECRET_KEY`, `DESKTOP_AUTH_RESPONSE_KEY`, `VOICE_TURN_SECRET`, `AI_*_ENCRYPTION_KEYS` | **불가** | 서버 시크릿 저장소 |
+| `GITHUB_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `SESSION_SECRET_KEY`, `DESKTOP_AUTH_RESPONSE_KEY`, `VOICE_TURN_SECRET` | **불가** | 서버 시크릿 저장소 (AI 암호화 키는 AD-33에서 없어졌다) |
 | 코드 서명 인증서와 비밀번호(`GITVIZ_SIGN_PFX*`) | **불가** | 빌드 환경 시크릿(CI 시크릿) |
 | 사용자의 AI 제공자 키 | 사용자 기기에서 DPAPI로 암호화해 저장 | `data\`의 보호 저장소 |
 
@@ -129,7 +129,7 @@ Roaming이 부적절한 이유:
 | 디버그 | 개발자 도구 허용 | 비허용 | 비허용(`--remote-debugging-port`·`--inspect` 등을 주면 패키지 실행이 즉시 종료, `desktop/src/debug-guard.ts`) |
 | 저장 경로 | 개발 전용 데이터 폴더(임시/`GitViz-Dev`) | 임시 폴더 | `%LOCALAPPDATA%\GitViz\Workspace\…` |
 | 세션 쿠키 | `SESSION_COOKIE_SECURE=0` 허용 | 테스트용 | 반드시 `1`, `https_only` |
-| AI | 기본 꺼짐, 필요 시 로컬 모델 | 가짜 제공자(`ai_fake_provider.py`) | 정책에 따름(`AI_ALLOW_EXTERNAL_TRANSFER` 명시) |
+| AI | 앱 설정의 사용자 key 또는 로컬 모델 | 가짜 제공자(`ai_fake_provider.py`) | 앱 설정의 사용자 key(서버 AI key 없음, AD-33) |
 | 데스크톱 인증 | 선택 | 선택 | `DESKTOP_AUTH_ENABLED=1` + 응답 키 설정 필수 |
 | 업데이트 | 비활성 | 비활성 | 현재 비활성(수동 검증만) |
 

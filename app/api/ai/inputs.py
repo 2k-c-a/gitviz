@@ -1,7 +1,8 @@
 """입력 준비·전송 미리보기 API (/api/ai/v1/inputs). AI 제공자를 호출하지 않는다.
 
-POST는 PR 리비전을 고정하고 building 입력과 prepare 작업을 접수한다(202). 코드 취득은 worker가 한다.
-GET은 작업이나 코드 취득을 시작하지 않으며 모든 응답은 private, no-store다.
+POST는 PR 리비전을 고정하고 building 입력과 prepare 작업을 접수한다(202). 코드 취득은 API 프로세스의 작업 스레드가 한다.
+GET은 작업을 시작하지 않는다. 파일 보기는 저장하지 않은 원문을 고정 SHA에서 다시 가져온다(AD-33).
+/providers는 지원 제공자·모델 목록이다. 모든 응답은 private, no-store다.
 """
 from datetime import datetime, timezone
 from uuid import UUID
@@ -19,10 +20,11 @@ from app.collectors.github.ai_commit_collector import capture_commit
 from app.collectors.github.github_client import GitHubClient
 from app.core.ai_settings import get_ai_settings
 from app.core.database import get_db
-from app.schemas.ai import ErrorCode, InputStatus, PrepareInputRequest
-from app.services.ai import idempotency, input_builder, input_store
+from app.schemas.ai import ErrorCode, InputStatus, PrepareInputRequest, ProvidersResponse, SupportedProvider
+from app.services.ai import idempotency, input_builder, input_store, job_runner
 from app.services.ai.access import AIAction, AIError, authorize_ai
 from app.services.ai.content_policy import POLICY_VERSION
+from app.services.ai.providers import registry
 from app.services.repository_access import canonical_github_url, user_github_token
 
 router = APIRouter(prefix='/api/ai/v1', tags=['ai-inputs'])
@@ -32,7 +34,7 @@ NO_STORE = {'Cache-Control': 'private, no-store'}
 
 
 def guard(request: Request) -> UUID:
-    """AI 기능·로그인·(변경 요청이면) CSRF를 확인하고 사용자 ID를 돌려준다."""
+    """로그인·(변경 요청이면) CSRF를 확인하고 사용자 ID를 돌려준다."""
     user_id = require_ai_user(request)
     require_csrf(request)
     return user_id
@@ -40,6 +42,12 @@ def guard(request: Request) -> UUID:
 
 def _json(model, status: int = 200) -> JSONResponse:
     return JSONResponse(model.model_dump(mode='json'), status_code=status, headers=NO_STORE)
+
+
+@router.get('/providers')
+def get_providers(user_id: UUID = Depends(guard)):
+    """지원하는 제공자와 모델(가격·한도 포함). allowed=false인 모델은 서버 관리자가 허용하지 않았다."""
+    return _json(ProvidersResponse(providers=[SupportedProvider(**p) for p in registry.supported_options()]))
 
 
 def _request_id(request: Request) -> str:
@@ -105,6 +113,7 @@ def create_input(body: PrepareInputRequest, request: Request, user_id: UUID = De
                           object_id=result.job.input_id, request_id=_request_id(request),
                           details={'selected_files': len(body.selected_paths), 'pr_number': body.pr_number})
         db.commit()
+        job_runner.submit(result.job.id)          # 입력 준비는 AI 제공자를 부르지 않으므로 key가 없다
     return _preview_response(db, result.job.input_id, user_id, now)
 
 

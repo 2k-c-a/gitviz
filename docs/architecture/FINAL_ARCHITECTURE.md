@@ -14,7 +14,7 @@
 
 - **목적:** 현재 구조의 실제 문제만 해결한다. ① `scripts/` 한 폴더에 테스트·운영·검증·빌드·VM 도구 113개가 섞여 있음, ② 빌드 입력(`workspace_agent.spec`, 잠금 파일)이 루트에 흩어져 있고 생성물이 `build/`·`dist/`·`desktop/out`·`.validation`에 분산, ③ 개발·테스트·운영의 경계를 코드가 강제하지 않음, ④ 사용자 데이터가 Roaming에 캐시·키·DB와 섞여 있음.
 - **범위 밖(이번 설계가 건드리지 않는 것):** 설치 경로, 서버 배포 방식, DB 엔진 통합, 에이전트 물리 분리, 프런트 프레임워크, Alembic 이력.
-- **불변 조건:** 환경변수 이름과 `.env.example`, 18개 Alembic 리비전과 단일 head `b7e1d9c3a502`(4차 구조 변경 기준. 이후 기능 추가로 2026-11-01 커뮤니티 `c3e5a7b9d1f2`(AD-25)와 채팅 `d4f6a8c0e2b3`(AD-27), 2026-11-03 AI 분석 `f1b3d5e7a9c2`(AD-32)와 내 분석 프로젝트 숨김 `e7a9c1d3f5b4`가 더해졌다), 데스크톱 IPC·계약(`contracts/workspace/v1`), Squirrel per-user 설치와 제거 정리 동작.
+- **불변 조건:** 환경변수 이름과 `.env.example`, 18개 Alembic 리비전과 단일 head `b7e1d9c3a502`(4차 구조 변경 기준. 이후 기능 추가로 2026-11-01 커뮤니티 `c3e5a7b9d1f2`(AD-25)와 채팅 `d4f6a8c0e2b3`(AD-27), 2026-11-03 AI 분석 `f1b3d5e7a9c2`(AD-32)와 내 분석 프로젝트 숨김 `e7a9c1d3f5b4`, 2026-11-04 AI 리뷰 BYOK 전환 `39b676ca36f2`(AD-33, 데이터 삭제만)가 더해졌다), 데스크톱 IPC·계약(`contracts/workspace/v1`), Squirrel per-user 설치와 제거 정리 동작.
 
 ## 2. 최종 구조 한눈에 보기
 

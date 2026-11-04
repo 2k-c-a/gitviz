@@ -54,15 +54,17 @@ def _from_http(exc: HTTPException) -> AIError:
 
 
 def authorize_ai(db, user_id: UUID, repo_id: int, action: AIAction, policy_version: str, *, insight: bool = False):
-    """로그인 사용자의 현재 저장소 접근과(외부 전송이면) 전송 허용·정책 버전을 검사한다.
+    """로그인 사용자의 현재 저장소 접근과(외부 전송이면) 정책 버전을 검사한다.
 
-    insight=True(AI 분석): 서버 AI(AI_ENABLED)와 별개인 AI_INSIGHTS_ENABLED로 켜고 끈다. 사용자가 앱에 저장한 자기 key로
-    실행마다 모델을 고르므로 서버의 외부 전송 허용(AI_ALLOW_EXTERNAL_TRANSFER)은 보지 않는다. 비공개 저장소 차단은 같다.
+    AI 리뷰·AI 분석 모두 사용자가 앱에 저장한 자기 key로 실행마다 모델을 고르는 앱 전용 BYOK다(AD-32 ⑧, AD-33).
+    서버의 외부 전송 허용 스위치는 없고, 사용자의 실행별 선택(동의)을 따른다.
+    - AI 리뷰: 전송 미리보기에서 보낼 코드를 확인하고 동의하면 비공개 저장소도 외부 모델로 보낼 수 있다(2026-11-04 소유자 결정).
+    - AI 분석(insight=True): AI_INSIGHTS_ENABLED로 켜고 끄며, 비공개(또는 공개 여부를 확인하지 못한) 저장소는 외부로 보내지 않는다.
     """
     if not user_id:
         raise AIError(ErrorCode.AUTH_REQUIRED, '로그인이 필요합니다.')
     settings = get_ai_settings()
-    if not (settings.insights_enabled if insight else settings.enabled):
+    if insight and not settings.insights_enabled:
         raise AIError(ErrorCode.RESOURCE_NOT_FOUND, '사용할 수 없는 기능입니다.')
     try:
         # 코드가 모델로 전송될 수 있으므로 저장된 공개 여부가 아니라 현재 GitHub 권한으로 확인한다.
@@ -79,11 +81,8 @@ def authorize_ai(db, user_id: UUID, repo_id: int, action: AIAction, policy_versi
                    for pid in registry.allowed_profile_ids()) or policy_version not in settings.policy_versions:
             raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '로컬 실행 또는 정책이 허용되지 않았습니다.')
     if action.sends_externally:
-        if not insight and not settings.allow_external_transfer:
-            raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '코드의 외부 전송이 허용되지 않았습니다.')
-        if metadata.get('private') is not False:
-            # MVP 정책: 비공개(또는 공개 여부를 확인하지 못한) 저장소의 코드는 외부로 보내지 않는다.
-            raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '비공개 저장소의 코드는 외부로 전송할 수 없습니다.')
+        if insight and metadata.get('private') is not False:
+            raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '비공개 저장소의 자료는 외부로 전송할 수 없습니다.')
         if policy_version not in settings.policy_versions:
             raise AIError(ErrorCode.TRANSFER_NOT_ALLOWED, '허용되지 않은 전송 정책 버전입니다.')
     return repo, metadata

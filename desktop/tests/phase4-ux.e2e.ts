@@ -29,18 +29,21 @@ const output = join(__dirname, '../../../.validation/phase4');
 const checks: { name: string; passed: boolean; detail?: unknown }[] = [];
 let releaseUsage: (() => void) | null = null;
 let releaseJob: (() => void) | null = null, jobViews = 0;
-let usageDelay = false, invalidKey = false, stress = false, emptyData = false, emptyReview = false, richCharts = false;
+let usageDelay = false, stress = false, emptyData = false, emptyReview = false, richCharts = false;
 let searchStatus = 200, snapshotStatus = 200, jobStatus = 'succeeded', analysisStatus = 'done';
 let pageRequests = 0;
 let blankSearch = false;
 
 const inputId = '22222222-2222-4222-8222-222222222222', jobId = '33333333-3333-4333-8333-333333333333', resultId = '44444444-4444-4444-8444-444444444444', sourceId = '55555555-5555-4555-8555-555555555555';
 const model = { provider: 'openai', profile_id: 'fixture-v1', model: 'fixture-model', display_name: 'Fixture model', allowed: true, execution_location: 'external', requires_api_key: true, input_price_per_mtok: '1', output_price_per_mtok: '1', max_input_tokens: 10000, max_output_tokens: 1000 };
-let credential: { provider: string; key_hint: string; version: number; preferred_profile_id: string; validated_at: string; in_flight_jobs: number } | null = null;
+// AI keys live in the app (AD-33): a fake vault stands in for DPAPI.
+const appKeys: Record<string, string> = {};
+const fakeVault = { get: async (provider: string) => appKeys[provider] ?? null,
+  status: async () => ({ anthropic: !!appKeys.anthropic, openai: !!appKeys.openai, gemini: !!appKeys.gemini }) };
 let inputSource: 'commit' | 'pr' = 'commit';
 const typeFailure = false;
 const files = Array.from({ length: 1000 }, (_, i) => ({ file_id: 999 + i, path: i ? i === 999 ? 'src/' + 'very-long-directory-name/'.repeat(14) + '긴-파일-이름.ts' : `src/module-${i}.ts` : 'src/fixture.ts', name: i ? `module-${i}.ts` : 'fixture.ts', observation_count: 1000 - i, maintenance_priority: 0.5, risk_score: 0.5, evidence_status: 'observed', bus_factor: 1, coupling_score: 0.5, coupling_support: 3, coupled_file_count: 1 }));
-const preview = () => ({ input_id: inputId, repository_id: 2, source_type: inputSource, pr_number: inputSource === 'pr' ? 1 : null, pr_title: 'Fixture change', base_sha: 'b'.repeat(40), head_sha: 'a'.repeat(40), status: 'ready', execution_valid: true, reviewable: true, manifest_hash: 'c'.repeat(64), policy_version: 'code-transfer-v1', files: [{ file_id: sourceId, path: 'src/fixture.ts', content_state: 'read', change_type: 'modified', byte_count: 50, hunks: [] }], coverage: { pr_total_files: 1, selected_files: 1, inventory_coverage: 'complete', selected_content_coverage: 'complete', analysis_coverage: 'complete', limitations: [] }, transfer: { ...model, external_transfer_allowed: true, credential_configured: !!credential, credential_version: credential?.version || 1, key_hint: 'fixture-masked' }, token_estimate: { input_tokens: 20, max_output_tokens: 100, within_limit: true, estimated_max_cost: '0.01' } });
+const preview = () => ({ input_id: inputId, repository_id: 2, source_type: inputSource, pr_number: inputSource === 'pr' ? 1 : null, pr_title: 'Fixture change', base_sha: 'b'.repeat(40), head_sha: 'a'.repeat(40), status: 'ready', execution_valid: true, reviewable: true, manifest_hash: 'c'.repeat(64), policy_version: 'code-transfer-v1', files: [{ file_id: sourceId, path: 'src/fixture.ts', content_state: 'read', change_type: 'modified', byte_count: 50, hunks: [] }], coverage: { pr_total_files: 1, selected_files: 1, inventory_coverage: 'complete', selected_content_coverage: 'complete', analysis_coverage: 'complete', limitations: [] }, transfer: { ...model }, token_estimate: { input_tokens: 20, max_output_tokens: 100, within_limit: true, estimated_max_cost: '0.01' } });
 
 const http: Http = async (path, method, _body, givenToken) => {
   requests.push(path); assert.equal(givenToken, token);
@@ -57,7 +60,6 @@ const http: Http = async (path, method, _body, givenToken) => {
   if (p === '/search/github-repositories' && searchStatus !== 200) return { status: searchStatus, body: { detail: 'fixture failure' }, headers: {} };
   if (p === '/search/github-repositories' && blankSearch) return { status: 200, body: { query: 'fixture', total_count: 0, results: [] }, headers: {} };
   if (p === '/api/ai/v1/usage' && usageDelay) await new Promise<void>(resolve => { releaseUsage = resolve; });
-  if (p === '/api/ai/v1/credentials/openai' && method === 'PUT' && invalidKey) return { status: 422, body: { error: { code: 'CREDENTIAL_INVALID', message: 'provider reflected fixture-test-value', details: {}, retryable: false } }, headers: {} };
   if (p.endsWith('/analytics/summary') && emptyData) return { status: 200, body: { repository: repo, total_commits: 0, total_contributors: 0, active_contributors_90d: 0, total_releases: 0, bugfix_pct: null }, headers: {} };
   if (p.endsWith('/timeline') && emptyData) return { status: 200, body: { months: [], commits: [], active_contributors: [], bugfix_pct: [] }, headers: {} };
   if (p.endsWith('/top-contributors') && emptyData) return { status: 200, body: { contributors: [] }, headers: {} };
@@ -100,13 +102,7 @@ const http: Http = async (path, method, _body, givenToken) => {
   else if (p.endsWith('/coupling')) body = { meta: { co_change_unit: 'pr', sort_by: 'coupling', total_pairs: 1 }, pairs: [{ file_a_id: 999, file_b_id: 1000, file_a_path: 'src/fixture.ts', file_b_path: 'src/module-1.ts', co_change_count: 3, change_count_a: 4, change_count_b: 6, a_to_b_ratio: 0.75, b_to_a_ratio: 0.5, coupling_score: 0.75, adjusted_score: 0.6, low_support: true }] };
   else if (p.endsWith('/risk-scores') || p.endsWith('/bus-factor') || p.endsWith('/coupling')) body = [];
   else if (p.endsWith('/snapshots')) body = { repository_id: 2, snapshots: [snapshot], next_before_id: null };
-  else if (p === '/api/ai/v1/providers') body = { providers: [{ id: 'openai', display_name: 'Fixture provider', key_format: 'Fixture key', models: [model] }], external_transfer_allowed: true };
-  else if (p === '/api/ai/v1/credentials') body = { credentials: credential ? [credential] : [] };
-  else if (p === '/api/ai/v1/credentials/openai') {
-    if (method === 'PUT') { assert.equal(payload.api_key, 'fixture-test-value'); credential = { provider: 'openai', key_hint: 'fixture-masked', version: (credential?.version || 0) + 1, preferred_profile_id: 'fixture-v1', validated_at: snapshot.analyzed_at, in_flight_jobs: 0 }; body = { changed: true, credential }; }
-    else if (method === 'DELETE') { credential = null; body = { jobs_cancelled: 0 }; }
-    else body = { credential };
-  }
+  else if (p === '/api/ai/v1/providers') body = { providers: [{ id: 'openai', display_name: 'Fixture provider', key_format: 'Fixture key', models: [model] }] };
   else if (p === '/api/ai/v1/pulls') body = { items: [{ number: 1, title: 'Fixture PR', head_sha: 'a'.repeat(40), base_ref: 'main', head_ref: 'work' }], next_cursor: null };
   else if (p === '/api/ai/v1/commits') body = { items: [{ sha: 'a'.repeat(40), message: 'Fixture commit', committed_at: snapshot.analyzed_at }], next_cursor: null };
   else if (p.endsWith('/files') && (p.includes('/commits/') || p.includes('/pulls/'))) body = { base_sha: 'b'.repeat(40), head_sha: 'a'.repeat(40), pr_total_files: 1, inventory_coverage: 'complete', next_cursor: null, files: [{ path: 'src/fixture.ts', change_type: 'modified', has_patch: true, additions: 1, deletions: 1 }] };
@@ -137,9 +133,9 @@ void app.whenReady().then(async () => {
   await serveAssets(join(__dirname, '../ui'));
   const contracts = new RemoteContracts(JSON.parse(readFileSync(join(__dirname, '../schema/ai-bodies.json'), 'utf8')) as Record<string, Record<string, unknown>>);
   const auth = new DesktopAuth('https://fixture.test', http, async () => { throw new Error('UNEXPECTED_EXTERNAL_BROWSER'); }, { read: async () => issued, write: async () => {} }); await auth.restore();
-  const remote = new Remote(contracts, http, auth.identity, auth.invalidate);
+  const remote = new Remote(contracts, http, auth.identity, auth.invalidate, fakeVault);
   const window = new BrowserWindow({ width: 900, height: 640, frame: false, show: false, webPreferences: { preload: join(__dirname, '../preload/preload.js'), offscreen: true, backgroundThrottling: false, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true } });
-  const unregister = registerDesktop(window, auth, remote); const unregisterHealth = registerHealth(window, unavailable);
+  const unregister = registerDesktop(window, auth, remote, undefined, fakeVault); const unregisterHealth = registerHealth(window, unavailable);
   let frame: NativeImage | undefined, paints = 0;
   window.webContents.on('paint', (_event, _dirty, image) => { frame = image; paints++; });
   async function wait(expression: string) {
@@ -173,16 +169,11 @@ void app.whenReady().then(async () => {
     assert.ok(frame && paints>before); await new Promise(resolve=>setTimeout(resolve,100)); writeFileSync(join(output,name),frame!.toPNG());
   }
   try {
-    phase = 'settings delayed usage'; usageDelay = true; await load('settings', ''); await wait(`!!document.getElementById('ai-key-input')`);
-    await window.webContents.executeJavaScript(`document.getElementById('ai-key-input').focus();document.getElementById('ai-key-input').value='fixture-test-value'`);
+    phase = 'settings delayed usage'; usageDelay = true; await load('settings', ''); await wait(`document.getElementById('ai-keys').textContent.includes('키 없음')`);
+    await check('settings has no server key form (keys live in the app)', `!document.querySelector('input[type="password"]') && document.getElementById('ai-main').textContent.includes('GitViz 앱에만 저장')`);
     assert.ok(releaseUsage); (releaseUsage as () => void)(); usageDelay=false; await new Promise(resolve=>setTimeout(resolve,200));
-    await check('P1 usage response preserves key draft and focus', `document.getElementById('ai-key-input').value==='fixture-test-value' && document.activeElement.id==='ai-key-input'`);
-    await window.webContents.executeJavaScript(`document.getElementById('ai-key-input').value=''`);
-    invalidKey = true; await clickText('키 확인 후 저장'); await check('missing key inline guidance', `document.getElementById('ai-keys').textContent.includes('API 키를 입력하세요')`);
-    await window.webContents.executeJavaScript(`document.getElementById('ai-key-input').value='fixture-test-value'`); await clickText('키 확인 후 저장');
-    await wait(`document.getElementById('ai-keys').textContent.includes('API 키를 쓸 수 없습니다')`);
-    await check('invalid key raw value erased and not rendered', `document.getElementById('ai-key-input').value==='' && !document.body.textContent.includes('provider reflected') && !JSON.stringify(localStorage).includes('fixture-test-value')`);
-    invalidKey=false; await capture('settings-600-dark.png',600,400,'dark');
+    await check('P1 late usage response fills the usage line without re-rendering the panel', `document.getElementById('ai-usage').textContent.length>0 && document.getElementById('ai-keys').textContent.includes('키 없음')`);
+    await capture('settings-600-dark.png',600,400,'dark');
 
     snapshotStatus=503; await load('overview'); await wait(`!!document.getElementById('load-error')`);
     await check('P2 technical server details hidden', `!document.getElementById('load-error').textContent.includes('INTERNAL_DATABASE_TRACE')`);
@@ -240,7 +231,7 @@ void app.whenReady().then(async () => {
     await wait(`document.getElementById('ai-pr-tab-closed').getAttribute('aria-selected')==='true'`);
     await check('AI badges meet shared minimum text size', `parseFloat(getComputedStyle(document.querySelector('.ai-chip')).fontSize)>=12`);
     await check('PR tabs roving focus and panel relation', `document.querySelectorAll('[role="tab"][tabindex="0"]').length===1 && document.activeElement.id==='ai-pr-tab-closed' && document.getElementById('ai-pr-list').getAttribute('aria-labelledby')==='ai-pr-tab-closed'`);
-    credential={provider:'openai',key_hint:'fixture-masked',version:1,preferred_profile_id:'fixture-v1',validated_at:snapshot.analyzed_at,in_flight_jobs:0};
+    appKeys.openai='fixture-test-value-0123456789';
     jobStatus='queued';jobViews=0;await load('ai-review',`?repo=2&job=${jobId}`);
     await wait(`document.querySelector('.ai-progress')?.textContent.includes('queued')===true`);
     await check('E queued job shows progress before result', `!!document.querySelector('.ai-progress') && !document.querySelector('.ai-finding')`);
@@ -255,9 +246,9 @@ void app.whenReady().then(async () => {
     await check('shared review stays read-only with one pagination append', `document.querySelectorAll('.ai-finding').length===40 && !document.querySelector('.ai-finding textarea')`);checks.push({name:'shared findings one page request',passed:pageRequests-sharedBefore===1});
     emptyReview=true; await load('ai-review',`?repo=2&job=${jobId}`); await wait(`document.getElementById('ai-main').textContent.includes('지적 0건')`); await check('empty review never implies safe code', `document.getElementById('ai-main').textContent.includes('문제가 없다는 뜻이 아닙니다')`); emptyReview=false;
     jobStatus='failed'; await load('ai-review',`?repo=2&job=${jobId}`); await wait(`document.getElementById('ai-main').textContent.includes('API 키가 거부됐습니다')`); await check('E provider auth failure offers keys recovery', `!![...document.querySelectorAll('button')].find(e=>e.textContent==='API 키 설정 열기')`); jobStatus='succeeded';
-    credential=null; await load('ai-review',`?repo=2&input=${inputId}`); await wait(`!!document.getElementById('ai-consent-check')`); await check('F missing key blocks execution', `document.getElementById('ai-consent-check').disabled && [...document.querySelectorAll('button')].find(e=>e.textContent==='코드 리뷰 생성').disabled`);
+    delete appKeys.openai; await load('ai-review',`?repo=2&input=${inputId}`); await wait(`!!document.getElementById('ai-consent-check')`); await check('F missing key blocks execution', `document.getElementById('ai-consent-check').disabled && [...document.querySelectorAll('button')].find(e=>e.textContent==='코드 리뷰 생성').disabled`);
 
-    credential={provider:'openai',key_hint:'fixture-masked',version:1,preferred_profile_id:'fixture-v1',validated_at:snapshot.analyzed_at,in_flight_jobs:0};await load('ai-review','?repo=2');await wait(`document.getElementById('ai-main').textContent.includes('Fixture PR')`);await clickText('파일 선택');await wait(`!!document.querySelector('.ai-file input[type="checkbox"]')`);
+    appKeys.openai='fixture-test-value-0123456789';await load('ai-review','?repo=2');await wait(`document.getElementById('ai-main').textContent.includes('Fixture PR')`);await clickText('파일 선택');await wait(`!!document.querySelector('.ai-file input[type="checkbox"]')`);
     await window.webContents.executeJavaScript(`document.querySelector('.ai-file input[type="checkbox"]').click()`);await clickText('미리보기 만들기');await wait(`!!document.getElementById('ai-consent-check')`);
     await check('E PR source confirmed in preview', `document.getElementById('ai-main').textContent.includes('PR #1') && !document.getElementById('ai-consent-check').checked`);
     await window.webContents.executeJavaScript(`document.getElementById('ai-consent-check').click()`);await clickText('코드 리뷰 생성');await wait(`document.querySelectorAll('.ai-finding').length===20`);

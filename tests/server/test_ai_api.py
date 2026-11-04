@@ -90,25 +90,25 @@ class ApiCase(Gen):
         self.client.post(f'/test/login/{user}')
         self.token = self.client.get('/api/auth/csrf').json()['token']
 
-    def headers(self, key=None, **extra):
+    def headers(self, key=None, ai_key=C.TEST_KEY, **extra):
+        # AD-33: 앱 main이 실행 요청(생성·재시도)에 사용자 key를 헤더로 붙인다. 다른 요청에 붙어 있어도 서버는 쓰지 않는다.
         headers = {'Origin': ORIGIN, 'X-CSRF-Token': self.token, **extra}
         if key:
             headers['Idempotency-Key'] = key
+        if ai_key:
+            headers[C.KEY_HEADER] = ai_key
         return headers
 
     def consent(self, w, **over):
         row = self.input_row(w.input_id)
-        found = self.rows("""SELECT v.version FROM ai_credential_versions v JOIN ai_credentials c ON c.id = v.credential_id
-                              WHERE c.owner_user_id = :o AND v.status = 'active'""", o=w.owner)
-        version = found[0]['version'] if found else 1
         data = {'input_id': str(w.input_id), 'manifest_hash': (row['manifest_hash'] or 'a' * 64).strip(), 'provider': 'anthropic',
-                'profile_id': C.OPUS, 'credential_version': version, 'policy_version': 'code-transfer-v1'}
+                'profile_id': C.OPUS, 'policy_version': 'code-transfer-v1'}
         data.update(over)
         return data
 
-    def post_job(self, w, kind='review', key=None, force=False, consent=None):
+    def post_job(self, w, kind='review', key=None, force=False, consent=None, ai_key=C.TEST_KEY):
         body = {'kind': kind, 'consent': consent or self.consent(w), 'force_regenerate': force}
-        return self.client.post('/api/ai/v1/jobs', json=body, headers=self.headers(key or uuid4().hex))
+        return self.client.post('/api/ai/v1/jobs', json=body, headers=self.headers(key or uuid4().hex, ai_key=ai_key))
 
     def error(self, response, status, code):
         self.assertEqual(response.status_code, status, response.text)
@@ -117,10 +117,9 @@ class ApiCase(Gen):
         return response.json()['error']
 
     def ready(self, kind='review', **kw):
-        """입력 준비·key 등록을 끝낸 상태와 로그인. (작업은 아직 없다)"""
+        """입력 준비를 끝낸 상태와 로그인. (작업은 아직 없다)"""
         owner, repo = self.make_user(), self.make_repo()
         _, _, input_id, _ = self.prepared(owner, repo, now=datetime.now(timezone.utc), pr_number=kw.get('pr_number', 7))
-        C.ensure_credential(self.db, owner, key=C.TEST_KEY)
         self.login(owner)
         return type('W', (), {'owner': owner, 'repo': repo, 'input_id': input_id})()
 
@@ -135,18 +134,20 @@ class ApiCase(Gen):
         return w
 
     def counts(self):
-        return {t: self.scalar(f'SELECT count(*) FROM {t}') for t in ('ai_jobs', 'task_outbox', 'ai_attempts',
+        return {t: self.scalar(f'SELECT count(*) FROM {t}') for t in ('ai_jobs', 'ai_attempts',
                                                                         'usage_reservations', 'ai_results', 'audit_events')}
 
 
 def job_runner_run(case, job_id):
+    """API가 실행 스레드에 넘긴(submit) key로 작업을 실행한다. 테스트는 실행 시점을 직접 정한다."""
     from app.services.ai import job_runner
     case.db.rollback()
-    return job_runner.run_job(job_id, session_factory=S.Session)
+    keys = [k for j, k in case.submitted if j == job_id]
+    return job_runner.run_job(job_id, session_factory=S.Session, api_key=keys[-1] if keys else None)
 
 
 class Access(ApiCase):
-    def test_login_feature_flag_and_csrf_for_every_route(self):
+    def test_login_and_csrf_for_every_route(self):
         w = self.ready()
         anon = TestClient(build_app())
         routes = (('post', '/api/ai/v1/jobs'), ('get', '/api/ai/v1/jobs?repository_id=1'), ('get', f'/api/ai/v1/jobs/{uuid4()}'),
@@ -156,11 +157,6 @@ class Access(ApiCase):
                   ('get', '/api/ai/v1/usage'))
         for method, path in routes:
             self.error(getattr(anon, method)(path), 401, 'AUTH_REQUIRED')
-        with S.ai_env(AI_ENABLED=0):
-            for method, path in routes:
-                if method == 'get':
-                    self.error(getattr(self.client, method)(path), 404, 'RESOURCE_NOT_FOUND')
-            self.error(self.post_job(w), 404, 'RESOURCE_NOT_FOUND')
         body = {'kind': 'review', 'consent': self.consent(w)}
         self.error(self.client.post('/api/ai/v1/jobs', json=body, headers={'Idempotency-Key': 'k'}), 403, 'CSRF_FAILED')
         self.error(self.client.post('/api/ai/v1/jobs', json=body, headers={**self.headers('k'), 'Origin': 'https://evil.example'}),
@@ -198,9 +194,10 @@ class CreateJob(ApiCase):
         row = self.job_row(UUID(view['job_id']))
         self.assertEqual((row['provider_profile'], row['consent_manifest_hash'].strip()),
                          (C.OPUS, self.input_row(w.input_id)['manifest_hash'].strip()))
-        self.assertIsNotNone(row['credential_version_id'])
+        self.assertIsNone(row['credential_version_id'])                                     # 서버는 key를 저장하지 않는다
         after = self.counts()
-        self.assertEqual((after['ai_jobs'] - before['ai_jobs'], after['task_outbox'] - before['task_outbox']), (1, 1))
+        self.assertEqual(after['ai_jobs'] - before['ai_jobs'], 1)
+        self.assertEqual(self.submitted[-1], (UUID(view['job_id']), C.TEST_KEY))              # 헤더의 key를 실행 스레드에만 넘긴다
         self.assertEqual(self.http, [])                                                       # 접수만으로는 아무것도 전송하지 않는다
         audit = self.rows("SELECT details FROM audit_events WHERE action = 'job.created'")[0]['details']
         self.assertEqual((audit['kind'], audit['model']), ('review', 'claude-opus-5-5'))
@@ -212,14 +209,10 @@ class CreateJob(ApiCase):
         again = self.post_job(w, 'review', key='same')
         self.assertEqual((first.status_code, again.status_code, again.json()['job_id']), (202, 200, first.json()['job_id']))
         consent = self.consent(w)
-        from app.services.ai import credentials
-        with S.Session() as db:                                                               # key를 교체해 동의가 낡았다
-            credentials.register_key(db, w.owner, 'anthropic', 'sk-ant-api03-REPLACEDKEY0123456789abcdef', verify=False)
+        # 앱의 key를 바꿔도(다른 헤더 값) 같은 Idempotency-Key는 처음 작업을 돌려준다. key는 동의 범위에 들지 않는다.
         replay = self.client.post('/api/ai/v1/jobs', json={'kind': 'review', 'consent': consent, 'force_regenerate': False},
-                                  headers=self.headers('same'))
+                                  headers=self.headers('same', ai_key='sk-ant-api03-REPLACEDKEY0123456789abcdef'))
         self.assertEqual((replay.status_code, replay.json()['job_id']), (200, first.json()['job_id']))
-        stale = self.post_job(w, 'review', key='other', consent=consent)                       # 새 key + 낡은 동의는 거부
-        self.error(stale, 409, 'PREVIEW_CHANGED')
         self.error(self.post_job(w, 'summary', key='same'), 409, 'IDEMPOTENCY_CONFLICT')       # 같은 key 다른 요청
         self.assertEqual(self.scalar("SELECT count(*) FROM ai_jobs WHERE kind <> 'prepare'"), 1)
 
@@ -242,34 +235,28 @@ class CreateJob(ApiCase):
     def test_consent_must_match_scope_model_and_key(self):
         w = self.ready()
         self.error(self.post_job(w, consent=self.consent(w, manifest_hash='e' * 64)), 409, 'PREVIEW_CHANGED')
-        self.error(self.post_job(w, consent=self.consent(w, credential_version=9)), 409, 'PREVIEW_CHANGED')
+        self.error(self.post_job(w, consent=self.consent(w, credential_version=9)), 422, 'INVALID_SELECTION')   # 없어진 필드
         self.error(self.post_job(w, consent=self.consent(w, policy_version='code-transfer-v0')), 403, 'TRANSFER_NOT_ALLOWED')
         self.error(self.post_job(w, consent=self.consent(w, profile_id='gpt-5-v1')), 422, 'INVALID_SELECTION')
-        with S.ai_env(AI_ALLOWED_PROFILES=C.SONNET, AI_ALLOW_EXTERNAL_TRANSFER=1):
+        with S.ai_env(AI_ALLOWED_PROFILES=C.SONNET):
             self.error(self.post_job(w), 409, 'PREVIEW_CHANGED')
-        with S.ai_env(AI_ALLOW_EXTERNAL_TRANSFER=0):
-            self.error(self.post_job(w), 403, 'TRANSFER_NOT_ALLOWED')
         self.assertEqual(self.scalar("SELECT count(*) FROM ai_jobs WHERE kind <> 'prepare'"), 0)
         self.assertEqual(self.post_job(w).status_code, 202)
 
     def test_missing_key_and_blocked_repository(self):
         w = self.ready()
-        credential = self.rows('SELECT id FROM ai_credentials WHERE owner_user_id = :o', o=w.owner)[0]['id']
-        with S.Session() as db:
-            from app.services.ai import credentials
-            credentials.delete_credential(db, w.owner, 'anthropic')
-        self.error(self.post_job(w), 422, 'CREDENTIAL_REQUIRED')
-        self.assertIsNotNone(credential)
-        C.ensure_credential(self.db, w.owner, key=C.TEST_KEY)
-        self.deny['generate'] = AIError(ErrorCode.TRANSFER_NOT_ALLOWED, 'private repository')
-        self.error(self.post_job(w), 403, 'TRANSFER_NOT_ALLOWED')                              # 비공개 저장소는 전송 불가
+        self.error(self.post_job(w, ai_key=None), 422, 'CREDENTIAL_REQUIRED')                   # 앱이 key를 보내지 않았다
+        error = self.error(self.post_job(w, ai_key='short'), 422, 'INVALID_SELECTION')         # 형식이 맞지 않는 key
+        self.assertNotIn('short', json.dumps(error))
+        self.assertEqual(self.scalar("SELECT count(*) FROM ai_jobs WHERE kind <> 'prepare'"), 0)
+        self.deny['generate'] = AIError(ErrorCode.TRANSFER_NOT_ALLOWED, 'policy')
+        self.error(self.post_job(w), 403, 'TRANSFER_NOT_ALLOWED')
         self.deny['generate'] = AIError(ErrorCode.RESOURCE_NOT_FOUND, 'no access')
         self.error(self.post_job(w), 404, 'RESOURCE_NOT_FOUND')
         self.deny.clear()
 
     def test_inputs_that_are_not_reviewable_expired_deleted_building_or_foreign_are_blocked(self):
         owner, repo = self.make_user(), self.make_repo()
-        C.ensure_credential(self.db, owner, key=C.TEST_KEY)
         self.login(owner)
         # reviewable=false: 선택한 파일이 모두 제외돼 AI에 보낼 내용이 없다
         _, _, empty, _ = self.prepared(owner, repo, ['.env', 'link.py'], now=datetime.now(timezone.utc))
@@ -294,7 +281,6 @@ class CreateJob(ApiCase):
         self.error(self.post_job(w4, consent=self.consent(w4, manifest_hash='a' * 64)), 422, 'INVALID_STATE')
         # 다른 사용자의 입력은 존재를 숨긴다
         other = self.make_user()
-        C.ensure_credential(self.db, other, key=C.TEST_KEY)
         _, _, theirs, _ = self.prepared(other, self.make_repo(), now=datetime.now(timezone.utc))
         w5 = type('W', (), {'owner': other, 'repo': repo, 'input_id': theirs})()
         self.error(self.post_job(w5), 404, 'RESOURCE_NOT_FOUND')
@@ -302,7 +288,7 @@ class CreateJob(ApiCase):
 
     def test_daily_limit_and_oversized_body(self):
         w = self.ready()
-        with S.ai_env(AI_DAILY_JOB_LIMIT=1, AI_ALLOW_EXTERNAL_TRANSFER=1):
+        with S.ai_env(AI_DAILY_JOB_LIMIT=1):
             self.assertEqual(self.post_job(w, 'review', key='1').status_code, 202)
             self.error(self.post_job(w, 'summary', key='2'), 429, 'USER_LIMIT')
         r = self.client.post('/api/ai/v1/jobs', content=b'{"kind":"review","pad":"' + b'x' * 9000 + b'"}',
@@ -492,7 +478,7 @@ class CancelRetryDelete(ApiCase):
         replay = self.post_job(w, 'review', key='del-key')
         error = self.error(replay, 404, 'RESOURCE_NOT_FOUND')
         self.assertEqual(error['details'], {'reason': 'JOB_DELETED'})
-        self.assertEqual(self.counts(), before)                                              # 새 작업·outbox·예약이 생기지 않았다
+        self.assertEqual(self.counts(), before)                                              # 새 작업·예약이 생기지 않았다
         # 공통 create_job 경로도 같은 규칙이다
         from app.services.ai import consent
         pinned = C.pinned_for(self.db, w.owner, w.repo, w.input_id, manifest_hash=self.input_row(w.input_id)['manifest_hash'].strip())
@@ -853,10 +839,9 @@ class Usage(ApiCase):
         self.assertEqual(usage.headers['cache-control'], 'private, no-store')
         body = usage.json()
         self.assertEqual((body['currency'], body['user_limit'], body['server_budget_enabled'], body['uncertain_reservations']),
-                         ('USD', '20.000000', False, 0))
-        self.assertEqual(float(body['user_spent']), float(self.expected_cost(USAGE)))
+                         ('USD', '0', False, 0))                                   # AD-33: 서버 지출 상한 없음(0)
+        self.assertEqual(float(body['user_spent']), float(self.expected_cost(USAGE)))         # 사용 기록은 남긴다
         self.assertEqual(float(body['user_reserved']), 0)
-        self.assertAlmostEqual(float(body['user_remaining']), 20 - float(self.expected_cost(USAGE)), places=5)
         self.assertEqual((body['daily_jobs_used'], body['daily_job_limit']), (1, 0))      # 기본은 하루 한도 없음(0)
         self.login(self.make_user())
         other = self.client.get('/api/ai/v1/usage').json()

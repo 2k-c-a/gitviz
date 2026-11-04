@@ -64,7 +64,7 @@
     "$defs": {
       "TransferConsent": {
         "additionalProperties": false,
-        "description": "전송 동의: 사용자가 확인한 코드 범위(manifest_hash)와 제공자·모델·key 버전.",
+        "description": "전송 동의: 사용자가 확인한 코드 범위(manifest_hash)와 제공자·모델. key는 앱이 헤더로 따로 보낸다(AD-33).",
         "properties": {
           "profile_fingerprint": {
             "anyOf": [
@@ -96,19 +96,6 @@
             "title": "Profile Id",
             "type": "string"
           },
-          "credential_version": {
-            "anyOf": [
-              {
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Credential Version"
-          },
           "policy_version": {
             "maxLength": 500,
             "minLength": 1,
@@ -128,7 +115,7 @@
       }
     },
     "additionalProperties": false,
-    "description": "POST /jobs: 동의한 전송 내용(코드 범위·제공자·모델·key 버전)으로 설명·리뷰 생성을 접수한다.",
+    "description": "POST /jobs: 동의한 전송 내용(코드 범위·제공자·모델)으로 설명·리뷰 생성을 접수한다. key는 X-GitViz-AI-Key 헤더.",
     "properties": {
       "kind": {
         "enum": [
@@ -171,7 +158,7 @@
     "$defs": {
       "TransferConsent": {
         "additionalProperties": false,
-        "description": "전송 동의: 사용자가 확인한 코드 범위(manifest_hash)와 제공자·모델·key 버전.",
+        "description": "전송 동의: 사용자가 확인한 코드 범위(manifest_hash)와 제공자·모델. key는 앱이 헤더로 따로 보낸다(AD-33).",
         "properties": {
           "profile_fingerprint": {
             "anyOf": [
@@ -203,19 +190,6 @@
             "title": "Profile Id",
             "type": "string"
           },
-          "credential_version": {
-            "anyOf": [
-              {
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Credential Version"
-          },
           "policy_version": {
             "maxLength": 500,
             "minLength": 1,
@@ -245,58 +219,6 @@
       "consent"
     ],
     "title": "RetryJobRequest",
-    "type": "object"
-  },
-  "RegisterKeyRequest": {
-    "additionalProperties": false,
-    "properties": {
-      "api_key": {
-        "format": "password",
-        "maxLength": 400,
-        "minLength": 16,
-        "title": "Api Key",
-        "type": "string",
-        "writeOnly": true
-      },
-      "profile_id": {
-        "anyOf": [
-          {
-            "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$",
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
-        ],
-        "default": null,
-        "title": "Profile Id"
-      },
-      "verify": {
-        "default": true,
-        "title": "Verify",
-        "type": "boolean"
-      }
-    },
-    "required": [
-      "api_key"
-    ],
-    "title": "RegisterKeyRequest",
-    "type": "object"
-  },
-  "UpdateCredentialRequest": {
-    "additionalProperties": false,
-    "description": "PATCH /credentials/{provider}: key는 그대로 두고 기본 모델만 바꾼다.",
-    "properties": {
-      "profile_id": {
-        "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$",
-        "title": "Profile Id",
-        "type": "string"
-      }
-    },
-    "required": [
-      "profile_id"
-    ],
-    "title": "UpdateCredentialRequest",
     "type": "object"
   },
   "FeedbackRequest": {

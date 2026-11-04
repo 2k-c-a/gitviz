@@ -9,6 +9,7 @@ import { createAiClient } from './ai-api.js';
 import { createAiPoller } from './ai-poll.js';
 import { parseState } from './viz-state.js';
 import { pageUrl } from './ui/shell.js';
+import { SETTINGS_ENTRY_URL } from './platform/workspace-navigation.js';
 import { getRepoGithubInfo } from './github.js';
 
 const SEVERITY = { critical: ['심각', 'error'], high: ['높음', 'error'], medium: ['보통', 'warn'], low: ['낮음', 'info'], info: ['정보', 'info'] };
@@ -178,7 +179,7 @@ function main(page) {
     if (!state.models.length) {
       return mount(setup, h('div', { class: 'ai-card' }, h('h2', { text: '사용할 AI 모델이 없습니다' }),
         h('p', { class: 'ai-muted', text: '앱 설정의 AI 항목에서 Anthropic·OpenAI·Gemini 중 하나의 API 키를 저장하세요. 키는 이 PC에만 보관됩니다.' }),
-        h('div', { class: 'ai-row' }, h('a', { class: 'btn-secondary ai-btn', href: pageUrl('settings') }, '설정 열기'))));
+        h('div', { class: 'ai-row' }, h('a', { class: 'btn-secondary ai-btn', href: SETTINGS_ENTRY_URL }, '설정 열기'))));
     }
     const model = state.models.find((m) => m.profile_id === state.profileId);
     const external = model?.execution_location !== 'local';

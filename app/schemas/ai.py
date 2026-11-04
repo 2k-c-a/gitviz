@@ -693,51 +693,15 @@ class SupportedProvider(_Strict):
 
 class ProvidersResponse(_Strict):
     providers: list[SupportedProvider]
-    external_transfer_allowed: bool
-
-
-class RegisterKeyRequest(_Strict):
-    api_key: SecretStr = Field(min_length=16, max_length=400)
-    profile_id: ProfileId | None = None       # 이 key로 기본 사용할 모델(지원 목록의 profile)
-    verify: bool = True                        # 제공자에 key를 확인한다(코드는 보내지 않는다)
-
-
-class CredentialView(_Strict):
-    provider: str
-    status: Literal["active"] = "active"
-    version: int = Field(ge=1)
-    key_hint: str                              # 마스킹된 힌트(sk-ant-…a1b2). 전체 key는 어디에도 돌려주지 않는다
-    preferred_profile_id: str | None = None
-    validated_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
-    in_flight_jobs: int = Field(ge=0, default=0)
-
-
-class CredentialChange(_Strict):
-    credential: CredentialView
-    changed: bool                              # 같은 key를 다시 보냈으면 false(새 버전을 만들지 않는다)
-    previous_version: int | None = None
-
-
-class CredentialList(_Strict):
-    credentials: list[CredentialView]
-
-
-class CredentialDeleted(_Strict):
-    provider: str
-    status: Literal["deleted"] = "deleted"
-    jobs_cancelled: int = Field(ge=0)
 
 
 class TransferConsent(_Strict):
-    """전송 동의: 사용자가 확인한 코드 범위(manifest_hash)와 제공자·모델·key 버전."""
+    """전송 동의: 사용자가 확인한 코드 범위(manifest_hash)와 제공자·모델. key는 앱이 헤더로 따로 보낸다(AD-33)."""
     profile_fingerprint: Sha256Hex | None = None
     input_id: UUID
     manifest_hash: Sha256Hex
     provider: str
     profile_id: ProfileId
-    credential_version: int | None = Field(default=None, ge=1)
     policy_version: ShortText
 
 
@@ -750,10 +714,6 @@ class TransferView(_Strict):
     provider: str
     profile_id: str
     model: str
-    external_transfer_allowed: bool
-    credential_configured: bool
-    credential_version: int | None = None
-    key_hint: str | None = None
 
 
 InputPreview.model_rebuild()   # 뒤에 정의된 TransferView 참조를 확정한다
@@ -762,7 +722,7 @@ InputPreview.model_rebuild()   # 뒤에 정의된 TransferView 참조를 확정�
 # ── 생성·결과·피드백 API (S8) ───────────────────────────────────────────
 
 class CreateJobRequest(_Strict):
-    """POST /jobs: 동의한 전송 내용(코드 범위·제공자·모델·key 버전)으로 설명·리뷰 생성을 접수한다."""
+    """POST /jobs: 동의한 전송 내용(코드 범위·제공자·모델)으로 설명·리뷰 생성을 접수한다. key는 X-GitViz-AI-Key 헤더."""
     kind: Literal["summary", "review"]
     consent: TransferConsent
     force_regenerate: bool = False        # 이미 성공한 같은 설정의 결과가 있어도 새 generation을 만든다
@@ -967,13 +927,6 @@ class PullFilesView(_Strict):
     inventory_coverage: InventoryCoverage
     next_cursor: str | None = None
 
-
-class UpdateCredentialRequest(_Strict):
-    """PATCH /credentials/{provider}: key는 그대로 두고 기본 모델만 바꾼다."""
-    profile_id: ProfileId
-
-
-# ── GitViz 이력 근거 (S11) ──────────────────────────────────────────────
 
 class HistoryOptionView(_Strict):
     """이력 근거로 고를 수 있는 분석 snapshot. eligible=false이면 이유와 함께 근거로 쓸 수 없다."""
