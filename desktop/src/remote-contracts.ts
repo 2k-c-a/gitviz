@@ -6,6 +6,11 @@ const definition = (method: string, template: string, path: Record<string, Rule>
 const analytics = (suffix: string, query: Record<string, Rule> = {}, path: Record<string, Rule> = {}) => definition('GET', `/repositories/{repositoryId}/analytics/${suffix}`, { repositoryId: 'id', ...path }, { snapshot_id: 'id', ...query });
 const ai = (method: string, suffix: string, path: Record<string, Rule> = {}, query: Record<string, Rule> = {}, body?: string, key?: boolean) => definition(method, `/api/ai/v1/${suffix}`, path, query, body, key);
 const page: Record<string, Rule> = { cursor: 'text', limit: 'number' };
+const aiProviderOf = (body: unknown): string => {
+  const record = body as Record<string, unknown>;
+  const consent = record.consent as Record<string, unknown> | undefined;
+  return String(record.provider ?? consent?.provider);
+};
 export const endpoints: Record<string, Endpoint> = {
   me: definition('GET', '/api/auth/me'),
   repositories: definition('GET', '/repositories', {}, { limit: 'number' }),
@@ -30,10 +35,7 @@ export const endpoints: Record<string, Endpoint> = {
   fileDetail: analytics('files/{fileId}/detail', { limit: 'number', sort_by: 'text' }, { fileId: 'id' }), tree: analytics('tree'),
   snapshots: definition('GET', '/repositories/{repositoryId}/snapshots', { repositoryId: 'id' }, { limit: 'number', before_id: 'id' }),
   compare: definition('GET', '/repositories/{repositoryId}/snapshots/compare', { repositoryId: 'id' }, { before: 'id', after: 'id', offset: 'number', limit: 'number' }),
-  providers: ai('GET', 'providers'), credentials: ai('GET', 'credentials'), usage: ai('GET', 'usage'),
-  putCredential: ai('PUT', 'credentials/{provider}', { provider: 'provider' }, {}, 'RegisterKeyRequest'),
-  patchCredential: ai('PATCH', 'credentials/{provider}', { provider: 'provider' }, {}, 'UpdateCredentialRequest'),
-  deleteCredential: ai('DELETE', 'credentials/{provider}', { provider: 'provider' }),
+  providers: ai('GET', 'providers'), usage: ai('GET', 'usage'),
   pulls: ai('GET', 'pulls', {}, { repository_id: 'id', state: 'text', ...page }),
   pullFiles: ai('GET', 'pulls/{pr}', { pr: 'id' }),
   prepareInput: ai('POST', 'inputs', {}, {}, 'PrepareInputRequest', true),
@@ -66,9 +68,12 @@ export const endpoints: Record<string, Endpoint> = {
   feedback: ai('PUT', 'findings/{findingId}/feedback', { findingId: 'uuid' }, {}, 'FeedbackRequest'),
 };
 endpoints.pullFiles = ai('GET', 'pulls/{pr}/files', { pr: 'id' }, { repository_id: 'id', ...page });
-// AI analysis is app-only BYOK (AD-32 ⑧): main attaches the saved key of body.provider; the renderer never sees it.
+// AI analysis and AI review are app-only BYOK (AD-32 ⑧, AD-33): main attaches the saved key of the request's provider
+// (body.provider, or body.consent.provider for review jobs); the renderer never sees it.
 endpoints.createInsightReport.aiKey = true;
 endpoints.askInsight.aiKey = true;
+endpoints.createJob.aiKey = true;
+endpoints.retryJob.aiKey = true;
 // Project community (AD-25). Members only; the server enforces roles, the allowlist only shapes requests.
 const community = (method: string, suffix: string, path: Record<string, Rule> = {}, query: Record<string, Rule> = {}, body?: string) =>
   definition(method, `/api/community/v1/${suffix}`, path, query, body);
@@ -148,6 +153,6 @@ export class RemoteContracts {
     const query = new URLSearchParams(Object.entries(value.query).map(([k, v]) => [k, String(v)]));
     return { method: endpoint.method, path: path + (query.size ? `?${query}` : ''),
       ...(endpoint.body ? { body: JSON.stringify(value.body) } : {}), ...(value.idempotencyKey ? { idempotencyKey: value.idempotencyKey } : {}),
-      ...(endpoint.aiKey ? { aiKeyProvider: String((value.body as Record<string, unknown>).provider) } : {}) };
+      ...(endpoint.aiKey ? { aiKeyProvider: aiProviderOf(value.body) } : {}) };
   }
 }

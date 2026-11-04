@@ -151,12 +151,6 @@ export function createAiClient({ fetchImpl = (u, o) => request(u, o), now = () =
       try { return await res.json(); } catch { throw new AiApiError('서버 응답을 해석할 수 없습니다.', { status: res.status, code: 'BAD_RESPONSE' }); }
     },
     providers: (signal) => get(`${BASE}/providers`, null, signal),
-    credentials: (signal) => get(`${BASE}/credentials`, null, signal),
-    putCredential: (provider, { apiKey, profileId, verify = true }, signal) =>
-      send('PUT', `${BASE}/credentials/${id(provider)}`, { body: { api_key: apiKey, profile_id: profileId || null, verify }, signal }),
-    setPreferredProfile: (provider, profileId, signal) =>
-      send('PATCH', `${BASE}/credentials/${id(provider)}`, { body: { profile_id: profileId }, signal }),
-    deleteCredential: (provider, signal) => send('DELETE', `${BASE}/credentials/${id(provider)}`, { signal }),
     usage: (signal) => get(`${BASE}/usage`, null, signal),
 
     pulls: (repositoryId, { state = 'open', cursor = null, limit = 30 } = {}, signal) =>

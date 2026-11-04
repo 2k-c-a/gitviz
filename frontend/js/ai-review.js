@@ -8,6 +8,7 @@ import { createAiClient, newIdempotencyKey } from './ai-api.js';
 import { createAiPoller } from './ai-poll.js';
 import * as S from './ai-state.js';
 import { createProjectPicker } from './ai-project-picker.js';
+import { SETTINGS_ENTRY_URL } from './platform/workspace-navigation.js';
 
 const settingsMode = !!document.getElementById('page-settings');
 const api = createAiClient();
@@ -21,7 +22,8 @@ let route = S.parseRoute(location.search);
 let poller = null;
 let clockTimer = null;
 let ctx = null;                 // 현재 화면 세대의 상태(저장소·작업 단위). 세대가 바뀌면 통째로 버린다.
-const shared = { me: null, providers: null, creds: null, usage: null, aiDisabled: false, keysOpen: false, keyMsg: '' };
+// appKeys: 앱에 저장한 API 키 여부({provider: boolean}). 웹(키 보관소 없음)에서는 null이다(AD-33).
+const shared = { me: null, providers: null, appKeys: null, usage: null, aiDisabled: false, keysOpen: false };
 const projectPicker = createProjectPicker({
   loadProjects: (signal) => api.myProjects(signal),
   onSelect: (repo) => { shared.keysOpen = true; navigate({ repo }); },
@@ -103,7 +105,6 @@ async function load() {
   route = S.parseRoute(location.search);
   ctx = { token, repo: route.repo };                   // 저장소·작업 단위 상태는 매번 새로 시작한다
   clearNotices();
-  shared.keyMsg = '';
   mount($('ai-scope'));
   mount($('ai-main'));
   mount($('ai-keys'));
@@ -129,7 +130,7 @@ async function load() {
   if (settingsMode) {
     const returnState = S.parseRoute(new URLSearchParams(location.search).get('return') || S.buildRoute({ repo: route.repo }));
     const back = new URL('./ai-review.html', location.href); back.search = S.buildRoute(returnState);
-    mount($('ai-main'), h('section', { class: 'ai-card' }, h('h2', { text: '저장 위치와 적용 범위' }), h('p', { text: '이 화면에서 등록한 키는 연결된 GitViz 서버에 암호화해 저장됩니다. 원문은 다시 보여 주지 않고 일부를 가린 힌트만 표시합니다. 로컬 워크스페이스의 일회성 BYOK 키와는 별도입니다.' }), h('p', { class: 'ai-muted', text: '라이트·다크 테마는 상단의 해·달 버튼으로 바꿀 수 있습니다.' }), h('a', { href: back.href, class: 'btn-secondary ai-btn', text: 'AI 리뷰로 돌아가기' })));
+    mount($('ai-main'), h('section', { class: 'ai-card' }, h('h2', { text: '저장 위치와 적용 범위' }), h('p', { text: 'AI 리뷰에 쓰는 API 키는 GitViz 앱에만 저장합니다(Windows 계정 보호). 리뷰를 실행할 때만 그 요청에 실어 서버로 보내고, 서버는 그 실행에만 쓰고 저장하지 않습니다. 키 입력·교체·삭제는 앱의 설정 화면(계정 메뉴 → 설정 → AI)에서 합니다.' }), h('p', { class: 'ai-muted', text: '라이트·다크 테마는 상단의 해·달 버튼으로 바꿀 수 있습니다.' }), h('a', { href: back.href, class: 'btn-secondary ai-btn', text: 'AI 리뷰로 돌아가기' })));
     return;
   }
   const views = {
@@ -151,7 +152,7 @@ function repoLabel() {
 function renderHeader() {
   const title = $('ai-title');
   title.dataset.repositoryLabel = repoLabel();
-  if (settingsMode) { title.textContent = '설정 · API 키 관리'; $('ai-steps').hidden = true; return; }
+  if (settingsMode) { title.textContent = '설정 · AI 리뷰'; $('ai-steps').hidden = true; return; }
   title.textContent = route.repo ? `AI 리뷰 · ${repoLabel()}` : 'AI 리뷰';
   const steps = [['home', 'PR·커밋 선택'], ['files', '파일 선택'], ['preview', '미리보기·동의'], ['job', '실행·결과']];
   const at = { [S.VIEWS.HOME]: 0, [S.VIEWS.FILES]: 1, [S.VIEWS.PREVIEW]: 2, [S.VIEWS.JOB]: 3 }[route.view];
@@ -177,31 +178,22 @@ function renderLogin() {
 
 /* ───────────────────────── A. 키·모델 ───────────────────────── */
 function openKeys() {
-  if (!settingsMode) {
-    const url = new URL('./settings.html', location.href);
-    if (route.repo) url.searchParams.set('repo', route.repo);
-    url.searchParams.set('return', S.buildRoute(route)); location.href = url.href; return;
-  }
-  shared.keysOpen = true;
-  const panel = $('ai-keys');
-  const d = panel.querySelector('details');
-  if (d) { d.open = true; d.scrollIntoView?.({ block: 'start' }); }
+  // API 키는 앱 설정(계정 메뉴 → 설정 → AI)에 저장한다. 웹에는 키 보관소가 없다.
+  if (globalThis.desktop?.aiKeys) location.href = SETTINGS_ENTRY_URL;
 }
 
 async function loadKeys(token) {
+  const keyStatus = globalThis.desktop?.aiKeys?.status;
   try {
-    const [providers, creds] = await Promise.all([api.providers(token.signal), api.credentials(token.signal)]);
+    const [providers, saved] = await Promise.all([api.providers(token.signal), keyStatus ? keyStatus() : null]);
     if (!token.current()) return;
-    shared.providers = providers; shared.creds = creds.credentials;
+    shared.providers = providers; shared.appKeys = saved || null;
   } catch (e) {
     if (e?.name === 'AbortError' || !token.current()) return;
-    if (e.status === 404 || e.code === 'RESOURCE_NOT_FOUND') {
-      shared.aiDisabled = true;
-      mount($('ai-main'), h('div', { class: 'ai-card' }, h('h2', { text: 'AI 기능을 쓸 수 없습니다' }),
-        h('p', { class: 'ai-muted', text: '이 서버에서는 AI 기능이 꺼져 있거나 사용할 수 없습니다.' })));
-      return;
-    }
-    return showError(e, { onRetry: load });
+    if (/STORAGE_UNAVAILABLE/.test(String(e?.message || ''))) {
+      shared.appKeys = {};
+      showError(e);
+    } else return showError(e, { onRetry: load });
   }
   shared.aiDisabled = false;
   api.usage(token.signal).then((u) => { if (token.current()) { shared.usage = u; renderUsage(); } }).catch(() => {});
@@ -221,90 +213,37 @@ function currentProvider() {
   const providers = selectableProviders();
   return providers.find((p) => p.id === shared.providerId || p.models.some((m) => m.provider === shared.providerId)) || providers[0];
 }
-function currentCredential() { return (shared.creds || []).find((c) => c.provider === currentProvider()?.id) || null; }
 
+/* 리뷰 모델 선택과 앱 키 상태. 키 입력·저장은 앱 설정 화면이 한다(서버는 키를 저장하지 않는다). */
 function renderKeys() {
   const root = $('ai-keys');
   const provider = currentProvider();
   if (!provider) return mount(root, h('div', { class: 'ai-card' }, h('h2', { text: '사용할 수 있는 AI 제공자가 없습니다' }), h('p', { class: 'ai-muted', text: '서버의 허용 모델 설정을 확인한 뒤 새로고침하세요.' })));
-  const cred = currentCredential();
   const local = provider.models.every((m) => m.execution_location === 'local');
-  const transferOk = local || shared.providers.external_transfer_allowed;
-  const providerSelect = h('select', { 'aria-label': 'AI 제공자', onchange: (ev) => { shared.providerId = ev.target.value; shared.profileId = currentProvider().models.find((m) => m.allowed)?.profile_id || null; renderKeys(); ctx?.onCredentialsChanged?.(); } }, selectableProviders().map((p) => h('option', { value: p.id, selected: p.id === provider.id }, p.display_name)));
-  const keyInput = h('input', { type: 'password', id: 'ai-key-input', autocomplete: 'off', spellcheck: 'false', placeholder: provider.key_format, 'aria-label': 'API 키', maxlength: 400 });
-  const preferred = shared.profileId || cred?.preferred_profile_id;
-  const modelFamily = (id) => (id || '').replace(/-v\d+$/, '');
-  let selected = provider.models.find((m) => m.allowed && m.profile_id === preferred)?.profile_id
-    || provider.models.find((m) => m.allowed && modelFamily(m.profile_id) === modelFamily(preferred))?.profile_id
-    || provider.models.find((m) => m.allowed)?.profile_id || null;
+  const desktopApp = shared.appKeys !== null;
+  const hasKey = !!shared.appKeys?.[provider.id];
+  const allowed = provider.models.filter((m) => m.allowed);
+  const selected = allowed.find((m) => m.profile_id === shared.profileId)?.profile_id || allowed[0]?.profile_id || null;
   shared.profileId = selected;
-  const preferredName = provider.models.find((m) => modelFamily(m.profile_id) === modelFamily(cred?.preferred_profile_id))?.display_name;
-  const msg = h('div', { class: 'ai-inline', role: 'status' }, shared.keyMsg);
-  const models = h('div', { class: 'ai-models' }, provider.models.map((m) => {
-    const radio = h('input', { type: 'radio', name: 'ai-model', value: m.profile_id, checked: m.profile_id === selected, disabled: !m.allowed,
-      onchange: () => { selected = m.profile_id; shared.profileId = selected; ctx?.onCredentialsChanged?.(); refreshButtons(); } });
-    return h('label', { class: `ai-model${m.allowed ? '' : ' disabled'}` }, radio,
-      h('span', { class: 'ai-model-main' }, h('b', { text: m.display_name || m.model }), h('code', { text: m.model })),
-      h('span', { class: 'ai-model-meta' }, `입력 $${m.input_price_per_mtok} / 출력 $${m.output_price_per_mtok} (100만 토큰) · 입력 한도 ${S.fmtTokens(m.max_input_tokens)} · 출력 한도 ${S.fmtTokens(m.max_output_tokens)}`),
-      m.allowed ? null : chip('관리자가 허용하지 않음', 'warn'));
-  }));
-  const save = button(cred ? '키 교체(확인 후 저장)' : '키 확인 후 저장', async () => {
-    const value = keyInput.value;
-    keyInput.value = '';                                        // 제출 즉시 화면에서 지운다
-    if (!value.trim()) { msg.textContent = 'API 키를 입력하세요.'; return; }
-    await run(save, msg, async () => {
-      const out = await api.putCredential(provider.id, { apiKey: value, profileId: selected });
-      shared.keyMsg = out.changed ? `저장했습니다 (${out.credential.key_hint}, v${out.credential.version}).` : '같은 키입니다. 변경 없음.';
-      await refreshCreds();
-    });
-  }, { cls: 'btn-primary', disabled: !transferOk });
-  const setModel = button('기본 모델만 변경', async () => {
-    await run(setModel, msg, async () => { await api.setPreferredProfile(provider.id, selected); shared.keyMsg = '기본 모델을 바꿨습니다.'; await refreshCreds(); });
-  });
-  const del = button('키 삭제', async () => {
-    const n = cred?.in_flight_jobs || 0;
-    if (!window.confirm(`API 키를 삭제합니다. 이 키에 고정된 진행 중 작업 ${n}개가 취소됩니다. 계속할까요?`)) return;
-    await run(del, msg, async () => { const out = await api.deleteCredential(provider.id); shared.keyMsg = `삭제했습니다(취소된 작업 ${out.jobs_cancelled}개).`; await refreshCreds(); });
-  }, { cls: 'btn-secondary danger' });
-  function refreshButtons() { setModel.disabled = !cred || selected === cred.preferred_profile_id || !selected; }
-  refreshButtons();
-
-  const status = local ? [chip('같은 PC · 키 불필요', 'info')] : cred
-    ? [chip('키 등록됨', 'ok'), h('code', { text: cred.key_hint }), ` v${cred.version} · 기본 모델 ${preferredName || '—'} · 확인 ${cred.validated_at ? fmtTime(cred.validated_at) : '안 함'}`,
-      cred.in_flight_jobs ? chip(`진행 중 작업 ${cred.in_flight_jobs}개`, 'info') : null]
-    : [chip('키 없음', 'warn'), ' 코드를 보내기 전에 본인의 API 키를 등록해야 합니다.'];
+  const providerSelect = h('select', { 'aria-label': 'AI 제공자', onchange: (ev) => { shared.providerId = ev.target.value; shared.profileId = currentProvider().models.find((m) => m.allowed)?.profile_id || null; renderKeys(); ctx?.onCredentialsChanged?.(); } },
+    selectableProviders().map((p) => h('option', { value: p.id, selected: p.id === provider.id }, p.display_name)));
+  const modelSelect = h('select', { 'aria-label': '이번 리뷰 모델', onchange: (ev) => { shared.profileId = ev.target.value; ctx?.onCredentialsChanged?.(); } },
+    allowed.map((m) => h('option', { value: m.profile_id, selected: m.profile_id === selected, text: `${m.display_name || m.model} ($${m.input_price_per_mtok}/$${m.output_price_per_mtok} · 100만 토큰)` })));
+  const status = local ? [chip('같은 PC · 키 불필요', 'info')]
+    : !desktopApp ? [chip('앱에서만', 'warn'), ' 외부 AI 리뷰는 GitViz 앱에서 실행합니다. API 키를 이 PC의 앱에만 보관하기 때문입니다.']
+    : hasKey ? [chip('앱에 키 저장됨', 'ok'), ' 실행할 때만 서버로 보내 그 실행에 쓰고, 서버에는 저장하지 않습니다. 비용은 내 키의 계정에 청구됩니다.']
+    : [chip('키 없음', 'warn'), ` 앱 설정에서 ${provider.display_name || provider.id} API 키를 먼저 저장하세요.`];
+  const settingsLink = desktopApp && !local ? button(hasKey ? 'API 키 설정' : 'API 키 저장하러 가기', openKeys, { cls: hasKey ? '' : 'btn-primary' }) : null;
+  const notes = [
+    provider.id === 'gemini' ? h('p', { class: 'ai-muted', text: 'Gemini 무료 등급은 입력·출력이 Google 제품 개선에 사용될 수 있습니다. 민감한 코드는 보내지 말고 계정의 데이터 처리 정책을 확인하세요.' }) : null,
+    local ? h('p', { class: 'ai-muted', text: '서버가 지정한 설치 모델만 사용합니다. API 요금은 없으며 전력·하드웨어 비용은 별도입니다.' }) : null,
+  ];
   const usage = shared.usage;
-  if (!settingsMode) {
-    const modelSelect = h('select', { 'aria-label': '이번 리뷰 모델', onchange: ev => { shared.profileId = ev.target.value; ctx?.onCredentialsChanged?.(); } }, provider.models.filter(m => m.allowed).map(m => h('option', { value: m.profile_id, selected: m.profile_id === selected, text: m.display_name || m.model })));
-    return mount(root, h('section', { class: 'ai-card' }, h('div', { class: 'ai-row between' }, h('h2', { text: '리뷰 모델' }), button('API 키·설정', openKeys)), h('div', { class: 'ai-row' }, providerSelect, modelSelect), h('p', { class: 'ai-muted' }, ...status), h('p', { class: 'ai-muted', id: 'ai-usage', text: usage ? S.usageStatement(usage) : '' })));
-  }
-  mount(root, h('details', { class: 'ai-card ai-keys', open: settingsMode || shared.keysOpen || !cred, ontoggle: (ev) => { shared.keysOpen = ev.target.open; } },
-    h('summary', {}, h('b', { text: 'API 키·제공자·모델' }), ' ', ...status),
-    h('div', { class: 'ai-keys-body' },
-      !transferOk ? h('div', { class: 'ai-banner warn' }, h('div', { class: 'ai-banner-title', text: '이 서버는 코드의 외부 전송을 허용하지 않습니다' }),
-        h('div', { class: 'ai-banner-body', text: '키 등록과 AI 실행이 막혀 있습니다.' })) : null,
-      local ? null : h('p', { class: 'ai-muted', text: `제공자: ${provider.display_name || provider.id}. 키는 암호화해 저장하고 화면에는 일부를 가린 힌트만 보여 줍니다. 키를 확인할 때는 코드를 보내지 않으며 비용도 들지 않습니다. 사용한 만큼 본인 키의 계정으로 청구됩니다.` }),
-      providerSelect,
-      local ? h('p', { class: 'ai-muted', text: '서버가 지정한 설치 모델만 사용합니다. API 요금은 없으며 전력·하드웨어 비용은 별도입니다. GitViz 서버(backend·worker)와 선택한 로컬 AI 서버(Ollama, LM Studio, KoboldCpp)를 같은 PC에서 실행하세요. 꺼져 있는 모델은 서버에서 설정해야 합니다.' }) : null,
-      provider.id === 'gemini' ? h('p', { class: 'ai-muted', text: 'Gemini 무료 등급은 입력·출력이 Google 제품 개선에 사용될 수 있습니다. 민감한 코드는 보내지 말고 계정의 데이터 처리 정책을 확인하세요.' }) : null,
-      models,
-      local ? null : h('label', { class: 'ai-field' }, h('span', { text: cred ? '새 API 키(교체할 때만)' : 'API 키' }), keyInput),
-      local ? null : h('div', { class: 'ai-row' }, save, cred ? setModel : null, cred ? del : null),
-      msg,
-      h('div', { class: 'ai-usage', id: 'ai-usage', role: 'status' },
-        (usage ? S.usageStatement(usage) : '')
-        + (usage?.uncertain_reservations ? ` · 결과를 알 수 없는 호출 ${usage.uncertain_reservations}건(비용이 발생했을 수 있음)` : '')))));
-}
-
-async function refreshCreds() {
-  const token = ctx.token;
-  try {
-    const [creds, usage] = await Promise.all([api.credentials(token.signal), api.usage(token.signal).catch(() => null)]);
-    if (!token.current()) return;
-    shared.creds = creds.credentials; shared.usage = usage; shared.keysOpen = true;
-    renderKeys();
-    ctx.onCredentialsChanged?.();
-  } catch (e) { if (e?.name !== 'AbortError' && token.current()) showError(e); }
+  mount(root, h('section', { class: 'ai-card' },
+    h('div', { class: 'ai-row between' }, h('h2', { text: settingsMode ? 'AI 리뷰 모델과 API 키' : '리뷰 모델' }), settingsLink),
+    h('div', { class: 'ai-row' }, providerSelect, modelSelect),
+    h('p', { class: 'ai-muted' }, ...status), ...notes,
+    h('p', { class: 'ai-muted', id: 'ai-usage', role: 'status', text: usage ? S.usageStatement(usage) : '' })));
 }
 
 /* 버튼 하나의 중복 클릭을 막고 오류를 안내한다 */
@@ -677,7 +616,7 @@ async function renderPreview(token) {
   }
   async function submit(kind) {
     if (st.busy) return;
-    const consent = S.buildConsent(st.preview);
+    const consent = S.buildConsent(st.preview, shared.appKeys);
     if (!consent || !st.checked) return;
     st.busy = true; draw();
     try {
@@ -698,8 +637,8 @@ async function renderPreview(token) {
   function draw() {
     const p = st.preview;
     if (!p) return;
-    const blockers = S.consentBlockers(p);
-    const consent = S.buildConsent(p);
+    const blockers = S.consentBlockers(p, shared.appKeys);
+    const consent = S.buildConsent(p, shared.appKeys);
     const cov = p.coverage;
     const filesRead = p.files.filter((f) => f.content_state === 'read');
     const fileList = h('div', { class: 'ai-files-table' }, h('table', {},
@@ -737,8 +676,8 @@ async function renderPreview(token) {
     updateExecutionButtons();
     const consentBox = h('div', { class: 'ai-consent' },
       h('h3', { text: '전송 동의' }),
-      t ? dl([['제공자·모델', `${t.provider} / ${t.model}`], ['사용할 API 키', t.requires_api_key === false ? '로컬 실행 · 불필요' : t.credential_configured ? `${t.key_hint} (v${t.credential_version})` : '등록되지 않음'],
-        ['외부 전송', t.execution_location === 'local' ? '외부 AI 전송 없음' : t.external_transfer_allowed ? '이 서버에서 허용됨' : '이 서버에서 허용되지 않음']]) : null,
+      t ? dl([['제공자·모델', `${t.provider} / ${t.model}`], ['사용할 API 키', t.requires_api_key === false ? '로컬 실행 · 불필요' : shared.appKeys?.[t.provider] ? '앱에 저장한 내 키(실행할 때만 전송, 서버 저장 안 함)' : '앱에 저장되지 않음'],
+        ['외부 전송', t.execution_location === 'local' ? '외부 AI 전송 없음' : '이번 실행에만, 아래 동의 후 전송']]) : null,
       shared.providers ? h('div', { class: 'ai-models compact' }, shared.providers.providers.flatMap((provider) => provider.models).map((m) => h('label', { class: `ai-model${m.allowed ? '' : ' disabled'}` },
         h('input', { type: 'radio', name: 'ai-consent-model', checked: t?.profile_id === m.profile_id, disabled: !m.allowed || st.busy,
           onchange: () => { shared.profileId = m.profile_id; shared.providerId = m.provider; st.checked = false; renderKeys(); fetchPreview(); } }),
