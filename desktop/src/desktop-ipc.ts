@@ -1,9 +1,11 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { trustedSender } from './ipc';
+import { errorCode, log } from './app-log';
 import type { DesktopAuth } from './auth';
 import type { CollabBundles } from './collab-bundle';
 import type { CollabFiles } from './collab-files';
 import type { Previews } from './collab-preview';
+import type { CollabRunner } from './collab-run';
 import type { CommunityLive, LiveEvent } from './community-live';
 import type { Remote } from './remote';
 import type { AiKeyVault } from './secrets';
@@ -27,6 +29,7 @@ export function registerDesktop(window: BrowserWindow, auth: DesktopAuth | null,
       if (channel === 'desktop:auth-logout') return await auth.logout();
       return await auth.status();
     } catch (error) {
+      log('warn', 'remote-failed', { channel, code: errorCode(error) });
       const allowed = /^(?:INVALID_REQUEST|AUTH_REQUIRED|ACCOUNT_CHANGED|BAD_RESPONSE|UNSUPPORTED_SERVER|AUTH_UNAVAILABLE|BROWSER_UNAVAILABLE|RATE_LIMITED|NETWORK_UNAVAILABLE|REVOCATION_REQUIRED|STORAGE_UNAVAILABLE|BUSY|AI_KEY_REQUIRED)$/;
       // eslint-disable-next-line preserve-caught-error -- Never expose credentials, raw HTTP exceptions or OS paths.
       throw new Error(error instanceof Error && allowed.test(error.message) ? error.message : 'REMOTE_UNAVAILABLE');
@@ -58,7 +61,8 @@ export function registerCommunityLive(window: BrowserWindow, create: ((emit: (ev
 
 /** Co-editing file access (AD-29) and file sets with preview (AD-34) for the community page only.
  *  Any navigation or closing the window forgets every open file and set and closes the previews. */
-export function registerCollabFiles(window: BrowserWindow, files: CollabFiles, bundles: CollabBundles | null = null, previews: Previews | null = null): () => void {
+export function registerCollabFiles(window: BrowserWindow, files: CollabFiles, bundles: CollabBundles | null = null, previews: Previews | null = null,
+  runner: CollabRunner | null = null): () => void {
   const fromCommunity = (event: IpcMainInvokeEvent) => {
     if (!trustedSender(event, window)) return false;
     try { return new URL(event.senderFrame?.url ?? '').pathname === '/web/pages/community.html'; } catch { return false; }
@@ -76,6 +80,7 @@ export function registerCollabFiles(window: BrowserWindow, files: CollabFiles, b
     'desktop:collab-bundle-scan': one(value => bundles.scan(value)),
     'desktop:collab-bundle-approve': one(value => bundles.approve(value)),
     'desktop:collab-bundle-save': one(value => bundles.save(value)),
+    'desktop:collab-bundle-create': one(value => bundles.create(value)),
     'desktop:collab-bundle-close': one(value => bundles.close(value)),
   });
   if (previews) Object.assign(channels, {
@@ -83,17 +88,25 @@ export function registerCollabFiles(window: BrowserWindow, files: CollabFiles, b
     'desktop:collab-preview-update': one(value => previews.update(value)),
     'desktop:collab-preview-close': one(value => previews.close(value)),
   });
+  // Each participant runs the shared code in their own app; nothing is sent anywhere (AD-34 phase 2·3).
+  if (runner) Object.assign(channels, {
+    'desktop:collab-run-runtimes': one(value => runner.runtimes(value)),
+    'desktop:collab-run': one(value => runner.run(value)),
+    'desktop:collab-run-stop': (args: unknown[]) => { if (args.length) throw new Error('ACCESS_DENIED'); return runner.stop(); },
+  });
   for (const [channel, run] of Object.entries(channels)) ipcMain.handle(channel, async (event, ...args: unknown[]) => {
     if (!fromCommunity(event)) throw new Error('ACCESS_DENIED');
     try { return await run(args); }
     catch (error) {
-      const allowed = /^(?:ACCESS_DENIED|INVALID_REQUEST|INVALID_FILE|FILE_TOO_LARGE|NOT_TEXT|NOT_OPEN|FILE_CHANGED|SAVE_FAILED|NOT_ALLOWED|OUTSIDE_ROOT|CANNOT_WIDEN|NOT_PENDING|LIMIT)$/;
-      const fallback = channel === 'desktop:collab-open' || channel === 'desktop:collab-bundle-open' ? 'INVALID_FILE' : channel.startsWith('desktop:collab-preview-') ? 'PREVIEW_FAILED' : 'SAVE_FAILED';
+      log('warn', 'collab-failed', { channel, code: errorCode(error) });
+      const allowed = /^(?:ACCESS_DENIED|INVALID_REQUEST|INVALID_FILE|FILE_TOO_LARGE|NOT_TEXT|NOT_OPEN|FILE_CHANGED|SAVE_FAILED|NOT_ALLOWED|OUTSIDE_ROOT|CANNOT_WIDEN|NOT_PENDING|LIMIT|EXISTS|BUSY|STOPPED|NO_COMPILER|SANDBOX_UNAVAILABLE|RUN_UNAVAILABLE)$/;
+      const fallback = channel === 'desktop:collab-open' || channel === 'desktop:collab-bundle-open' ? 'INVALID_FILE' : channel.startsWith('desktop:collab-preview-') ? 'PREVIEW_FAILED'
+        : channel.startsWith('desktop:collab-run') ? 'RUN_UNAVAILABLE' : 'SAVE_FAILED';
       // eslint-disable-next-line preserve-caught-error -- Never expose OS paths or raw file system errors.
       throw new Error(error instanceof Error && allowed.test(error.message) ? error.message : fallback);
     }
   });
-  const forget = () => { files.closeAll(); bundles?.closeAll(); previews?.closeAll(); };
+  const forget = () => { files.closeAll(); bundles?.closeAll(); previews?.closeAll(); runner?.stop(); };
   const navigate = (details: { isMainFrame: boolean; isSameDocument: boolean }) => { if (details.isMainFrame && !details.isSameDocument) forget(); };
   window.webContents.on('did-start-navigation', navigate);
   return () => {

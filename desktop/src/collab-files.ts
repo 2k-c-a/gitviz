@@ -9,6 +9,7 @@ const MAX_TEXT = 400 * 1024;
 export const LANGUAGES: Record<string, string> = {
   '.js': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript', '.ts': 'typescript', '.mts': 'typescript', '.cts': 'typescript',
   '.jsx': 'jsx', '.tsx': 'tsx', '.py': 'python', '.json': 'json', '.md': 'markdown', '.css': 'css', '.html': 'html', '.htm': 'html',
+  '.c': 'c', '.h': 'c', '.cpp': 'cpp', '.cc': 'cpp', '.cxx': 'cpp', '.hpp': 'cpp', '.hh': 'cpp', '.hxx': 'cpp', '.java': 'java',
 };
 
 export interface OpenedFile { handle: string; name: string; text: string; language: string }

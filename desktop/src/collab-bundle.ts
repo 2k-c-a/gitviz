@@ -1,9 +1,10 @@
 // Co-editing file sets (AD-34). The host picks a start file; main follows its references (HTML/CSS/JS) inside a root
 // folder and offers that set for co-editing. Absolute paths stay here: the page gets an opaque bundle id and paths
 // relative to the root. New references that appear while people edit are read only after the host approves them.
+// The host can also add a file that does not exist yet; it is created on disk only when the host saves.
 import { randomUUID } from 'node:crypto';
 import { realpath as realpathCallback } from 'node:fs';
-import { lstat, readFile, stat } from 'node:fs/promises';
+import { lstat, mkdir, readFile, stat } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { homedir } from 'node:os';
 import { basename, dirname, extname, isAbsolute, join, parse, posix, relative, sep } from 'node:path';
@@ -40,7 +41,7 @@ export interface BundleView {
   excluded: { from: string; spec: string; reason: Reason }[]; unresolved: { from: string; line: number; spec: string }[];
   external: string[]; candidates: { from: string; path: string }[];
 }
-interface Entry { rel: string; abs: string; kind: 'text' | 'binary'; size: number; hash: string; crlf: boolean; bom: boolean; mime?: string; view: FileView }
+interface Entry { rel: string; abs: string; kind: 'text' | 'binary'; size: number; hash: string; crlf: boolean; bom: boolean; mime?: string; view: FileView; created?: boolean }
 interface Bundle { id: string; start: string; root: string; entry: string; files: Map<string, Entry>; pending: Map<string, string>; declined: Set<string>; candidates: Map<string, string> }
 
 // The disk's own spelling of a path (case and 8.3 names resolved) after following links and junctions.
@@ -146,11 +147,12 @@ export class CollabBundles {
   }
 
   /** Finds references added while editing. It checks names and sizes on disk but reads nothing: the host approves first. */
-  async scan(value: unknown): Promise<{ pending: string[]; external: string[]; unresolved: BundleView['unresolved']; candidates: BundleView['candidates'] }> {
+  async scan(value: unknown): Promise<{ pending: string[]; missing: string[]; external: string[]; unresolved: BundleView['unresolved']; candidates: BundleView['candidates'] }> {
     const bundle = this.bundle(value, ['bundle', 'files']);
     const files = (value as { files?: unknown }).files;
     if (!files || typeof files !== 'object' || Array.isArray(files) || Object.keys(files).length > LIMITS.textFiles * 2) throw new Error('INVALID_REQUEST');
     const external = new Set<string>(); const unresolved: BundleView['unresolved'] = []; const candidates: BundleView['candidates'] = [];
+    const missing = new Map<string, string>();
     for (const [rel, text] of Object.entries(files as Record<string, unknown>)) {
       const entry = bundle.files.get(key(rel));
       const kind = refKind(rel);
@@ -165,10 +167,19 @@ export class CollabBundles {
       for (const item of found.local) {
         const target = resolveRef(entry.rel, item.spec);
         if (!target || bundle.files.has(key(target)) || bundle.declined.has(key(target)) || bundle.pending.has(key(target))) continue;
+        const reason = await this.check(bundle, target, false);
+        if (reason === null) bundle.pending.set(key(target), target);
+        // A reference to a file that does not exist yet: the host may create it.
+        else if (reason === 'missing' && TEXT_EXTENSIONS.has(extname(target).toLowerCase())) missing.set(key(target), target);
+      }
+      // Module guesses (Python import, C header sources, Java classes) count only when such a file exists.
+      for (const item of found.optional) {
+        const target = resolveRef(entry.rel, item.spec);
+        if (!target || bundle.files.has(key(target)) || bundle.declined.has(key(target)) || bundle.pending.has(key(target))) continue;
         if (await this.check(bundle, target, false) === null) bundle.pending.set(key(target), target);
       }
     }
-    return { pending: [...bundle.pending.values()], external: [...external], unresolved, candidates };
+    return { pending: [...bundle.pending.values()], missing: [...missing.values()], external: [...external], unresolved, candidates };
   }
 
   async approve(value: unknown): Promise<BundleView | { declined: true }> {
@@ -180,6 +191,42 @@ export class CollabBundles {
     bundle.pending.delete(key(rel));
     if (!accept) { bundle.declined.add(key(rel)); return { declined: true }; }
     return this.include(bundle, rel);
+  }
+
+  /** Adds a new, empty text file at a root-relative path. Nothing is written until the host saves. */
+  async create(value: unknown): Promise<BundleView> {
+    const bundle = this.bundle(value, ['bundle', 'path']);
+    const path = (value as { path?: unknown }).path;
+    if (typeof path !== 'string' || path.length > 260) throw new Error('INVALID_REQUEST');
+    const rel = resolveRef('', path.trim());
+    if (!rel || nameReason(rel) || !TEXT_EXTENSIONS.has(extname(rel).toLowerCase()) || extname(rel).toLowerCase() === '.svg') throw new Error('NOT_ALLOWED');
+    if (bundle.files.has(key(rel))) throw new Error('EXISTS');
+    const abs = join(bundle.root, ...rel.split('/'));
+    if (await exists(abs)) throw new Error('EXISTS');
+    await this.checkParents(bundle, rel);
+    const totals = this.totals(bundle);
+    if (totals.textFiles >= LIMITS.textFiles) throw new Error('LIMIT');
+    // New files follow the start file's line endings.
+    const crlf = [...bundle.files.values()].find(entry => same(entry.rel, bundle.entry))?.crlf ?? true;
+    const view: FileView = { path: rel, kind: 'text', size: 0, language: languageOf(rel), text: '' };
+    bundle.files.set(key(rel), { rel, abs, kind: 'text', size: 0, hash: '', crlf, bom: false, view, created: true });
+    bundle.pending.delete(key(rel)); bundle.candidates.delete(key(rel));
+    return this.view(bundle, { excluded: [], unresolved: [], external: [], candidates: [] });
+  }
+
+  /** The nearest existing folder on the way to `rel` must be inside the root and reached without links or junctions. */
+  private async checkParents(bundle: Bundle, rel: string): Promise<void> {
+    const parts = rel.split('/').slice(0, -1);
+    for (let depth = parts.length; depth >= 0; depth--) {
+      const folder = join(bundle.root, ...parts.slice(0, depth));
+      if (!(await exists(folder))) continue;
+      let real: string;
+      try { real = await nativeRealpath(folder); } catch { throw new Error('NOT_ALLOWED'); }
+      const inside = relative(bundle.root, real).split(sep).join('/');
+      if (!same(inside, parts.slice(0, depth).join('/')) || !(await stat(real)).isDirectory()) throw new Error('NOT_ALLOWED');
+      return;
+    }
+    throw new Error('NOT_ALLOWED');
   }
 
   async save(value: unknown): Promise<{ results: { path: string; saved: boolean; error?: string }[] }> {
@@ -194,9 +241,19 @@ export class CollabBundles {
       if (!entry || entry.kind !== 'text') { results.push({ path, saved: false, error: 'NOT_OPEN' }); continue; }
       let current: string | null;
       try { current = digest((await readText(entry.abs)).bytes); } catch { current = null; }
-      if (current !== entry.hash && !(await this.confirmOverwrite(entry.rel))) { results.push({ path: entry.rel, saved: false, error: 'FILE_CHANGED' }); continue; }
-      try { entry.hash = await writeText({ path: entry.abs, crlf: entry.crlf, bom: entry.bom }, text); results.push({ path: entry.rel, saved: true }); }
-      catch { results.push({ path: entry.rel, saved: false, error: 'SAVE_FAILED' }); }
+      // A new file someone else created on disk in the meantime counts as a change, like an edited one.
+      const changed = entry.created ? await exists(entry.abs) : current !== entry.hash;
+      if (changed && !(await this.confirmOverwrite(entry.rel))) { results.push({ path: entry.rel, saved: false, error: 'FILE_CHANGED' }); continue; }
+      try {
+        if (entry.created) {
+          await this.checkParents(bundle, entry.rel);
+          await mkdir(dirname(entry.abs), { recursive: true });
+          await this.checkParents(bundle, entry.rel); // the folders just made must still be plain folders inside the root
+        }
+        entry.hash = await writeText({ path: entry.abs, crlf: entry.crlf, bom: entry.bom }, text);
+        entry.created = false;
+        results.push({ path: entry.rel, saved: true });
+      } catch { results.push({ path: entry.rel, saved: false, error: 'SAVE_FAILED' }); }
     }
     return { results };
   }
@@ -319,6 +376,15 @@ export class CollabBundles {
           if (report && !excludedSeen.has(seen)) { excludedSeen.add(seen); report.excluded.push({ from: entry.rel, spec: item.spec, reason: next }); }
           continue;
         }
+        bundle.files.set(key(next.rel), next);
+        bundle.candidates.delete(key(next.rel));
+        queue.push(next);
+      }
+      for (const item of found.optional) {
+        const target = resolveRef(entry.rel, item.spec);
+        if (!target || bundle.files.has(key(target)) || nameReason(target)) continue;
+        const next = await this.check(bundle, target, true);
+        if (typeof next === 'string') continue; // not a file of this set (standard library, other package …)
         bundle.files.set(key(next.rel), next);
         bundle.candidates.delete(key(next.rel));
         queue.push(next);

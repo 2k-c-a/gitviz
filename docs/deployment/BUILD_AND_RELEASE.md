@@ -111,7 +111,7 @@ CI는 `--ignore-scripts`로 설치하므로 `electron-winstaller`의 7-Zip 선�
 
 | 대상 | 현재 소스 | 비고 |
 |---|---|---|
-| 데스크톱 앱 | `desktop/package.json` `version` (`0.7.0`) → Squirrel `.nupkg`·`RELEASES`·`manifest.json` | semver 3자리만 허용(`update.ts`의 정규식) |
+| 데스크톱 앱 | `desktop/package.json` `version` (`0.8.0`, 2026-11-04 에이전트 핸드셰이크·`agentVersion`과 통일. 핸드셰이크는 `app.getVersion()`을 보낸다) → Squirrel `.nupkg`·`RELEASES`·`manifest.json` | semver 3자리만 허용(`update.ts`의 정규식) |
 | 서버 | `app/main.py`의 `FastAPI(version="0.1.0")` | 데스크톱과 독립, 불일치 |
 | 에이전트 | 별도 버전 문자열 없음. `SCHEMA_VERSION = 8`(로컬 DB 스키마), 프로토콜 `protocolVersion: 1` | PyInstaller 버전 리소스 미설정 |
 | 계약 | `contracts/workspace/v1` | 경로가 버전 |

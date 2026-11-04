@@ -1,6 +1,6 @@
 # 공동 편집 파일 묶음·미리보기 설계 (AD-34)
 
-작성일: 2026-11-04 · 코드 기준: `dc68209` · 상태: **1단계 구현(2026-11-04, `feat/collab-file-set`)**, 2·3단계 미구현 · 결정 기록: [AD-34](ARCHITECTURE_DECISIONS.md) · 현재 공동 편집: AD-29 · [문서 안내](../index.md)
+작성일: 2026-11-04 · 코드 기준: `dc68209` · 상태: **1·2·3단계 구현(2026-11-04)** — 1단계 `feat/collab-file-set`(PR #44), 2·3단계와 새 파일 `feat/collab-run-and-app-log` · 결정 기록: [AD-34](ARCHITECTURE_DECISIONS.md) · 현재 공동 편집: AD-29 · [문서 안내](../index.md)
 
 이 문서는 확정된 설계와 1단계 구현을 정리한 것이다. 구현에서 설계와 달라진 점과 남은 한계는 §10에 있다.
 
@@ -190,3 +190,24 @@
 - 미리보기 상단 표시 대신 미리보기 창 제목과 공동 편집 화면에 외부 연결 호스트를 보여 준다. "외부 연결 끄기"는 공동 편집 화면의 버튼이다.
 - 문서 구조가 바뀌어 AD-29(파일 하나) 방식의 이전 앱과는 함께 편집할 수 없다. `file_count`가 없는 세션에 참여하면 안내만 하고 나온다.
 - 시험: 앱 단위 테스트 `desktop/tests/collab-bundle.test.ts`(참조·경계·승인·넓히기·한도·차단 규칙), e2e `phase3-flows`(실제 두 번째 Yjs 편집기와 묶음 확인·후보 추가·파일별 동기화·이미지 조각 전송·새 참조 승인·미리보기 CSS·이미지·차단·저장·손님 동기화), 서버 `test_community`(path 형식·자산 전달·바이트 상한). 실제 두 PC·실제 서버에서의 사용은 시험하지 않았다.
+
+## 11. 2·3단계 구현 기록 (2026-11-04) — 실행·새 파일
+
+소유자 결정(2026-11-04): Pyodide 의존성 승인, **실행 결과는 공유하지 않음**, **모든 참여자가 실행 가능**, C/C++·Java는 **남이 바꾼 내용이 있을 때만 실행 전 확인**, 격리는 **임시 폴더 + Job Object 자원 제한**(AppContainer 아님).
+
+| 항목 | 구현 |
+|---|---|
+| 실행 위치 | 실행 버튼을 누른 사람의 앱. 그 사람 화면의 지금 공유 문서 내용(저장 전 포함)으로 실행하고, 결과는 그 사람 화면에만 보인다. 서버·다른 참여자에게 보내지 않는다 |
+| Python | desktop `dependencies` `pyodide` 314.0.7(Python 3.14, 버전 고정). [collab-run.ts](../../desktop/src/collab-run.ts)가 실행마다 숨김 창을 새로 만든다: sandbox, preload 없음, 메모리 전용 세션, `gitviz-run://<id>/`에서 Pyodide 파일만 제공, 그 밖의 모든 요청(인터넷 포함) 차단, CSP `script-src 'self' 'wasm-unsafe-eval'`. 묶음을 가상 파일 시스템에 올려 `import`가 동작한다. 표준 라이브러리만(패키지 설치 없음). 20초가 지나거나 중지하면 창을 강제로 닫는다. 이 PC의 파일·네트워크에 닿지 않으므로 실행 전 확인을 두지 않는다 |
+| C/C++·Java | 실행한 사람 PC의 `gcc`/`clang`, `g++`/`clang++`, `javac`+`java`(PATH에서 찾음, MSVC `cl`은 미지원). 공유 텍스트를 `%TEMP%\gitviz-run-*`에 복사해 컴파일(60초)하고, 프로그램은 PowerShell이 만든 Job Object 안에서 실행한다: 프로세스당 메모리 512MB(Java 1GB, `-Xmx256m`), 동시 프로세스 8개(PowerShell·프로그램 포함), 작업 종료 시 모두 종료, 시간 10초(Job 안에서 프로그램이 시작된 뒤부터 잼. PowerShell 시작·첫 Add-Type 컴파일 시간은 빼고, 이를 포함한 바깥 안전 제한은 70초). 출력은 stdout·stderr 각 200KB까지. 자식 환경 변수는 PATH·SystemRoot·JAVA_HOME 등 허용 목록만. 끝나면 임시 폴더를 지운다 |
+| 실행 전 확인 | 내가 마지막으로 C/C++·Java를 실행한 뒤(처음이면 공유받은 뒤) 다른 참여자의 변경이 들어온 파일을 줄 단위(추가 `+`·삭제 `-`)로 보여 주고 "확인하고 실행"을 받는다. Python 실행은 확인 기준을 바꾸지 않는다 |
+| 참조 추적 | Python `import a.b`/`from .x import y`(부모 패키지 `__init__.py` 포함), C/C++ `#include "x.h"`와 같은 이름의 `.c`/`.cpp`, Java `import a.b.C`(패키지 선언으로 소스 루트 계산)와 같은 폴더의 클래스 이름. 이 추정 참조는 파일이 있을 때만 묶음에 들어가고, 없으면 조용히 무시한다(표준 라이브러리 등) |
+| 새 파일 | 호스트가 "새 파일"로 공유 범위 안의 경로를 입력하거나, 편집 중 없는 파일을 가리키는 참조(HTML·CSS·JS·C 헤더)를 "없는 파일을 참조함" 목록에서 "만들기"로 추가한다. 디스크에는 **저장할 때** 만든다(필요한 폴더 포함). 숨김·`node_modules`·장치 이름·지원하지 않는 형식·SVG·이미 있는 파일은 거부하고, 경로 중간에 링크·junction이 있으면 거부한다. 저장 전에 같은 경로에 다른 파일이 생겼으면 덮어쓰기 확인을 받는다. 줄바꿈은 시작 파일을 따른다 |
+| IPC | `desktop:collab-bundle-create`, `desktop:collab-run-runtimes`, `desktop:collab-run`, `desktop:collab-run-stop`(커뮤니티 페이지에서만). 오류 코드 `EXISTS`, `BUSY`, `STOPPED`, `NO_COMPILER`, `SANDBOX_UNAVAILABLE`, `RUN_UNAVAILABLE` |
+
+한계:
+- C/C++·Java 실행은 **자원 제한이지 샌드박스가 아니다.** 프로그램은 네트워크와 실행한 사람의 파일에 접근할 수 있다. 그래서 남이 바꾼 내용은 실행 전에 보여 준다. AppContainer 격리는 후속 검토로 남긴다.
+- Job Object는 PowerShell `Add-Type`으로 만든다. PowerShell이 제한 언어 모드(회사 정책 등)이면 실행하지 않고 `SANDBOX_UNAVAILABLE`을 보여 준다. 첫 실행은 C# 컴파일로 1~2초 더 걸린다.
+- 실행 입력은 실행 전에 한 번에 주는 stdin뿐이다(대화형 입력 없음). 출력은 실행이 끝난 뒤 한꺼번에 보인다.
+- Python은 표준 라이브러리만 쓸 수 있다(numpy 등 패키지 설치 없음). Pyodide 때문에 설치본이 약 14MB 커진다.
+- 시험: 앱 e2e `collab-run`(Pyodide 지역 모듈·stdin·traceback·종료 코드·네트워크·파일 차단·시간 제한·중지, C 다중 파일·컴파일 오류·시간·메모리·프로세스 수·출력 상한, C++, Java 패키지·컴파일 오류), `phase3-flows`(새 파일 2가지 경로·저장, 손님의 Python 실행, C 실행 전 확인·변경 표시), 단위 `collab-bundle`(코드 참조, 새 파일 경계·저장). 실제 두 PC에서의 사용과 설치본은 시험하지 않았다.

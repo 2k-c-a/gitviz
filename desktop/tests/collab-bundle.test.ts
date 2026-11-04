@@ -210,3 +210,95 @@ test('preview: only its own files, data/blob and public https/wss when allowed; 
   assert.equal(validPath('css/a.css'), true);
   for (const bad of ['/a.css', '../a.css', 'a/../b', 'a\\b', 'C:x', '', 'a//b']) assert.equal(validPath(bad), false, bad);
 });
+
+test('code references: Python imports, C headers with their sources and Java packages join the set only when the files exist', async () => {
+  const py = await analyze('py', '# import commented\nimport os, helper as h\nfrom pkg.tool import twice\nfrom . import sibling\nfrom ..up import x\ns = """\nimport fake\n"""\n');
+  const specs = py.optional.map(item => item.spec);
+  for (const expected of ['./helper.py', '/helper.py', './os.py', './pkg/tool.py', './pkg/tool/twice.py', './sibling.py', '../up.py']) assert.ok(specs.includes(expected), expected);
+  assert.ok(!specs.some(spec => spec.includes('commented') || spec.includes('fake')));
+  const c = await analyze('c', '// #include "skip.h"\n#include <stdio.h>\n#include "lib/util.h"\n');
+  assert.deepEqual(c.local.map(item => item.spec), ['lib/util.h']);
+  assert.deepEqual(c.optional.map(item => item.spec), ['lib/util.c', 'lib/util.cpp', 'lib/util.cc', 'lib/util.cxx']);
+  const java = await analyze('java', 'package app.core;\nimport java.util.List;\nimport util.Text;\nimport static util.Calc.add;\nimport other.*;\nclass Main { Helper h; String s = "Fake"; }\n');
+  const javaSpecs = java.optional.map(item => item.spec);
+  for (const expected of ['./../../util/Text.java', './../../util/Calc.java', './Helper.java', './Main.java']) assert.ok(javaSpecs.includes(expected), expected);
+  assert.ok(!javaSpecs.some(spec => spec.includes('Fake') || spec.includes('java/util') || spec.includes('other')));
+
+  const dir = await site({
+    'main.py': 'import os\nimport helper\nfrom pkg.tool import twice\n', 'helper.py': 'X = 1\n', 'pkg/__init__.py': '', 'pkg/tool.py': 'from . import inner\n', 'pkg/inner.py': '',
+    'c/main.c': '#include "util.h"\nint main(void){return 0;}\n', 'c/util.h': 'int f(void);\n', 'c/util.c': 'int f(void){return 1;}\n',
+    'src/app/Main.java': 'package app;\nimport util.Text;\nclass Main { Helper h; }\n', 'src/app/Helper.java': 'package app;\nclass Helper {}\n', 'src/util/Text.java': 'package util;\npublic class Text {}\n',
+  });
+  try {
+    const python = await bundles(join(dir, 'main.py')).open();
+    assert.ok('bundle' in python);
+    assert.deepEqual(paths(python), ['helper.py', 'main.py', 'pkg/__init__.py', 'pkg/inner.py', 'pkg/tool.py']);
+    assert.deepEqual(python.excluded, [], 'standard library imports are not reported as missing');
+    const cSet = await bundles(join(dir, 'c', 'main.c')).open();
+    assert.ok('bundle' in cSet);
+    assert.deepEqual(paths(cSet), ['main.c', 'util.c', 'util.h']);
+    const javaSet = bundles(join(dir, 'src', 'app', 'Main.java'));
+    const narrow = await javaSet.open();
+    assert.ok('bundle' in narrow);
+    assert.deepEqual(paths(narrow), ['Helper.java', 'Main.java']);
+    const wide = await javaSet.widen({ bundle: narrow.bundle });
+    assert.deepEqual(paths(wide), ['app/Helper.java', 'app/Main.java', 'util/Text.java']);
+    // A new import of a module file waits for approval like any new reference; module guesses never count as missing.
+    const set = bundles(join(dir, 'main.py'));
+    const view = await set.open();
+    assert.ok('bundle' in view);
+    await writeFile(join(dir, 'extra.py'), '');
+    const scan = await set.scan({ bundle: view.bundle, files: { 'main.py': 'import helper\nimport extra\nimport nothing_here\n' } });
+    assert.deepEqual(scan.pending, ['extra.py']);
+    assert.deepEqual(scan.missing, []);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('new files: added by name inside the root, listed when referenced but missing, and created on disk only on save', async () => {
+  const dir = await site({ 'site/index.html': '<p>hi</p>\r\n', 'site/taken.js': 'x', 'outside.js': 'y' });
+  try {
+    let confirm = false;
+    const set = bundles(join(dir, 'site', 'index.html'), async () => confirm);
+    const view = await set.open();
+    assert.ok('bundle' in view);
+    const scan = await set.scan({ bundle: view.bundle, files: { 'index.html': '<script src="js/app.js"></script><script src="taken.js"></script><link href="x.unknown" rel="stylesheet">' } });
+    assert.deepEqual(scan.missing, ['js/app.js']);
+    assert.deepEqual(scan.pending, ['taken.js']);
+    for (const bad of ['../outside2.js', '.env', 'node_modules/a.js', 'a/con.js', 'x.exe', 'pic.svg', '', 'a/']) await assert.rejects(set.create({ bundle: view.bundle, path: bad }), /NOT_ALLOWED/, bad);
+    await assert.rejects(set.create({ bundle: view.bundle, path: 'taken.js' }), /EXISTS/);
+    await assert.rejects(set.create({ bundle: view.bundle, path: 'index.html' }), /EXISTS/);
+    await assert.rejects(set.create({ bundle: view.bundle, path: 'a.js', extra: 1 }), /INVALID_REQUEST/);
+    const created = await set.create({ bundle: view.bundle, path: 'js/app.js' });
+    assert.deepEqual(created.files.find(file => file.path === 'js/app.js'), { path: 'js/app.js', kind: 'text', size: 0, language: 'javascript', text: '' });
+    await set.create({ bundle: view.bundle, path: 'notes/a/b.txt' });
+    await assert.rejects(set.create({ bundle: view.bundle, path: 'js/app.js' }), /EXISTS/);
+    await assert.rejects(readFile(join(dir, 'site', 'js', 'app.js')), /ENOENT/, 'nothing on disk before saving');
+    // Someone else made the file in the meantime: like an edited file, the host decides.
+    await mkdir(join(dir, 'site', 'notes', 'a'), { recursive: true });
+    await writeFile(join(dir, 'site', 'notes', 'a', 'b.txt'), 'theirs');
+    const saved = await set.save({ bundle: view.bundle, files: [{ path: 'js/app.js', text: 'a\nb\n' }, { path: 'notes/a/b.txt', text: 'mine' }] });
+    assert.deepEqual(saved.results, [{ path: 'js/app.js', saved: true }, { path: 'notes/a/b.txt', saved: false, error: 'FILE_CHANGED' }]);
+    assert.equal(await readFile(join(dir, 'site', 'js', 'app.js'), 'utf8'), 'a\r\nb\r\n', 'the start file line endings');
+    assert.equal(await readFile(join(dir, 'site', 'notes', 'a', 'b.txt'), 'utf8'), 'theirs');
+    confirm = true;
+    const again = await set.save({ bundle: view.bundle, files: [{ path: 'js/app.js', text: 'c' }, { path: 'notes/a/b.txt', text: 'mine' }] });
+    assert.ok(again.results.every(item => item.saved));
+    assert.equal(await readFile(join(dir, 'site', 'notes', 'a', 'b.txt'), 'utf8'), 'mine');
+    // After the first save it is an ordinary file: an outside change is detected by content.
+    confirm = false;
+    await writeFile(join(dir, 'site', 'js', 'app.js'), 'changed');
+    assert.deepEqual((await set.save({ bundle: view.bundle, files: [{ path: 'js/app.js', text: 'd' }] })).results, [{ path: 'js/app.js', saved: false, error: 'FILE_CHANGED' }]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('a new file under a junction that leaves the root is refused', async () => {
+  const dir = await site({ 'site/index.html': '<p>hi</p>', 'elsewhere/keep.txt': 'x' });
+  try {
+    await symlink(join(dir, 'elsewhere'), join(dir, 'site', 'linked'), 'junction');
+    const set = bundles(join(dir, 'site', 'index.html'));
+    const view = await set.open();
+    assert.ok('bundle' in view);
+    await assert.rejects(set.create({ bundle: view.bundle, path: 'linked/new.txt' }), /NOT_ALLOWED/);
+    await assert.rejects(set.create({ bundle: view.bundle, path: 'linked/deeper/new.txt' }), /NOT_ALLOWED/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

@@ -2,11 +2,13 @@
 // Each file yields the specifiers it loads (local, external, unresolved) and "candidates" the host may add by hand
 // (page links and fetch() string literals), with 1-based line numbers for display.
 
-export type RefKind = 'html' | 'css' | 'js' | 'svg';
+export type RefKind = 'html' | 'css' | 'js' | 'svg' | 'py' | 'c' | 'java';
 export interface Ref { spec: string; line: number }
-export interface Analysis { local: Ref[]; external: string[]; unresolved: Ref[]; candidates: Ref[] }
+/** local: must exist (reported when missing). optional: code-module guesses (Python/C/Java) joined only when the file exists, silently otherwise. */
+export interface Analysis { local: Ref[]; external: string[]; unresolved: Ref[]; candidates: Ref[]; optional: Ref[] }
 
-const EXTENSION_KINDS: Record<string, RefKind> = { '.html': 'html', '.htm': 'html', '.css': 'css', '.js': 'js', '.mjs': 'js', '.cjs': 'js', '.svg': 'svg' };
+const EXTENSION_KINDS: Record<string, RefKind> = { '.html': 'html', '.htm': 'html', '.css': 'css', '.js': 'js', '.mjs': 'js', '.cjs': 'js', '.svg': 'svg',
+  '.py': 'py', '.c': 'c', '.h': 'c', '.cpp': 'c', '.cc': 'c', '.cxx': 'c', '.hpp': 'c', '.hh': 'c', '.hxx': 'c', '.java': 'java' };
 export function refKind(path: string): RefKind | null {
   const dot = path.lastIndexOf('.');
   return dot < 0 ? null : EXTENSION_KINDS[path.slice(dot).toLowerCase()] ?? null;
@@ -34,7 +36,7 @@ export function classify(raw: string, bareIsPackage = false): SpecClass {
 const lineAt = (text: string, index: number) => { let line = 1; for (let i = 0; i < index && i < text.length; i++) if (text.charCodeAt(i) === 10) line++; return line; };
 
 class Collector {
-  readonly result: Analysis = { local: [], external: [], unresolved: [], candidates: [] };
+  readonly result: Analysis = { local: [], external: [], unresolved: [], candidates: [], optional: [] };
   private readonly hosts = new Set<string>();
   add(spec: string, line: number, bareIsPackage = false): void {
     const value = classify(spec, bareIsPackage);
@@ -47,6 +49,7 @@ class Collector {
     if (value.type === 'local') this.result.candidates.push({ spec: value.path, line });
     else if (value.type === 'external' && !this.hosts.has(value.host)) { this.hosts.add(value.host); this.result.external.push(value.host); }
   }
+  optional(path: string, line: number): void { if (!this.result.optional.some(item => item.spec === path)) this.result.optional.push({ spec: path, line }); }
   unresolved(text: string, line: number): void { this.result.unresolved.push({ spec: text.replace(/\s+/g, ' ').trim().slice(0, 200), line }); }
 }
 
@@ -159,12 +162,88 @@ function svg(text: string, out: Collector): void {
 }
 
 /** Analyzes one file's text. Errors in one file never stop the rest of the set. */
+// ── Code (AD-34 phase 2·3): module guesses resolved against the file set's folders ─────────────
+/** Comments blanked (same length) so `import` inside them is not read. Keeps quotes for #include "x". */
+function blankComments(text: string, hash: boolean): string {
+  return text.replace(hash ? /#[^\n]*/g : /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, match => match.replace(/[^\n]/g, ' '));
+}
+
+function python(text: string, out: Collector): void {
+  const code = blankComments(text, true).replace(/("""|''')[\s\S]*?\1/g, match => match.replace(/[^\n]/g, ' '));
+  // a.b.c → a/b/c.py or a/b/c/__init__.py, plus the parent packages' a/__init__.py and a/b/__init__.py that the import runs first.
+  const modulePaths = (dotted: string) => {
+    const parts = dotted.split('.');
+    const base = parts.join('/');
+    return [`${base}.py`, `${base}/__init__.py`, ...parts.slice(0, -1).map((_, i) => `${parts.slice(0, i + 1).join('/')}/__init__.py`)];
+  };
+  for (const match of code.matchAll(/^[ \t]*import[ \t]+([^\n;]+)/gm)) {
+    const line = lineAt(text, match.index);
+    for (const part of match[1].split(',')) {
+      const name = part.trim().split(/\s+as\s+/)[0].trim();
+      if (!/^[A-Za-z_][\w.]*$/.test(name)) continue;
+      for (const path of modulePaths(name)) { out.optional(`./${path}`, line); out.optional(`/${path}`, line); }
+    }
+  }
+  for (const match of code.matchAll(/^[ \t]*from[ \t]+(\.*)([A-Za-z_][\w.]*)?[ \t]+import[ \t]+\(?([^\n;)]+)/gm)) {
+    const line = lineAt(text, match.index);
+    const dots = match[1].length, name = match[2] ?? '';
+    const bases = dots ? [dots > 1 ? '../'.repeat(dots - 1) : './'] : ['./', '/'];
+    for (const base of bases) {
+      if (name) for (const path of modulePaths(name)) out.optional(`${base}${path}`, line);
+      // from pkg import module: each imported name may itself be a module file
+      for (const part of match[3].split(',')) {
+        const item = part.trim().split(/\s+as\s+/)[0].trim();
+        if (!/^[A-Za-z_]\w*$/.test(item)) continue;
+        for (const path of modulePaths(name ? `${name}.${item}` : item)) out.optional(`${base}${path}`, line);
+      }
+    }
+  }
+}
+
+const C_SOURCES = ['.c', '.cpp', '.cc', '.cxx'];
+function cFamily(text: string, out: Collector): void {
+  const code = blankComments(text, false);
+  for (const match of code.matchAll(/^[ \t]*#[ \t]*include[ \t]*"([^"\n]+)"/gm)) {
+    const line = lineAt(text, match.index);
+    out.add(match[1], line);
+    // The header's own source file (x.h → x.c / x.cpp) is usually needed to link.
+    const header = /^(.*)\.(?:h|hh|hpp|hxx)$/i.exec(match[1]);
+    if (header) for (const extension of C_SOURCES) out.optional(`${header[1]}${extension}`, line);
+  }
+}
+
+function java(text: string, out: Collector): void {
+  const code = blankComments(text, false).replace(/"(?:\\.|[^"\\\n])*"/g, match => match.replace(/./g, ' '));
+  const declared = /^[ \t]*package[ \t]+([\w.]+)[ \t]*;/m.exec(code)?.[1] ?? '';
+  // The source root is this file's folder minus its package folders.
+  const toRoot = declared ? '../'.repeat(declared.split('.').length) : '';
+  for (const match of code.matchAll(/^[ \t]*import[ \t]+(?:static[ \t]+)?([\w.]+?)(\.\*)?[ \t]*;/gm)) {
+    if (match[2] || /^(?:java|javax|jdk|sun|com\.sun)\./.test(match[1])) continue;
+    let parts = match[1].split('.');
+    // import static a.b.C.member: the class is the last capitalized part
+    const classAt = parts.findIndex(part => /^[A-Z]/.test(part));
+    if (classAt >= 0) parts = parts.slice(0, classAt + 1);
+    out.optional(`./${toRoot}${parts.join('/')}.java`, lineAt(text, match.index));
+  }
+  // Classes of the same package need no import: any capitalized name used may be a file next to this one.
+  const seen = new Set<string>();
+  for (const match of code.matchAll(/\b([A-Z][A-Za-z0-9_]*)\b/g)) {
+    if (seen.size >= 200) break;
+    if (seen.has(match[1])) continue;
+    seen.add(match[1]);
+    out.optional(`./${match[1]}.java`, lineAt(text, match.index));
+  }
+}
+
 export async function analyze(kind: RefKind, text: string): Promise<Analysis> {
   const out = new Collector();
   try {
     if (kind === 'html') await html(text, out);
     else if (kind === 'css') css(text, out);
     else if (kind === 'js') await js(text, out);
+    else if (kind === 'py') python(text, out);
+    else if (kind === 'c') cFamily(text, out);
+    else if (kind === 'java') java(text, out);
     else svg(text, out);
   } catch { /* An unparsable file contributes what was collected so far. */ }
   return out.result;

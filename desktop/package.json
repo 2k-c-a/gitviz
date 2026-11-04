@@ -1,6 +1,6 @@
 {
   "name": "gitviz-workspace",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "GitViz Windows workspace foundation",
   "author": "GitViz",
@@ -27,6 +27,7 @@
     "ajv": "8.20.0",
     "es-module-lexer": "3.0.4",
     "parse5": "8.0.1",
+    "pyodide": "314.0.7",
     "typescript": "6.0.3"
   },
   "devDependencies": {
