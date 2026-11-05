@@ -203,6 +203,15 @@ class LocalGit:
                     'newMode': '100644', 'oldOid': '', 'newOid': ''} for item in state['untracked']]
         return sorted(result, key=lambda item: (item['facet'], item['path']))
 
+    def ignored(self, grant: dict[str, str], directory: str) -> set[str]:
+        """Ignored paths under one directory for the file picker. Wholly ignored folders collapse to one entry."""
+        spec = ':(top,literal)' + directory + '/' if directory else ':(top)'
+        raw = self._run(grant, ['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory', '--', spec])
+        try:
+            return {item.rstrip('/') for item in raw.decode('utf-8', 'strict').split('\0') if item}
+        except UnicodeError:
+            raise ScopeError('UNSUPPORTED_FILENAME') from None
+
     def blob(self, grant: dict[str, str], oid: str, object_format: str) -> bytes | None:
         if not oid or set(oid) == {'0'}:
             return None

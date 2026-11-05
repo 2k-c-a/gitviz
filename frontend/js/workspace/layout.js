@@ -7,7 +7,7 @@ import { isSettingsEntry, readWorkspaceEntry } from '/web/js/platform/workspace-
 const $ = id => document.getElementById(id);
 const main = document.querySelector('main');
 const picker = $('project-picker');
-const TABS = [['overview', '개요'], ['changes', '변경'], ['ai', 'AI 점검'], ['proposals', '개선 제안'], ['tests', '테스트·린트'], ['compare', '전후 비교'], ['impact', '영향 범위']];
+const TABS = [['overview', '개요'], ['changes', '파일'], ['ai', 'AI 점검'], ['proposals', '개선 제안'], ['tests', '테스트·린트'], ['compare', '전후 비교'], ['impact', '영향 범위']];
 const TAB_IDS = TABS.map(([id]) => id);
 const VIEW_TITLE = { start: '시작하기', projects: '프로젝트', inbox: '알림', account: '계정·연결', settings: '설정' };
 const ui = { view: 'projects', tab: 'overview', auto: true, projectId: '', listed: false };
@@ -81,8 +81,8 @@ function todo() {
   else if (!git) item = ['Git 상태를 읽는 중입니다.', '잠시 기다려 주세요.', null];
   else if (data.review === 'result') item = ['AI 점검 결과가 있습니다.', '지적을 확인하고 맞는지 직접 판정하세요.', '결과 보기', () => { setStep(4); show('project', 'ai', { focus: true }); }];
   else if (data.current) item = ['점검 대상이 준비됐습니다.', 'AI 점검을 시작하거나 테스트·린트를 실행해 보세요.', 'AI 점검 시작', () => show('project', 'ai', { focus: true })];
-  else if (changes) item = [`변경 ${changes}개가 있습니다.`, '점검할 파일을 고르세요.', '변경 보기', () => show('project', 'changes', { focus: true })];
-  else item = ['변경이 없습니다.', '파일을 수정한 뒤 새로고침하세요.', '새로고침', () => picker.dispatchEvent(new Event('change'))];
+  else if (changes) item = [`변경 ${changes}개가 있습니다.`, '점검할 파일을 고르세요.', '파일 보기', () => show('project', 'changes', { focus: true })];
+  else item = ['변경이 없습니다.', '변경이 없어도 파일 탭에서 파일을 골라 AI 리뷰·리팩토링을 할 수 있습니다.', '파일 고르기', () => show('project', 'changes', { focus: true })];
   $('ws-todo-title').textContent = item[0]; $('ws-todo-text').textContent = item[1];
   const action = $('ws-todo-action'); action.hidden = !item[2]; action.textContent = item[2] ? `${item[2]} →` : '';
   action.onclick = item[3];
@@ -94,7 +94,7 @@ function syncState() {
   proposals.dataset.alert = data.recovery ? 'true' : 'false'; proposals.textContent = data.recovery ? '개선 제안 ⚠' : '개선 제안';
   $('ws-proposal-empty').hidden = !!$('proposal-view').childElementCount || data.recovery > 0;
   const snapshot = data.current;
-  $('ws-ai-target').textContent = snapshot ? `담은 변경: 파일 ${snapshot.coverage.selected}개 선택 · ${snapshot.coverage.read}개 읽음 · ${snapshot.coverage.excluded}개 제외 (${snapshot.capturedAt})` : '담은 변경이 없습니다. 변경 탭에서 먼저 담으세요.';
+  $('ws-ai-target').textContent = snapshot ? `담은 파일: ${snapshot.coverage.selected}개 선택 · ${snapshot.coverage.read}개 읽음 · ${snapshot.coverage.excluded}개 제외 (${snapshot.capturedAt})` : '담은 파일이 없습니다. 파일 탭에서 먼저 담으세요.';
   $('ws-ai-next-1').disabled = !snapshot;
   chips(); todo(); stepper();
 }

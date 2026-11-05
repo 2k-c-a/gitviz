@@ -5,17 +5,28 @@ const message = document.getElementById('capture-message');
 const result = document.getElementById('capture-result');
 const preview = document.getElementById('fixed-preview');
 const detected = document.getElementById('detected-tools');
+const tree = document.getElementById('file-tree');
 let generation = 0;
 let snapshot = null;
 let pendingCapture = null;
 const planKeys = new Map();
+/** path -> facets ('staged' | 'unstaged' | 'untracked') from the latest Git status; directories get 'changed'. */
+let changed = new Map();
 
-function node(tag, text) { const element = document.createElement(tag); if (text !== undefined) element.textContent = text; return element; }
-function fail(error) { const code = String(error?.message || error).replace(/^.*Error invoking remote method.*Error: /, ''); message.textContent = code === 'CHANGESET_TOO_LARGE' ? '변경 파일 또는 저장소 항목이 너무 많아 조회할 수 없습니다. 커밋·stash로 변경 수를 줄이거나 더 작은 저장소 범위를 선택해 주세요.' : code; }
+const MESSAGES = {
+  CHANGESET_TOO_LARGE: '변경 파일 또는 저장소 항목이 너무 많아 조회할 수 없습니다. 커밋·stash로 변경 수를 줄이거나 더 작은 저장소 범위를 선택해 주세요.',
+  INPUT_TOO_LARGE: '담을 내용이 너무 큽니다(한 번에 약 1MB, 파일 하나 200KB까지). 파일 수를 줄여 다시 담으세요.',
+  CAPTURE_CHANGED: '담는 동안 파일이 바뀌었습니다. 새로고침한 뒤 다시 시도하세요.',
+  RESOURCE_NOT_FOUND: '파일이나 폴더를 찾을 수 없습니다. 새로고침하세요.',
+  CONFLICT: '병합 충돌이 남아 있어 담을 수 없습니다. 충돌을 먼저 해결하세요.',
+  EDITOR_UNAVAILABLE_OR_STALE: '에디터를 열지 못했습니다. 설정에서 에디터 실행 파일을 지정했는지 확인하세요.',
+};
+function node(tag, text, className) { const element = document.createElement(tag); if (text !== undefined) element.textContent = text; if (className) element.className = className; return element; }
+function fail(error) { const code = String(error?.message || error).replace(/^.*Error invoking remote method.*Error: /, ''); message.textContent = MESSAGES[code] ?? code; }
 function clear() {
   window.dispatchEvent(new CustomEvent('workspace-snapshot-changed', { detail: null }));
-  generation++; snapshot = null; pendingCapture = null; planKeys.clear();
-  for (const target of [list, result, preview, detected]) target.replaceChildren();
+  generation++; snapshot = null; pendingCapture = null; planKeys.clear(); changed = new Map();
+  for (const target of [list, result, preview, detected, tree]) target.replaceChildren();
   message.textContent = '';
 }
 async function load() {
@@ -29,9 +40,73 @@ async function load() {
       checkbox.dataset.facet = facet; checkbox.dataset.path = file.path;
       row.append(checkbox, document.createTextNode(`${facet} · ${file.path}`));
       list.append(row, node('br'));
+      changed.set(file.path, [...(changed.get(file.path) ?? []), facet]);
+      for (let index = file.path.lastIndexOf('/'); index > 0; index = file.path.lastIndexOf('/', index - 1)) changed.set(file.path.slice(0, index), ['changed']);
     }
-    if (!list.childNodes.length) list.append(node('p', '담을 변경이 없습니다.'));
+    if (!list.childNodes.length) list.append(node('p', '변경된 파일이 없습니다. 아래 전체 파일에서 점검할 파일을 고르세요.', 'ws-note'));
   } catch (error) { if (turn === generation) fail(error); }
+  if (generation === turn) await expand(tree, '', projectId, turn);
+}
+
+/* ---------- file tree: one directory per request, loaded when a folder is opened ---------- */
+const FACET_LABEL = { staged: 'S', unstaged: 'M', untracked: 'U' };
+function badge(path) {
+  const facets = changed.get(path);
+  if (!facets) return null;
+  const label = facets.includes('changed') ? '•' : facets.map(facet => FACET_LABEL[facet]).join('');
+  const element = node('span', label, 'ws-tree-badge'); element.title = facets.includes('changed') ? '안에 변경된 파일이 있습니다' : facets.join(', ');
+  return element;
+}
+function fileRow(entry, projectId, turn) {
+  const row = node('div', undefined, 'ws-tree-row'); row.setAttribute('role', 'treeitem');
+  const checkbox = node('input'); checkbox.type = 'checkbox'; checkbox.dataset.facet = 'selected'; checkbox.dataset.path = entry.path;
+  checkbox.setAttribute('aria-label', `${entry.path} 선택`);
+  const open = node('button', entry.name, 'ws-tree-file'); open.type = 'button'; open.title = `${entry.path} — 기본 에디터로 열기`;
+  open.addEventListener('click', async () => {
+    try {
+      await api.openEditor({ projectId, path: entry.path, line: 1, column: 1, editorId: document.getElementById('editor-id').value });
+      if (generation === turn) message.textContent = `${entry.path}을(를) 에디터로 열었습니다.`;
+    } catch (error) { if (generation === turn) fail(error); }
+  });
+  row.append(checkbox, open);
+  const mark = badge(entry.path); if (mark) row.append(mark);
+  if (entry.size > 200000) row.append(node('span', '200KB 초과 · 점검 제외', 'ws-note'));
+  return row;
+}
+function folderRow(entry, projectId, turn) {
+  if (entry.kind !== 'directory') {
+    const row = node('div', undefined, 'ws-tree-row'); row.setAttribute('role', 'treeitem');
+    row.append(node('span', entry.name), node('span', entry.kind === 'repository' ? '하위 저장소 · 열지 않음' : '링크 · 지원 안 함', 'ws-note'));
+    return row;
+  }
+  const folder = node('details', undefined, 'ws-tree-folder'); folder.setAttribute('role', 'treeitem');
+  const summary = node('summary', entry.name); const mark = badge(entry.path); if (mark) summary.append(mark);
+  const children = node('div', undefined, 'ws-tree-children'); children.setAttribute('role', 'group');
+  folder.append(summary, children);
+  folder.addEventListener('toggle', () => {
+    folder.setAttribute('aria-expanded', String(folder.open));
+    if (folder.open && !folder.dataset.loaded) { folder.dataset.loaded = 'true'; void expand(children, entry.path, projectId, turn); }
+  });
+  folder.setAttribute('aria-expanded', 'false');
+  return folder;
+}
+async function expand(target, directory, projectId, turn) {
+  target.replaceChildren(node('p', '불러오는 중…', 'ws-note'));
+  try {
+    const value = await api.getFileTree({ projectId, directory });
+    if (generation !== turn || picker.value !== projectId) return;
+    target.replaceChildren(...value.entries.map(entry => entry.kind === 'file' ? fileRow(entry, projectId, turn) : folderRow(entry, projectId, turn)));
+    const notes = [];
+    if (!value.entries.length) notes.push('표시할 파일이 없습니다.');
+    if (value.truncated) notes.push(`처음 ${value.entries.length}개만 표시합니다.`);
+    if (value.ignoredCount) notes.push(`Git이 무시하는 항목 ${value.ignoredCount}개는 숨겼습니다.`);
+    if (value.skippedCount) notes.push(`이름 때문에 다룰 수 없는 항목 ${value.skippedCount}개는 숨겼습니다.`);
+    if (notes.length) target.append(node('p', notes.join(' '), 'ws-note'));
+  } catch (error) {
+    if (generation !== turn) return;
+    const code = String(error?.message || error).replace(/^.*Error invoking remote method.*Error: /, '');
+    target.replaceChildren(node('p', `폴더를 읽지 못했습니다: ${MESSAGES[code] ?? code}`, 'ws-note'));
+  }
 }
 function showSnapshot(value, turn) {
   snapshot = value;
@@ -73,9 +148,12 @@ const actions = ['capture-changes', 'quick-review', 'quick-refactor'].map(id => 
 async function capture() {
   const projectId = picker.value; if (!projectId) return null;
   const turn = generation;
-  const checked = [...list.querySelectorAll('input:checked')];
-  if (!checked.length) { message.textContent = '점검할 파일을 하나 이상 고르세요.'; return null; }
-  const items = checked.map(input => ({ facet: input.dataset.facet, path: input.dataset.path }));
+  const fromChanges = [...list.querySelectorAll('input:checked')].map(input => ({ facet: input.dataset.facet, path: input.dataset.path }));
+  // A path picked in both places is sent once, as its change (the diff), not as the whole file.
+  const changedPaths = new Set(fromChanges.map(item => item.path));
+  const fromTree = [...tree.querySelectorAll('input:checked')].map(input => ({ facet: 'selected', path: input.dataset.path }));
+  const items = [...fromChanges, ...fromTree.filter(item => !changedPaths.has(item.path))];
+  if (!items.length) { message.textContent = '점검할 파일을 하나 이상 고르세요.'; return null; }
   const body = { projectId, items, includeUntracked: document.getElementById('include-untracked').checked };
   const encoded = JSON.stringify(body);
   if (!pendingCapture || pendingCapture.body !== encoded) pendingCapture = { body: encoded, key: crypto.randomUUID() };

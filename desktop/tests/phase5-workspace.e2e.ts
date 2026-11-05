@@ -99,7 +99,7 @@ void app.whenReady().then(async () => {
     await wait(`${visible('[data-view="project"]')} && document.getElementById('ws-chip-changes').textContent.startsWith('변경')`);
     await check('registering opens the project overview', `${visible('[data-tab-panel="overview"]')} && document.getElementById('ws-tab-overview').getAttribute('aria-selected')==='true'`);
     await check('branch and change chips come from the real Git status', `document.getElementById('ws-chip-branch').textContent==='main' && document.getElementById('ws-chip-changes').textContent==='변경 4'`);
-    await check('todo points at the changes tab', `document.getElementById('ws-todo-title').textContent.includes('변경 4개') && document.getElementById('ws-todo-action').textContent.startsWith('변경 보기')`);
+    await check('todo points at the changes tab', `document.getElementById('ws-todo-title').textContent.includes('변경 4개') && document.getElementById('ws-todo-action').textContent.startsWith('파일 보기')`);
     await check('window title carries project and branch', `document.title.includes('sample project') && document.title.includes('main')`);
     await capture('02-overview-900.png', 900, 640);
 
@@ -113,6 +113,11 @@ void app.whenReady().then(async () => {
     await check('arrow keys move between tabs', `document.getElementById('ws-tab-proposals').getAttribute('aria-selected')==='true' && ${visible('#ws-proposal-empty')}`);
     await key3('2');
 
+    phase = 'file-tree';
+    await wait(`document.querySelectorAll('#file-tree .ws-tree-row').length===4`);
+    await check('file tree lists the working tree with change badges', `(()=>{const rows=[...document.querySelectorAll('#file-tree .ws-tree-row')];const text=rows.map(r=>r.textContent).join('|');return text==='app.pyS|package-lock.jsonU|package.jsonU|util.pyM' && rows.every(r=>r.querySelector('input[data-facet="selected"]'))})()`);
+    await check('file names are editor buttons, not paths for the renderer to open', `[...document.querySelectorAll('#file-tree .ws-tree-file')].every(b=>b.tagName==='BUTTON' && !/[A-Za-z]:\\\\/.test(b.title))`);
+
     phase = 'capture';
     await wait(`document.querySelectorAll('#change-selection input').length>=2`);
     await evaluate(`for(const item of document.querySelectorAll('#change-selection input'))item.checked=item.dataset.facet!=='untracked';document.getElementById('capture-changes').click()`);
@@ -123,7 +128,7 @@ void app.whenReady().then(async () => {
 
     phase = 'ai-steps';
     await key3('3');
-    await check('step 1 shows the captured target and enables next', `document.getElementById('ws-ai-target').textContent.includes('담은 변경') && !document.getElementById('ws-ai-next-1').disabled && ${visible('[data-step="1"]')}`);
+    await check('step 1 shows the captured target and enables next', `document.getElementById('ws-ai-target').textContent.includes('담은 파일') && !document.getElementById('ws-ai-next-1').disabled && ${visible('[data-step="1"]')}`);
     await evaluate(`document.getElementById('ws-ai-next-1').click()`);
     await check('step 2 hides API key for the local model and the duplicate-cost consent', `${visible('[data-step="2"]')} && !${visible('#review-api-key')} && !${visible('#review-duplicate-risk')}`);
     await evaluate(`(()=>{const s=document.getElementById('review-profile');s.value='claude-sonnet-5-5-v1';s.dispatchEvent(new Event('change'))})()`);
@@ -148,6 +153,15 @@ void app.whenReady().then(async () => {
     await wait(`document.getElementById('impact-view').childElementCount>0`);
     await check('impact keeps the separate evidence kinds labelled', `!!document.querySelector('#impact-view [data-evidence="history"]')`);
     await capture('05-impact-900.png', 900, 640);
+
+    phase = 'tree-capture';
+    await key3('2');
+    await evaluate(`document.getElementById('capture-message').textContent='';for(const item of document.querySelectorAll('#change-selection input'))item.checked=false;document.querySelector('#file-tree input[data-path="package.json"]').checked=true;document.getElementById('capture-changes').click()`);
+    await wait(`document.getElementById('capture-message').textContent==='선택한 입력을 고정했습니다.'`);
+    await check('an unchanged-or-untracked file picked in the tree is captured whole', `document.getElementById('capture-result').textContent.includes('selected · package.json')`);
+    await evaluate(`document.getElementById('capture-message').textContent='';document.querySelector('#file-tree input[data-path="util.py"]').checked=true;for(const item of document.querySelectorAll('#change-selection input'))item.checked=item.dataset.path==='util.py';document.getElementById('capture-changes').click()`);
+    await wait(`document.getElementById('capture-message').textContent==='선택한 입력을 고정했습니다.' && document.getElementById('capture-result').textContent.includes('util.py')`);
+    await check('a path picked in both lists is sent once, as its change', `(()=>{const t=document.getElementById('capture-result').textContent;return t.includes('unstaged · util.py') && !t.includes('selected · util.py')})()`);
 
     phase = 'views';
     await key3('4');
