@@ -188,7 +188,7 @@ function applyPolicyText() {
   const note = document.getElementById('cx-policy-note');
   if (note) {
     const win = SNAP.window_start
-      ? `관측 기간은 이 결과에 고정된 ${fmtWindow(SNAP)}입니다(종료 시각 제외). 모든 파일에 같은 기간을 적용합니다.`
+      ? `최근 180일: 이 결과에 고정된 ${fmtWindow(SNAP)}입니다(종료 시각 제외). 모든 파일에 같은 기간을 적용합니다.`
       : `이 결과는 구간 제한 없이 전체 이력을 대상으로 계산했습니다(${fmtWindow(SNAP)}).`;
     const lead = `${p.leadText} 색·배지의 0.7은 표시 임계값이며 상위 30%를 뜻하지 않습니다.`;
     const more = [win, p.summaryText, p.thresholdText,
@@ -700,7 +700,7 @@ function renderList() {
   if (document.getElementById('cx-list-page')) document.getElementById('cx-list-page').textContent = `${matched.length}개 · ${listPage + 1} / ${Math.max(1, Math.ceil(matched.length / limit))}페이지`;
   saveFileListContext();
   if (note) {
-    note.textContent = `${metric.label} · ${num(matched.length)}개 중 ${num(sorted.length)}개 표시 · 변경 횟수·수정량·버그 수정 수는 스냅샷 관측 기간 기준`;
+    note.textContent = `${metric.label} · ${num(matched.length)}개 중 ${num(sorted.length)}개 표시 · 변경 횟수·수정량·버그 수정 수는 ${SNAP && SNAP.window_start ? '최근 180일' : '전체 이력'} 기준`;
   }
 
   if (!FILES.length) {
