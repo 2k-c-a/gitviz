@@ -3,14 +3,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
+import stat
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable
 
 from .git_service import LocalGit
-from .scoped_files import ScopeError, discover, verify
+from .scoped_files import ScopeError, discover, identity, pinned_paths, read_scoped, relative_path, verify
+
+TREE_LIMIT = 1000
+LOCATE_LIMIT = 16 * 1024 * 1024
 
 
 class Projects:
@@ -153,3 +158,64 @@ class Projects:
     def status(self, project_id: str, recent_limit: int) -> dict[str, Any]:
         _, grant = self._get(project_id)
         return {"projectId": project_id, **(self.git or LocalGit()).status(grant, recent_limit)}
+
+    def tree(self, project_id: str, directory: str) -> dict[str, Any]:
+        """One working-tree directory for the file picker. Names and sizes only; never reads file contents.
+        Git-ignored entries, `.git` and names the capture scope rejects are counted but not listed."""
+        _, grant = self._get(project_id)
+        if directory:
+            relative_path(directory)
+        entries: list[dict[str, Any]] = []
+        skipped = 0
+        ignored_count = 0
+        with pinned_paths(grant, [directory] if directory else []):
+            root = Path(grant['root'])
+            folder = root.joinpath(*directory.split('/')) if directory else root
+            try:
+                identity(folder)
+                if not stat.S_ISDIR(folder.stat(follow_symlinks=False).st_mode):
+                    raise ScopeError('RESOURCE_NOT_FOUND')
+            except FileNotFoundError:
+                raise ScopeError('RESOURCE_NOT_FOUND') from None
+            ignored = (self.git or LocalGit()).ignored(grant, directory)
+            with os.scandir(folder) as iterator:
+                for entry in iterator:
+                    path = f'{directory}/{entry.name}' if directory else entry.name
+                    try:
+                        path.encode('utf-8')
+                        relative_path(path)
+                    except (ScopeError, UnicodeError):
+                        skipped += 1
+                        continue
+                    if path in ignored:
+                        ignored_count += 1
+                        continue
+                    info = entry.stat(follow_symlinks=False)
+                    if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
+                        kind = 'unsupported'
+                    elif stat.S_ISDIR(info.st_mode):
+                        kind = 'repository' if os.path.lexists(os.path.join(entry.path, '.git')) else 'directory'
+                    elif stat.S_ISREG(info.st_mode):
+                        kind = 'file'
+                    else:
+                        skipped += 1
+                        continue
+                    item: dict[str, Any] = {'name': entry.name, 'path': path, 'kind': kind}
+                    if kind == 'file':
+                        item['size'] = info.st_size
+                    entries.append(item)
+        entries.sort(key=lambda item: (item['kind'] not in ('directory', 'repository'), item['name'].casefold(), item['name']))
+        return {'projectId': project_id, 'directory': directory, 'entries': entries[:TREE_LIMIT],
+                'truncated': len(entries) > TREE_LIMIT, 'ignoredCount': ignored_count, 'skippedCount': skipped}
+
+    def locate(self, project_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Absolute location of one current working-tree file for the external editor (main process only)."""
+        _, grant = self._get(project_id)
+        path = relative_path(payload['path'])
+        with pinned_paths(grant, [path]):
+            raw = read_scoped(grant, path, LOCATE_LIMIT)
+            if raw is None:
+                raise ScopeError('RESOURCE_NOT_FOUND')
+        root = Path(grant['root'])
+        return {'projectId': project_id, 'path': path, 'root': str(root), 'absolutePath': str(root.joinpath(*path.split('/'))),
+                'sourceHash': hashlib.sha256(raw).hexdigest(), 'line': payload['line'], 'column': payload['column']}
