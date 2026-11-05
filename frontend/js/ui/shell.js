@@ -37,11 +37,8 @@ export function mountShell({ local = false, account = null } = {}) {
     const open = !root.classList.contains('nav-open'); setNavOpen(open);
     if (open) { sidebar.inert = false; nav.querySelector('a')?.focus(); }
   });
-  const heading = element('div', 'app-heading');
-  const mode = element('span', 'ui-badge ui-badge-info', local ? '로컬 작업' : '원격 분석');
-  const repo = element('strong', 'app-repository', local ? '프로젝트를 선택하세요' : '저장소를 선택하세요'); repo.id = 'shell-repository';
-  const context = element('span', 'app-context'); context.id = 'shell-context';
-  heading.append(repo, context);
+  // No mode badge or repository caption in the top bar: the sidebar and each page's own header name the context.
+  const spacer = element('span', 'app-toolbar-spacer');
   // One toggle: the icon shows the theme in use (moon = dark, sun = light); until pressed it follows Windows.
   const theme = element('button', 'app-theme'); theme.type = 'button'; theme.id = 'shell-theme';
   theme.dataset.tooltip = '라이트·다크 테마 전환';
@@ -52,7 +49,7 @@ export function mountShell({ local = false, account = null } = {}) {
   showTheme(document.documentElement.dataset.theme);
   theme.addEventListener('click', () => window.dispatchEvent(new CustomEvent('gitviz-theme-select', { detail: theme.dataset.theme === 'dark' ? 'light' : 'dark' })));
   window.addEventListener('gitviz-theme-changed', event => showTheme(event.detail.theme));
-  toolbar.append(menu, mode, heading, theme);
+  toolbar.append(menu, spacer, theme);
   if (account) toolbar.append(account);
   const main = local ? document.querySelector('body > main') : element('main');
   main.id = 'app-main'; main.tabIndex = -1; main.classList.add('app-main');
@@ -113,9 +110,6 @@ export function mountShell({ local = false, account = null } = {}) {
   };
   buildRepositoryLinks();
   if (local) {
-    const picker = document.getElementById('project-picker');
-    const updateProject = () => { repo.textContent = picker?.value ? picker.selectedOptions[0].textContent : '프로젝트를 선택하세요'; };
-    picker?.addEventListener('change', updateProject); updateProject();
     const health = document.getElementById('status');
     if (health) {
       status.textContent = health.textContent;
@@ -126,12 +120,7 @@ export function mountShell({ local = false, account = null } = {}) {
     const state = parseState(location.search);
     if (!local) {
       if (state.repo !== repositoryId) buildRepositoryLinks();
-      const title = document.querySelector('#tl-repo-name, .js-repo-title, #hist-repo-title, #ai-title, #insight-title');
-      const name = title?.dataset.repositoryLabel || title?.textContent?.trim();
-      repo.textContent = state.repo ? (name && name !== '—' && name !== 'AI 리뷰' && name !== 'AI 분석' ? name : `저장소 #${state.repo}`) : '저장소를 선택하세요';
       const banner = document.getElementById('analysis-context');
-      const period = banner?.querySelector('.ctx-item')?.textContent;
-      context.textContent = state.snapshot ? `결과 #${state.snapshot}${period ? ` · ${period}` : ''}` : state.repo ? '저장소 맥락' : '검색 또는 최근 분석에서 선택';
       status.textContent = document.getElementById('load-error') ? '결과 조회 실패 · 본문에서 확인' : banner ? '저장 결과 조회됨 · 수집 범위는 본문 참조' : '원격 분석';
       if (!inApp) settingsLink.href = settingsHref();
       for (const a of repositoryLinks) a.href = pageUrl(a.dataset.shellPage);

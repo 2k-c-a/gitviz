@@ -14,9 +14,7 @@
 .app-nav-link:hover { color: var(--ui-text); background: var(--ui-raised); }
 .app-nav-link[aria-current] { color: var(--ui-accent); background: var(--ui-accent-soft); font-weight: var(--ui-semibold); }
 .app-toolbar { grid-area: 1 / 2 / 2 / -1; min-width: 0; min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 8px 24px; background: color-mix(in srgb, var(--ui-surface) 86%, transparent); backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--ui-border); z-index: 100; }
-.app-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.app-repository { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--ui-text-md); font-weight: var(--ui-semibold); letter-spacing: -0.01em; }
-.app-context { font-size: var(--ui-text-xs); color: var(--ui-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-toolbar-spacer { flex: 1; min-width: 0; }
 .app-menu { display: none; flex: 0 0 36px; padding: 4px; }
 .app-nav-close { display: none; }
 .app-theme { flex: 0 0 36px; display: inline-grid; place-items: center; width: 36px; min-height: 36px; padding: 0; border-radius: 999px; }
@@ -114,7 +112,6 @@
   .app-sidebar { visibility: hidden; }
   .nav-open .app-sidebar { visibility: visible; }
   .app-toolbar { padding: 8px 16px; gap: 8px; min-height: 60px; }
-  .app-toolbar > .ui-badge { display: none; }
   .app-statusbar > span:first-child { display: none; }
   .app-status-text { max-width: 100%; }
   .app-main .body, .workspace-content { padding: 16px; }
@@ -125,7 +122,6 @@
 }
 @media (max-height: 480px) {
   .app-toolbar { min-height: 48px; padding-block: 4px; }
-  .app-context { display: none; }
   .app-statusbar { padding-block: 2px; }
   .app-main .dash-head { padding-block: 8px; }
 }
