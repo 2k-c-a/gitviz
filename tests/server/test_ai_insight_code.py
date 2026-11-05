@@ -174,6 +174,23 @@ class CitationRules(CodeRepo):
         self.assertEqual(S.unverified_mentions(['payment/gateway.py가 원인'], ledger), ['payment/gateway.py'])
 
 
+class EntryPoints(unittest.TestCase):
+    def test_picks_entry_files_nearest_the_root(self):
+        f = ('100644', 10)
+        tree = {'src/cli/main.py': f, 'app/main.py': f, 'main.go': f, 'cmd/server/main.go': f, 'README.md': f}
+        self.assertEqual(S.entry_points(tree), ['main.go', 'app/main.py'])
+        self.assertEqual(S.entry_points(tree, 5), ['main.go', 'app/main.py', 'src/cli/main.py', 'cmd/server/main.go'])
+        self.assertEqual(S.entry_points({'index.js': f, 'main.py': f}), ['main.py', 'index.js'])   # 같은 깊이면 이름 목록 순
+
+    def test_skips_dependency_test_build_and_hidden_folders_and_links(self):
+        f = ('100644', 10)
+        tree = {'node_modules/pkg/index.js': f, 'tests/main.py': f, 'dist/main.js': f, '.github/app.py': f,
+                'link/main.py': ('120000', 10), 'sub/main.go': ('160000', 0), 'a/b/c/d/e/main.py': f,
+                'utils/helpers.py': f}
+        self.assertEqual(S.entry_points(tree), [])
+        self.assertEqual(S.entry_points({**tree, 'a/b/c/d/main.py': f}), ['a/b/c/d/main.py'])   # 폴더 깊이 4까지
+
+
 class Workflows(CodeRepo):
     def setUp(self):
         patch.object(S.InsightRun, 'authorize', lambda self: None).start()
@@ -205,6 +222,10 @@ class Workflows(CodeRepo):
         self.assertEqual(S.code_plan('change_impact', on), [('searchCode', {'query': 'models', 'directory': 'app/core/service.py'})])
         self.assertEqual(S.code_plan('overview', on), [('listDirectory', {}), ('readFile', {'path': 'README.md', 'endLine': 80})])
         self.assertEqual(S.code_plan('maintenance_risk', InsightData(None, snapshot())), [])
+        tree = {**self.reader().tree(), 'app/main.py': ('100644', 10)}
+        with patch.object(CodeReader, 'tree', return_value=tree):
+            self.assertEqual(S.code_plan('overview', on), [('listDirectory', {}), ('readFile', {'path': 'README.md', 'endLine': 80}),
+                                                           ('readFile', {'path': 'app/main.py', 'endLine': 100})])
         provider = FakeProvider()
         run = run_with(provider, on)
         with patch.object(S, 'metric_plan', lambda category, data: [('getFileChangeFrequency', {'limit': 5})]):  # DB 없는 지표 도구

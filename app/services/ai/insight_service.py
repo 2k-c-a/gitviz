@@ -365,6 +365,31 @@ def _stem(path: str) -> str:
     return name.rsplit('.', 1)[0] if '.' in name[1:] else name
 
 
+ENTRY_POINT_NAMES = ('main.py', '__main__.py', 'app.py', 'manage.py', 'main.ts', 'index.ts', 'main.js', 'index.js',
+                     'main.go', 'main.rs', 'lib.rs', 'Program.cs', 'Main.java')
+ENTRY_POINT_SKIP_DIRS = {'node_modules', 'vendor', 'third_party', 'test', 'tests', '__tests__', 'spec', 'specs',
+                         'dist', 'build', 'out', 'examples', 'example', 'docs', 'fixtures', 'migrations'}
+ENTRY_POINT_MAX_DEPTH = 4         # 폴더 깊이(main/java/.../Main.java 같은 경로까지)
+ENTRY_POINT_COUNT = 2
+ENTRY_POINT_LINES = 100
+
+
+def entry_points(tree: dict, count: int = ENTRY_POINT_COUNT) -> list[str]:
+    """main.py 같은 진입점 파일 후보. 루트에 가까운 것, 이름 목록 앞쪽, 경로 순으로 고른다.
+    의존성·테스트·빌드 산출물 폴더와 링크·서브모듈은 뺀다."""
+    found = []
+    for path, (mode, _size) in tree.items():
+        if mode in ('120000', '160000'):
+            continue
+        parts = path.split('/')
+        if parts[-1] not in ENTRY_POINT_NAMES or len(parts) - 1 > ENTRY_POINT_MAX_DEPTH:
+            continue
+        if any(p in ENTRY_POINT_SKIP_DIRS or p.startswith('.') for p in parts[:-1]):
+            continue
+        found.append((len(parts), ENTRY_POINT_NAMES.index(parts[-1]), path))
+    return [path for *_, path in sorted(found)[:count]]
+
+
 def code_plan(category: str, data: InsightData) -> list[tuple[str, dict]]:
     """코드 열람을 켠 실행에서 범주별로 더 읽는 코드. 기준 커밋에 없는 파일은 건너뛴다."""
     if data.code is None:
@@ -375,7 +400,8 @@ def code_plan(category: str, data: InsightData) -> list[tuple[str, dict]]:
         return []
     if category == 'overview':
         readme = next((p for p in ('README.md', 'README.rst', 'README.txt', 'README', 'readme.md') if p in tree), None)
-        return [('listDirectory', {})] + ([('readFile', {'path': readme, 'endLine': 80})] if readme else [])
+        return ([('listDirectory', {})] + ([('readFile', {'path': readme, 'endLine': 80})] if readme else []) +
+                [('readFile', {'path': p, 'endLine': ENTRY_POINT_LINES}) for p in entry_points(tree)])
     if category == 'maintenance_risk':
         files = sorted((f for f in (data.payload.get('risk-scores') or {}).get('files') or []
                         if f.get('maintenance_priority') is not None and f['path'] in tree),
