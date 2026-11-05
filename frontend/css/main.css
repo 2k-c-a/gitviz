@@ -328,6 +328,11 @@
 .dd-sec-title { font-size: 12px; font-weight: 600; color: var(--text2); margin: 16px 0 6px; padding-top: 10px; border-top: 0.5px solid var(--border); }
 .dd-sec-title small { font-weight: 400; color: var(--text3); }
 .dd-score-line { display: flex; align-items: center; gap: 6px; }
+.dd-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.dd-stat { padding: 10px 12px; border: 0.5px solid var(--border); border-radius: 10px; background: var(--ui-raised); }
+.dd-stat-label { font-size: 11px; color: var(--text3); }
+.dd-stat-value { margin-top: 2px; font-size: 20px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.dd-stat-value small { margin-left: 2px; font-size: 12px; font-weight: 400; color: var(--text3); }
 .dd-score { font-size: 24px; font-weight: 700; color: var(--text); line-height: 1.2; }
 .dd-score.na { color: var(--text3); }
 .dd-note { font-size: 11px; color: var(--text3); line-height: 1.6; margin: 6px 0; border-left: 2px solid var(--border2); padding-left: 8px; }
@@ -383,5 +388,76 @@
     vertical-align:middle;
     margin-right:6px;
 }
-
-
+/* ── 협업 네트워크 ── */
+.net-scope-label { font-size: 12px; font-weight: 600; color: var(--text); margin: 0 0 6px; }
+.net-scope-label span { font-weight: 400; color: var(--text2); margin-left: 6px; }
+.net-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.net-field { display: inline-flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text2); }
+.net-field select { font-size: 12px; padding: 4px 6px; border: 1px solid var(--border2); border-radius: var(--radius); background: var(--bg); color: var(--text); }
+.net-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(240px, 1fr); gap: 12px; align-items: stretch; margin-top: 8px; }
+@media (max-width: 900px) { .net-layout { grid-template-columns: 1fr; } }
+.net-graph-wrap { position: relative; display: flex; flex-direction: column; height: clamp(460px, 64vh, 760px); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); overflow: hidden; }
+.net-graph-wrap > .ui-panel-status { position: absolute; inset: 8px auto auto 8px; z-index: 2; }
+.app-main .net-graph-wrap .network-svg, .net-graph-wrap .network-svg { width: 100%; flex: 1 1 auto; min-height: 0; height: auto; display: block; }
+.net-link { stroke: var(--text2); stroke-linecap: round; fill: none; }
+.net-link.net-active { stroke: var(--ui-accent, var(--chart-1)); stroke-opacity: 0.9 !important; }
+.net-link.net-dim { stroke-opacity: 0.08 !important; }
+.net-link-hit { stroke: transparent; stroke-width: 10px; cursor: pointer; }
+.net-arrow-head { fill: var(--text2); }
+.net-node { cursor: pointer; outline: none; }
+.net-hit { fill: transparent; }
+.net-dot { stroke: var(--bg); stroke-width: 1.5px; }
+.net-hub-ring { fill: none; stroke: var(--text); stroke-width: 1.6px; }
+.net-hub-mark { fill: var(--text); stroke: var(--bg); stroke-width: 1px; }
+.net-node.net-unlinked .net-dot { stroke: var(--text2); stroke-dasharray: 2 2; fill-opacity: 0.35; }
+.net-node.net-dim { opacity: 0.18; }
+.net-node.net-selected .net-dot, .net-node:focus-visible .net-dot { stroke: var(--text); stroke-width: 3px; }
+.net-node:focus-visible .net-hit { stroke: var(--ring); stroke-width: 2px; }
+.net-node-label { font-size: 11px; fill: var(--text); stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; paint-order: stroke; pointer-events: none; }
+.net-empty-text { fill: var(--text2); font-size: 13px; }
+.net-dot-sample { fill: var(--chart-1); }
+.net-unlinked-sample { fill: var(--text2); fill-opacity: 0.35; stroke: var(--text2); stroke-dasharray: 2 2; }
+.net-tooltip { position: absolute; z-index: 3; max-width: 280px; padding: 8px 10px; font-size: 12px; line-height: 1.5; background: var(--bg); color: var(--text); border: 1px solid var(--border2); border-radius: var(--radius); box-shadow: 0 4px 14px rgb(0 0 0 / 0.15); pointer-events: none; }
+.net-tip-note { color: var(--text2); margin-top: 2px; }
+.net-legend { flex: none; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--text2); padding: 6px 10px; border-top: 1px solid var(--border); }
+.net-leg { display: inline-flex; align-items: center; gap: 5px; }
+.net-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; flex: none; }
+.net-muted { color: var(--text2); }
+.net-tag { display: inline-block; font-size: 10px; padding: 0 5px; border-radius: 8px; border: 1px solid var(--border2); color: var(--text); }
+.net-tag.muted { color: var(--text2); }
+.net-side { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); padding: 12px; overflow-y: auto; max-height: clamp(460px, 64vh, 760px); font-size: 12px; }
+.net-side-head { margin-bottom: 10px; }
+.net-side-title { font-size: 14px; font-weight: 600; color: var(--text); word-break: break-all; }
+.net-side-sub { color: var(--text2); margin-top: 2px; }
+.net-back { font-size: 11px; color: var(--text2); background: none; border: 0; padding: 0; margin-bottom: 4px; cursor: pointer; }
+.net-back:hover { color: var(--text); }
+.net-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.net-stat { background: var(--ui-raised); border-radius: var(--radius); padding: 6px 8px; display: flex; flex-direction: column; gap: 1px; }
+.net-stat span { font-size: 11px; color: var(--text2); }
+.net-stat b { font-size: 14px; color: var(--text); font-weight: 600; }
+.net-stat small { font-size: 10px; font-weight: 400; color: var(--text2); }
+.net-sec { font-size: 11px; font-weight: 600; color: var(--text2); margin: 12px 0 4px; }
+.net-plain, .net-notes, .net-pr-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.net-notes li { color: var(--text2); }
+.net-pr-list li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.net-pr-no { color: var(--text2); font-variant-numeric: tabular-nums; }
+.net-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.net-chip { font-size: 11px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border2); background: var(--bg); color: var(--text); cursor: pointer; }
+.net-more { margin-top: 12px; width: 100%; }
+.net-isolated { margin-top: 10px; font-size: 12px; }
+.net-isolated summary { cursor: pointer; color: var(--text); font-weight: 600; }
+.net-isolated-rows { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
+.net-isolated-row { display: grid; grid-template-columns: minmax(0, 2fr) 1fr 1fr auto; gap: 8px; text-align: left; font-size: 12px; }
+.net-isolated-row span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.net-find { margin-top: 10px; }
+.net-find input { width: 100%; max-width: 320px; font-size: 12px; padding: 4px 8px; border: 1px solid var(--border2); border-radius: var(--radius); background: var(--bg); color: var(--text); margin-bottom: 6px; }
+.net-bars { display: flex; flex-direction: column; gap: 4px; }
+.net-bar-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto; gap: 10px; align-items: center; background: none; border: 0; padding: 3px 4px; text-align: left; font-size: 12px; color: var(--text); cursor: pointer; border-radius: var(--radius); }
+.net-bar-row:hover, .net-bar-row:focus-visible { background: var(--ui-raised); }
+.net-bar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.net-bar-track { height: 8px; background: var(--ui-raised); border-radius: 4px; overflow: hidden; }
+.net-bar-fill { display: block; height: 100%; background: var(--chart-1); border-radius: 0 4px 4px 0; }
+.net-bar-value { font-variant-numeric: tabular-nums; }
+.net-bar-value small { color: var(--text2); margin-left: 4px; }
+.net-panel:fullscreen { background: var(--bg); padding: 16px; overflow: auto; }
+.net-panel:fullscreen .net-graph-wrap, .net-panel:fullscreen .net-side { height: calc(100vh - 150px); max-height: none; }

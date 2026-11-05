@@ -101,7 +101,18 @@ async function renderContributor(contributorId, generation) {
   titleEl().textContent = name;
   titleEl().title = name;
   subEl().style.fontFamily = '';
-  subEl().textContent = `관측 구간에 기여한 파일 ${num(owned.owned_file_count)}개`;
+  subEl().textContent = '관측 구간 기준';
+
+  // 맨 위 요약: 커밋 수 · 병합 PR 수 · 협업한 사람 수. 값이 없으면(이전 결과의 PR 수 등) 0이 아니라 —.
+  const who = { ...(collab.contributor || {}), ...(owned.contributor || {}) };
+  const collaborators = collab.collaborators || [];
+  const collaboratorCount = who.collaborator_count ?? (collaborators.length < 10 ? collaborators.length : null);
+  const stat = (label, value, unit, title) => `<div class="dd-stat" title="${esc(title)}"><div class="dd-stat-label">${esc(label)}</div><div class="dd-stat-value">${value == null ? DASH : `${num(value)}<small>${unit}</small>`}</div></div>`;
+  const statsHtml = `<div class="dd-stats">
+    ${stat('커밋', who.commit_count, '개', '관측 구간에 이 기여자가 남긴 커밋 수')}
+    ${stat('병합 PR', who.pr_count, '개', who.pr_count == null ? '이 결과에는 PR 수가 없습니다. 다시 분석하면 표시됩니다' : '관측 구간에 병합된, 이 기여자가 작성한 PR 수')}
+    ${stat('협업한 사람', collaboratorCount, '명', '같은 파일을 함께 수정했거나 PR 리뷰로 연결된 기여자 수')}
+  </div>`;
 
   const files = owned.files || [];
   const filesHtml = files.length
@@ -112,7 +123,6 @@ async function renderContributor(contributorId, generation) {
         </div>`).join('')
     : '<div style="padding:12px;text-align:center;color:var(--text3);font-size:12px;">기여 파일 정보 없음</div>';
 
-  const collaborators = collab.collaborators || [];
   const collabHtml = collaborators.length
     ? collaborators.map(c => `
         <div class="c-row" style="cursor:pointer;" data-action="__ddPushContributor" data-args="${encodeURIComponent(JSON.stringify([Number(c.contributor.id)]))}">
@@ -122,10 +132,11 @@ async function renderContributor(contributorId, generation) {
     : '<div style="padding:12px;text-align:center;color:var(--text3);font-size:12px;">협업 데이터 없음 (PR 상세·리뷰 수집 범위가 부족한 경우도 포함)</div>';
 
   bodyEl().innerHTML = `
-    <div style="font-size:12px;font-weight:600;color:var(--text2);margin:14px 0 6px;">기여 파일 (관측 구간 변경 지분순)</div>
-    <div style="display:flex;flex-direction:column;gap:2px;max-height:180px;overflow-y:auto;">${filesHtml}</div>
-    <div style="font-size:12px;font-weight:600;color:var(--text2);margin:16px 0 6px;">협업자 (협업 강도 순)</div>
-    <div style="display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto;">${collabHtml}</div>
+    ${statsHtml}
+    <div class="dd-sec-title">협업 쌍 <small>협업 강도 순</small></div>
+    <div style="display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto;">${collabHtml}</div>
+    <div class="dd-sec-title">지분 높은 파일 <small>관측 구간 변경 지분순 · 기여 파일 ${num(owned.owned_file_count)}개</small></div>
+    <div style="display:flex;flex-direction:column;gap:2px;max-height:220px;overflow-y:auto;">${filesHtml}</div>
   `;
 }
 

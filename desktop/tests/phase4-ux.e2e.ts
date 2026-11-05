@@ -217,12 +217,23 @@ void app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`document.querySelector('[data-view="coupling"]').click()`); await wait(`!!document.querySelector('#cx-cp-body .cx-pair-file')`); await check('D cochange count and directional denominators visible', `document.getElementById('cx-cp-body').textContent.includes('3회') && document.getElementById('cx-cp-body').textContent.includes('(3/4)')`);
 
     stress=true; await load('network'); await wait(`!!document.getElementById('net-limit') && document.getElementById('net-status').textContent==='결과 조회 완료'`);
-    await window.webContents.executeJavaScript(`document.getElementById('net-limit').value='200'`); await clickText('필터 적용'); await wait(`document.querySelectorAll('#net-node-list button').length===200`); await new Promise(resolve=>setTimeout(resolve,800)); await clickText('배치 일시정지');
-    await check('200 graph nodes, 600 edges and top pair', `document.querySelectorAll('#net-graph-svg [role="button"]').length===200 && document.querySelectorAll('#net-graph-svg line').length===600 && document.getElementById('net-top-pairs').textContent.includes('Reviewer')`);
+    await window.webContents.executeJavaScript(`(()=>{const l=document.getElementById('net-limit');l.value='200';l.dispatchEvent(new Event('change'))})()`); await wait(`document.querySelectorAll('#net-node-list button').length===200`); await new Promise(resolve=>setTimeout(resolve,800)); await clickText('배치 일시정지');
+    await check('200 graph nodes, 600 edges and top pair', `document.querySelectorAll('#net-graph-svg [role="button"]').length===200 && document.querySelectorAll('#net-graph-svg line.net-link').length===600 && document.getElementById('net-top-pairs').textContent.includes('Reviewer')`);
+    const visibleLabels = `[...document.querySelectorAll('#net-graph-svg .net-node-label')].filter(e => getComputedStyle(e).display !== 'none').length`;
+    const baseLabels = await window.webContents.executeJavaScript(visibleLabels) as number;
+    await check('200 nodes: only a few non-overlapping names are drawn until zoomed in', `${baseLabels} > 0 && ${baseLabels} <= 30`);
+    await check('drawn labels never overlap', `(()=>{const r=[...document.querySelectorAll('#net-graph-svg .net-node-label')].filter(e=>getComputedStyle(e).display!=='none').map(e=>e.getBoundingClientRect());return r.every((a,i)=>r.every((b,j)=>j<=i||a.right<=b.left+1||b.right<=a.left+1||a.bottom<=b.top+1||b.bottom<=a.top+1));})()`);
+    await clickText('확대'); await clickText('확대'); await clickText('확대');
+    await wait(`${visibleLabels} > ${baseLabels}`);
+    checks.push({ name: 'zooming in draws more node names', passed: true });
+    await clickText('보기 초기화'); await wait(`${visibleLabels} <= 30`);
     await window.webContents.executeJavaScript(`document.getElementById('app-main').scrollTop=document.getElementById('net-graph-svg').closest('.panel').offsetTop-16`); await capture('network-900-dark.png',900,640,'dark'); await window.webContents.executeJavaScript(`(()=>{const i=document.getElementById('net-search');i.value='contributor-200';i.dispatchEvent(new Event('input'));document.querySelector('#net-node-list button').focus();})()`);
     await check('network keyboard alternative narrows results', `document.querySelectorAll('#net-node-list button').length===1 && document.activeElement.textContent==='contributor-200'`); stress=false;
 
-    await window.webContents.executeJavaScript(`document.querySelector('#net-top-pairs button').click()`);await wait(`document.getElementById('dd-title').textContent==='Fixture'`);
+    await load('network'); await wait(`document.getElementById('net-status').textContent==='결과 조회 완료' && !!document.querySelector('#net-top-pairs button')`);
+    await window.webContents.executeJavaScript(`document.querySelector('#net-top-pairs button').click()`);await wait(`document.querySelector('#net-side .net-side-title')?.textContent==='Fixture ↔ Reviewer'`);
+    await window.webContents.executeJavaScript(`document.querySelector('#net-side [data-person="1"]').click()`);await wait(`!!document.querySelector('#net-side [data-more]')`);
+    await window.webContents.executeJavaScript(`document.querySelector('#net-side [data-more]').click()`);await wait(`document.getElementById('dd-title').textContent==='Fixture'`);
     await window.webContents.executeJavaScript(`document.querySelector('#dd-body [data-action="__ddPushFile"]').click()`);await wait(`document.getElementById('dd-title').textContent==='fixture.ts'`);await window.webContents.executeJavaScript(`window.closeDrilldown()`);
     checks.push({name:'C top pair → contributor → related file',passed:true});
     await load('ai-review','?repo=2'); await wait(`document.querySelectorAll('#ai-main [role="tab"]').length===3`);
