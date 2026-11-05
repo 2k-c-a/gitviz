@@ -13,7 +13,7 @@
 | 로그인 | 시스템 브라우저 GitHub 로그인 → 루프백(`127.0.0.1` 임의 포트)으로 돌아와 앱 전용 bearer 세션. 확인 코드·승인 버튼 없음([AD-24](../architecture/ARCHITECTURE_DECISIONS.md)) | [auth.ts](../../desktop/src/auth.ts), [서버](../../app/api/desktop/auth.py) |
 | 서버 기능 | 저장소 검색(페이지 이동)·분석·결과 화면을 서버 API로 사용. 최근·내 분석의 "내 GitHub 저장소" 탭(로그인 사용자의 토큰으로 github.com/repos와 같은 범위: 소유·협업자·소속 조직, 2026-11-04). 원격 분석 연결·알림함 | [remote-contracts](../../desktop/src/remote-contracts.ts) |
 | 공동 편집 | 호스트가 고른 시작 파일과 그 파일이 불러오는 HTML·CSS·JS(이미지·글꼴은 읽기 전용)를 3명까지 실시간 편집(CodeMirror 6 + Yjs). 편집 중 새 참조는 호스트 승인 후 공유, 호스트는 새 파일 추가 가능(저장 때 생성), HTML은 앱 안 격리된 창에서 미리보기. Python(앱 안 Pyodide)·C/C++·Java(내 PC 컴파일러, 자원 제한)는 누구나 자기 앱에서 실행하고 결과는 공유하지 않는다. 저장은 호스트만, 서버는 전달만([AD-29](../architecture/ARCHITECTURE_DECISIONS.md), [AD-34](../architecture/collab-file-set-design.md)) | [collab-files](../../desktop/src/collab-files.ts), [화면](../../frontend/js/community.js) |
-| 배포 | 서명 없는 0.7.0 설치 파일(Squirrel, 사용자별 설치), 서명 확인 후 수동 업데이트. 로컬 스테이징 빌드는 서버 주소·인증서를 넣어 탐색기 더블클릭으로 동작([AD-30](../architecture/ARCHITECTURE_DECISIONS.md)) | [설치·업데이트](../operations/windows-desktop.md) |
+| 배포 | 서명 없는 설치 파일(Squirrel, 사용자별 설치). 앱 버전은 0.8.0(2026-11-04 앱·에이전트 통일, [빌드와 릴리스](../deployment/BUILD_AND_RELEASE.md)), 배포 판정 문서는 0.7.0 기준이다. 서명 확인 후 수동 업데이트. 로컬 스테이징 빌드는 서버 주소·인증서를 넣어 탐색기 더블클릭으로 동작([AD-30](../architecture/ARCHITECTURE_DECISIONS.md)) | [설치·업데이트](../operations/windows-desktop.md) |
 
 ## 확인한 구현 — 커뮤니티 (웹·앱 공용 화면, 공동 편집은 앱 전용)
 
