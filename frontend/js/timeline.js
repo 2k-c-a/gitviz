@@ -4,7 +4,7 @@ import { element, setText } from './ui/components.js';
 /* ── 분석 개요의 개발 활동 영역: 결과 API → DOM/차트 연동 ──
    chart-timeline 캔버스가 있을 때(=분석 개요 페이지)만 동작한다. */
 import { textC, tooltipBg, tooltipBorder } from './utils.js';
-import { esc, num, fmtWindow, windowDays } from './fmt.js';
+import { esc, num, fmtWindow } from './fmt.js';
 import { renderLoadError } from './page-context.js';
 import {
   getRepoId,
@@ -68,16 +68,14 @@ async function initTimelinePage() {
    기간은 결과에 고정된 window_start/window_end를 그대로 보여준다. */
 function renderHeader(s, snap) {
   const repo = s.repository || {};
-  const days = windowDays(snap);
-  const period = `${fmtWindow(snap)}${days != null ? ` (${days}일)` : ''}`;
   setText('tl-repo-name', repo.name || '—');
   setText('tl-branch', repo.default_branch || 'main');
   setText('tl-dash-sub',
-    `최근 180일 커밋 ${num(s.total_commits)}개 · 기여자 ${num(s.total_contributors)}명 · 관측 기간 ${period}`);
+    `${snap && snap.window_start ? '최근 180일' : '분석 기간'}(${fmtWindow(snap)}) 커밋 ${num(s.total_commits)}개 · 기여자 ${num(s.total_contributors)}명`);
   setText('tl-window-note',
     '월별 커밋 수 · 활성 기여자 수 · 버그 수정 분류 비율. 최근 180일의 기록입니다.');
 
-  setText('tl-heatmap-range', days != null ? '최근 180일' : '분석 종료 시점 기준 최근 26주');
+  setText('tl-heatmap-range', snap && snap.window_start ? '최근 180일' : '분석 종료 시점 기준 최근 26주');
 
   setText('tl-m-commits', num(s.total_commits));
   setText('tl-m-commits-sub', `최근 30일 · ${num(s.commits_30d)}개`);

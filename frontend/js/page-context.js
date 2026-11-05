@@ -4,7 +4,7 @@
      2) 수집 범위   : 수집이 계획한 범위를 채웠는가 (job이 done이어도 PR 상세 0/9 같은 부분 수집이 있다)
      3) 분석 근거   : 이 결과를 해석할 표본이 있는가
    긴 ISO 시각·SHA·해시 같은 기술 정보는 접어 두고 필요할 때 펼친다. */
-import { esc, fmtDateTime, fmtWindow, windowDays, num } from './fmt.js';
+import { esc, fmtDateTime, fmtWindow, num } from './fmt.js';
 import { policyOf, assessDataQuality } from './policy.js';
 import { parseState, buildQuery } from './viz-state.js';
 import { workspaceEntryUrl } from './platform/workspace-navigation.js';
@@ -42,9 +42,9 @@ export function renderContextBanner(data) {
     container.prepend(el);
   }
 
-  const days = windowDays(snap);
+  const windowLabel = snap.window_start ? '최근 180일' : '분석 기간';
   const windowText = snap.window_start
-    ? `${fmtWindow(snap)}${days != null ? ` · ${days}일` : ''} (종료 시각 제외)`
+    ? `${fmtWindow(snap)} (종료 시각 제외)`
     : `${fmtWindow(snap)} (이전 버전: 구간 제한 없음)`;
 
   const reasons = [
@@ -59,7 +59,7 @@ export function renderContextBanner(data) {
   el.innerHTML = `
     <div class="ctx-row">
       <span class="ctx-id" title="이 화면이 보고 있는 저장된 분석 결과 번호">저장 결과 #${esc(snap.id)}</span>
-      <span class="ctx-item"><b>관측 기간</b> ${esc(windowText)}</span>
+      <span class="ctx-item"><b>${windowLabel}</b> ${esc(windowText)}</span>
       <span class="ctx-item"><b>지표 정책</b> ${esc(policy.versionLabel)}</span>
       <a class="ctx-link" href="#" data-action="goPage" data-args="%5B%22history%22%5D">분석 이력·비교 →</a>
     </div>
