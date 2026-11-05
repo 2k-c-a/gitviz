@@ -155,7 +155,7 @@ void app.whenReady().then(async () => {
     phase = 'shell-interactions';
     await wait(`document.querySelector('.app-nav-link[aria-current="page"]')?.textContent.includes('협업')`);
     assert.match(await window.webContents.executeJavaScript(`document.querySelector('[data-shell-page="overview"]').href`), /repo=2&snapshot=7/);
-    assert.match(await window.webContents.executeJavaScript(`document.getElementById('shell-context').textContent`), /#7/);
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('#shell-repository, #shell-context, .app-toolbar > .ui-badge').length`), 0, 'top bar has no mode or repository caption');
     await window.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent('gitviz-theme-select',{detail:'dark'}))`);
     assert.equal(await window.webContents.executeJavaScript(`document.documentElement.dataset.theme`), 'dark');
     assert.equal(await window.webContents.executeJavaScript(`getComputedStyle(document.body).backgroundColor`), 'rgb(17, 22, 29)');

@@ -399,6 +399,8 @@ void app.whenReady().then(async () => {
     assert.equal(await js(`document.querySelector('.community-list-item .community-badge').textContent`), '관리자');
     await js(`document.querySelector('.community-list-item').click()`);
     await wait(`location.search.includes('id=2') && document.querySelector('.community-head')?.textContent.includes('내 역할 관리자') && !!document.querySelector('[data-tab="invites"]')`);
+    // Choosing a community puts voice chat on the left from the first tab; the list and invite form sit above.
+    await wait(`!!document.querySelector('.community-stage > .community-stage-side .community-voice') && !!document.querySelector('.community-top > .community-picker #community-list') && !!document.querySelector('.community-top > .community-invite #community-join')`);
     await clickText('새 글 쓰기');
     // User text is rendered as text, never as markup.
     const markup = '<img src=x>\n둘째 줄';
@@ -477,8 +479,9 @@ void app.whenReady().then(async () => {
     // approves a reference the peer added; then it joins the peer's share as a guest.
     phase = 'community-collab';
     await js(`document.querySelector('[data-tab="collab"]').click()`);
-    for (let i = 0; i < 100 && chatStreams.length < 2; i++) await new Promise(resolve => setTimeout(resolve, 20));
-    chatStreams[1].write(sse('ready', { online: [author, peer] }));
+    // The tab switch keeps the one community stream (and so voice chat) instead of opening another.
+    await wait(`!!document.querySelector('.community-collab-list') && !!document.querySelector('.community-stage-side .community-voice')`);
+    assert.equal(chatStreams.length, 1, 'switching tabs keeps the community stream');
     await wait(`document.querySelector('.community-collab-list')?.textContent==='진행 중인 공동 편집이 없습니다.'`);
     collabPeer = new BrowserWindow({ show: false, webPreferences: { partition: 'collab-peer-fixture', sandbox: true, contextIsolation: true, nodeIntegration: false } });
     await collabPeer.loadURL('about:blank');
@@ -557,7 +560,7 @@ void app.whenReady().then(async () => {
       await wait(`document.querySelector('.community-collab-status')?.textContent.startsWith('파일을 공유했습니다') && ${appText}===${JSON.stringify(siteIndex.replace(/\r\n/g, '\n'))}`);
       // The peer joins, gets the file list, each text file and the image (in pieces, only to its seat).
       collabSessions = [collabSession(true, [seatA, seatB])];
-      chatStreams[1].write(sse('collab-sessions', { sessions: collabSessions, ended: [] }));
+      chatStreams[0].write(sse('collab-sessions', { sessions: collabSessions, ended: [] }));
       await wait(`document.querySelector('.community-collab-people')?.textContent.includes('@peer')`);
       await peerJs(`window.request(${JSON.stringify(seatA)})`);
       await peerWait('window.listing()', 'about.html,css/site.css,index.html|img/logo.png');
@@ -635,7 +638,7 @@ void app.whenReady().then(async () => {
       // As a guest the editor stays read-only until the host's state arrives; the host ending the share keeps the text, read-only.
       await peerJs(`window.start('x = 1\\n')`);
       collabSessions = [collabSession(false, [seatB])];
-      chatStreams[1].write(sse('collab-sessions', { sessions: collabSessions, ended: [] }));
+      chatStreams[0].write(sse('collab-sessions', { sessions: collabSessions, ended: [] }));
       await wait(`document.querySelector('.community-collab-card')?.textContent.includes('@peer 공유 · 1/3명')`);
       await js(`document.querySelector('.community-collab-card button').click()`);
       await wait(`document.querySelector('.community-collab-status')?.textContent.startsWith('함께 편집하는 중') && ${appText}==='x = 1\\n' && document.querySelector('.community-collab-editor .cm-content').contentEditable==='true'`);
@@ -669,7 +672,7 @@ void app.whenReady().then(async () => {
         await wait(`!document.querySelector('.community-collab-confirm')`);
       } else assert.ok((await js(`document.querySelector('.community-collab-run').textContent`)).includes('gcc 또는 clang'));
       collabSessions = [];
-      chatStreams[1].write(sse('collab-sessions', { sessions: [], ended: [collabSid] }));
+      chatStreams[0].write(sse('collab-sessions', { sessions: [], ended: [collabSid] }));
       await wait(`document.querySelector('.community-collab-status')?.textContent.startsWith('호스트가 공유를 끝냈습니다') && document.querySelector('.community-collab-editor .cm-content').contentEditable==='false' && ${appText}.startsWith('#include <stdio.h>')`);
       await clickText('목록으로');
       await wait(`!document.querySelector('.community-collab-editor') && !!document.querySelector('.community-collab-list')`);
@@ -677,9 +680,10 @@ void app.whenReady().then(async () => {
     phase = 'community';
     await js(`document.querySelector('[data-tab="members"]').click()`);
     await wait(`document.querySelectorAll('.community-member').length===2`);
-    // Leaving the chat and co-editing tabs closes their streams in main.
-    for (let i = 0; i < 100 && !chatStreams.every(stream => stream.cancelled()); i++) await new Promise(resolve => setTimeout(resolve, 20));
-    assert.equal(chatStreams.every(stream => stream.cancelled()), true, 'the chat stream ends when the tab closes');
+    // Other tabs keep the one community stream, so voice chat on the left stays connected.
+    assert.equal(chatStreams.length, 1);
+    assert.equal(chatStreams[0].cancelled(), false, 'the community stream stays open across tabs');
+    assert.equal(await js(`!!document.querySelector('.community-stage-side .community-voice')`), true);
     // Handing over the admin role takes two clicks; afterwards the admin-only invites tab is gone.
     await clickText('관리자 넘기기');
     assert.equal(communityAdmin, uid);
@@ -696,6 +700,9 @@ void app.whenReady().then(async () => {
     const joinsBefore = requests.filter(path => path.includes('/invites/redeem')).length;
     await window.loadURL(`gitviz://app/web/pages/community.html?invite=${goodInvite}`);
     await wait(`document.getElementById('community-invite-input')?.value===${JSON.stringify(goodInvite)} && document.getElementById('community-join-message').textContent.includes('참여를 누르면') && !location.search.includes('invite=')`);
+    // Leaving the page closes the community stream in main.
+    for (let i = 0; i < 100 && !chatStreams.every(stream => stream.cancelled()); i++) await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(chatStreams.every(stream => stream.cancelled()), true, 'the community stream ends when the page closes');
     assert.equal(requests.filter(path => path.includes('/invites/redeem')).length, joinsBefore);
     assert.equal(await js(`document.getElementById('community-open-app').hidden`), true, 'the app never offers to open itself');
     await js(`document.getElementById('community-join').requestSubmit()`);

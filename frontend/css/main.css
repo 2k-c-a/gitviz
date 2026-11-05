@@ -147,8 +147,14 @@
 .search-pager-gap { color: var(--text3); padding: 0 2px; }
 
 /* ── 커뮤니티 ── */
-.community-layout { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 14px; align-items: start; }
-.community-side { display: flex; flex-direction: column; gap: 14px; }
+/* 위: 내 커뮤니티(왼쪽)·초대 링크로 참여(오른쪽). 아래: 고른 커뮤니티 — 왼쪽 음성 채팅, 오른쪽 글·채팅·공동 편집. 좁으면 아래로 쌓는다. */
+.community-layout { display: flex; flex-direction: column; gap: 14px; }
+.community-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 360px); gap: 14px; align-items: start; }
+.community-top .community-list { flex-direction: row; flex-wrap: wrap; gap: 6px; max-height: 168px; overflow-y: auto; }
+.community-top .community-list-item { width: auto; max-width: 100%; border-color: var(--border); }
+.community-stage { display: grid; grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.community-stage-side { position: sticky; top: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.community-stage-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .community-main, .community-body, .community-posts { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .community-list { display: flex; flex-direction: column; gap: 4px; }
 .community-list-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--text); text-align: left; cursor: pointer; }
@@ -229,7 +235,9 @@
 .community-collab-confirm { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; padding: 8px 10px; border: 1px solid var(--warning, #d97706); border-radius: 8px; font-size: 13px; }
 .community-collab-diff summary { cursor: pointer; overflow-wrap: anywhere; }
 @media (max-width: 720px) { .community-collab-workspace { grid-template-columns: 1fr; } .community-collab-tree { flex-direction: row; flex-wrap: wrap; max-height: none; } }
-@media (max-width: 760px) { .community-layout, .community-chat-layout { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .community-top, .community-stage, .community-chat-layout { grid-template-columns: 1fr; } .community-stage-side { position: static; } }
+/* 앱 화면은 왼쪽 메뉴만큼 본문이 좁으므로 본문 폭으로도 판단한다. */
+@container workspace (width < 760px) { .community-top, .community-stage, .community-chat-layout { grid-template-columns: 1fr; } .community-stage-side { position: static; } }
 
 .search-card { display: flex; align-items: center; gap: 16px; }
 .search-card[data-registered="1"] { cursor: pointer; }

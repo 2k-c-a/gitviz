@@ -110,14 +110,17 @@ async function loadList() {
 
 async function route() {
   const run = ++generation;
-  stopLive(); stopVoice(); stopCollab();
+  stopCollab();
   const id = Number(params().get('id'));
+  // 같은 커뮤니티 안에서 탭만 바꿀 때는 실시간 연결과 음성 채팅을 그대로 둔다.
+  if (hub && hub.repositoryId !== id) stopHub();
   if (!id) {
     view = null;
-    mainEl.replaceChildren(createState({ kind: 'empty', title: '커뮤니티를 고르세요', message: '왼쪽 목록에서 저장소 커뮤니티를 고르거나 받은 초대 링크로 참여하세요.' }));
+    mainEl.replaceChildren(createState({ kind: 'empty', title: '커뮤니티를 고르세요', message: '위 목록에서 저장소 커뮤니티를 고르거나 받은 초대 링크로 참여하세요.' }));
     return;
   }
-  mainEl.replaceChildren(createState({ kind: 'loading', title: '커뮤니티를 여는 중' }));
+  const target = hub ? hub.content : mainEl;
+  target.replaceChildren(createState({ kind: 'loading', title: '커뮤니티를 여는 중' }));
   try {
     const value = await api('GET', `/api/community/v1/repositories/${id}`);
     if (run !== generation) return;
@@ -126,8 +129,9 @@ async function route() {
   } catch (error) {
     if (run !== generation) return;
     if (error.code === 'INVITE_REQUIRED') {
+      stopHub();
       mainEl.replaceChildren(createState({ kind: 'empty', title: '초대가 필요합니다', message: error.message }));
-    } else showError(mainEl, error, route);
+    } else showError(hub ? hub.content : mainEl, error, route);
   }
 }
 
@@ -145,8 +149,10 @@ function renderCommunity() {
   }
   head.append(title, meta, tabs);
   const body = element('div', 'community-body');
-  mainEl.replaceChildren(head, body);
-  stopLive(); stopVoice(); stopCollab();
+  const live = ensureHub();
+  live.listeners.clear(); // 이전 탭의 실시간 처리기
+  live.content.replaceChildren(head, body);
+  stopCollab();
   const post = Number(params().get('post'));
   if (tab === 'chat') void renderChat(body);
   else if (tab === 'collab' && collabAvailable()) void renderCollab(body);
@@ -396,6 +402,59 @@ function openLive(repositoryId, onEvent) {
   closeLive = () => { open = false; source.close(); };
 }
 
+/* 커뮤니티 하나를 여는 동안 실시간 연결과 음성 채팅은 하나씩만 둔다. 음성 채팅은 화면 왼쪽에 늘 떠 있고 탭을 바꿔도 끊기지 않는다.
+   채팅·공동 편집 탭은 listen()으로 같은 연결의 이벤트를 받는다. 탭이 늦게 열려도 지금 연결 상태(ready 또는 status)를 먼저 받는다. */
+let hub = null;
+function stopHub() {
+  const current = hub; hub = null;
+  if (!current) return;
+  current.listeners.clear(); stopVoice(); stopLive();
+}
+
+function ensureHub() {
+  const repositoryId = view.repository.id;
+  if (hub?.repositoryId === repositoryId) return hub;
+  stopHub();
+  const side = element('aside', 'community-stage-side'); side.setAttribute('aria-label', '음성 채팅');
+  const voicePanel = element('section', 'panel community-voice');
+  side.append(voicePanel);
+  const content = element('div', 'community-stage-main');
+  const stage = element('div', 'community-stage');
+  stage.append(side, content);
+  mainEl.replaceChildren(stage);
+  const current = { repositoryId, content, listeners: new Set(), ready: false, online: [], status: null };
+  hub = current;
+  // 나갈 때도 이 커뮤니티 주소로 보낸다(다른 커뮤니티로 옮기는 중에 view가 바뀌어도).
+  const voice = createVoice({ panel: voicePanel, path: suffix => `/api/community/v1/repositories/${repositoryId}${suffix}` });
+  function onEvent(event) {
+    if (hub !== current) return;
+    const { type, data } = event;
+    if (type === 'ready') { current.ready = true; current.status = null; if (Array.isArray(data.online)) current.online = data.online; void voice.refresh(); }
+    else if (type === 'presence') { if (Array.isArray(data.online)) current.online = data.online; }
+    else if (type === 'voice') voice.update(data);
+    else if (type === 'voice-signal') voice.signal(data);
+    else if (type === 'status') {
+      current.ready = false; current.status = event;
+      if (data.state === 'stopped') {
+        closeLive = null;
+        if (CHAT_FINAL.includes(data.code) && voice.joined) void voice.leave(CHAT_STOPPED[data.code]);
+      }
+    }
+    for (const listener of [...current.listeners]) listener(event);
+  }
+  current.connect = () => {
+    current.ready = false; current.status = { type: 'status', data: { state: 'connecting' } };
+    openLive(repositoryId, onEvent);
+  };
+  current.listen = listener => {
+    current.listeners.add(listener);
+    if (current.ready) listener({ type: 'ready', data: { online: current.online } });
+    else if (current.status) listener(current.status);
+  };
+  current.connect();
+  return current;
+}
+
 const CHAT_STOPPED = {
   MEMBER_REMOVED: '커뮤니티에서 내보내져 채팅을 볼 수 없습니다.',
   AUTH_REQUIRED: '로그인이 끝나 채팅 연결을 멈췄습니다. 다시 로그인하세요.',
@@ -409,7 +468,6 @@ const CHAT_FINAL = ['MEMBER_REMOVED', 'PERMISSION_DENIED', 'NOT_FOUND', 'SERVER_
 async function renderChat(target) {
   const run = generation;
   const admin = view.me.role === 'admin';
-  const repositoryId = view.repository.id;
   const panel = element('section', 'panel community-chat');
   const bar = element('div', 'ui-toolbar community-chat-bar');
   const status = element('p', 'p-sub community-chat-status', '연결하는 중…'); status.setAttribute('role', 'status');
@@ -425,16 +483,15 @@ async function renderChat(target) {
   form.append(input, send);
   panel.append(bar, older, log, empty, form, message);
   const side = element('aside', 'community-chat-side');
-  const voicePanel = element('section', 'panel community-voice');
   const onlinePanel = element('section', 'panel community-chat-online');
   const onlineTitle = element('h3', 'ui-panel-title', '접속 중');
   const online = element('ul', 'community-chat-people');
   onlinePanel.append(onlineTitle, online);
-  side.append(voicePanel, onlinePanel);
+  side.append(onlinePanel);
   const layout = element('div', 'community-chat-layout');
   layout.append(panel, side);
   target.replaceChildren(layout);
-  const voice = createVoice({ panel: voicePanel, path: repoPath });
+  const live = hub;
 
   const rows = new Map();
   const nearBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 48;
@@ -489,12 +546,9 @@ async function renderChat(target) {
       // 다시 연결됐다면 끊긴 사이의 메시지를 채운다.
       if (ready) void loadPage();
       ready = true;
-      void voice.refresh();
     } else if (type === 'message') add(data);
     else if (type === 'deleted') drop(data.id);
     else if (type === 'presence') people(data.online);
-    else if (type === 'voice') voice.update(data);
-    else if (type === 'voice-signal') voice.signal(data);
     else if (type === 'status') {
       if (data.state === 'connecting' && !ready) status.textContent = '연결하는 중…';
       else if (data.state === 'reconnecting') status.textContent = '연결이 끊겨 다시 연결하는 중…';
@@ -503,12 +557,11 @@ async function renderChat(target) {
         people([]);
         const final = CHAT_FINAL.includes(data.code);
         reconnect.hidden = final;
-        if (final) { setInput(false); if (voice.joined) void voice.leave(status.textContent); }
-        closeLive = null;
+        if (final) setInput(false);
       }
     }
   }
-  function connect() { status.textContent = '연결하는 중…'; reconnect.hidden = true; openLive(repositoryId, onEvent); }
+  function connect() { status.textContent = '연결하는 중…'; reconnect.hidden = true; live.connect(); }
 
   input.addEventListener('keydown', event => {
     // 한글 조합 중 Enter는 글자를 확정하는 것이라 보내지 않는다.
@@ -525,7 +578,7 @@ async function renderChat(target) {
   });
   await loadPage();
   if (run !== generation) return;
-  connect();
+  live.listen(onEvent);
 }
 
 /* ── 실시간 공동 편집 (AD-29 → AD-34 파일 묶음, 앱 전용) ──
@@ -573,15 +626,9 @@ const REASONS = { outside: '공유 범위 밖', hidden: '숨김·제외 폴더',
 
 async function renderCollab(target) {
   const run = generation;
-  const repositoryId = view.repository.id;
-  const layout = element('div', 'community-chat-layout');
   const main = element('section', 'panel community-collab');
-  const side = element('aside', 'community-chat-side');
-  const voicePanel = element('section', 'panel community-voice');
-  side.append(voicePanel);
-  layout.append(main, side);
-  target.replaceChildren(layout);
-  const voice = createVoice({ panel: voicePanel, path: repoPath });
+  target.replaceChildren(main);
+  const live = hub;
   const desktop = globalThis.desktop.collab;
 
   const status = element('p', 'p-sub community-collab-status'); status.setAttribute('role', 'status');
@@ -1319,18 +1366,15 @@ async function renderCollab(target) {
   function onEvent({ type, data }) {
     if (run !== generation) return;
     if (type === 'ready') {
-      void voice.refresh(); void refresh();
+      void refresh();
       if (ready && current?.synced && !current.host) { requestSync(''); for (const path of current.files.keys()) requestSync(path); }
       ready = true;
     }
     else if (type === 'collab-sessions') onSessions(data);
     else if (type === 'collab') onCollab(data);
-    else if (type === 'voice') voice.update(data);
-    else if (type === 'voice-signal') voice.signal(data);
     else if (type === 'status' && data.state === 'stopped') {
       status.textContent = CHAT_STOPPED[data.code] || '연결이 끊겼습니다.';
-      if (CHAT_FINAL.includes(data.code)) { end(status.textContent); if (voice.joined) void voice.leave(status.textContent); }
-      closeLive = null;
+      if (CHAT_FINAL.includes(data.code)) end(status.textContent);
     } else if (type === 'status' && data.state === 'reconnecting') status.textContent = '연결이 끊겨 다시 연결하는 중…';
   }
 
@@ -1340,7 +1384,7 @@ async function renderCollab(target) {
     if (mine && !mine.ended) void api('POST', repoPath(`/collab/${mine.sid}/leave`), { seat_id: mine.seat }).catch(() => {});
   };
   renderList();
-  openLive(repositoryId, onEvent);
+  live.listen(onEvent);
 }
 
 /* ── 음성 채팅 (AD-28) ──
