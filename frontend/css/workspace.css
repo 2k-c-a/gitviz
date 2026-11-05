@@ -116,6 +116,14 @@ button[data-risk='exec']::after { content: '명령 실행'; color: var(--ui-erro
   .ws-tabs > button { min-height: 32px; padding-inline: 10px; }
   .workspace-content h1 { margin: 12px 0 8px; }
 }
+/* File tree (파일 탭): one directory per request, loaded when a folder is opened. */
+.ws-tree { margin: 8px 0; padding: 6px 8px; max-height: 420px; overflow: auto; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); background: var(--ui-raised); font-family: var(--ui-mono); font-size: var(--ui-text-xs); }
+.ws-tree-children { padding-left: 18px; }
+.ws-tree-row { display: flex; align-items: center; gap: 6px; min-height: 26px; }
+.ws-tree-folder > summary { min-height: 26px; line-height: 26px; cursor: pointer; }
+.ws-tree-file { padding: 0 4px; border: 0; background: none; color: var(--ui-text); font: inherit; text-align: left; cursor: pointer; }
+.ws-tree-file:hover, .ws-tree-file:focus-visible { color: var(--ui-accent); text-decoration: underline; }
+.ws-tree-badge { color: var(--ui-warning); font-weight: var(--ui-semibold); margin-left: 6px; }
 @media (forced-colors: active) {
   .ws-chip, .ws-panel, .ws-todo, .ws-banner { border: 1px solid CanvasText; }
   .ws-tabs > button[aria-selected='true'] { border-bottom-color: Highlight; }

@@ -60,6 +60,10 @@ export async function verifyEditorBinary(path: string, editorId: EditorId): Prom
   if (result.status !== 'Valid' || !publisher.test(result.publisher) || !products.includes(result.product)) throw new Error('COMMAND_NOT_ALLOWED');
   return { publisher: result.publisher, version: result.version };
 }
+/** A captured file (snapshotId + fileId) or, from the file tree, a current root-relative path. The schema rejects anything else. */
+function locateOperation(payload: Record<string, unknown>): 'workspace.files.locate' | 'workspace.files.locatePath' {
+  return 'path' in payload ? 'workspace.files.locatePath' : 'workspace.files.locate';
+}
 export function registerEditor(window: BrowserWindow, agent: Pick<Agent, 'call'>, contracts: Contracts, directory: string): () => void {
   const channels = ['workspace:configure-editor', 'workspace:open-editor', 'workspace:copy-location'];
   let configuring = false;
@@ -94,13 +98,14 @@ export function registerEditor(window: BrowserWindow, agent: Pick<Agent, 'call'>
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('INVALID_REQUEST');
     const { editorId, projectId, ...payload } = value as Record<string, unknown>;
     if (editorId !== 'vscode' && editorId !== 'cursor') throw new Error('INVALID_REQUEST');
-    contracts.request({ protocolVersion: 1, requestId: randomUUID(), operation: 'workspace.files.locate', projectId, payload });
+    const operation = locateOperation(payload);
+    contracts.request({ protocolVersion: 1, requestId: randomUUID(), operation, projectId, payload });
     try {
       const record = JSON.parse(await readFile(join(directory, `editor-${editorId}.json`), 'utf8')) as { executable: string; hash: string; editorId: string };
       const executable = await checked(record.executable);
       if (record.editorId !== editorId || basename(executable).toLowerCase() !== binaries[editorId] ||
           createHash('sha256').update(await readFile(executable)).digest('hex') !== record.hash) throw new Error('PRECONDITION_FAILED');
-      const location = await agent.call('workspace.files.locate', payload, { projectId: projectId as string });
+      const location = await agent.call(operation, payload, { projectId: projectId as string });
       const path = await checked(String(location.absolutePath), String(location.root));
       if (createHash('sha256').update(await readFile(path)).digest('hex') !== location.sourceHash) throw new Error('PRECONDITION_FAILED');
       const argv = editorArguments(path, Number(location.line), Number(location.column));
@@ -119,9 +124,10 @@ export function registerEditor(window: BrowserWindow, agent: Pick<Agent, 'call'>
     if (!workspaceSender(event, window)) throw new Error('ACCESS_DENIED');
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('INVALID_REQUEST');
     const { projectId, ...payload } = value as Record<string, unknown>;
-    const request = { protocolVersion: 1, requestId: randomUUID(), operation: 'workspace.files.locate', projectId, payload };
+    const operation = locateOperation(payload);
+    const request = { protocolVersion: 1, requestId: randomUUID(), operation, projectId, payload };
     contracts.request(request);
-    const location = await agent.call('workspace.files.locate', payload, { projectId: request.projectId });
+    const location = await agent.call(operation, payload, { projectId: request.projectId });
     clipboard.writeText(`${String(location.absolutePath)}:${String(location.line)}:${String(location.column)}`);
     return { copied: true };
   });

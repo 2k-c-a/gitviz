@@ -107,11 +107,13 @@
                       "workspace.reviews.cloudContext",
                       "workspace.reviews.cloudExchange",
                       "workspace.remote.connections",
-                      "workspace.impact.historical"
+                      "workspace.impact.historical",
+                      "workspace.files.tree",
+                      "workspace.files.locatePath"
                     ]
                   },
                   "uniqueItems": true,
-                  "maxItems": 54
+                  "maxItems": 56
                 },
                 "state": {
                   "const": "initializing"
@@ -302,6 +304,12 @@
             },
             {
               "$ref": "#/definitions/historicalContext"
+            },
+            {
+              "$ref": "#/definitions/fileTree"
+            },
+            {
+              "$ref": "#/definitions/pathLocation"
             }
           ]
         }
@@ -5450,6 +5458,125 @@
           "$ref": "#/definitions/impactResult"
         }
       ]
+    },
+    "fileTree": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "directory": {
+          "type": "string",
+          "maxLength": 2048
+        },
+        "entries": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "kind": {
+                "enum": [
+                  "file",
+                  "directory",
+                  "repository",
+                  "unsupported"
+                ]
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "kind"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "ignoredCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "skippedCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "projectId",
+        "directory",
+        "entries",
+        "truncated",
+        "ignoredCount",
+        "skippedCount"
+      ],
+      "additionalProperties": false
+    },
+    "pathLocation": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "root": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "absolutePath": {
+          "type": "string",
+          "maxLength": 32768
+        },
+        "sourceHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "projectId",
+        "path",
+        "root",
+        "absolutePath",
+        "sourceHash",
+        "line",
+        "column"
+      ],
+      "additionalProperties": false
     }
   }
 }

@@ -43,7 +43,7 @@ frontend ──복사(build.mjs)──▶ desktop ──stdio JSON(contracts/wor
 | 규칙 | 보호 수단 |
 |---|---|
 | 에이전트는 서버 전용 모듈(`app.main`, `app.core`, `app.api`, `app.models`, SQLAlchemy, FastAPI 등)을 import하지 않는다 | `tests/workspace/test_import_boundary.py`, spec `excludes` |
-| 서비스는 API 계층을 import하지 않는다(역방향 제거) | S8 이후 `git grep` 검사 |
+| 서비스는 API 계층을 import하지 않는다(역방향 제거) | S8 이후 `git grep` 검사. 2026-11-05 기준 `app/services/analysis_snapshots.py` → `app.api.analytics` 1곳이 남아 있다([K-08](../deployment/KNOWN_ISSUES.md)) |
 | 데스크톱은 허용 목록에 있는 서버 엔드포인트만 호출한다 | `desktop/src/remote-contracts.ts` (대조 테스트는 후속) |
 | `tests/`는 `tools/`를 import하지 않는다(예외: `test_ai_ops` → `tools/ops/ai_ops`) | 코드 리뷰 + `git grep` |
 | `tools/`는 제품 런타임이 import하지 않는다 | 동결 spec `excludes` |
@@ -71,7 +71,7 @@ frontend ──복사(build.mjs)──▶ desktop ──stdio JSON(contracts/wor
 | R2 (0.7.2) | 빌드 위생·제외 목록·검증 구성 분리 | 설치 파일 축소 | 〃 | **일부 적용**: 릴리스 제외 규칙(K-03), 패키지 디버그 인수 차단(K-04), 릴리스 워크플로의 `SHA256SUMS`. asar 허용 목록, `forge.verify.config.ts` 분리, 빌드 환경 잠금 검사는 미적용 |
 | R3 (0.8.0 다음, 번호 미정) | 사용자 데이터 경로 이전 | 첫 실행 복사 | 〃 | **미적용** (K-06. 데이터는 아직 `%APPDATA%\gitviz-workspace`) |
 | R4 (선택) | 무인 제거·삭제 선택·서명 | — | 〃 | **일부 적용**: 무인 제거 WMI 대응(K-05). 서명은 소유자 결정으로 하지 않음(K-01). 제거 시 데이터 삭제 선택 UI는 미적용 |
-| S10 | 삭제 후보 정리 | 없음 | [이동 계획 §2](FINAL_MIGRATION_PLAN.md) | **일부**: `app/services/github_service.py` 삭제(`055d724`), `test-react/` 없음. `app/services/ai/markdown_safety.py`, `reports/`는 남아 있음 |
+| S10 | 삭제 후보 정리 | 없음 | [이동 계획 §2](FINAL_MIGRATION_PLAN.md) | **일부**: `app/services/github_service.py` 삭제(`055d724`), `test-react/`·`reports/` 없음(2026-11-05 확인). `app/services/ai/markdown_safety.py`는 남아 있음 |
 
 ## 7. 자체 검증 결과
 

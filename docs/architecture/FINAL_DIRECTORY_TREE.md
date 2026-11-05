@@ -26,7 +26,7 @@ gitviz/
 │  ├─ forge.config.ts             (유지) outDir·extraResource 경로만 변경 (S9)
 │  └─ channel.json                (신규, R1) 빌드 시 고정되는 공개 채널 설정
 ├─ frontend/                     (유지) 웹 UI 정적 자원 + 데스크톱 복사 원본
-├─ migrations/                   (유지) Alembic 리비전 18개, schema_20261002.py
+├─ migrations/                   (유지) Alembic 리비전(4차 당시 18개, 2026-11-05 기준 23개·단일 head `39b676ca36f2`), schema_20261002.py
 ├─ alembic.ini                   (유지)
 ├─ packaging/
 │  └─ agent/                      (신규, S4) 에이전트 동결 입력
@@ -56,6 +56,8 @@ gitviz/
 │
 ├─ .env                          (로컬·Git 제외) 개발자 전용
 ├─ .venv/                        (로컬·Git 제외) 서버 개발 가상환경
+├─ certs/                        (로컬·Git 제외) 서버 DB 접속용 CA 인증서. 내용은 열지 않는다 ([결정 기록](ARCHITECTURE_DECISIONS.md))
+├─ CLAUDE.md  AGENTS.md  .claude/ (로컬·Git 제외) AI 에이전트 작업 지침·로컬 설정
 ├─ storage/repos/                (런타임·Git 제외) 서버가 clone한 저장소
 ├─ build-output/                 (생성물·Git 제외, 신규 S9)
 │  ├─ agent/                      PyInstaller work + dist (`dist/agent`)

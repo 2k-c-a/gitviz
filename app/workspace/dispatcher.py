@@ -187,6 +187,10 @@ class Dispatcher:
                     result = projects.unregister(request["projectId"], payload["expectedVersion"], request["idempotencyKey"])
                 elif op == 'workspace.git.status':
                     result = projects.status(request["projectId"], payload["recentLimit"])
+                elif op == 'workspace.files.tree':
+                    result = projects.tree(request['projectId'], payload['directory'])
+                elif op == 'workspace.files.locatePath':
+                    result = projects.locate(request['projectId'], payload)
                 elif op == 'workspace.changes.capture':
                     assert self.snapshots is not None
                     result = self.snapshots.capture(request['projectId'], payload, request['idempotencyKey'])
@@ -274,7 +278,7 @@ class Dispatcher:
                     else:
                         result = impact.get(project, payload)
                 if len(json.dumps(result, ensure_ascii=False).encode()) > 200000:
-                    if op in ('workspace.git.status', 'workspace.changes.capture', 'workspace.validation.detect'):
+                    if op in ('workspace.git.status', 'workspace.files.tree', 'workspace.changes.capture', 'workspace.validation.detect'):
                         raise ScopeError('CHANGESET_TOO_LARGE', details={'operation': 'result', 'limitBytes': 200000,
                             'observedBytes': len(json.dumps(result, ensure_ascii=False).encode())})
                     raise ScopeError("OUTPUT_LIMIT")

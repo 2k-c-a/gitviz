@@ -51,6 +51,8 @@ if (location.protocol === 'gitviz:' && location.host === 'app' && location.pathn
   updateSettings: (options: unknown) => ipcRenderer.invoke('workspace:update-settings', options),
   unregisterProject: (options: unknown) => ipcRenderer.invoke('workspace:unregister-project', options),
   getGitStatus: (options: unknown) => ipcRenderer.invoke('workspace:git-status', options),
+  // One working-tree directory: root-relative names only, never absolute paths or file contents.
+  getFileTree: (options: unknown) => ipcRenderer.invoke('workspace:file-tree', options),
   previewReview: (options: unknown) => ipcRenderer.invoke('workspace:review-preview', options),
   startReview: (options: unknown) => ipcRenderer.invoke('workspace:review-start', options),
   getReview: (options: unknown) => ipcRenderer.invoke('workspace:review-get', options),
