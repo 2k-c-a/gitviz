@@ -146,7 +146,7 @@ function _fmtCompletedAt(iso) {
 
 function _buildMeta(repo) {
   const parts = [];
-  // 수집한 기본 브랜치의 누적 커밋 수 — 결과 화면의 '관측 구간 커밋'과 다를 수 있다
+  // 수집한 기본 브랜치의 누적 커밋 수 — 결과 화면의 '최근 180일 커밋'과 다를 수 있다
   if (repo.commit_count) parts.push(`수집 커밋 ${repo.commit_count.toLocaleString()}개`);
   if (repo.pr_count) parts.push(`PR ${repo.pr_count.toLocaleString()}개`);
   if (repo.contributor_count) parts.push(`기여자 ${repo.contributor_count.toLocaleString()}명`);

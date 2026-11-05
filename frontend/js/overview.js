@@ -12,7 +12,7 @@ async function init() {
   const id = getRepoId(); await fetchSnapshotMeta(id);
   void loadPanel(document.getElementById('overview-files'), () => fetchRepoTree(id), (data, host) => {
     const rows = [...(data.files || [])].filter(row => row.observation_count > 0).sort((a, b) => b.observation_count - a.observation_count || a.path.localeCompare(b.path)).slice(0, 5);
-    if (!rows.length) return empty(host, '관측 구간에 변경이 기록된 파일이 없습니다.');
+    if (!rows.length) return empty(host, '최근 180일에 변경이 기록된 파일이 없습니다.');
     rows.forEach(row => { const item = element('div', 'analysis-list-row'); item.append(action(row.path, () => window.openFileDrilldown(row.file_id, row), 'ui-list-link'), element('span', '', valueText(row.observation_count, '회'))); host.append(item); });
     const link = element('a', '', '파일 분석에서 모두 보기'); link.href = pageUrl('code-analysis'); host.append(link);
   });

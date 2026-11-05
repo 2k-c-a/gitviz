@@ -16,7 +16,7 @@ const PRIORITY = {
   versionLabel: '점검 우선순위 (v3)',
   leadText: '점검 우선순위는 변경 횟수·수정량·버그 수정 횟수의 백분위 평균으로 저장소 안에서 상대적으로 계산한 점수입니다. 결함 확률이 아니며 0도 안전을 뜻하지 않습니다.',
   summaryText:
-    '점검 우선순위는 관측 구간 안에서 변경 횟수·수정량(추가+삭제 줄 수)·버그 수정 커밋 수를 파일 간 백분위(0~1)로 바꿔 평균한 상대 점수입니다. 결함 확률이 아니며, 0도 안전을 뜻하지 않습니다. 다른 저장소와 직접 비교할 수 없습니다.',
+    '점검 우선순위는 최근 180일 안에서 변경 횟수·수정량(추가+삭제 줄 수)·버그 수정 커밋 수를 파일 간 백분위(0~1)로 바꿔 평균한 상대 점수입니다. 결함 확률이 아니며, 0도 안전을 뜻하지 않습니다. 다른 저장소와 직접 비교할 수 없습니다.',
   thresholdText:
     '색·배지의 0.7은 표시 임계값입니다. 상위 30%를 뜻하지 않으며, 구성 요소 백분위의 평균값 자체가 상위 퍼센트도 아닙니다.',
   hasComponents: true,
@@ -120,7 +120,7 @@ export function assessDataQuality(dq) {
     evidenceReasons.push('관측 커밋 수를 확인할 수 없습니다');
   } else if (dq.commit_count === 0) {
     evidence = 'none';
-    evidenceReasons.push('관측 구간에 커밋이 없습니다(수집 실패가 아니라 구간 밖의 변경일 수 있음)');
+    evidenceReasons.push('최근 180일에 커밋이 없습니다(수집 실패가 아니라 구간 밖의 변경일 수 있음)');
   } else {
     if (dq.commit_count < threshold) evidenceReasons.push(`관측 커밋 ${dq.commit_count}개 (<${threshold})`);
     if (collection === 'partial') evidenceReasons.push('수집 범위 일부 누락');
@@ -139,7 +139,7 @@ export function assessDataQuality(dq) {
 /* 수집 범위·분석 근거 상태의 표시 문구. 긍정 상태도 '확인된 범위'까지만 말한다(완료·충분 단정 없음).
    tone은 'warn' | 'gray' — 확인된 한계가 있을 때만 강조하고, 나머지는 중립으로 둔다. */
 export const COLLECTION_TEXT = { partial: '일부만 수집', unverified: '수집 범위 확인 불가', checked: '확인된 범위 누락 없음' };
-export const EVIDENCE_TEXT = { limited: '근거 제한적', none: '관측 구간 커밋 없음', unknown: '근거 확인 불가', no_limits_found: '확인된 제한 없음' };
+export const EVIDENCE_TEXT = { limited: '근거 제한적', none: '최근 180일 커밋 없음', unknown: '근거 확인 불가', no_limits_found: '확인된 제한 없음' };
 export const STATUS_TONE = {
   partial: 'warn', unverified: 'gray', checked: 'gray',
   limited: 'warn', none: 'gray', unknown: 'gray', no_limits_found: 'gray',
@@ -154,7 +154,7 @@ export const FALLBACK_LABELS = {
   all_collected_prs_filtered: '전부 필터됨',
 };
 export const FALLBACK_DETAILS = {
-  no_merged_prs: '관측 구간에 병합된 PR이 없어 커밋 단위로 대체했습니다.',
+  no_merged_prs: '최근 180일에 병합된 PR이 없어 커밋 단위로 대체했습니다.',
   pr_details_missing: '병합 PR은 있으나 변경 파일 상세가 수집되지 않아 커밋 단위로 대체했습니다.',
   all_collected_prs_filtered: '파일 상세가 있는 PR이 모두 대규모 변경으로 제외돼 커밋 단위로 대체했습니다.',
 };

@@ -271,7 +271,7 @@ function main(page) {
     const b = result.basis || {};
     const basis = h('p', { class: 'ins-basis' },
       `분석 결과 #${b.snapshotId ?? '—'} · 기준 커밋 `, h('code', { text: (b.targetSha || '').slice(0, 10) || '—' }),
-      ` · 관측 구간 ${fmtDay(b.windowStart)} ~ ${fmtDay(b.windowEnd)} · 계산 버전 ${b.formulaVersion || '—'} · 모델 ${b.model || '—'} · 프롬프트 ${b.promptVersion || '—'} · 도구 ${b.toolVersion || '—'} · ${codeBasis(b.code)} · 생성 ${fmtTime(result.generatedAt)} · AI 호출 ${r.callCount ?? 0}회`);
+      ` · 최근 180일(${fmtDay(b.windowStart)} ~ ${fmtDay(b.windowEnd)}) · 계산 버전 ${b.formulaVersion || '—'} · 모델 ${b.model || '—'} · 프롬프트 ${b.promptVersion || '—'} · 도구 ${b.toolVersion || '—'} · ${codeBasis(b.code)} · 생성 ${fmtTime(result.generatedAt)} · AI 호출 ${r.callCount ?? 0}회`);
     const byId = new Map((result.categories || []).flatMap((c) => c.insights.map((i) => [i.id, i])));
     const highlights = (result.highlights || []).map((id) => byId.get(id)).filter(Boolean);
     const sections = (result.categories || []).map((c) => h('section', { class: 'ins-category' },
@@ -365,7 +365,7 @@ function main(page) {
       c.evidence?.length ? h('div', null, h('div', { class: 'ins-label', text: '근거 (GitViz 계산 값)' }), evidenceList(c.evidence)) : null,
       refs(c, c.basis?.targetSha),
       c.limitations?.length ? h('ul', { class: 'ins-limits' }, c.limitations.map((t) => h('li', { text: t }))) : null,
-      h('details', { class: 'ins-details' }, h('summary', { text: `조회한 도구 ${calls.length}개 · 관측 구간 ${fmtDay(c.analysisPeriod?.start)} ~ ${fmtDay(c.analysisPeriod?.end)} · 모델 ${c.basis?.model || '—'} · ${codeBasis(c.basis?.code)}` }),
+      h('details', { class: 'ins-details' }, h('summary', { text: `조회한 도구 ${calls.length}개 · 최근 180일(${fmtDay(c.analysisPeriod?.start)} ~ ${fmtDay(c.analysisPeriod?.end)}) · 모델 ${c.basis?.model || '—'} · ${codeBasis(c.basis?.code)}` }),
         h('ul', { class: 'ins-limits' }, calls.map((t) => h('li', { text: `${t.callId} ${TOOL_LABEL[t.tool] || t.tool}${Object.keys(t.args || {}).length ? ` ${JSON.stringify(t.args)}` : ''}${t.ok ? '' : ' (실패)'}` })))));
   }
   function renderChat() {

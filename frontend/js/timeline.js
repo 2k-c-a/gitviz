@@ -73,11 +73,11 @@ function renderHeader(s, snap) {
   setText('tl-repo-name', repo.name || '—');
   setText('tl-branch', repo.default_branch || 'main');
   setText('tl-dash-sub',
-    `관측 구간 커밋 ${num(s.total_commits)}개 · 기여자 ${num(s.total_contributors)}명 · 관측 기간 ${period}`);
+    `최근 180일 커밋 ${num(s.total_commits)}개 · 기여자 ${num(s.total_contributors)}명 · 관측 기간 ${period}`);
   setText('tl-window-note',
-    '월별 커밋 수 · 활성 기여자 수 · 버그 수정 분류 비율. 관측 구간 전체의 기록입니다.');
+    '월별 커밋 수 · 활성 기여자 수 · 버그 수정 분류 비율. 최근 180일의 기록입니다.');
 
-  setText('tl-heatmap-range', days != null ? `관측 구간 전체 · 최근 ${days}일` : '분석 종료 시점 기준 최근 26주');
+  setText('tl-heatmap-range', days != null ? '최근 180일' : '분석 종료 시점 기준 최근 26주');
 
   setText('tl-m-commits', num(s.total_commits));
   setText('tl-m-commits-sub', `최근 30일 · ${num(s.commits_30d)}개`);
@@ -197,7 +197,7 @@ function renderTimelineChart(t, releases = []) {
     chart.$gitvizReleases = byMonth; chart.draw();
   }
   rows.replaceChildren(...months.map((month, i) => action(`${month} · 커밋 ${value('commits', i)}건 · 활성 기여자 ${value('active_contributors', i)}명 · 버그 수정 ${value('bugfix_pct', i)}%${releaseText(i)}`, () => select(i))));
-  selected.textContent = months.length ? '그래프의 월 또는 월별 수치를 선택하세요. 관측 구간 전체를 보여 줍니다.' : '관측 구간에 커밋이 없습니다.';
+  selected.textContent = months.length ? '그래프의 월 또는 월별 수치를 선택하세요. 최근 180일을 보여 줍니다.' : '최근 180일에 커밋이 없습니다.';
   panel.append(selected, numbers);
 }
 
@@ -224,7 +224,7 @@ function renderDonut(t) {
 
   const legend = document.getElementById('tl-donut-legend');
   if (legend) {
-    legend.innerHTML = !types.length ? '관측 구간에 분류할 커밋이 없습니다.' : types.map(x => {
+    legend.innerHTML = !types.length ? '최근 180일에 분류할 커밋이 없습니다.' : types.map(x => {
       const m = meta(x.type);
       return `<div class="donut-leg-row"><div class="donut-leg-label"><div class="donut-swatch" style="background:${m.color};"></div>${esc(m.label)}</div><div class="donut-pct">${x.pct}%</div></div>`;
     }).join('');

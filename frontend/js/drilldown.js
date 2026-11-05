@@ -101,7 +101,7 @@ async function renderContributor(contributorId, generation) {
   titleEl().textContent = name;
   titleEl().title = name;
   subEl().style.fontFamily = '';
-  subEl().textContent = '관측 구간 기준';
+  subEl().textContent = '최근 180일 기준';
 
   // 맨 위 요약: 커밋 수 · 병합 PR 수 · 협업한 사람 수. 값이 없으면(이전 결과의 PR 수 등) 0이 아니라 —.
   const who = { ...(collab.contributor || {}), ...(owned.contributor || {}) };
@@ -109,8 +109,8 @@ async function renderContributor(contributorId, generation) {
   const collaboratorCount = who.collaborator_count ?? (collaborators.length < 10 ? collaborators.length : null);
   const stat = (label, value, unit, title) => `<div class="dd-stat" title="${esc(title)}"><div class="dd-stat-label">${esc(label)}</div><div class="dd-stat-value">${value == null ? DASH : `${num(value)}<small>${unit}</small>`}</div></div>`;
   const statsHtml = `<div class="dd-stats">
-    ${stat('커밋', who.commit_count, '개', '관측 구간에 이 기여자가 남긴 커밋 수')}
-    ${stat('병합 PR', who.pr_count, '개', who.pr_count == null ? '이 결과에는 PR 수가 없습니다. 다시 분석하면 표시됩니다' : '관측 구간에 병합된, 이 기여자가 작성한 PR 수')}
+    ${stat('커밋', who.commit_count, '개', '최근 180일에 이 기여자가 남긴 커밋 수')}
+    ${stat('병합 PR', who.pr_count, '개', who.pr_count == null ? '이 결과에는 PR 수가 없습니다. 다시 분석하면 표시됩니다' : '최근 180일에 병합된, 이 기여자가 작성한 PR 수')}
     ${stat('협업한 사람', collaboratorCount, '명', '같은 파일을 함께 수정했거나 PR 리뷰로 연결된 기여자 수')}
   </div>`;
 
@@ -119,7 +119,7 @@ async function renderContributor(contributorId, generation) {
     ? files.map(f => `
         <div class="coup-row" style="cursor:pointer;" data-action="__ddPushFile" data-args="${encodeURIComponent(JSON.stringify([Number(f.file_id)]))}" title="${esc(f.path)}">
           <div class="coup-file">${esc(f.path)}${f.is_bus_factor_risk ? ' <span class="badge badge-red" style="font-size:var(--ui-text-xs);">한 명 집중</span>' : ''}</div>
-          <div class="coup-pct" title="이 파일의 관측 구간 변경 중 이 기여자의 비율">${pct(f.share)}%</div>
+          <div class="coup-pct" title="이 파일의 최근 180일 변경 중 이 기여자의 비율">${pct(f.share)}%</div>
         </div>`).join('')
     : '<div style="padding:12px;text-align:center;color:var(--text3);font-size:12px;">기여 파일 정보 없음</div>';
 
@@ -135,7 +135,7 @@ async function renderContributor(contributorId, generation) {
     ${statsHtml}
     <div class="dd-sec-title">협업 쌍 <small>협업 강도 순</small></div>
     <div style="display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto;">${collabHtml}</div>
-    <div class="dd-sec-title">지분 높은 파일 <small>관측 구간 변경 지분순 · 기여 파일 ${num(owned.owned_file_count)}개</small></div>
+    <div class="dd-sec-title">지분 높은 파일 <small>최근 180일 변경 지분순 · 기여 파일 ${num(owned.owned_file_count)}개</small></div>
     <div style="display:flex;flex-direction:column;gap:2px;max-height:220px;overflow-y:auto;">${filesHtml}</div>
   `;
 }
@@ -150,7 +150,7 @@ export function buildRiskExplanation(extra, detail, policy = policyOf(null)) {
   reasons.push(score >= DISPLAY_THRESHOLD
     ? `${policy.scoreShort} ${fmtScoreStable(score)} — 표시 임계값(${DISPLAY_THRESHOLD}) 이상입니다`
     : `${policy.scoreShort} ${fmtScoreStable(score)} — 표시 임계값(${DISPLAY_THRESHOLD}) 미만입니다. 낮은 점수가 안전을 보장하지는 않습니다`);
-  if (detail && detail.bus_factor === 1) reasons.push('관측 구간에서 한 명에게 파일 변경 기여의 80% 이상이 집중됩니다');
+  if (detail && detail.bus_factor === 1) reasons.push('최근 180일에서 한 명에게 파일 변경 기여의 80% 이상이 집중됩니다');
   if (extra.coupling_score >= STRONG_COUPLING && (extra.coupling_support ?? 1) > 0) {
     const cnt = extra.coupled_file_count ?? 0;
     reasons.push(`함께 변경되는 비율이 높은 파일이 ${cnt}개 있습니다. 과거 동반 변경 기록이며 실제 의존성이나 미래 영향을 뜻하지 않습니다`);
@@ -168,7 +168,7 @@ function priorityBlock({ policy, score, ev, row, extra, detail }) {
 
   if (score == null) {
     const why = ev === 'no_history'
-      ? '관측 구간에 변경이 없어 점수가 없습니다. 0이 아니며 안전하다는 뜻도 아닙니다.'
+      ? '최근 180일에 변경이 없어 점수가 없습니다. 0이 아니며 안전하다는 뜻도 아닙니다.'
       : ev === 'metrics_missing'
         ? '점수 계산에 필요한 입력(수정량 등)이 빠져 있어 점수를 계산하지 못했습니다(자료 부족). 점수 순위에서는 뒤에 둡니다.'
         : '점수가 없습니다. 이 결과에서는 이 파일의 근거 상태를 확인할 수 없어, 변경 이력이 없다고 단정하지 않습니다.';
@@ -178,7 +178,7 @@ function priorityBlock({ policy, score, ev, row, extra, detail }) {
   if (policy.hasComponents && row) {
     const comp = row.priority_components || {};
     const line = (label, raw, pc) => `<tr><td>${esc(label)}</td><td class="r">${raw}</td><td class="r">${pc != null ? fmtScore(pc) : DASH}</td></tr>`;
-    html += `<table class="dd-table"><thead><tr><th>구성 요소</th><th class="r">원시 값 (관측 구간)</th><th class="r" title="저장소 안의 다른 파일과 비교한 위치 0~1">백분위</th></tr></thead><tbody>
+    html += `<table class="dd-table"><thead><tr><th>구성 요소</th><th class="r">원시 값 (최근 180일)</th><th class="r" title="저장소 안의 다른 파일과 비교한 위치 0~1">백분위</th></tr></thead><tbody>
       ${line('변경 횟수', row.change_freq != null ? `${num(row.change_freq)}회` : DASH, comp.change_freq)}
       ${line('수정량 (추가+삭제 줄)', row.churn != null ? `${num(row.churn)}줄` : '<span class="cx-na" title="수정량 계산 입력 누락">계산 입력 누락</span>', comp.churn)}
       ${line('버그 수정 커밋', row.bugfix_count != null ? `${num(row.bugfix_count)}회` : DASH, comp.bugfix_count)}
@@ -224,11 +224,11 @@ function contributionBlock({ policy, snap, detail, row, extra }) {
   if (unidentified != null) kv('작성자 미식별 비율', fmtPct(unidentified));
 
   const windowText = snap.window_start
-    ? `관측 구간은 이 결과에 고정된 ${fmtWindow(snap)}입니다(종료 시각 제외).`
+    ? `최근 180일: 이 결과에 고정된 ${fmtWindow(snap)}입니다(종료 시각 제외).`
     : `이 결과는 구간 제한 없이 전체 이력을 대상으로 했습니다. 관측 구간은 파일의 마지막 refactor 분류 커밋 이후이며, 없으면 전체 이력입니다(이전 계산 버전).`;
   return `<div class="dd-sec-title">기여 분포 (주요 수정자 수)</div>
     <table class="dd-table"><tbody>${cells.join('')}</tbody></table>
-    <div class="dd-note">주요 수정자 수는 관측 구간의 파일 변경 커밋 중 80%를 차지하는 최소 기여자 수입니다. 1이면 한 명에게 관측 변경 기여가 집중됐다는 뜻이며, 실제 지식 보유 인원이 아닙니다. 작성자가 식별되지 않은 변경은 계산에서 제외합니다. ${esc(windowText)}</div>`;
+    <div class="dd-note">주요 수정자 수는 최근 180일의 파일 변경 커밋 중 80%를 차지하는 최소 기여자 수입니다. 1이면 한 명에게 관측 변경 기여가 집중됐다는 뜻이며, 실제 지식 보유 인원이 아닙니다. 작성자가 식별되지 않은 변경은 계산에서 제외합니다. ${esc(windowText)}</div>`;
 }
 
 /* ── 함께 변경된 파일 블록 ──
@@ -329,10 +329,10 @@ async function renderFile(fileId, extra, generation) {
           <div class="avatar" style="background:var(--ui-accent-soft);color:var(--ui-accent);">${avatarLetter(e.name)}</div>
           <div class="c-info"><div class="c-name">${esc(e.name)}</div><div class="c-meta">변경 지분 ${pct(e.share)}%</div></div>
         </div>`).join('')
-    : '<div style="padding:12px;text-align:center;color:var(--text3);font-size:12px;">식별된 수정 기록 없음 (작성자 미식별이거나 관측 구간에 변경 없음)</div>';
+    : '<div style="padding:12px;text-align:center;color:var(--text3);font-size:12px;">식별된 수정 기록 없음 (작성자 미식별이거나 최근 180일에 변경 없음)</div>';
 
   bodyEl().innerHTML = `
-    <div class="dd-window">관측 구간 ${esc(fmtWindow(snap))}${snap.window_start ? ' (종료 시각 제외)' : ''} · 저장 결과 #${esc(snap.id)} · ${esc(policy.versionLabel)}</div>
+    <div class="dd-window">${snap.window_start ? '최근 180일 ' : ''}${esc(fmtWindow(snap))}${snap.window_start ? ' (종료 시각 제외)' : ''} · 저장 결과 #${esc(snap.id)} · ${esc(policy.versionLabel)}</div>
     ${priorityBlock({ policy, score, ev, row, extra, detail })}
     ${contributionBlock({ policy, snap, detail, row, extra })}
     <div class="dd-sec-title">수정한 사람 <small>(변경 지분순)</small></div>
