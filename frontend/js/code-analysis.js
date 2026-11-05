@@ -103,7 +103,7 @@ async function initCodeAnalysisPage() {
   applyPolicyToMetrics();
   applyPolicyText();
   renderSortToggle();
-  setText('cx-status', DQ.commit_count === 0 ? '관측 구간에 커밋 없음' : `저장 결과 #${SNAP.id} 조회 완료`);
+  setText('cx-status', DQ.commit_count === 0 ? '최근 180일에 커밋 없음' : `저장 결과 #${SNAP.id} 조회 완료`);
   TREE = data.tree || { name: 'root', children: [] };
   FILES = data.files || [];
   computeAverages(TREE);
@@ -218,10 +218,10 @@ function renderSummary() {
     const threshold = assessDataQuality(DQ).threshold;
     const chip = (tone, label, n, tip) => `<span class="cx-tag ${tone}" title="${esc(tip)}">${esc(label)} <b>${num(n)}</b></span>`;
     evidenceBox.innerHTML = `<span class="cx-evidence-title">파일 ${num(FILES.length)}개의 관측 상태</span>`
-      + chip('ok', '정상 관측', count('observed'), `관측 구간 변경 ${threshold}건 이상`)
+      + chip('ok', '정상 관측', count('observed'), `최근 180일 변경 ${threshold}건 이상`)
       + chip('amber', '표본 부족', count('low_support'), `변경 ${threshold}건 미만 — 점수는 있으나 근거가 적습니다`)
       + chip('amber', '자료 부족', count('metrics_missing'), '계산 입력(수정량 등) 누락 — 점수를 계산하지 못해 순위 뒤에 둡니다')
-      + chip('gray', '관측 변경 없음', count('no_history'), '관측 구간에 변경이 없어 점수가 없습니다(0이 아님, 안전을 뜻하지도 않음)');
+      + chip('gray', '관측 변경 없음', count('no_history'), '최근 180일에 변경이 없어 점수가 없습니다(0이 아님, 안전을 뜻하지도 않음)');
   }
 }
 
@@ -608,7 +608,7 @@ const na = (reason) => `<span class="cx-na" title="${esc(reason)}">${DASH}</span
 const has = (o, k) => o != null && o[k] !== undefined;
 
 const SCORE_NA = {
-  no_history: '관측 구간에 변경이 없어 점수가 없습니다 (0이 아니며 안전을 뜻하지도 않습니다)',
+  no_history: '최근 180일에 변경이 없어 점수가 없습니다 (0이 아니며 안전을 뜻하지도 않습니다)',
   metrics_missing: '점수 계산에 필요한 입력(수정량 등)이 빠져 있어 계산하지 못했습니다 (자료 부족)',
 };
 const scoreNaReason = (f) => SCORE_NA[f.evidence_status] || '점수가 없습니다';
@@ -642,16 +642,16 @@ function showDetail(d) {
     const cp = couplingOf(f);
     const rows = [
       row(POLICY.scoreShort, (sc != null ? chip(fmt2(sc), riskColor(sc)) : na(scoreNaReason(f))) + (ev.label ? tag(ev.tone, ev.label) : '')),
-      row('변경 횟수 (관측 구간)', f.observation_count != null ? `${num(f.observation_count)}회` : DASH),
+      row('변경 횟수 (최근 180일)', f.observation_count != null ? `${num(f.observation_count)}회` : DASH),
       row('주요 수정자 수', (f.bus_factor != null ? chip(f.bus_factor, bfColor(f.bus_factor)) : na(BF_NA)) + (f.is_bus_factor_risk ? tag('red', '한 명에게 집중') : '')),
     ];
     if (has(f, 'top_owner_share')) rows.push(row('최대 기여자 비율', f.top_owner_share != null ? fmtPct(f.top_owner_share) : na(BF_NA)));
-    if (has(f, 'contributor_count')) rows.push(row('식별된 기여자 수', f.evidence_status === 'no_history' ? na('관측 구간에 변경 없음') : `${num(f.contributor_count)}명`));
+    if (has(f, 'contributor_count')) rows.push(row('식별된 기여자 수', f.evidence_status === 'no_history' ? na('최근 180일에 변경 없음') : `${num(f.contributor_count)}명`));
     if (has(f, 'entropy_normalized')) {
       rows.push(row('기여 분산도', f.entropy_normalized != null
         ? `${fmt2(f.entropy_normalized)}${f.contributor_count === 1 ? ' <small>(기여자 1명 → 0)</small>' : ''}` : na(ENTROPY_NA)));
     }
-    if (has(f, 'unidentified_share')) rows.push(row('작성자 미식별 비율', f.unidentified_share != null ? fmtPct(f.unidentified_share) : na('관측 구간에 변경 없음')));
+    if (has(f, 'unidentified_share')) rows.push(row('작성자 미식별 비율', f.unidentified_share != null ? fmtPct(f.unidentified_share) : na('최근 180일에 변경 없음')));
     rows.push(row('함께 수정 정도 (최대)', cp != null
       ? chip(fmt2(cp), couplingColor(cp)) + (f.coupling_support < 5 ? tag('gray', `표본 ${f.coupling_support}회`, '함께 수정 5건 미만 — 표본 부족(표시 정책)') : '')
       : na('함께 수정 2건 이상인 함께 수정된 후보가 없습니다')));
@@ -674,7 +674,7 @@ function fileNotes(f) {
   const ev = f.evidence_status;
   if (ev === 'no_history') notes.push(tag('gray', '관측 변경 없음', SCORE_NA.no_history));
   else if (ev === 'metrics_missing') notes.push(tag('amber', '자료 부족 · 계산 입력 누락', SCORE_NA.metrics_missing));
-  else if (ev === 'low_support') notes.push(tag('amber', `표본 부족 (${num(f.observation_count)}건)`, `관측 구간 변경 ${num(f.observation_count)}건 — 점수 0도 안전을 뜻하지 않습니다`));
+  else if (ev === 'low_support') notes.push(tag('amber', `표본 부족 (${num(f.observation_count)}건)`, `최근 180일 변경 ${num(f.observation_count)}건 — 점수 0도 안전을 뜻하지 않습니다`));
   if (ev !== 'no_history' && f.unidentified_share != null && f.unidentified_share > 0) {
     notes.push(tag('gray', `작성자 미식별 ${fmtPct(f.unidentified_share)}`, '작성자를 식별하지 못한 변경 — 주요 수정자 수·기여 분산도 계산에서 제외됩니다'));
   }
@@ -718,7 +718,7 @@ function renderList() {
     const sc = scoreOf(f);
     const cp = couplingOf(f);
     const bfBadge = f.is_bus_factor_risk
-      ? '<span class="badge badge-red" title="관측 구간에서 한 명에게 파일 변경 기여의 80% 이상이 집중됩니다">한 명 집중</span>' : '';
+      ? '<span class="badge badge-red" title="최근 180일에서 한 명에게 파일 변경 기여의 80% 이상이 집중됩니다">한 명 집중</span>' : '';
     const couplingBadge = cp != null && cp >= STRONG_COUPLING
       ? '<span class="badge badge-amber" style="margin-left:4px;" title="함께 수정 정도가 높은 파일 — 실제 의존성을 뜻하지 않습니다">자주 함께 수정</span>' : '';
     const fileUrl = githubFileUrl(f.path);
@@ -781,7 +781,7 @@ function renderContribution(bf, box) {
   const unidentifiedFiles = FILES.filter(f => f.evidence_status !== 'no_history' && f.bus_factor == null).length;
 
   if (!analyzed) {
-    box.innerHTML = `<div class="cx-empty">식별된 기여가 있는 파일이 없습니다. 작성자가 식별되지 않은 변경만 있거나 관측 구간에 변경이 없는 경우입니다(0이 아닌 '값 없음').</div>`;
+    box.innerHTML = `<div class="cx-empty">식별된 기여가 있는 파일이 없습니다. 작성자가 식별되지 않은 변경만 있거나 최근 180일에 변경이 없는 경우입니다(0이 아닌 '값 없음').</div>`;
     return;
   }
 

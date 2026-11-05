@@ -47,7 +47,7 @@ function statusBadge(repo) {
 
 function metaLine(repo) {
   const parts = [];
-  // 수집한 기본 브랜치의 누적 커밋 수 — 결과 화면의 '관측 구간 커밋'(분석 구간 안)과 다르다
+  // 수집한 기본 브랜치의 누적 커밋 수 — 결과 화면의 '최근 180일 커밋'(분석 구간 안)과 다르다
   if (repo.commit_count) parts.push(`수집 커밋 ${num(repo.commit_count)}개`);
   if (repo.contributor_count) parts.push(`기여자 ${num(repo.contributor_count)}명`);
   if (repo.status === 'done') parts.push(`파일 ${num(repo.file_count)}개`);

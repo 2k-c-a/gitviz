@@ -29,10 +29,10 @@
   </div>
   <div class="body">
     <div class="metrics-4">
-      <div class="metric-card"><div class="m-label">관측 구간 커밋</div><div class="m-val" id="tl-m-commits">—</div><div class="m-sub m-up" id="tl-m-commits-sub">&nbsp;</div></div>
+      <div class="metric-card"><div class="m-label">최근 180일 커밋</div><div class="m-val" id="tl-m-commits">—</div><div class="m-sub m-up" id="tl-m-commits-sub">&nbsp;</div></div>
       <div class="metric-card"><div class="m-label">활성 기여자</div><div class="m-val" id="tl-m-contributors">—</div><div class="m-sub">종료 기준 최근 90일</div></div>
-      <div class="metric-card"><div class="m-label">관측 구간 릴리즈</div><div class="m-val" id="tl-m-releases">—</div><div class="m-sub" id="tl-m-releases-sub">&nbsp;</div></div>
-      <div class="metric-card"><div class="m-label">버그 수정 분류 비율</div><div class="m-val" id="tl-m-bugfix">—</div><div class="m-sub">관측 구간 커밋 기준</div></div>
+      <div class="metric-card"><div class="m-label">최근 180일 릴리즈</div><div class="m-val" id="tl-m-releases">—</div><div class="m-sub" id="tl-m-releases-sub">&nbsp;</div></div>
+      <div class="metric-card"><div class="m-label">버그 수정 분류 비율</div><div class="m-val" id="tl-m-bugfix">—</div><div class="m-sub">최근 180일 커밋 기준</div></div>
     </div>
 
     <!-- 커밋 타임라인 차트 -->
@@ -40,7 +40,7 @@
       <div class="p-head">
         <div class="p-title">커밋 활동량 타임라인</div>
       </div>
-      <div class="p-note" id="tl-window-note">월별 커밋 수 · 활성 기여자 수 · 버그 수정 분류 비율. 관측 구간 전체의 기록이며 전체 누적 수가 아닙니다.</div>
+      <div class="p-note" id="tl-window-note">월별 커밋 수 · 활성 기여자 수 · 버그 수정 분류 비율. 최근 180일의 기록이며 전체 누적 수가 아닙니다.</div>
       <div class="activity-chart activity-bands">
         <canvas id="chart-timeline"></canvas>
       </div>
@@ -58,7 +58,7 @@
         <div class="panel">
           <div class="p-head mb-2.5">
             <div class="p-title">기여자별 활동 히트맵</div>
-            <div class="text-xs text-muted-foreground" id="tl-heatmap-range">관측 구간 전체</div>
+            <div class="text-xs text-muted-foreground" id="tl-heatmap-range">최근 180일</div>
           </div>
           <div class="act-hm" id="act-heatmap">
             <div style="font-size:12px;color:var(--text3);text-align:center;padding:24px 8px;">불러오는 중…</div>
@@ -68,7 +68,7 @@
         <div class="panel">
           <div class="p-head mb-3.5">
             <div class="p-title">상위 기여자</div>
-            <div class="text-xs text-muted-foreground">관측 구간 커밋 수 기준</div>
+            <div class="text-xs text-muted-foreground">최근 180일 커밋 수 기준</div>
           </div>
           <div class="contrib-list" id="tl-contrib-list"></div>
         </div>
@@ -92,7 +92,7 @@
     </div>
 
     <div class="overview-grid overview-more">
-      <section class="panel"><h2 class="p-title">관측 구간 변경이 많은 파일</h2><p class="p-note">파일 변경 횟수순입니다. API는 마지막 변경 시각을 제공하지 않습니다.</p><div id="overview-files"></div></section>
+      <section class="panel"><h2 class="p-title">최근 180일 변경이 많은 파일</h2><p class="p-note">파일 변경 횟수순입니다. API는 마지막 변경 시각을 제공하지 않습니다.</p><div id="overview-files"></div></section>
       <section class="panel"><h2 class="p-title">협업 요약</h2><div id="overview-collaboration"></div></section>
     </div>
   </div>

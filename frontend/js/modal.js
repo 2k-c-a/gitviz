@@ -63,7 +63,7 @@ function _markPipelineAllDone(s) {
   const prs = s.pr_count ?? 0;
   const contTotal = s.contributors_total ?? 0;
   const parts = [];
-  // 이 숫자는 수집한 기본 브랜치의 누적 커밋 수다. 결과 화면의 '관측 구간 커밋'(기본 최근 180일)과 다르다.
+  // 이 숫자는 수집한 기본 브랜치의 누적 커밋 수다. 결과 화면의 '최근 180일 커밋'과 다르다.
   if (commits) parts.push(`수집 커밋 ${commits.toLocaleString()}개`);
   if (prs) parts.push(`PR ${prs.toLocaleString()}개`);
   if (contTotal) parts.push(`기여자 ${contTotal.toLocaleString()}명`);
@@ -377,7 +377,7 @@ function _renderStatus(s) {
   // 정확히 몇 단계까지 끝났는지 알 수 있다.
   const curStageIdx = Math.max(0, PIPE_STAGE_ORDER.indexOf(detail.stage || 'collect'));
   const collectParts = [];
-  // 수집한 기본 브랜치의 누적 커밋 수 — 결과 화면의 '관측 구간 커밋'(분석 구간 안의 커밋)과 다르다
+  // 수집한 기본 브랜치의 누적 커밋 수 — 결과 화면의 '최근 180일 커밋'(분석 구간 안의 커밋)과 다르다
   if (commits) collectParts.push(`수집 커밋 ${commits.toLocaleString()}개`);
   if (prs) collectParts.push(`PR ${prs.toLocaleString()}개`);
   if (contTotal) collectParts.push(`기여자 ${contTotal.toLocaleString()}명`);

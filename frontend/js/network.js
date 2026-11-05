@@ -509,7 +509,7 @@ function collectionHint(dq) {
   dq = dq || {};
   const a = assessDataQuality(dq);
   const parts = [];
-  if (dq.merged_pr_count === 0) parts.push('관측 구간에 병합된 PR이 없습니다');
+  if (dq.merged_pr_count === 0) parts.push('최근 180일에 병합된 PR이 없습니다');
   else if (dq.merged_pr_count == null) parts.push('병합 PR 수를 확인할 수 없습니다');
   else {
     if (dq.prs_with_files == null) parts.push('PR 파일 상세 수는 확인할 수 없습니다');
@@ -567,7 +567,7 @@ async function showNodeDetail(node) {
   const base = `${sideHeader(esc(node.name), `${community}${node.is_hub ? ' · <span class="net-tag">허브</span>' : ''}`)}
     <div class="net-stats">
       ${stat('커밋', count(node.commit_count, '개'))}
-      ${stat('병합 PR', count(node.pr_count, '개'), node.pr_count == null ? '이 결과에는 PR 수가 없습니다' : '관측 구간에 병합된, 이 개발자가 작성한 PR')}
+      ${stat('병합 PR', count(node.pr_count, '개'), node.pr_count == null ? '이 결과에는 PR 수가 없습니다' : '최근 180일에 병합된, 이 개발자가 작성한 PR')}
       ${stat('리뷰한 PR', count(node.reviews_given, '개'))}
       ${stat('협업 연결', count(node.degree, '명'), '저장소 전체에서 연결된 개발자 수')}
       ${stat('연결 중심성', fmt3(node.degree_centrality), 'Degree centrality: 연결된 개발자 수 ÷ (전체 개발자 − 1)')}

@@ -19,7 +19,7 @@ export async function loadPanel(host, load, render) {
 }
 export function empty(host, message) { host.append(createState({ title: '표시할 데이터가 없습니다', message })); }
 export function contributorList(host, rows) {
-  if (!rows.length) return empty(host, '관측 구간에 식별된 기여자 기록이 없습니다.');
+  if (!rows.length) return empty(host, '최근 180일에 식별된 기여자 기록이 없습니다.');
   for (const row of rows) {
     const name = row.github_login || row.display_name || row.name || '익명';
     const item = element('div', 'analysis-list-row');
@@ -27,7 +27,7 @@ export function contributorList(host, rows) {
   }
 }
 export function typeBars(host, rows) {
-  if (!rows.length) return empty(host, '관측 구간에 분류할 커밋이 없습니다.');
+  if (!rows.length) return empty(host, '최근 180일에 분류할 커밋이 없습니다.');
   const names = { feature: '기능 추가', bugfix: '버그 수정', refactor: '리팩토링', docs: '문서', chore: '유지 작업', other: '기타' };
   rows.forEach((row, i) => {
     const line = element('div', 'analysis-type-row');
