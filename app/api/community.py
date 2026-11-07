@@ -1,5 +1,6 @@
 """Project community HTTP API. Members only; every change needs CSRF (web) or the desktop bearer session."""
 import os
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Query, Request, Response
@@ -15,11 +16,14 @@ from app.schemas.community import (
     CreateChatMessageRequest,
     CreateCollabSessionRequest,
     CreateCommentRequest,
+    CreateEventRequest,
     CreateInviteRequest,
+    EventResponseRequest,
     CreatePostRequest,
     RedeemInviteRequest,
     TransferAdminRequest,
     UpdateCommentRequest,
+    UpdateEventRequest,
     UpdateMemberRequest,
     UpdatePostRequest,
     VoiceSessionRequest,
@@ -28,6 +32,7 @@ from app.schemas.community import (
 from app.services import community as service
 from app.services import community_chat as chat
 from app.services import community_collab as collab
+from app.services import community_events as events
 from app.services import community_voice as voice
 
 router = APIRouter(prefix='/api/community/v1', tags=['community'], dependencies=[Depends(require_csrf)])
@@ -203,6 +208,55 @@ def leave_voice(repository_id: int, body: VoiceSessionRequest, request: Request,
 @router.post('/repositories/{repository_id}/voice/signal')
 def voice_signal(repository_id: int, body: VoiceSignalRequest, request: Request, response: Response, db=Depends(get_db)):
     return done(db, response, voice.signal(db, repository_id, _get_session_user_id(request), body))
+
+
+# Schedule (2026-11-07). A calendar range is at most 100 days; `q` searches titles and descriptions instead.
+@router.get('/events')
+def my_events(request: Request, response: Response, start: datetime | None = Query(default=None),
+              end: datetime | None = Query(default=None), db=Depends(get_db)):
+    return done(db, response, events.my_calendar(db, _get_session_user_id(request), start, end))
+
+
+@router.get('/repositories/{repository_id}/events')
+def community_events(repository_id: int, request: Request, response: Response, start: datetime | None = Query(default=None),
+                     end: datetime | None = Query(default=None), q: str | None = Query(default=None, max_length=100),
+                     db=Depends(get_db)):
+    return done(db, response, events.events(db, repository_id, _get_session_user_id(request), start, end, q))
+
+
+@router.get('/repositories/{repository_id}/event-links')
+def event_links(repository_id: int, request: Request, response: Response, db=Depends(get_db)):
+    return done(db, response, events.link_options(db, repository_id, _get_session_user_id(request)))
+
+
+@router.post('/repositories/{repository_id}/events', status_code=201)
+def create_event(repository_id: int, body: CreateEventRequest, request: Request, response: Response, db=Depends(get_db)):
+    return done(db, response, events.create_event(db, repository_id, _get_session_user_id(request), body))
+
+
+@router.get('/repositories/{repository_id}/events/{event_id}')
+def community_event(repository_id: int, event_id: int, request: Request, response: Response, db=Depends(get_db)):
+    return done(db, response, events.event(db, repository_id, _get_session_user_id(request), event_id))
+
+
+@router.patch('/repositories/{repository_id}/events/{event_id}')
+def update_event(repository_id: int, event_id: int, body: UpdateEventRequest, request: Request, response: Response,
+                 db=Depends(get_db)):
+    events.update_event(db, repository_id, _get_session_user_id(request), event_id, body)
+    return done(db, response)
+
+
+@router.delete('/repositories/{repository_id}/events/{event_id}')
+def delete_event(repository_id: int, event_id: int, request: Request, response: Response, db=Depends(get_db)):
+    events.delete_event(db, repository_id, _get_session_user_id(request), event_id)
+    return done(db, response)
+
+
+@router.put('/repositories/{repository_id}/events/{event_id}/response')
+def respond_event(repository_id: int, event_id: int, body: EventResponseRequest, request: Request, response: Response,
+                  db=Depends(get_db)):
+    events.respond(db, repository_id, _get_session_user_id(request), event_id, body.response)
+    return done(db, response)
 
 
 SEAT = Path(pattern=r'^[A-Za-z0-9_-]{22}$')

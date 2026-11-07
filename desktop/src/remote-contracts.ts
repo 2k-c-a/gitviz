@@ -114,6 +114,15 @@ Object.assign(endpoints, {
   heartbeatCollab: community('POST', 'repositories/{repositoryId}/collab/{sessionId}/heartbeat', { ...repo, sessionId: 'token' }, {}, 'CollabSeatRequest'),
   leaveCollab: community('POST', 'repositories/{repositoryId}/collab/{sessionId}/leave', { ...repo, sessionId: 'token' }, {}, 'CollabSeatRequest'),
   relayCollab: community('POST', 'repositories/{repositoryId}/collab/{sessionId}/relay', { ...repo, sessionId: 'token' }, {}, 'CollabRelayRequest'),
+  // Schedule (2026-11-07): calendar ranges and search, one event, its links, and participants' answers.
+  myCommunityEvents: community('GET', 'events', {}, { start: 'text', end: 'text' }),
+  communityEvents: community('GET', 'repositories/{repositoryId}/events', repo, { start: 'text', end: 'text', q: 'text' }),
+  communityEventLinks: community('GET', 'repositories/{repositoryId}/event-links', repo),
+  createCommunityEvent: community('POST', 'repositories/{repositoryId}/events', repo, {}, 'CreateEventRequest'),
+  communityEvent: community('GET', 'repositories/{repositoryId}/events/{eventId}', { ...repo, eventId: 'id' }),
+  updateCommunityEvent: community('PATCH', 'repositories/{repositoryId}/events/{eventId}', { ...repo, eventId: 'id' }, {}, 'UpdateEventRequest'),
+  deleteCommunityEvent: community('DELETE', 'repositories/{repositoryId}/events/{eventId}', { ...repo, eventId: 'id' }),
+  respondCommunityEvent: community('PUT', 'repositories/{repositoryId}/events/{eventId}/response', { ...repo, eventId: 'id' }, {}, 'EventResponseRequest'),
 });
 
 export const UUID_PATTERN = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';

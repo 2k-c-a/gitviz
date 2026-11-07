@@ -1,4 +1,5 @@
 """Community request bodies. Exported to contracts/desktop/v1/community-bodies.json for the desktop allowlist."""
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -116,3 +117,73 @@ class CollabRelayRequest(BaseModel):
         if value is not None and any(part in ('', '.', '..') for part in value.split('/')):
             raise ValueError('path must be a root-relative file path')
         return value
+
+
+# Community schedule (2026-11-07). General events and development-process events share one shape; sprints and
+# milestones are themselves events that others link to. Issues are kept by number only (no issue collection yet).
+EVENT_TYPES = ('meeting', 'team_meeting', 'tech_share', 'community_event', 'other',
+               'task', 'code_review', 'sprint', 'milestone', 'deploy', 'release')
+_EVENT_TYPE = r'^(' + '|'.join(EVENT_TYPES) + r')$'
+_HTTPS = r'^https://[^\s\x00-\x1f\x7f]{1,490}$'
+
+
+class EventAttachment(BaseModel):
+    """A link to a file kept elsewhere (drive, GitHub, ...). The server stores no uploaded files."""
+    model_config = ConfigDict(extra='forbid')
+    name: str = Field(min_length=1, max_length=200, pattern=_LINE)
+    url: str = Field(max_length=500, pattern=_HTTPS)
+
+
+class CreateEventRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    title: str = Field(min_length=1, max_length=200, pattern=_LINE)
+    description: str = Field(default='', max_length=10000, pattern=_TEXT)
+    event_type: str = Field(pattern=_EVENT_TYPE)
+    status: str = Field(default='planned', pattern=r'^(planned|in_progress|done|cancelled)$')
+    starts_at: datetime
+    ends_at: datetime
+    all_day: bool = False
+    assignee_id: UUID | None = None
+    participant_ids: list[UUID] = Field(default_factory=list, max_length=30)
+    location: str | None = Field(default=None, max_length=200, pattern=_LINE)
+    meeting_url: str | None = Field(default=None, max_length=500, pattern=_HTTPS)
+    visibility: str = Field(default='community', pattern=r'^(community|participants)$')
+    reminder_minutes: int | None = Field(default=None, ge=0, le=10080)
+    recurrence: str = Field(default='none', pattern=r'^(none|daily|weekly|monthly)$')
+    recurrence_until: datetime | None = None
+    sprint_id: int | None = Field(default=None, ge=1)
+    milestone_id: int | None = Field(default=None, ge=1)
+    post_id: int | None = Field(default=None, ge=1)
+    issue_numbers: list[int] = Field(default_factory=list, max_length=10)
+    pull_numbers: list[int] = Field(default_factory=list, max_length=10)
+    release_tag: str | None = Field(default=None, min_length=1, max_length=200, pattern=_LINE)
+    goal: str | None = Field(default=None, max_length=2000, pattern=_TEXT)
+    version: str | None = Field(default=None, min_length=1, max_length=100, pattern=_LINE)
+    environment: str | None = Field(default=None, min_length=1, max_length=100, pattern=_LINE)
+    attachments: list[EventAttachment] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode='after')
+    def consistent(self):
+        for value in (self.starts_at, self.ends_at, self.recurrence_until):
+            if value is not None and value.tzinfo is None:
+                raise ValueError('times need a UTC offset')
+        if self.ends_at < self.starts_at:
+            raise ValueError('ends_at must not be before starts_at')
+        if self.ends_at - self.starts_at > timedelta(days=366):
+            raise ValueError('an event lasts at most a year')
+        if self.recurrence == 'none' and self.recurrence_until is not None:
+            raise ValueError('recurrence_until needs a recurrence')
+        if self.recurrence_until is not None and self.recurrence_until < self.starts_at:
+            raise ValueError('recurrence_until must not be before starts_at')
+        if any(not 1 <= n <= 1_000_000_000 for n in [*self.issue_numbers, *self.pull_numbers]):
+            raise ValueError('issue and pull request numbers are positive')
+        return self
+
+
+class UpdateEventRequest(CreateEventRequest):
+    pass
+
+
+class EventResponseRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    response: str = Field(pattern=r'^(accepted|declined|tentative)$')

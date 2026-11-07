@@ -2,9 +2,10 @@ import { request, isDesktop } from './platform/transport.js';
 import { githubLogin } from './login.js';
 import { createState, element } from './ui/components.js';
 import { fmtDateTime } from './fmt.js';
+import { renderSchedule } from './community-schedule.js';
 /* ── 커뮤니티 페이지: 저장소별 글·댓글, 실시간 채팅·음성 채팅·공동 편집(앱), 멤버, 초대 링크 ──
    community-main이 있을 때(=커뮤니티 페이지)만 동작한다. 사용자 글은 모두 textContent로만 그린다.
-   주소: ?id=<저장소 ID>&tab=posts|chat|collab|members|invites&post=<글 ID>, 초대 링크는 #invite=<토큰>. */
+   주소: ?id=<저장소 ID>&tab=posts|schedule|chat|collab|members|invites&post=<글 ID>, 초대 링크는 #invite=<토큰>. */
 
 const mainEl = document.getElementById('community-main');
 const listEl = document.getElementById('community-list');
@@ -142,7 +143,7 @@ function renderCommunity() {
   const title = element('h2', 'ui-panel-title', view.repository.name || view.repository.url);
   const meta = element('p', 'p-sub', `멤버 ${view.member_count}명 · 관리자 ${who(view.admin)} · 내 역할 ${admin ? '관리자' : '멤버'}`);
   const tabs = element('div', 'ui-toolbar community-tabs'); tabs.setAttribute('role', 'tablist');
-  for (const [key, label] of [['posts', '글'], ['chat', '채팅'], ...(collabAvailable() ? [['collab', '공동 편집']] : []), ['members', '멤버'], ...(admin ? [['invites', '초대 링크']] : [])]) {
+  for (const [key, label] of [['posts', '글'], ['schedule', '일정'], ['chat', '채팅'], ...(collabAvailable() ? [['collab', '공동 편집']] : []), ['members', '멤버'], ...(admin ? [['invites', '초대 링크']] : [])]) {
     const t = button(label, key === tab ? 'btn-primary' : 'btn-secondary', () => go({ tab: key === 'posts' ? null : key, post: null }));
     t.setAttribute('role', 'tab'); t.setAttribute('aria-selected', String(key === tab)); t.dataset.tab = key;
     tabs.append(t);
@@ -154,7 +155,8 @@ function renderCommunity() {
   live.content.replaceChildren(head, body);
   stopCollab();
   const post = Number(params().get('post'));
-  if (tab === 'chat') void renderChat(body);
+  if (tab === 'schedule') renderSchedule(body, { api, view, who, button, confirmButton, go, myId });
+  else if (tab === 'chat') void renderChat(body);
   else if (tab === 'collab' && collabAvailable()) void renderCollab(body);
   else if (tab === 'members') void renderMembers(body);
   else if (tab === 'invites' && admin) void renderInvites(body);

@@ -8,7 +8,7 @@ export function externalRepositoryLink(value: string): string | null {
   try {
     const url = new URL(value);
     if (url.protocol !== 'https:' || url.hostname !== 'github.com' || url.port || url.username || url.password || url.search ||
-      !/^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/(?:tree|blob|commit|pull)\/[A-Za-z0-9_./%-]+)?\/?$/.test(url.pathname) ||
+      !/^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/(?:tree|blob|commit|pull|issues|releases\/tag)\/[A-Za-z0-9_./%-]+)?\/?$/.test(url.pathname) ||
       (url.hash && !/^#L\d+(?:-L\d+)?$/.test(url.hash))) return null;
     return url.href;
   } catch { return null; }

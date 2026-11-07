@@ -1,4 +1,4 @@
-"""Project communities: one per analyzed repository. Members, URL invites, posts and comments.
+"""Project communities: one per analyzed repository. Members, URL invites, posts, comments and a shared schedule.
 
 Contributors join automatically, everyone else only through an invite, and the first analyzer starts as admin.
 Content is plain text and only ever soft-deleted, so moderation keeps a record.
@@ -6,6 +6,7 @@ Content is plain text and only ever soft-deleted, so moderation keeps a record.
 import uuid
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -17,7 +18,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -91,3 +92,58 @@ class CommunityChatMessage(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     deleted_at = Column(DateTime(timezone=True))
     __table_args__ = (Index('ix_community_chat_room', 'repository_id', 'id'),)
+
+
+class CommunityEvent(Base):
+    """One schedule entry (2026-11-07). A recurring entry is one row expanded per query; edits apply to the series.
+
+    `details` holds what only some types use: goal (sprint, milestone), version and environment (deploy, release),
+    linked issue and pull request numbers, a release tag and attachment links. Sprints and milestones are events of
+    those types that other events point at through sprint_id / milestone_id.
+    """
+    __tablename__ = 'community_events'
+    id = Column(Integer, primary_key=True)
+    repository_id = Column(Integer, ForeignKey('repositories.id', ondelete='CASCADE'), nullable=False)
+    author_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=False, server_default='')
+    event_type = Column(String(20), nullable=False)
+    status = Column(String(12), nullable=False, server_default='planned')
+    starts_at = Column(DateTime(timezone=True), nullable=False)
+    ends_at = Column(DateTime(timezone=True), nullable=False)
+    all_day = Column(Boolean, nullable=False, server_default='false')
+    assignee_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'))
+    location = Column(String(200))
+    meeting_url = Column(String(500))
+    visibility = Column(String(12), nullable=False, server_default='community')
+    reminder_minutes = Column(Integer)
+    recurrence = Column(String(8), nullable=False, server_default='none')
+    recurrence_until = Column(DateTime(timezone=True))
+    sprint_id = Column(Integer, ForeignKey('community_events.id', ondelete='SET NULL'))
+    milestone_id = Column(Integer, ForeignKey('community_events.id', ondelete='SET NULL'))
+    post_id = Column(Integer, ForeignKey('community_posts.id', ondelete='SET NULL'))
+    details = Column(JSONB, nullable=False, server_default='{}')
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True))
+    deleted_at = Column(DateTime(timezone=True))
+    __table_args__ = (
+        CheckConstraint("event_type IN ('meeting','team_meeting','tech_share','community_event','other','task',"
+                        "'code_review','sprint','milestone','deploy','release')", name='ck_community_event_type'),
+        CheckConstraint("status IN ('planned','in_progress','done','cancelled')", name='ck_community_event_status'),
+        CheckConstraint("visibility IN ('community','participants')", name='ck_community_event_visibility'),
+        CheckConstraint("recurrence IN ('none','daily','weekly','monthly')", name='ck_community_event_recurrence'),
+        CheckConstraint('ends_at >= starts_at', name='ck_community_event_range'),
+        Index('ix_community_events_calendar', 'repository_id', 'starts_at'),
+    )
+
+
+class CommunityEventParticipant(Base):
+    __tablename__ = 'community_event_participants'
+    event_id = Column(Integer, ForeignKey('community_events.id', ondelete='CASCADE'), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    response = Column(String(10), nullable=False, server_default='pending')
+    responded_at = Column(DateTime(timezone=True))
+    __table_args__ = (
+        CheckConstraint("response IN ('pending','accepted','declined','tentative')", name='ck_community_event_response'),
+        Index('ix_community_event_participants_user', 'user_id'),
+    )

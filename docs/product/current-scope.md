@@ -21,6 +21,7 @@
 |---|---|---|
 | 커뮤니티·멤버 | 분석한 저장소마다 하나. 기여자는 자동 참여, 그 밖은 초대 링크(`gitviz-join://` 앱 열기 포함). 처음 분석한 사람이 관리자, 넘기기·내보내기 가능 | [API](../../app/api/community.py), [AD-25·26](../architecture/ARCHITECTURE_DECISIONS.md) |
 | 글·댓글 | 일반 텍스트, 소프트 삭제, 1분 10개 제한 | [서비스](../../app/services/community.py) |
+| 일정 | 커뮤니티 "일정" 탭(글 다음, 2026-11-07). 월간(기본)·주간·일간 캘린더, 유형(회의·일반·개발 작업·코드 리뷰·스프린트·마일스톤·배포 및 릴리즈)·프로젝트(이 저장소/내 모든 커뮤니티)·담당자 필터, 제목·설명 검색, 담당자·참여자·참석 응답, 반복(매일·매주·매월), 커뮤니티 공개/참여자만 공개. 개발 연동은 수집된 PR(리뷰어 포함)·릴리스와 스프린트·마일스톤 일정을 쓰고, 이슈는 번호와 GitHub 링크만 둔다. 첨부는 링크만, 알림은 일정 화면을 연 동안의 화면 안 알림뿐이다. 의견은 연결한 커뮤니티 글의 댓글로 나눈다([AD-35](../architecture/ARCHITECTURE_DECISIONS.md)) | [서비스](../../app/services/community_events.py) |
 | 실시간 채팅 | 기록은 PostgreSQL, 받기는 SSE, 프로세스 간 Redis pub/sub([AD-27](../architecture/ARCHITECTURE_DECISIONS.md)) | [채팅](../../app/services/community_chat.py) |
 | 음성 채팅 | 3명까지 WebRTC 메시. 서버는 자리·신호만. 공개 STUN 기본([AD-28](../architecture/ARCHITECTURE_DECISIONS.md)). 커뮤니티를 고르면 화면 왼쪽에 떠 있고, 글·채팅·공동 편집·멤버 탭을 바꿔도 끊기지 않는다(2026-11-05: 실시간 연결을 커뮤니티당 하나로 묶어 "접속 중"에는 그 커뮤니티를 연 사람이 모두 보인다). 내 커뮤니티 목록은 위 왼쪽, 초대 링크로 참여는 위 오른쪽이고 좁은 화면에서는 아래로 쌓인다 | [음성](../../app/services/community_voice.py) |
 

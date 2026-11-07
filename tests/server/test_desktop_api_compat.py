@@ -30,7 +30,13 @@ class Compatibility(unittest.TestCase):
         # 2026-11-01 (AD-25, AD-27): the community tables and then chat history sit on top of the desktop sessions.
         # 2026-11-03: '내 분석 프로젝트'에서 숨김(repository_access.hidden_at, nullable 컬럼 추가만).
         # 2026-11-04 (AD-33): AI 리뷰를 앱 전용 BYOK로 바꾸며 서버에 저장했던 key·코드 원문을 지운다(데이터 삭제만, 표·열 유지).
-        self.assertEqual(directory.get_heads(), ["39b676ca36f2"])
+        # 2026-11-07: 커뮤니티 일정(community_events, community_event_participants) 표 추가만.
+        self.assertEqual(directory.get_heads(), ["a6c8e0f2b4d7"])
+        self.assertEqual(directory.get_revision("a6c8e0f2b4d7").down_revision, "39b676ca36f2")
+        schedule = (ROOT / "migrations/versions/a6c8e0f2b4d7_community_events.py").read_text(encoding="utf8")
+        self.assertNotIn("ALTER TABLE", schedule)
+        self.assertNotIn("DROP", schedule.split("def downgrade")[0])
+        self.assertIn("raise RuntimeError", schedule.split("def downgrade")[1])
         self.assertEqual(directory.get_revision("39b676ca36f2").down_revision, "e7a9c1d3f5b4")
         purge = (ROOT / "migrations/versions/39b676ca36f2_ai_review_byok_purge_server_secrets.py").read_text(encoding="utf8")
         upgrade, downgrade = purge.split("def downgrade")
