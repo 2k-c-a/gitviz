@@ -27,6 +27,7 @@ import { registerNotifications } from './notifications';
 import { RemoteWorkspace } from './remote-workspace';
 import { confirmRemote, registerRemoteWorkspace } from './remote-workspace-ipc';
 import { registerDiagnostics } from './diagnostics-ipc';
+import { registerDependencies } from './dependencies-ipc';
 import { CloudReview } from './cloud-review';
 import { HistoricalImpact } from './historical-impact';
 import { createUpdateService, DISABLED_UPDATE_POLICY } from './update';
@@ -90,6 +91,8 @@ else {
     const unregister = registerHealth(window, () => agent!.health());
     window.once('closed', unregister);
     window.once('closed', registerDiagnostics(window, () => agent!.health()));
+    // System environment check and per-user Git install (K-12). Same fixed agent path as agent.start() below.
+    window.once('closed', registerDependencies(window, join(process.resourcesPath, 'agent', 'gitviz-workspace-agent.exe')));
     window.once('closed', registerProposals(window, agent, contracts));
     window.once('closed', registerValidation(window, agent, contracts));
     window.once('closed', registerEditor(window, agent, contracts, directory));

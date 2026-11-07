@@ -110,11 +110,29 @@ npm --prefix desktop run build; npm --prefix desktop run package
 
 ### 4. 설치 파일 만들기 (선택)
 
+설치 파일 하나(`GitVizWorkspaceSetup.exe`)에 앱 런타임(Electron·Node.js)과 로컬 작업 에이전트(Python 런타임·VC++/UCRT DLL 포함)가 모두 들어 있다. 사용하는 PC에 따로 있어야 하는 것은 Git for Windows 하나이며, 앱이 처음 실행될 때 검사하고 설치까지 해 준다(아래).
+
 ```powershell
-npm --prefix desktop run make   # build-output\desktop\make\squirrel.windows\x64\GitVizWorkspaceSetup.exe
+# 1) 에이전트 동결 → build-output\agent\dist\agent  (잠금 venv 준비: docs/deployment/BUILD_AND_RELEASE.md §3)
+.\.validation\venv-workspace\Scripts\python.exe -X utf8 -B tools\build\build_workspace_agent.py
+.\.validation\venv-workspace\Scripts\python.exe tools\build\audit_workspace_agent.py --directory build-output\agent\dist\agent --output <보고서 파일>
+# 2) 앱 빌드와 설치 파일 → build-output\desktop\make\squirrel.windows\x64\GitVizWorkspaceSetup.exe
+npm --prefix desktop run build
+npm --prefix desktop run make
+node desktop\scripts\audit-bundle.mjs build-output\desktop\GitVizWorkspace-win32-x64\resources\app.asar <보고서 파일>
+# 3) 배포 후보로 복사하고 해시를 남긴다 → build-output\release-candidates\<버전>\ (+ SHA256SUMS.txt)
 ```
 
-현재 앱(배포한 0.7.0, 다음 0.8.0)은 코드 서명이 없어 설치 때 Windows SmartScreen 경고가 나온다. 설치는 사용자별(`%LOCALAPPDATA%\GitVizWorkspace`)이고 설치본은 `gitviz-join://` 초대 링크를 연다. 설치본을 쓰는 PC에도 Git for Windows가 기본 경로에 있어야 로컬 프로젝트 기능이 동작한다([설치 가이드 §0](docs/deployment/INSTALLATION_GUIDE.md)). 앱 로그는 `%APPDATA%\gitviz-workspace\logs\app.log`에 남는다. 설치·업데이트 상태는 [Windows 데스크톱 안내](docs/operations/windows-desktop.md)를 따른다.
+서버 주소 없이 빌드한 설치본은 로컬 기능만 켜진다. 운영 서버에 연결되는 설치본은 `GITVIZ_BUILD_SERVER_ORIGIN=https://<서버>`를 설정하고 `build`부터 다시 한다([환경 아키텍처 §2.4](docs/architecture/ENVIRONMENT_ARCHITECTURE.md)).
+
+**설치와 첫 실행(사용자):**
+
+1. `GitVizWorkspaceSetup.exe`를 실행한다. 관리자 권한 없이 내 계정에 설치되고(`%LOCALAPPDATA%\GitVizWorkspace`), 바탕화면·시작 메뉴 바로가기가 생기며, 설치가 끝나면 앱이 바로 열린다. 제거는 Windows 설정 > 앱에서 한다(내 데이터는 남는다).
+2. 앱의 **시작하기 > 시스템 환경 확인**이 단계(시스템 환경 확인 → 의존성 검사 → 누락된 의존성 설치 → 준비 완료)를 보여 준다. 항목은 운영체제(Windows 10·11), 아키텍처(x64), 앱 런타임, 로컬 작업 엔진, Git for Windows(2.30 이상)이고, 상태는 정상 설치·미설치·버전 불일치·설치 필요로 표시된다.
+3. Git이 없거나 오래됐으면 **필요한 항목 설치**를 누른다. 공식 배포처(github.com/git-for-windows)의 고정 버전(2.56.0.windows.4)을 받아 크기와 SHA-256을 확인한 뒤, 관리자 권한 없이 내 계정(`%LOCALAPPDATA%\Programs\Git`)에 조용히 설치한다. 이미 정상인 Git은 다시 설치하지 않는다. 끝나면 **앱 다시 시작**을 누른다.
+4. 내려받기·설치가 실패하면 이유를 화면에 보여 주고, **공식 다운로드 페이지 열기**로 직접 설치할 수 있다. 검사·설치 결과(항목 상태와 오류 코드만, 경로·계정 없음)는 앱 로그에 남는다.
+
+현재 앱(배포한 0.7.0, 다음 0.8.0)은 코드 서명이 없어 설치 때 Windows SmartScreen 경고가 나온다. 설치본은 `gitviz-join://` 초대 링크를 연다. Git 설치 경로와 직접 설치 방법은 [설치 가이드 §0](docs/deployment/INSTALLATION_GUIDE.md)에 있다. 앱 로그는 `%APPDATA%\gitviz-workspace\logs\app.log`에 남는다. 설치·업데이트 상태는 [Windows 데스크톱 안내](docs/operations/windows-desktop.md)를 따른다.
 
 ### 앱 테스트
 

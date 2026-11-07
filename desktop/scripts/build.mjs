@@ -28,7 +28,7 @@ await cp(resolve(desktop, '../frontend/pages/workspace.html'), resolve(desktop, 
 await cp(resolve(desktop, '../frontend/js/workspace/projects.js'), resolve(desktop, 'dist/ui/projects.js'));
 await cp(resolve(desktop, '../frontend/js/workspace/status.js'), resolve(desktop, 'dist/ui/git-status.js'));
 await cp(resolve(desktop, '../frontend/js/workspace/desktop-auth.js'), resolve(desktop, 'dist/ui/desktop-auth.js'));
-for (const name of ['proposal', 'diff', 'impact', 'validation', 'comparison', 'inbox', 'navigation', 'layout', 'ai-settings', 'auto-compare']) await cp(resolve(desktop, `../frontend/js/workspace/${name}.js`), resolve(desktop, `dist/ui/${name}.js`));
+for (const name of ['proposal', 'diff', 'impact', 'validation', 'comparison', 'inbox', 'navigation', 'layout', 'ai-settings', 'auto-compare', 'dependencies']) await cp(resolve(desktop, `../frontend/js/workspace/${name}.js`), resolve(desktop, `dist/ui/${name}.js`));
 await cp(resolve(desktop, '../frontend/js/workspace/review.js'), resolve(desktop, 'dist/ui/review.js'));
 await cp(resolve(desktop, '../frontend/js/workspace/changes.js'), resolve(desktop, 'dist/ui/changes.js'));
 // One body catalog for main and tests: the AI bodies plus the community bodies (names never overlap).

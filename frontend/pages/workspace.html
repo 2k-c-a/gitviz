@@ -1,12 +1,21 @@
 <!doctype html>
 <html lang="ko">
-<head><script src="web/js/ui/theme.js"></script><script type="module" src="web/js/ui/workspace-shell.js"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitViz Workspace</title><link rel="stylesheet" href="styles.css"><script defer src="status.js"></script><script type="module" src="projects.js"></script><script type="module" src="desktop-auth.js"></script><script type="module" src="changes.js"></script><script type="module" src="review.js"></script><script type="module" src="proposal.js"></script><script type="module" src="impact.js"></script><script type="module" src="validation.js"></script><script type="module" src="comparison.js"></script><script type="module" src="inbox.js"></script><script type="module" src="layout.js"></script></head>
+<head><script src="web/js/ui/theme.js"></script><script type="module" src="web/js/ui/workspace-shell.js"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitViz Workspace</title><link rel="stylesheet" href="styles.css"><script defer src="status.js"></script><script type="module" src="projects.js"></script><script type="module" src="desktop-auth.js"></script><script type="module" src="changes.js"></script><script type="module" src="review.js"></script><script type="module" src="proposal.js"></script><script type="module" src="impact.js"></script><script type="module" src="validation.js"></script><script type="module" src="comparison.js"></script><script type="module" src="inbox.js"></script><script type="module" src="layout.js"></script><script type="module" src="dependencies.js"></script></head>
 <body><main>
 <!-- Information architecture: views (start / projects / project tabs / inbox / account / settings). Every control keeps its original id; layout.js only decides what is shown. -->
 <div id="ws-health" class="ws-banner ws-banner-warn" role="alert" hidden><span id="ws-health-text"></span><span class="ws-grow"></span><button type="button" id="ws-health-retry">다시 확인</button><button type="button" id="ws-health-diagnostics">진단 정보 저장</button></div>
 
 <section class="ws-view" data-view="start" aria-labelledby="start-title" tabindex="-1">
 <h1 id="start-title">시작하기</h1>
+<div class="ws-panel" id="ws-deps" aria-labelledby="ws-deps-title">
+<h2 id="ws-deps-title">시스템 환경 확인</h2>
+<p id="ws-deps-summary" class="ws-message" role="status" aria-live="polite">실행 환경을 확인하고 있습니다.</p>
+<ol id="ws-deps-steps" class="ws-checklist ws-deps-steps" aria-label="진행 단계"></ol>
+<progress id="ws-deps-progress" class="ws-progress" max="100" hidden></progress>
+<details id="ws-deps-details"><summary>구성 요소 자세히 보기</summary><ul id="ws-deps-list" class="ws-checklist" aria-label="필요한 구성 요소"></ul></details>
+<div class="ws-toolbar"><button type="button" id="ws-deps-install" class="btn-primary" hidden>필요한 항목 설치</button><button type="button" id="ws-deps-recheck">다시 확인</button><button type="button" id="ws-deps-relaunch" hidden>앱 다시 시작</button><button type="button" id="ws-deps-download" hidden>공식 다운로드 페이지 열기</button></div>
+<p class="ws-note">Git for Windows는 공식 배포처(github.com/git-for-windows)의 고정 버전을 받아 무결성(SHA-256)을 확인한 뒤 내 계정에만 설치합니다. 관리자 권한을 요청하지 않으며, 이미 설치된 프로그램과 내 데이터는 바꾸지 않습니다.</p>
+</div>
 <div class="ws-panel">
 <p>GitViz Workspace는 내 PC의 Git 프로젝트를 점검하는 도구입니다. 코드는 기본적으로 내 PC 밖으로 나가지 않습니다.</p>
 <ol class="ws-checklist">

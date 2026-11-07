@@ -7,14 +7,14 @@
 
 ## 0. 설치 전 준비: Git for Windows (필수)
 
-로컬 프로젝트 등록·변경 확인·리뷰·적용은 PC에 설치된 Git을 사용한다. 앱은 Git을 함께 설치하지 않으므로 **GitViz 설치 전에 [Git for Windows](https://git-scm.com/download/win)를 먼저 설치한다.**
+로컬 프로젝트 등록·변경 확인·리뷰·적용은 PC에 설치된 Git을 사용한다. 0.8.0부터는 앱의 **시작하기 > 시스템 환경 확인**이 Git을 검사하고, 없거나 2.30보다 낮으면 공식 배포본(고정 버전, SHA-256 확인)을 관리자 권한 없이 `%LOCALAPPDATA%\Programs\Git`에 설치한다(`desktop/src/dependencies.ts`). 자동 설치를 쓰지 않을 때는 [Git for Windows](https://git-scm.com/download/win)를 직접 설치한다.
 
 - 앱은 다음 두 위치에서만 `git.exe`를 찾는다(`app/workspace/git_service.py` `installed_git`). `PATH`는 보지 않는다.
   - `%ProgramFiles%\Git\cmd\git.exe` — 기본 설치(모든 사용자, 관리자 권한 필요)
   - `%LOCALAPPDATA%\Programs\Git\cmd\git.exe` — 사용자 단위 설치(관리자 권한 불필요)
 - 설치 경로를 바꾸면 앱이 Git을 찾지 못한다. 기본 경로로 설치한다.
 - 설치 확인: PowerShell에서 `Test-Path "$env:ProgramFiles\Git\cmd\git.exe"` 또는 `Test-Path "$env:LOCALAPPDATA\Programs\Git\cmd\git.exe"` 중 하나가 `True`여야 한다.
-- Git이 없으면 내부적으로 `GIT_NOT_FOUND`가 되지만, 0.7.0 화면은 이를 안내 문구로 보여 주지 않는다([알려진 문제](KNOWN_ISSUES.md) K-12). 앱 로그의 `"event":"git-check"` 줄의 `"found":false`로 확인할 수 있다(§6).
+- Git이 없으면 내부적으로 `GIT_NOT_FOUND`가 된다. 0.8.0은 시작하기 화면의 환경 확인과 프로젝트 화면의 안내 문구로 알려 준다([알려진 문제](KNOWN_ISSUES.md) K-12). 앱 로그의 `"event":"git-check"`(`"found"`)와 `"event":"dependency-check"`(항목별 상태) 줄로도 확인할 수 있고(§6), 설치 결과는 `dependency-install-done`·`dependency-install-failed`(오류 코드) 줄에 남는다.
 
 ## 1. 설치 방식 요약
 
