@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ko">
-<head><script src="web/js/ui/theme.js"></script><script type="module" src="web/js/ui/workspace-shell.js"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitViz Workspace</title><link rel="stylesheet" href="styles.css"><script defer src="status.js"></script><script type="module" src="projects.js"></script><script type="module" src="desktop-auth.js"></script><script type="module" src="changes.js"></script><script type="module" src="review.js"></script><script type="module" src="proposal.js"></script><script type="module" src="impact.js"></script><script type="module" src="validation.js"></script><script type="module" src="comparison.js"></script><script type="module" src="inbox.js"></script><script type="module" src="layout.js"></script></head>
+<head><script src="web/js/ui/theme.js"></script><script type="module" src="web/js/ui/workspace-shell.js"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitViz Workspace</title><link rel="stylesheet" href="styles.css"><script defer src="status.js"></script><script type="module" src="projects.js"></script><script type="module" src="desktop-auth.js"></script><script type="module" src="changes.js"></script><script type="module" src="review.js"></script><script type="module" src="proposal.js"></script><script type="module" src="impact.js"></script><script type="module" src="validation.js"></script><script type="module" src="comparison.js"></script><script type="module" src="inbox.js"></script><script type="module" src="change-history.js"></script><script type="module" src="layout.js"></script></head>
 <body><main>
 <!-- Information architecture: views (start / projects / project tabs / inbox / account / settings). Every control keeps its original id; layout.js only decides what is shown. -->
 <div id="ws-health" class="ws-banner ws-banner-warn" role="alert" hidden><span id="ws-health-text"></span><span class="ws-grow"></span><button type="button" id="ws-health-retry">다시 확인</button><button type="button" id="ws-health-diagnostics">진단 정보 저장</button></div>
@@ -35,12 +35,11 @@
 <span class="ws-chip" id="ws-chip-branch" hidden></span><span class="ws-chip" id="ws-chip-changes" hidden></span><span class="ws-chip" id="ws-chip-conflicts" hidden></span></div>
 <div class="ws-tabs" role="tablist" aria-label="프로젝트 작업">
 <button type="button" role="tab" id="ws-tab-overview" data-tab="overview" aria-controls="ws-panel-overview">개요</button>
+<button type="button" role="tab" id="ws-tab-history" data-tab="history" aria-controls="ws-panel-history">변경 분석</button>
 <button type="button" role="tab" id="ws-tab-changes" data-tab="changes" aria-controls="ws-panel-changes">파일</button>
 <button type="button" role="tab" id="ws-tab-ai" data-tab="ai" aria-controls="ws-panel-ai">AI 점검</button>
 <button type="button" role="tab" id="ws-tab-proposals" data-tab="proposals" aria-controls="ws-panel-proposals">개선 제안</button>
-<button type="button" role="tab" id="ws-tab-tests" data-tab="tests" aria-controls="ws-panel-tests">테스트·린트</button>
-<button type="button" role="tab" id="ws-tab-compare" data-tab="compare" aria-controls="ws-panel-compare">전후 비교</button>
-<button type="button" role="tab" id="ws-tab-impact" data-tab="impact" aria-controls="ws-panel-impact">영향 범위</button>
+<button type="button" role="tab" id="ws-tab-verify" data-tab="verify" aria-controls="ws-panel-verify">검증</button>
 </div>
 </div>
 
@@ -48,6 +47,16 @@
 <h1>개요</h1>
 <div class="ws-todo" id="ws-todo"><div><div class="ws-note">지금 할 일</div><strong id="ws-todo-title">프로젝트를 선택하세요.</strong><div id="ws-todo-text"></div></div><span class="ws-grow"></span><button type="button" id="ws-todo-action" class="btn-primary" hidden></button></div>
 <div class="ws-panel"><h2 id="git-title">Git 상태</h2><button type="button" id="reload-git" disabled data-risk="read">새로고침</button><div id="git-state"></div></div>
+</div>
+
+<div class="ws-tab-panel" role="tabpanel" id="ws-panel-history" data-tab-panel="history" aria-labelledby="ws-tab-history" tabindex="-1" hidden>
+<h1>변경 분석</h1>
+<p class="ws-note">이 프로젝트의 Git 이력(현재 브랜치)에서 최근 180일 동안의 변경을 읽어 자주 수정된 파일, 같이 바뀐 파일, 주별 타임라인을 보여 줍니다. 서버 저장소 분석과 같은 기준(현재 파일만, 대형 커밋은 같이 바뀐 파일에서 제외, 변경 5회 미만은 표본 적음)으로 계산하고, 파일 내용은 읽지 않으며 결과를 저장하거나 보내지 않습니다.</p>
+<div class="ws-toolbar"><button type="button" id="history-reload" data-risk="read">다시 분석</button><span id="history-message" class="ws-message" role="status"></span></div>
+<p id="history-summary"></p>
+<div class="ws-panel"><h2>타임라인</h2><p class="ws-note">주별 커밋 수입니다. 진한 부분은 메시지로 분류한 버그 수정 커밋입니다.</p><div id="history-timeline" class="ws-timeline"></div></div>
+<div class="ws-panel"><h2>자주 수정된 파일</h2><p class="ws-note">변경 횟수 순입니다. 점검 우선순위는 변경 횟수·변경 줄 수·버그 수정 횟수의 백분위 평균으로, 먼저 살펴볼 순서를 제안할 뿐 결함 확률이 아닙니다. 파일 이름을 누르면 기본 에디터로 열립니다.</p><div id="history-files" class="ws-table-wrap"></div></div>
+<div class="ws-panel"><h2>같이 바뀐 파일</h2><p class="ws-note">같은 커밋에서 2번 이상 함께 바뀐 파일 쌍입니다. 결합도는 함께 바뀐 횟수를 두 파일 중 적게 바뀐 쪽의 변경 횟수로 나눈 값입니다. 함께 바뀌었다는 사실이 코드가 서로 의존한다는 뜻은 아닙니다.</p><div id="history-pairs" class="ws-table-wrap"></div></div>
 </div>
 
 <div class="ws-tab-panel" role="tabpanel" id="ws-panel-changes" data-tab-panel="changes" aria-labelledby="ws-tab-changes" tabindex="-1" hidden>
@@ -100,37 +109,41 @@
 <p class="ws-note" id="ws-proposal-empty">제안이 없습니다. AI 점검에서 &lsquo;작은 개선 제안&rsquo;을 선택해 만들 수 있습니다. <button type="button" data-go-tab="ai">AI 점검으로 이동</button></p>
 </div>
 
-<div class="ws-tab-panel" role="tabpanel" id="ws-panel-tests" data-tab-panel="tests" aria-labelledby="ws-tab-tests" tabindex="-1" hidden>
-<h1>테스트·린트</h1>
+<div class="ws-tab-panel" role="tabpanel" id="ws-panel-verify" data-tab-panel="verify" aria-labelledby="ws-tab-verify" tabindex="-1" hidden>
+<h1>검증</h1>
+<div class="ws-subnav" role="group" aria-label="검증 항목"><button type="button" data-scroll-to="ws-verify-tests">테스트·린트</button><button type="button" data-scroll-to="ws-verify-compare">전후 비교</button><button type="button" data-scroll-to="ws-verify-impact">영향 범위</button></div>
+<section id="ws-verify-tests" class="ws-subsection" aria-labelledby="ws-verify-tests-title">
+<h2 id="ws-verify-tests-title">테스트·린트</h2>
 <p class="ws-need ws-need-snapshot ws-banner ws-banner-info">실행 계획을 만들려면 먼저 <button type="button" data-go-tab="changes">파일 탭</button>에서 파일을 담아야 합니다. 도구 찾기는 지금도 할 수 있습니다.</p>
-<div class="ws-panel"><h2>도구 찾기</h2>
+<div class="ws-panel"><h3>도구 찾기</h3>
 <p class="ws-note">package.json, pyproject.toml 같은 설정 파일을 읽어 테스트·린트 도구를 찾습니다. 아무 명령도 실행하지 않습니다.</p>
 <details><summary>고급: 작업 폴더 · 패키지 관리자</summary>
 <label class="ws-field"><span>프로젝트 안의 작업 폴더</span><input id="detection-cwd" value="."></label>
 <label class="ws-field"><span>패키지 관리자</span><select id="package-manager"><option value="">lock 파일 기준</option><option value="npm">npm</option><option value="yarn">yarn</option><option value="pnpm">pnpm</option></select></label></details>
 <button type="button" id="detect-validation" class="btn-primary" data-risk="read">설정 파일 읽고 도구 찾기</button><div id="detected-tools"></div></div>
-<div class="ws-panel"><h2>실행</h2>
+<div class="ws-panel"><h3>실행</h3>
 <p>실행하는 코드는 내 Windows 계정 권한으로 파일과 네트워크에 접근할 수 있습니다. 작업마다 확인을 거치고, 프로젝트를 먼저 신뢰해야 합니다.</p>
 <div id="validation-plans"></div><button type="button" id="validation-cancel" disabled>실행 취소 (하위 프로세스 포함)</button>
 <p id="validation-message" class="ws-message" role="status"></p><div id="validation-view"></div></div>
-</div>
+</section>
 
-<div class="ws-tab-panel" role="tabpanel" id="ws-panel-compare" data-tab-panel="compare" aria-labelledby="ws-tab-compare" tabindex="-1" hidden>
-<h1>전후 비교</h1>
+<section id="ws-verify-compare" class="ws-subsection" aria-labelledby="ws-verify-compare-title">
+<h2 id="ws-verify-compare-title">전후 비교</h2>
 <p class="ws-need ws-need-two-snapshots ws-banner ws-banner-info">비교하려면 점검 대상이 2개 이상 필요합니다. <button type="button" data-go-tab="changes">파일 탭</button>에서 파일을 다시 담으세요.</p>
 <div class="ws-panel"><label class="ws-field"><span>이전</span><select id="comparison-before"></select></label><label class="ws-field"><span>이후</span><select id="comparison-after"></select></label>
 <label class="ws-check"><input id="comparison-link-proposal" type="checkbox"> 선택한 개선 제안과 연결</label>
 <button type="button" id="compare-snapshots" class="btn-primary" data-risk="read">실측 비교</button>
 <p class="ws-note">변경하기 전에 기준(baseline) 검증을 먼저 실행해 두세요. 측정하지 않았거나 실행 환경이 다르면 &lsquo;비교 불가&rsquo;로 표시합니다.</p></div>
 <div id="comparison-view"></div>
-</div>
+</section>
 
-<div class="ws-tab-panel" role="tabpanel" id="ws-panel-impact" data-tab-panel="impact" aria-labelledby="ws-tab-impact" tabindex="-1" hidden>
-<h1>영향 범위</h1>
+<section id="ws-verify-impact" class="ws-subsection" aria-labelledby="ws-verify-impact-title">
+<h2 id="ws-verify-impact-title">영향 범위</h2>
 <p class="ws-need ws-need-snapshot ws-banner ws-banner-info">분석할 점검 대상이 없습니다. 먼저 <button type="button" data-go-tab="changes">파일 탭</button>에서 파일을 담으세요.</p>
 <p>Python·JS/TS 파서가 코드에서 읽어 낸 구문과 정적 연결만 보여 줍니다. 동적 호출과 외부 모듈은 알 수 없으며 실제 실행 결과를 뜻하지도 않습니다. 함께 바뀐 이력과 AI 추정은 따로 표시합니다.</p>
 <div class="ws-toolbar"><button type="button" id="analyze-impact" class="btn-primary" data-risk="read">담은 변경의 영향 분석</button></div>
 <p id="impact-message" class="ws-message" role="status"></p><div id="impact-view" class="ws-evidence"></div>
+</section>
 </div>
 </section>
 

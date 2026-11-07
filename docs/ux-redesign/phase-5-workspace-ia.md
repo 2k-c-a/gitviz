@@ -1,6 +1,6 @@
 # Phase 5 — 로컬 워크스페이스 정보 구조와 화면 설계
 
-작성일: 2026-10-30 (Asia/Seoul). 기준은 커밋 5843986이다. **설계 문서이며 애플리케이션 소스는 수정하지 않았다.** 구현·실행 검증은 하지 않았다.
+작성일: 2026-10-30 (Asia/Seoul). 기준은 커밋 5843986이다. 2026-11-07 이후 탭 구성: 개요 · 변경 분석(신규) · 파일 · AI 점검 · 개선 제안 · 검증(테스트·린트, 전후 비교, 영향 범위를 한 탭에 합침). 아래 S6~S8의 화면 설명은 검증 탭의 세 구역에 그대로 해당한다. **설계 문서이며 애플리케이션 소스는 수정하지 않았다.** 구현·실행 검증은 하지 않았다.
 
 근거로 읽은 파일: `frontend/pages/workspace.html`, `frontend/js/ui/shell.js`, `frontend/js/workspace/navigation.js`, `frontend/js/workspace/status.js`, `desktop/src/window.ts`, `frontend/css/tokens.css`. 5843986 빌드를 실제로 실행해 본 것은 아니다. `changes.js`, `review.js` 등이 그리는 상태 화면의 문구와 세부는 읽지 않았으므로 구현 전에 대조해야 한다. 클릭해 볼 수 있는 목업은 [phase-5-mockup/workspace-mockup.html](phase-5-mockup/workspace-mockup.html)에 있다.
 

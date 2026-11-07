@@ -107,11 +107,11 @@ void app.whenReady().then(async () => {
     await evaluate(`document.getElementById('ws-todo-action').click()`);
     await wait(visible('[data-tab-panel="changes"]'));
     await check('todo action opens changes', `${visible('[data-tab-panel="changes"]')} && !${visible('[data-tab-panel="overview"]')}`);
-    await key3('3');
-    await check('Ctrl+3 opens AI review with the no-target notice', `${visible('[data-tab-panel="ai"]')} && ${visible('#ws-panel-ai .ws-need-snapshot')} && document.querySelector('[data-step-button="2"]').disabled`);
+    await key3('4');
+    await check('Ctrl+4 opens AI review with the no-target notice', `${visible('[data-tab-panel="ai"]')} && ${visible('#ws-panel-ai .ws-need-snapshot')} && document.querySelector('[data-step-button="2"]').disabled`);
     await evaluate(`document.getElementById('ws-tab-ai').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))`);
     await check('arrow keys move between tabs', `document.getElementById('ws-tab-proposals').getAttribute('aria-selected')==='true' && ${visible('#ws-proposal-empty')}`);
-    await key3('2');
+    await key3('3');
 
     phase = 'file-tree';
     await wait(`document.querySelectorAll('#file-tree .ws-tree-row').length===4`);
@@ -127,7 +127,7 @@ void app.whenReady().then(async () => {
     await capture('03-changes-captured-900.png', 900, 640);
 
     phase = 'ai-steps';
-    await key3('3');
+    await key3('4');
     await check('step 1 shows the captured target and enables next', `document.getElementById('ws-ai-target').textContent.includes('담은 파일') && !document.getElementById('ws-ai-next-1').disabled && ${visible('[data-step="1"]')}`);
     await evaluate(`document.getElementById('ws-ai-next-1').click()`);
     await check('step 2 hides API key for the local model and the duplicate-cost consent', `${visible('[data-step="2"]')} && !${visible('#review-api-key')} && !${visible('#review-duplicate-risk')}`);
@@ -141,21 +141,27 @@ void app.whenReady().then(async () => {
     await check('start button is labelled as sending and disabled before consent', `getComputedStyle(document.getElementById('review-start'),'::after').content==='"전송"' && document.getElementById('review-start').disabled`);
     await capture('04-ai-step2-900.png', 900, 640);
 
-    phase = 'tests-compare-impact';
-    await key3('5');
+    phase = 'verify (tests, compare, impact in one tab)';
+    await key3('6');
     await evaluate(`document.getElementById('detect-validation').click()`);
     await wait(`document.getElementById('detected-tools').textContent.includes('package.json')`);
     await check('tool detection works from the tests tab', `document.querySelectorAll('#detected-tools button').length>=1`);
     await key3('6');
-    await check('compare needs two snapshots and says so', `${visible('#ws-panel-compare .ws-need-two-snapshots')}`);
-    await key3('7');
+    await check('compare needs two snapshots and says so', `${visible('#ws-panel-verify .ws-need-two-snapshots')}`);
+    await key3('6');
     await evaluate(`document.getElementById('analyze-impact').click()`);
     await wait(`document.getElementById('impact-view').childElementCount>0`);
     await check('impact keeps the separate evidence kinds labelled', `!!document.querySelector('#impact-view [data-evidence="history"]')`);
     await capture('05-impact-900.png', 900, 640);
 
-    phase = 'tree-capture';
+    phase = 'change-history';
     await key3('2');
+    await wait(`(()=>{const m=document.getElementById('history-message').textContent;return document.getElementById('history-summary').textContent.includes('커밋') || (m.length>0 && !m.includes('읽는 중'))})()`);
+    await check('change history renders a summary and a timeline without errors', `document.getElementById('history-message').textContent==='' && !!document.querySelector('#history-timeline svg')`);
+    await capture('06-history-900.png', 900, 640);
+
+    phase = 'tree-capture';
+    await key3('3');
     await evaluate(`document.getElementById('capture-message').textContent='';for(const item of document.querySelectorAll('#change-selection input'))item.checked=false;document.querySelector('#file-tree input[data-path="package.json"]').checked=true;document.getElementById('capture-changes').click()`);
     await wait(`document.getElementById('capture-message').textContent==='선택한 입력을 고정했습니다.'`);
     await check('an unchanged-or-untracked file picked in the tree is captured whole', `document.getElementById('capture-result').textContent.includes('selected · package.json')`);
@@ -164,7 +170,7 @@ void app.whenReady().then(async () => {
     await check('a path picked in both lists is sent once, as its change', `(()=>{const t=document.getElementById('capture-result').textContent;return t.includes('unstaged · util.py') && !t.includes('selected · util.py')})()`);
 
     phase = 'views';
-    await key3('4');
+    await key3('5');
     await check('proposals tab explains how to create one', visible('#ws-proposal-empty'));
     await evaluate(`window.dispatchEvent(new CustomEvent('workspace-navigate',{detail:{view:'inbox'}}))`);
     await check('inbox view still opens (command palette / navigation event)', visible('[data-view="inbox"]'));
@@ -190,7 +196,7 @@ void app.whenReady().then(async () => {
     const sizes: [number, number][] = [[600, 400], [900, 640], [1280, 800]];
     for (const [width, height] of sizes) {
       await capture(`10-size-${width}-overview.png`, width, height);
-      for (const tab of ['overview', 'changes', 'ai', 'proposals', 'tests', 'compare', 'impact']) {
+      for (const tab of ['overview', 'history', 'changes', 'ai', 'proposals', 'verify']) {
         await evaluate(`document.getElementById('ws-tab-${tab}').click()`);
         await check(`no horizontal overflow at ${width}x${height} (${tab})`, `(()=>{const m=document.querySelector('main');return m.scrollWidth<=m.clientWidth+1})()`);
       }

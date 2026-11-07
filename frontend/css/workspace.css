@@ -124,7 +124,25 @@ button[data-risk='exec']::after { content: '명령 실행'; color: var(--ui-erro
 .ws-tree-file { padding: 0 4px; border: 0; background: none; color: var(--ui-text); font: inherit; text-align: left; cursor: pointer; }
 .ws-tree-file:hover, .ws-tree-file:focus-visible { color: var(--ui-accent); text-decoration: underline; }
 .ws-tree-badge { color: var(--ui-warning); font-weight: var(--ui-semibold); margin-left: 6px; }
+/* 변경 분석 탭: 표, 주별 타임라인. 검증 탭: 세 구역 바로가기. */
+.ws-table-wrap { overflow-x: auto; }
+.ws-table { width: 100%; border-collapse: collapse; font-size: var(--ui-text-sm); }
+.ws-table th, .ws-table td { padding: 6px 8px; border-bottom: 1px solid var(--ui-border); text-align: left; vertical-align: middle; overflow-wrap: anywhere; }
+.ws-table th { color: var(--ui-muted); font-weight: var(--ui-medium); }
+.ws-table .ws-num-cell { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ws-table .ws-link, .ws-link { min-height: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: none; display: inline; line-height: inherit; color: var(--ui-accent); font: inherit; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.ws-link:hover { text-decoration: underline; }
+.ws-timeline-chart { display: block; width: 100%; height: auto; max-height: 220px; }
+.ws-timeline-bar { fill: var(--ui-accent-soft); stroke: var(--ui-accent); stroke-width: 0.5; }
+.ws-timeline-fix { fill: var(--ui-accent); }
+.ws-timeline-grid { stroke: var(--ui-border); stroke-width: 1; }
+.ws-timeline-label { fill: var(--ui-muted); font-size: 11px; }
+.ws-subnav { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
+.ws-subsection { scroll-margin-top: 12px; margin-top: 20px; padding-top: 4px; border-top: 1px solid var(--ui-border); }
+.ws-subsection:first-of-type { border-top: 0; margin-top: 8px; }
 @media (forced-colors: active) {
   .ws-chip, .ws-panel, .ws-todo, .ws-banner { border: 1px solid CanvasText; }
+  .ws-timeline-bar { fill: Canvas; stroke: CanvasText; }
+  .ws-timeline-fix { fill: Highlight; }
   .ws-tabs > button[aria-selected='true'] { border-bottom-color: Highlight; }
 }

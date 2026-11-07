@@ -53,6 +53,8 @@ if (location.protocol === 'gitviz:' && location.host === 'app' && location.pathn
   getGitStatus: (options: unknown) => ipcRenderer.invoke('workspace:git-status', options),
   // One working-tree directory: root-relative names only, never absolute paths or file contents.
   getFileTree: (options: unknown) => ipcRenderer.invoke('workspace:file-tree', options),
+  // Change analysis of the project's own Git history: root-relative paths and counts only, nothing stored or sent.
+  getChangeHistory: (options: unknown) => ipcRenderer.invoke('workspace:change-history', options),
   previewReview: (options: unknown) => ipcRenderer.invoke('workspace:review-preview', options),
   startReview: (options: unknown) => ipcRenderer.invoke('workspace:review-start', options),
   getReview: (options: unknown) => ipcRenderer.invoke('workspace:review-get', options),

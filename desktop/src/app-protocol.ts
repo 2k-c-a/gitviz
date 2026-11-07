@@ -18,6 +18,7 @@ const assets: Record<string, { file: string; mime: string }> = {
   '/inbox.js': { file: 'inbox.js', mime: 'text/javascript; charset=utf-8' },
   '/navigation.js': { file: 'navigation.js', mime: 'text/javascript; charset=utf-8' },
   '/layout.js': { file: 'layout.js', mime: 'text/javascript; charset=utf-8' },
+  '/change-history.js': { file: 'change-history.js', mime: 'text/javascript; charset=utf-8' },
   '/ai-settings.js': { file: 'ai-settings.js', mime: 'text/javascript; charset=utf-8' },
   '/auto-compare.js': { file: 'auto-compare.js', mime: 'text/javascript; charset=utf-8' },
 };

@@ -87,7 +87,7 @@ export class Agent {
     if (this.pending.size >= 16 || this.dead) return Promise.reject(new Error('BUSY'));
     const request: Request = { protocolVersion: 1, requestId: randomUUID(), operation, payload, ...options };
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(request.requestId); reject(new Error('TIMED_OUT')); this.fail(); this.child?.kill(); }, operation.startsWith('workspace.system.') ? 5000 : ['workspace.changes.capture', 'workspace.proposals.apply', 'workspace.proposals.recover', 'workspace.validation.prepare', 'workspace.validation.approve', 'workspace.validation.start', 'workspace.validation.get', 'workspace.comparisons.create'].includes(operation) ? 60000 : 15000);
+      const timer = setTimeout(() => { this.pending.delete(request.requestId); reject(new Error('TIMED_OUT')); this.fail(); this.child?.kill(); }, operation.startsWith('workspace.system.') ? 5000 : ['workspace.changes.capture', 'workspace.history.analyze', 'workspace.proposals.apply', 'workspace.proposals.recover', 'workspace.validation.prepare', 'workspace.validation.approve', 'workspace.validation.start', 'workspace.validation.get', 'workspace.comparisons.create'].includes(operation) ? 60000 : 15000);
       this.pending.set(request.requestId, { operation, projectId: options.projectId, resolve, reject, timer });
       try { this.write(request, 'request'); } catch { clearTimeout(timer); this.pending.delete(request.requestId); reject(new Error('STORAGE_UNAVAILABLE')); }
     });

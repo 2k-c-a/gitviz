@@ -7,7 +7,8 @@ import { isSettingsEntry, readWorkspaceEntry } from '/web/js/platform/workspace-
 const $ = id => document.getElementById(id);
 const main = document.querySelector('main');
 const picker = $('project-picker');
-const TABS = [['overview', '개요'], ['changes', '파일'], ['ai', 'AI 점검'], ['proposals', '개선 제안'], ['tests', '테스트·린트'], ['compare', '전후 비교'], ['impact', '영향 범위']];
+// 2026-11-07: 변경 분석 탭 추가, 테스트·린트·전후 비교·영향 범위는 검증 탭 하나의 세 구역으로 합쳤다.
+const TABS = [['overview', '개요'], ['history', '변경 분석'], ['changes', '파일'], ['ai', 'AI 점검'], ['proposals', '개선 제안'], ['verify', '검증']];
 const TAB_IDS = TABS.map(([id]) => id);
 const VIEW_TITLE = { start: '시작하기', projects: '프로젝트', inbox: '알림', account: '계정·연결', settings: '설정' };
 const ui = { view: 'projects', tab: 'overview', auto: true, projectId: '', listed: false };
@@ -183,7 +184,8 @@ document.addEventListener('click', event => {
   const tab = event.target.closest?.('[data-go-tab]'); if (tab) { show('project', tab.dataset.goTab, { focus: true }); return; }
   const tabButton = event.target.closest?.('[data-tab]'); if (tabButton) { show('project', tabButton.dataset.tab); return; }
   const stepButton = event.target.closest?.('[data-step-button]'); if (stepButton) { setStep(Number(stepButton.dataset.stepButton)); return; }
-  const go = event.target.closest?.('[data-step-go]'); if (go) setStep(Number(go.dataset.stepGo));
+  const go = event.target.closest?.('[data-step-go]'); if (go) { setStep(Number(go.dataset.stepGo)); return; }
+  const jump = event.target.closest?.('[data-scroll-to]'); if (jump) $(jump.dataset.scrollTo)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 });
 $('ws-start-register').addEventListener('click', () => $('register-project').click());
 $('ws-health-retry').addEventListener('click', () => $('refresh').click());
@@ -199,7 +201,7 @@ document.addEventListener('keydown', event => {
   const key = event.key.toLowerCase();
   if (key === 'k') { event.preventDefault(); openPalette(); }
   else if (key === 'o') { event.preventDefault(); $('register-project').click(); }
-  else if (/^[1-7]$/.test(key) && picker.value) { event.preventDefault(); show('project', TAB_IDS[Number(key) - 1], { focus: true }); }
+  else if (/^[1-9]$/.test(key) && Number(key) <= TAB_IDS.length && picker.value) { event.preventDefault(); show('project', TAB_IDS[Number(key) - 1], { focus: true }); }
 });
 window.addEventListener('workspace-project-changed', event => {
   const id = event.detail?.projectId ?? ''; const changed = id !== ui.projectId; ui.projectId = id;
@@ -214,7 +216,7 @@ window.addEventListener('workspace-snapshot-changed', event => {
   data.review = 'idle'; data.step = 1; syncState();
 });
 window.addEventListener('workspace-open-target', event => {
-  const tab = { review: 'ai', validation: 'tests', proposal: 'proposals' }[event.detail.kind];
+  const tab = { review: 'ai', validation: 'verify', proposal: 'proposals' }[event.detail.kind];
   if (event.detail.kind === 'review') data.step = 4;
   if (tab) show('project', tab, { focus: false });
   stepper();

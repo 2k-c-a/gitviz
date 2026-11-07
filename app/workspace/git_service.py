@@ -57,7 +57,7 @@ class LocalGit:
             raise ScopeError('PRECONDITION_FAILED')
         return value
 
-    def _run(self, grant: dict[str, str], arguments: list[str]) -> bytes:
+    def _run(self, grant: dict[str, str], arguments: list[str], *, limit: int = 262144, timeout: float = 4) -> bytes:
         environment = {name: os.environ[name] for name in ("SystemRoot", "WINDIR", "TEMP", "TMP") if name in os.environ}
         environment.update({"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
                             "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0", "GIT_NO_REPLACE_OBJECTS": "1",
@@ -89,12 +89,12 @@ class LocalGit:
                 if keep:
                     output.extend(chunk)
 
-        threads = [threading.Thread(target=drain, args=(process.stdout, True, 262144), daemon=True),
+        threads = [threading.Thread(target=drain, args=(process.stdout, True, limit), daemon=True),
                    threading.Thread(target=drain, args=(process.stderr, False, 65536), daemon=True)]
         for thread in threads:
             thread.start()
         try:
-            process.wait(timeout=4)
+            process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait()
@@ -111,6 +111,21 @@ class LocalGit:
         if process.returncode:
             raise ScopeError("GIT_UNAVAILABLE")
         return bytes(output)
+
+    def history(self, grant: dict[str, str], since: str, max_commits: int) -> bytes:
+        """Commits on HEAD since an ISO time with per-file numstat (no merges, no rename pairing).
+        Reads object metadata only; up to 32MB of output and 30 seconds."""
+        return self._run(grant, ['log', '--no-show-signature', '--no-notes', '--no-merges', '--no-renames', '-z', '--numstat',
+                                 f'--max-count={max_commits}', f'--since={since}', '--format=%x1e%H%x1f%an%x1f%cI%x1f%s', 'HEAD', '--'],
+                         limit=32 * 1024 * 1024, timeout=30)
+
+    def tree_paths(self, grant: dict[str, str]) -> set[str]:
+        """File paths in the HEAD tree: the comparison population and the large-change basis, as on the server."""
+        raw = self._run(grant, ['ls-tree', '-r', '-z', '--name-only', 'HEAD'], limit=64 * 1024 * 1024, timeout=30)
+        try:
+            return {item for item in raw.decode('utf-8', 'strict').split('\0') if item}
+        except UnicodeError:
+            raise ScopeError('UNSUPPORTED_FILENAME') from None
 
     def status(self, grant: dict[str, str], recent_limit: int = 20) -> dict[str, Any]:
         if type(recent_limit) is not int or not 1 <= recent_limit <= 100:
