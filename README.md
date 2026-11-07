@@ -108,6 +108,19 @@ npm --prefix desktop run build; npm --prefix desktop run package
 - 음성 채팅의 다른 네트워크 사이 연결은 서버 환경변수 `VOICE_STUN_URLS`의 STUN 서버로 한다. 예시 설정과 스테이징은 공개 STUN(`stun.l.google.com`)을 쓴다. 이때 STUN 제공자에게 참여자의 공인 IP 주소가 보이지만 음성은 가지 않는다. 회사·학교 방화벽처럼 직접 연결이 막힌 곳까지 되게 하려면 `VOICE_TURN_URLS`·`VOICE_TURN_SECRET`로 TURN 서버(coturn)를 더한다([.env.example](.env.example)). 비우면 같은 네트워크 안에서만 연결된다.
 - 공동 편집은 앱에서만 된다. 공유한 사람(호스트) PC의 파일 하나(100KB 이하 텍스트)를 3명까지 함께 고치고, 저장은 호스트 앱이 자기 파일에 한다. 서버는 변경분을 전달만 하고 파일 내용을 저장하지 않는다.
 
+### 3-1. 여러 PC로 시연 (같은 네트워크 2~3대)
+
+커뮤니티(글·댓글·채팅·음성·공동 편집)는 서버를 거친다. 호스트 PC 한 대에서 3단계 서버를 켜고, 정식 인증서가 있는 HTTPS 터널(ngrok)로 다른 PC가 접속하게 한다. 서버는 그대로 `127.0.0.1`에서만 열리므로 방화벽 설정이 필요 없다. 음성은 같은 네트워크 안에서 PC끼리 직접 연결된다.
+
+1. ngrok 계정을 만들고 무료 고정 도메인(예: `demo-xxxx.ngrok-free.app`)을 받은 뒤, 호스트 PC에 ngrok을 설치하고 `ngrok config add-authtoken <토큰>`을 실행한다.
+2. GitHub에 시연용 OAuth 앱을 새로 만든다. Homepage URL은 `https://<도메인>`, Authorization callback URL은 `https://<도메인>/api/auth/callback`으로 한다. 기존 localhost용 앱은 그대로 둔다.
+3. `.validation\staging\staging.env`에 `PUBLIC_ORIGIN=https://<도메인>`을 넣고, `GITHUB_CLIENT_ID`·`GITHUB_CLIENT_SECRET`을 시연용 OAuth 앱 값으로 바꾼다. 시연이 끝나면 `PUBLIC_ORIGIN` 줄을 지우고 원래 값으로 되돌린다.
+4. 서버를 켜고(`pwsh tools/vm/staging_stack.ps1 -Mode Down` 후 `pwsh tools/dev/bootstrap.ps1 -Staging`) 터널을 연다: `ngrok http https://localhost:8443 --url=https://<도메인>`.
+5. 그 주소를 넣은 설치 파일을 만든다(인증서는 넣지 않는다): `$env:GITVIZ_BUILD_SERVER_ORIGIN='https://<도메인>'` → `npm --prefix desktop run build` → `npm --prefix desktop run make`. 만든 `GitVizWorkspaceSetup.exe`를 모든 PC(호스트 포함)에 설치한다.
+6. PC마다 다른 GitHub 계정으로 로그인한다. 호스트가 저장소를 분석하면 그 저장소의 커뮤니티가 생기고, 기여자가 아닌 계정은 호스트가 보낸 초대 링크로 들어온다.
+
+ngrok 무료 도메인은 브라우저로 처음 열 때 안내 페이지를 한 번 보여 준다(**Visit Site**를 누르면 계속된다). 시연 동안만 서버와 터널을 켜 두고, 끝나면 둘 다 끈다(`staging_stack.ps1 -Mode Down`, ngrok 창 닫기).
+
 ### 4. 설치 파일 만들기 (선택)
 
 설치 파일 하나(`GitVizWorkspaceSetup.exe`)에 앱 런타임(Electron·Node.js)과 로컬 작업 에이전트(Python 런타임·VC++/UCRT DLL 포함)가 모두 들어 있다. 사용하는 PC에 따로 있어야 하는 것은 Git for Windows 하나이며, 앱이 처음 실행될 때 검사하고 설치까지 해 준다(아래).

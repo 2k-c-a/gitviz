@@ -62,13 +62,25 @@ function Start-Clean([string]$File, [string[]]$Arguments, [hashtable]$Extra, [st
     Set-Content -LiteralPath (Join-Path $pids "$Name.pid") -Value $id
     return $id
 }
+# Multi-PC demo: an HTTPS tunnel (e.g. ngrok) in front of this loopback server. PUBLIC_ORIGIN in staging.env is the
+# address other PCs and GitHub OAuth use; the server itself still listens on 127.0.0.1 only, so no firewall rule is needed.
+function Public-Origin([hashtable]$UserValues) {
+    $value = $UserValues.PUBLIC_ORIGIN
+    if (-not $value) { return $origin }
+    $uri = $null
+    if (-not [Uri]::TryCreate($value, [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -ne 'https' -or $uri.UserInfo -or $uri.PathAndQuery -ne '/' -or $uri.Fragment -or $value.TrimEnd('/') -ne $uri.GetLeftPart([UriPartial]::Authority)) {
+        throw "PUBLIC_ORIGIN in $userEnv must be a bare https:// origin (no path), e.g. https://example.ngrok-free.app"
+    }
+    return $uri.GetLeftPart([UriPartial]::Authority)
+}
 function Server-Environment {
     $g = Read-EnvFile $generated; $u = Read-EnvFile $userEnv
+    $public = Public-Origin $u
     $dbUrl = "postgresql://gitviz_staging:$($g.PG_PASSWORD)@127.0.0.1:$pgPort/gitviz_staging"
     return @{
         DATABASE_URL = $dbUrl; DATABASE_URL_ASYNC = $dbUrl.Replace('postgresql://', 'postgresql+asyncpg://'); REDIS_URL = "redis://127.0.0.1:$redisPort/0"
         SESSION_SECRET_KEY = $g.SESSION_SECRET_KEY; TOKEN_ENCRYPTION_KEY = $g.TOKEN_ENCRYPTION_KEY
-        FRONTEND_URL = $origin; SESSION_COOKIE_SECURE = '1'; DESKTOP_AUTH_ENABLED = '1'; DESKTOP_PUBLIC_ORIGIN = $origin; DESKTOP_AUTH_RESPONSE_KEY = $g.DESKTOP_AUTH_RESPONSE_KEY
+        FRONTEND_URL = $public; SESSION_COOKIE_SECURE = '1'; DESKTOP_AUTH_ENABLED = '1'; DESKTOP_PUBLIC_ORIGIN = $public; DESKTOP_AUTH_RESPONSE_KEY = $g.DESKTOP_AUTH_RESPONSE_KEY
         GITHUB_CLIENT_ID = $u.GITHUB_CLIENT_ID; GITHUB_CLIENT_SECRET = $u.GITHUB_CLIENT_SECRET
         # Voice chat across networks (AD-28): public STUN unless staging.env says otherwise; TURN only when staging.env sets it.
         VOICE_STUN_URLS = $(if ($u.ContainsKey('VOICE_STUN_URLS')) { $u.VOICE_STUN_URLS } else { 'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302' })
@@ -148,7 +160,7 @@ print(cert.fingerprint(hashes.SHA256()).hex())
             if ($LASTEXITCODE -ne 0) { throw 'Certificate generation failed.' }
         }
         $filled = (Get-Item -LiteralPath $userEnv -ErrorAction SilentlyContinue).Length -gt 0
-        [ordered]@{ prepared = $true; postgresPort = $pgPort; redisPort = $redisPort; origin = $origin; certificate = (Join-Path $tls 'server.cer'); stagingEnvHasContent = $filled } | ConvertTo-Json
+        [ordered]@{ prepared = $true; postgresPort = $pgPort; redisPort = $redisPort; origin = $origin; publicOrigin = (Public-Origin (Read-EnvFile $userEnv)); certificate = (Join-Path $tls 'server.cer'); stagingEnvHasContent = $filled } | ConvertTo-Json
     }
     'Up' {
         $u = Read-EnvFile $userEnv
@@ -159,7 +171,7 @@ print(cert.fingerprint(hashes.SHA256()).hex())
         # The venv launcher spawns the real interpreter; record whichever process owns the loopback listener.
         $owner = Get-NetTCPConnection -LocalPort $httpsPort -State Listen -ErrorAction SilentlyContinue | Where-Object LocalAddress -eq '127.0.0.1' | Select-Object -First 1
         if ($owner) { $id = $owner.OwningProcess; Set-Content -LiteralPath (Join-Path $pids 'server.pid') -Value $id }
-        [ordered]@{ serverPid = $id; listening = (Is-Listening $httpsPort); origin = $origin } | ConvertTo-Json
+        [ordered]@{ serverPid = $id; listening = (Is-Listening $httpsPort); origin = $origin; publicOrigin = (Public-Origin (Read-EnvFile $userEnv)) } | ConvertTo-Json
     }
     'Worker' {
         # Analysis jobs are Celery tasks on the staging Redis; same isolated environment as the server.
@@ -178,6 +190,6 @@ print(cert.fingerprint(hashes.SHA256()).hex())
     }
     'Status' {
         [ordered]@{ postgres = (Is-Listening $pgPort); redis = (Is-Listening $redisPort); https = (Is-Listening $httpsPort); prepared = (Test-Path (Join-Path $cluster 'PG_VERSION'));
-            stagingEnvHasContent = ((Get-Item -LiteralPath $userEnv -ErrorAction SilentlyContinue).Length -gt 0) } | ConvertTo-Json
+            stagingEnvHasContent = ((Get-Item -LiteralPath $userEnv -ErrorAction SilentlyContinue).Length -gt 0); publicOrigin = (Public-Origin (Read-EnvFile $userEnv)) } | ConvertTo-Json
     }
 }
