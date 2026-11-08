@@ -200,9 +200,21 @@ async function goToDetail(url, repoId) {
   showError('기존 결과의 저장소 ID를 확인하지 못했습니다. 최근·내 분석에서 결과를 열거나 다시 검색하세요. 새 분석은 시작하지 않았습니다.');
 }
 
+/* 검색창에 GitHub 주소를 넣으면 검색 대신 바로 분석으로 간다(별도 'URL로 분석 시작' 메뉴를 합침, 2026-11-08).
+   이미 분석한 저장소면 결과를 열고, 아니면 홈 화면과 같은 분석 시작 흐름을 쓴다. */
+const GITHUB_ADDRESS = /^(?:https?:\/\/)?(?:www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?(?:\.git)?\/?$/i;
+async function openAddress(address) {
+  const url = `https://${address.replace(/^(?:https?:\/\/)?(?:www\.)?/i, '').replace(/\/+$/, '').replace(/\.git$/i, '')}`;
+  await registeredReady;
+  if (!registeredMap.has(normalizeUrl(url))) await loadRegisteredMap();
+  const id = registeredMap.get(normalizeUrl(url));
+  if (id) window.goPage('overview', id); else startAnalysis(url);
+}
+
 async function runSearch(page = 1) {
   const q = inputEl.value.trim();
   if (!q) { inputEl.focus(); return; }
+  if (GITHUB_ADDRESS.test(q)) { await openAddress(q); return; }
   const generation = ++searchGeneration;
   currentPage = Number.isInteger(page) && page > 0 ? page : 1;
   const url = new URL(location.href); url.searchParams.set('q', q); url.searchParams.set('order', sortEl.value);

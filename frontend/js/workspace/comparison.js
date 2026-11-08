@@ -13,7 +13,12 @@ window.addEventListener('workspace-project-changed', () => { generation++; snaps
 window.addEventListener('workspace-snapshot-changed', event => {
   const value = event.detail; if (!value || value.projectId !== picker.value || snapshots.has(value.snapshotId)) return;
   snapshots.set(value.snapshotId, value);
-  for (const select of [before, after]) { const option = node('option', `${value.capturedAt} · ${value.snapshotId}`); option.value = value.snapshotId; select.append(option); }
+  // Readable choices: order, time and file count. The ID stays in the tooltip. Newest is 이후, the one before it 이전.
+  const time = new Date(value.capturedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const label = `${snapshots.size}번째 담기 · ${time} · 파일 ${value.coverage?.selected ?? 0}개`;
+  for (const select of [before, after]) { const option = node('option', label); option.value = value.snapshotId; option.title = value.snapshotId; select.append(option); }
+  const previous = [...snapshots.keys()].at(-2);
+  if (previous) before.value = previous;
   after.value = value.snapshotId; pending = null;
 });
 window.addEventListener('workspace-validation-finished', event => { const value = event.detail; if (value.projectId === picker.value) { runs.set(value.snapshotId, value.runId); pending = null; } });

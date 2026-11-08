@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../css/index.css">
-    <title>GitViz · 저장소 검색</title>
+    <title>GitViz · 새 분석</title>
 </head>
 <body>
   <div id="navbar-container"></div>
@@ -15,15 +15,15 @@
   <div class="page active" id="page-search">
     <div class="dash-head">
       <div>
-        <div class="dash-title">저장소 검색</div>
-        <div class="dash-sub">GitHub 저장소를 검색하고, 내려받지 않고 예비 점수로 먼저 훑어보세요</div>
+        <div class="dash-title">새 분석</div>
+        <div class="dash-sub">GitHub 저장소를 검색해 고르거나, 주소(https://github.com/owner/repo)를 붙여 넣으면 바로 분석을 시작합니다</div>
       </div>
     </div>
 
     <div class="body">
       <div class="panel mb-3.5">
         <div class="search-bar ui-toolbar">
-          <input type="search" id="search-input" aria-label="저장소 이름 또는 검색어" placeholder="저장소 이름이나 키워드로 검색 (예: fastapi)">
+          <input type="search" id="search-input" aria-label="저장소 이름, 검색어 또는 GitHub 주소" placeholder="저장소 이름·키워드로 검색하거나 GitHub 주소를 붙여 넣으세요">
           <select class="ui-filter" id="search-sort" aria-label="검색 결과 정렬">
             <option value="stars">별 많은순</option>
             <option value="updated">최근 업데이트순</option>

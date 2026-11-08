@@ -133,8 +133,8 @@
 
 /* SEARCH PAGE */
 .search-bar { display: flex; gap: 8px; flex-wrap: wrap; }
-.search-bar input[type="text"] { flex: 1; min-width: 220px; padding: 10px 14px; font-size: 14px; border: 0.5px solid var(--border2); border-radius: var(--r-md); background: var(--bg2); color: var(--text); outline: none; transition: border-color 0.15s; }
-.search-bar input[type="text"]:focus { border-color: var(--blue); }
+.search-bar :is(input[type="text"], input[type="search"]) { flex: 1; min-width: 220px; padding: 10px 14px; font-size: 14px; border: 0.5px solid var(--border2); border-radius: var(--r-md); background: var(--bg2); color: var(--text); outline: none; transition: border-color 0.15s; }
+.search-bar :is(input[type="text"], input[type="search"]):focus { border-color: var(--blue); }
 .search-bar select { flex-shrink: 0; }
 .search-bar .btn-primary { flex-shrink: 0; }
 .search-examples { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
@@ -264,7 +264,7 @@
   .search-card { flex-direction: column; align-items: stretch; text-align: center; }
   .search-card-title, .search-card-stats { justify-content: center; }
   .search-card-action { flex-direction: row; justify-content: center; }
-  .search-bar input[type="text"] { min-width: 100%; }
+  .search-bar :is(input[type="text"], input[type="search"]) { min-width: 100%; }
 }
 
 /* ═══════════ 시각화 정책 연동 (분석 기준 배너 · 근거 상태 · 이력/비교) ═══════════ */

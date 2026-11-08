@@ -26,7 +26,7 @@
 <ul id="ws-project-list" class="ws-list" aria-label="등록한 프로젝트"></ul>
 <p id="ws-project-empty" class="ws-note" hidden>등록한 프로젝트가 없습니다. 폴더 등록을 눌러 시작하세요.</p>
 <button type="button" id="more-projects" hidden>더 보기</button>
-<p class="ws-note">등록 해제는 선택한 프로젝트가 있을 때만 쓸 수 있고, 원본 폴더는 건드리지 않습니다.</p>
+<p class="ws-note">등록 해제해도 원본 폴더는 그대로입니다.</p>
 </section>
 
 <section class="ws-view" data-view="project" aria-label="프로젝트 작업" tabindex="-1">
@@ -47,6 +47,12 @@
 <h1>개요</h1>
 <div class="ws-todo" id="ws-todo"><div><div class="ws-note">지금 할 일</div><strong id="ws-todo-title">프로젝트를 선택하세요.</strong><div id="ws-todo-text"></div></div><span class="ws-grow"></span><button type="button" id="ws-todo-action" class="btn-primary" hidden></button></div>
 <div class="ws-panel"><h2 id="git-title">Git 상태</h2><button type="button" id="reload-git" disabled data-risk="read">새로고침</button><div id="git-state"></div></div>
+<details class="ws-panel ws-project-settings"><summary><h2>이 프로젝트 설정</h2></summary>
+<p class="ws-note">지금 열린 프로젝트(<strong id="ws-settings-project">선택 안 됨</strong>)에만 적용됩니다.</p>
+<label class="ws-field"><span>파일을 열 에디터</span><select id="editor-id"><option value="vscode">VS Code</option><option value="cursor">Cursor</option></select></label>
+<div class="ws-toolbar"><button type="button" id="save-editor">에디터 저장</button><button type="button" id="configure-editor">에디터 실행 파일 찾기</button></div>
+<label class="ws-field"><span>개요에 보여 줄 최근 커밋 수 (1~100)</span><input id="recent-limit" type="number" min="1" max="100" value="20"></label><button type="button" id="save-project-settings" disabled>커밋 수 저장</button>
+<p id="ws-project-settings-message" class="ws-message" role="status" aria-live="polite"></p></details>
 </div>
 
 <div class="ws-tab-panel" role="tabpanel" id="ws-panel-history" data-tab-panel="history" aria-labelledby="ws-tab-history" tabindex="-1" hidden>
@@ -61,16 +67,16 @@
 
 <div class="ws-tab-panel" role="tabpanel" id="ws-panel-changes" data-tab-panel="changes" aria-labelledby="ws-tab-changes" tabindex="-1" hidden>
 <h1>파일</h1>
-<p class="ws-note">변경이 없어도 파일을 골라 점검할 수 있습니다. 파일을 체크한 뒤 &lsquo;AI 리뷰&rsquo; 또는 &lsquo;AI 리팩토링&rsquo;을 누르면 바로 실행됩니다. 모델과 목적은 설정에서 바꿉니다. 변경된 파일에서 고르면 바뀐 부분을, 전체 파일에서 고르면 현재 파일 전체를 그 시점의 사본으로 저장해 점검·검증·비교의 기준으로 씁니다. 바이너리, 큰 파일, 비밀 값이 들어 있는 것으로 보이는 내용은 제외됩니다.</p>
+<p class="ws-note">파일을 체크하고 &lsquo;AI 리뷰&rsquo; 또는 &lsquo;AI 리팩토링&rsquo;을 누르면 바로 실행됩니다. 변경이 없어도 파일을 골라 점검할 수 있습니다.</p>
+<details class="ws-more"><summary>자세히</summary><p class="ws-note">모델과 목적은 설정에서 바꿉니다. 변경된 파일에서 고르면 바뀐 부분을, 전체 파일에서 고르면 현재 파일 전체를 그 시점의 사본으로 저장해 점검·검증·비교의 기준으로 씁니다. 바이너리, 큰 파일, 비밀 값이 들어 있는 것으로 보이는 내용은 제외됩니다. 조회와 담기는 읽기 전용이고, 파일 적용과 프로젝트 검증은 별도 승인 후에만 실행됩니다. 외부 Git 메타데이터는 확인 후에만 읽으며, 서브모듈 안쪽 상태는 보여 주지 않습니다.</p></details>
 <div class="ws-panel"><div class="ws-toolbar"><button type="button" id="reload-changes" data-risk="read">새로고침</button><label class="ws-inline"><input id="include-untracked" type="checkbox"> 선택한 새 파일(Git 미추적) 포함</label></div>
 <h2>변경된 파일</h2>
 <div id="change-selection"></div>
 <h2>전체 파일</h2>
-<p class="ws-note">파일 이름을 누르면 설정에서 고른 기본 에디터로 열립니다. Git이 무시하는 파일과 폴더는 보여 주지 않습니다.</p>
+<p class="ws-note">파일 이름을 누르면 에디터로 열립니다(개요 탭의 &lsquo;이 프로젝트 설정&rsquo;). Git이 무시하는 파일은 보이지 않습니다.</p>
 <div id="file-tree" class="ws-tree" role="tree" aria-label="프로젝트 파일"></div>
 <div class="ws-actionbar"><button type="button" id="quick-review" class="btn-primary" data-risk="send">AI 리뷰</button><button type="button" id="quick-refactor" class="btn-primary" data-risk="send">AI 리팩토링</button><button type="button" id="capture-changes" data-risk="read">점검 대상으로만 담기</button><span id="capture-message" class="ws-message" role="status"></span></div>
 <div id="capture-result"></div><pre id="fixed-preview"></pre></div>
-<p class="ws-note">조회와 담기는 읽기 전용입니다. 파일 적용과 프로젝트 검증은 별도 승인 후에만 실행됩니다. 외부 Git 메타데이터는 확인 후에만 읽으며, 서브모듈 안쪽 상태는 보여 주지 않습니다.</p>
 </div>
 
 <div class="ws-tab-panel" role="tabpanel" id="ws-panel-ai" data-tab-panel="ai" aria-labelledby="ws-tab-ai" tabindex="-1" hidden>
@@ -82,28 +88,31 @@
 <p id="review-message" class="ws-message" role="status"></p>
 <div class="ws-panel ws-step" data-step="1"><h2>① 점검 대상</h2><p id="ws-ai-target">담은 변경이 없습니다.</p><button type="button" id="ws-ai-next-1" class="btn-primary" data-step-go="2" disabled>다음: 모델과 목적 →</button></div>
 <div class="ws-panel ws-step" data-step="2" hidden><h2>② 모델과 목적</h2>
-<p>이 PC의 Ollama 모델(qwen2.5-coder:7b, 127.0.0.1:11434)로만 보내거나, 내 API 키를 써서 클라우드 모델에 보낼 수 있습니다. 모델은 자동으로 설치하거나 실행하지 않습니다.</p>
+<p class="ws-note">이 PC의 Ollama 모델이나 내 API 키로 클라우드 모델을 씁니다.</p>
+<details class="ws-more"><summary>자세히</summary><p class="ws-note">이 PC의 모델은 Ollama의 qwen2.5-coder:7b(127.0.0.1:11434)입니다. 모델은 자동으로 설치하거나 실행하지 않습니다.</p></details>
 <label class="ws-field"><span>종류</span><select id="review-kind"><option value="review">코드 리뷰</option><option value="refactor">작은 개선 제안</option></select></label>
 <label class="ws-field"><span>모델</span><select id="review-profile"><option value="ollama-local-v1">이 PC의 Ollama</option><option value="claude-opus-5-5-v1">Anthropic Opus 5.5 (내 API 키)</option><option value="claude-sonnet-5-5-v1">Anthropic Sonnet 5.5 (내 API 키)</option><option value="gpt-5.4-v1">OpenAI GPT-5.4 (내 API 키)</option><option value="gemini-3.5-flash-lite-v1">Gemini 3.5 Flash-Lite (내 API 키)</option></select></label>
 <label class="ws-field ws-cloud-only"><span>API 키 (비워 두면 설정에 저장한 키를 씁니다. 여기 입력한 키는 이번 점검에만 쓰고 저장하지 않습니다)</span><input id="review-api-key" type="password" maxlength="512" autocomplete="off" spellcheck="false"></label>
-<p class="ws-note ws-cloud-only">클라우드 모델을 고르면 선택한 변경 내용이 그 제공자(Anthropic·OpenAI·Google) 서버로 전송되고, 요금은 내 API 키로 청구됩니다. 회사 코드처럼 외부로 보내면 안 되는 코드는 이 PC의 Ollama를 쓰세요. 앱의 월 사용 한도(USD 20)에는 아직 정산되지 않은 예약분도 포함됩니다.</p>
+<p class="ws-note ws-cloud-only">선택한 변경 내용이 제공자(Anthropic·OpenAI·Google) 서버로 전송되고 요금은 내 API 키로 청구됩니다. 외부로 보내면 안 되는 코드는 이 PC의 Ollama를 쓰세요. 월 사용 한도는 USD 20입니다(정산 전 예약분 포함).</p>
 <label class="ws-field"><span>점검 목적</span><textarea id="review-purpose" maxlength="1000">버그·보안·성능·품질·테스트 누락 검토</textarea></label>
-<details><summary>고급: 다시 실행 번호</summary><label class="ws-field"><span>같은 내용을 다시 점검할 때 올리는 번호</span><input id="review-generation" type="number" min="1" max="1000" value="1"></label></details>
+<input id="review-generation" type="hidden" value="1">
 <div class="ws-actionbar"><button type="button" data-step-go="1">← 이전</button><button type="button" id="review-preview" class="btn-primary" data-risk="read">보낼 내용 미리보기 →</button></div></div>
 <div class="ws-panel ws-step" data-step="3" hidden><h2>③ 보낼 내용 확인</h2>
 <div id="review-preview-meta"></div><pre id="review-preview-bytes"></pre>
 <input id="review-consent" type="checkbox" hidden>
-<label class="ws-check ws-dup-only"><input id="review-duplicate-risk" type="checkbox"> 새 실행 번호로 보내면 이전 요청과 별개로 한 번 더 호출되어 비용이 중복될 수 있다는 점을 확인했습니다.</label>
+<label class="ws-check ws-dup-only"><input id="review-duplicate-risk" type="checkbox"> 같은 내용을 한 번 더 보내면 이전 점검과 별개로 다시 호출되어 비용이 다시 들 수 있다는 점을 확인했습니다.</label>
 <div class="ws-actionbar"><button type="button" data-step-go="2">← 이전</button><button id="review-start" type="button" class="btn-primary" data-risk="send" disabled>시작</button></div></div>
 <div class="ws-panel ws-step" data-step="4" hidden><h2>④ 결과</h2>
-<div class="ws-toolbar"><button id="review-cancel" type="button" disabled>취소 요청</button><button id="review-history" type="button" data-risk="read">점검 이력</button><button type="button" data-step-go="1">새 점검</button></div>
+<div class="ws-toolbar"><button id="review-cancel" type="button" disabled>취소 요청</button><button id="review-history" type="button" data-risk="read">점검 이력</button><button type="button" id="review-rerun" disabled>같은 내용으로 다시 실행</button><button type="button" data-step-go="1">새 점검</button></div>
 <div id="review-history-list"></div><div id="review-result"></div>
-<p class="ws-note">AI가 짚은 내용은 실제로 실행해서 확인한 결함이 아닙니다. 지적이 없다고 해서 결함이 없다는 뜻도 아닙니다. 취소해도 이미 보낸 내용은 되돌릴 수 없고, 결과를 알 수 없는 작업은 자동으로 다시 보내지 않습니다.</p></div>
+<p class="ws-note">AI 지적은 실행해서 확인한 결함이 아니며, 지적이 없다고 결함이 없다는 뜻도 아닙니다.</p>
+<details class="ws-more"><summary>자세히</summary><p class="ws-note">취소해도 이미 보낸 내용은 되돌릴 수 없고, 결과를 알 수 없는 작업은 자동으로 다시 보내지 않습니다. &lsquo;같은 내용으로 다시 실행&rsquo;은 같은 내용을 한 번 더 보내므로 비용이 다시 들 수 있습니다.</p></details></div>
 </div>
 
 <div class="ws-tab-panel" role="tabpanel" id="ws-panel-proposals" data-tab-panel="proposals" aria-labelledby="ws-tab-proposals" tabindex="-1" hidden>
 <h1>개선 제안</h1>
-<p>diff를 확인한 뒤 &lsquo;적용&rsquo;을 누르면 파일에 반영하고, 바뀐 파일을 다시 담아 전후 지표를 자동으로 비교합니다. 신뢰한 프로젝트에서 테스트 계획을 연결해 두었다면 적용 전후 테스트도 함께 실행합니다. 생성 이후 파일이 바뀌었으면 적용하지 않으며, 다른 도구가 고친 내용은 덮어쓰지 않습니다. 적용 중에는 원래 경로가 잠시 없을 수 있으니, 중단되면 복구 상태를 확인하세요. 스테이징·커밋·푸시는 하지 않습니다.</p>
+<p>diff를 확인하고 &lsquo;적용&rsquo;을 누르면 파일에 반영하고 전후를 자동으로 비교합니다. 스테이징·커밋·푸시는 하지 않습니다.</p>
+<details class="ws-more"><summary>자세히</summary><p class="ws-note">신뢰한 프로젝트에서 테스트 계획을 연결해 두었다면 적용 전후 테스트도 함께 실행합니다. 생성 이후 파일이 바뀌었으면 적용하지 않으며, 다른 도구가 고친 내용은 덮어쓰지 않습니다. 적용 중에는 원래 경로가 잠시 없을 수 있으니, 중단되면 복구 상태를 확인하세요.</p></details>
 <div class="ws-panel"><h2>복구가 필요한 제안</h2><button type="button" id="reload-recovery" data-risk="read">복구 필요 목록 확인</button><div id="proposal-recovery-list"></div></div>
 <p id="proposal-message" class="ws-message" role="status"></p><div id="proposal-view"></div>
 <p class="ws-note" id="ws-proposal-empty">제안이 없습니다. AI 점검에서 &lsquo;작은 개선 제안&rsquo;을 선택해 만들 수 있습니다. <button type="button" data-go-tab="ai">AI 점검으로 이동</button></p>
@@ -122,7 +131,7 @@
 <label class="ws-field"><span>패키지 관리자</span><select id="package-manager"><option value="">lock 파일 기준</option><option value="npm">npm</option><option value="yarn">yarn</option><option value="pnpm">pnpm</option></select></label></details>
 <button type="button" id="detect-validation" class="btn-primary" data-risk="read">설정 파일 읽고 도구 찾기</button><div id="detected-tools"></div></div>
 <div class="ws-panel"><h3>실행</h3>
-<p>실행하는 코드는 내 Windows 계정 권한으로 파일과 네트워크에 접근할 수 있습니다. 작업마다 확인을 거치고, 프로젝트를 먼저 신뢰해야 합니다.</p>
+<p class="ws-note">실행하는 코드는 내 Windows 계정 권한으로 파일과 네트워크에 접근할 수 있어, 프로젝트를 먼저 신뢰하고 작업마다 확인합니다.</p>
 <div id="validation-plans"></div><button type="button" id="validation-cancel" disabled>실행 취소 (하위 프로세스 포함)</button>
 <p id="validation-message" class="ws-message" role="status"></p><div id="validation-view"></div></div>
 </section>
@@ -140,7 +149,8 @@
 <section id="ws-verify-impact" class="ws-subsection" aria-labelledby="ws-verify-impact-title">
 <h2 id="ws-verify-impact-title">영향 범위</h2>
 <p class="ws-need ws-need-snapshot ws-banner ws-banner-info">분석할 점검 대상이 없습니다. 먼저 <button type="button" data-go-tab="changes">파일 탭</button>에서 파일을 담으세요.</p>
-<p>Python·JS/TS 파서가 코드에서 읽어 낸 구문과 정적 연결만 보여 줍니다. 동적 호출과 외부 모듈은 알 수 없으며 실제 실행 결과를 뜻하지도 않습니다. 함께 바뀐 이력과 AI 추정은 따로 표시합니다.</p>
+<p class="ws-note">코드에서 읽어 낸 정적 연결만 보여 주며, 실제 실행 결과가 아닙니다.</p>
+<details class="ws-more"><summary>자세히</summary><p class="ws-note">Python·JS/TS 파서가 읽어 낸 구문과 정적 연결입니다. 동적 호출과 외부 모듈은 알 수 없습니다. 함께 바뀐 이력과 AI 추정은 따로 표시합니다.</p></details>
 <div class="ws-toolbar"><button type="button" id="analyze-impact" class="btn-primary" data-risk="read">담은 변경의 영향 분석</button></div>
 <p id="impact-message" class="ws-message" role="status"></p><div id="impact-view" class="ws-evidence"></div>
 </section>
@@ -149,7 +159,8 @@
 
 <section class="ws-view" data-view="inbox" aria-labelledby="inbox-title" tabindex="-1">
 <h1 id="inbox-title">알림</h1>
-<p>등록한 모든 프로젝트의 AI 점검, 테스트·린트, 개선 제안 적용 결과를 모아 보여 줍니다. 알림을 눌러도 화면만 이동하며, 코드 수정·명령 실행·전송은 하지 않습니다. AI 지적은 추정이고, 검증 실패는 실제로 실행한 결과입니다.</p>
+<p class="ws-note">등록한 모든 프로젝트의 AI 점검, 테스트·린트, 개선 제안 결과를 모아 봅니다. 알림을 누르면 해당 화면으로 이동만 합니다.</p>
+<details class="ws-more"><summary>자세히</summary><p class="ws-note">알림을 눌러도 코드 수정·명령 실행·전송은 하지 않습니다. AI 지적은 추정이고, 검증 실패는 실제로 실행한 결과입니다.</p></details>
 <div class="ws-toolbar">
 <label class="ws-inline">프로젝트 <select id="inbox-project"><option value="">모든 프로젝트</option></select></label>
 <label class="ws-inline">종류 <select id="inbox-source"><option value="">전체</option><option value="review">이 PC의 AI 점검</option><option value="validation">테스트·린트</option><option value="proposal">개선 제안</option><option value="analysis">서버 분석</option></select></label>
@@ -181,22 +192,18 @@
 <label class="ws-field"><span>기본 모델</span><select id="settings-ai-profile"><option value="ollama-local-v1">이 PC의 Ollama</option><option value="claude-opus-5-5-v1">Anthropic Opus 5.5 (내 API 키)</option><option value="claude-sonnet-5-5-v1">Anthropic Sonnet 5.5 (내 API 키)</option><option value="gpt-5.4-v1">OpenAI GPT-5.4 (내 API 키)</option><option value="gemini-3.5-flash-lite-v1">Gemini 3.5 Flash-Lite (내 API 키)</option></select></label>
 <label class="ws-field"><span>기본 점검 목적</span><textarea id="settings-ai-purpose" maxlength="1000">버그·보안·성능·품질·테스트 누락 검토</textarea></label>
 <h3>API 키</h3>
-<p class="ws-note">키는 Windows 계정 보호(DPAPI)로 암호화해 이 PC에만 저장합니다. 저장한 키는 화면에 다시 표시하지 않습니다. 로그인하지 않아도 저장한 키로 클라우드 모델을 쓸 수 있으며, 이때 선택한 변경 내용이 해당 제공자로 전송됩니다.</p>
+<p class="ws-note">키는 이 PC에만 암호화해 저장하며 화면에 다시 표시하지 않습니다.</p>
+<details class="ws-more"><summary>자세히</summary><p class="ws-note">Windows 계정 보호(DPAPI)로 암호화합니다. 로그인하지 않아도 저장한 키로 클라우드 모델을 쓸 수 있으며, 이때 선택한 변경 내용이 해당 제공자로 전송됩니다.</p></details>
 <label class="ws-field"><span>제공자</span><select id="settings-ai-provider"><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="gemini">Google Gemini</option></select><span id="settings-ai-key-status" class="ws-chip ws-key-status"></span></label>
 <label class="ws-field"><span>새 API 키</span><input id="settings-ai-key" type="password" maxlength="512" autocomplete="off" spellcheck="false"></label>
 <div class="ws-toolbar"><button type="button" id="settings-ai-key-save" class="btn-primary">키 저장</button><button type="button" id="settings-ai-key-delete">저장한 키 삭제</button></div>
 <p id="settings-ai-message" class="ws-message" role="status"></p></div>
-<div class="ws-panel"><h2>외부 에디터</h2>
-<label class="ws-field"><span>에디터</span><select id="editor-id"><option value="vscode">VS Code</option><option value="cursor">Cursor</option></select></label>
-<div class="ws-toolbar"><button type="button" id="save-editor">선택한 프로젝트의 기본 에디터로 저장</button><button type="button" id="configure-editor">실행 파일 선택·설정</button></div></div>
-<div class="ws-panel"><h2>프로젝트 기본값</h2><p class="ws-note">선택한 프로젝트에만 적용됩니다. 프로젝트를 고른 뒤 바꾸세요.</p>
-<label class="ws-field"><span>개요에 보여 줄 최근 커밋 수 (1~100)</span><input id="recent-limit" type="number" min="1" max="100" value="20"></label><button type="button" id="save-project-settings" disabled>설정 저장</button></div>
+<div class="ws-panel"><h2>외부 에디터</h2><p class="ws-note">파일을 열 에디터와 최근 커밋 수는 프로젝트마다 다르게 둘 수 있어, 각 프로젝트의 개요 탭 &lsquo;이 프로젝트 설정&rsquo;에서 바꿉니다.</p></div>
 <div class="ws-panel"><h2>구성 요소와 진단</h2>
 <p id="status" role="status" aria-live="polite">로컬 구성 요소를 확인하고 있습니다.</p>
 <div class="ws-toolbar"><button id="refresh" type="button" data-risk="read">구성 요소 상태 확인</button><button id="export-diagnostics" type="button" data-risk="read">진단 정보 저장 (최소한의 정보만)</button></div>
 <span id="diagnostics-message" role="status"></span>
 <p class="ws-note">업데이트는 확인만 하며, 자동으로 내려받거나 설치하지 않습니다.</p></div>
-<div class="ws-panel"><h2>화면 테마</h2><p class="ws-note">화면 위쪽의 해·달 버튼으로 라이트·다크 테마를 바꿀 수 있습니다. 누르기 전에는 Windows 설정을 따릅니다.</p></div>
 </section>
 </main></body>
 </html>
