@@ -39,6 +39,12 @@ function invalidate() {
 function reset() {
   generation++; clearTimeout(timer); snapshot = null; current = null; autoProposal = null; document.getElementById('review-api-key').value = '';
   invalidate(); result.replaceChildren(); history.replaceChildren(); message.textContent = ''; cancel.disabled = true;
+  firstRun(); lastRun = null; rerun.disabled = true;
+}
+/* Back to run number 1 whenever the content, kind, model or purpose changes; only 'same content again' raises it. */
+function firstRun() {
+  const field = document.getElementById('review-generation');
+  if (field.value !== '1') { field.value = '1'; field.dispatchEvent(new Event('input')); }
 }
 function useDefaults() {
   const defaults = aiDefaults(); const profile = document.getElementById('review-profile');
@@ -48,6 +54,7 @@ function useDefaults() {
 window.addEventListener('workspace-project-changed', reset);
 window.addEventListener('workspace-snapshot-changed', event => { reset(); snapshot = event.detail; if (snapshot) useDefaults(); });
 for (const id of ['review-purpose', 'review-generation', 'review-kind', 'review-profile', 'review-api-key']) document.getElementById(id).addEventListener('input', invalidate);
+for (const id of ['review-purpose', 'review-kind', 'review-profile']) for (const type of ['input', 'change']) document.getElementById(id).addEventListener(type, firstRun);
 
 /** Builds the exact request; returns the preview, or null when it failed or became stale. */
 async function prepare() {
@@ -138,8 +145,12 @@ async function poll(projectId, runId, turn) {
   } catch (error) { if (generation === turn) fail(error); }
 }
 // Owner decision (2026-11-01): the preview is shown, but starting no longer needs a consent checkbox.
+// A repeat of the same content (run number above 1) still needs the explicit cost acknowledgement.
+let lastRun = null;
+const rerun = document.getElementById('review-rerun');
 async function begin() {
   if (!approved) return null;
+  if (approved.generation > 1 && !document.getElementById('review-duplicate-risk').checked) { message.textContent = '같은 내용을 다시 보내면 비용이 다시 들 수 있습니다. 아래 확인란을 체크한 뒤 시작하세요.'; return null; }
   const value = approved; const turn = generation; start.disabled = true;
   try {
     const response = await api.startReview({ projectId: value.projectId, previewId: value.previewId, previewHash: value.previewHash,
@@ -148,10 +159,20 @@ async function begin() {
     if (generation !== turn || approved?.previewId !== value.previewId || snapshot?.snapshotId !== value.snapshotId) return null;
     if (response === null) { message.textContent = '전송을 취소했습니다.'; start.disabled = false; return null; }
     clearTimeout(timer); show(response); void poll(value.projectId, response.runId, turn);
+    lastRun = { projectId: value.projectId, snapshotId: value.snapshotId, generation: value.generation }; rerun.disabled = false;
     return response;
   } catch (error) { if (generation === turn) { fail(error); start.disabled = false; } return null; }
 }
 start.addEventListener('click', () => { void begin(); });
+/* The run number is internal: the agent returns the earlier result for the same number and needs exactly the next one
+   to send again. This button picks it and shows the preview with the cost acknowledgement. */
+rerun.addEventListener('click', () => {
+  if (!lastRun || lastRun.projectId !== picker.value || snapshot?.snapshotId !== lastRun.snapshotId) { rerun.disabled = true; return; }
+  const field = document.getElementById('review-generation');
+  field.value = String(lastRun.generation + 1); field.dispatchEvent(new Event('input'));
+  document.getElementById('review-duplicate-risk').checked = false;
+  void prepare();
+});
 /** One-click review/refactor from the changes tab: defaults from settings, preview, start, and for refactor a proposal. */
 window.addEventListener('workspace-quick-ai', async event => {
   const { kind, snapshotId } = event.detail;

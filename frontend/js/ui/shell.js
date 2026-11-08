@@ -55,8 +55,8 @@ export function mountShell({ local = false, account = null } = {}) {
   main.id = 'app-main'; main.tabIndex = -1; main.classList.add('app-main');
   if (local) main.classList.add('workspace-content');
   const footer = element('footer', 'app-statusbar');
-  footer.append(element('span', '', local ? '로컬 프로젝트 · 변경과 검증' : 'GitHub 저장소 · 저장된 분석 결과'));
-  const status = element('span', 'app-status-text', local ? '로컬 구성 확인 중' : '저장소 선택 전'); status.id = 'shell-status';
+  footer.append(element('span', '', local ? '내 PC 프로젝트' : 'GitHub 저장소 분석'));
+  const status = element('span', 'app-status-text', local ? '로컬 구성 확인 중' : '저장소를 고르세요'); status.id = 'shell-status';
   footer.append(status);
   if (!local) {
     // Move the existing document; retain IDs, event handlers, forms and canvas objects.
@@ -73,25 +73,33 @@ export function mountShell({ local = false, account = null } = {}) {
     if (selected) a.setAttribute('aria-current', 'page');
     parent.append(a); return a;
   };
-  link('저장소 탐색', '⌕', new URL('pages/search.html', webRoot).href, currentPage === 'search');
-  link('최근·내 분석', '▦', new URL('pages/myprojects.html', webRoot).href, currentPage === 'myprojects');
-  link('URL로 분석 시작', '↗', new URL('index.html', webRoot).href, !local && currentPage === 'index');
-  // The same six entries on web pages and in the local workspace, so the rail never changes when moving between them.
-  // AI review by commit/PR lives under the repository's AI 분석 (its third tab), not as a top-level entry.
-  link('커뮤니티', '☷', new URL('pages/community.html', webRoot).href, currentPage === 'community');
   const toView = (a, view) => {
     a.dataset.wsView = view;
     a.addEventListener('click', event => { event.preventDefault(); setNavOpen(false); window.dispatchEvent(new CustomEvent('workspace-navigate', { detail: { view } })); });
     return a;
   };
+  const group = text => nav.append(element('p', 'app-nav-group', text));
+  const inApp = location.protocol === 'gitviz:';
+  // The same entries in the same order on web pages and in the local workspace, so the rail never changes when moving
+  // between them. The app's own work (local projects, notifications) comes first (2026-11-08, AD-23 ④ revised: 알림 shown,
+  // 계정·연결 still hidden; sign-in lives in the account chip).
+  if (local || inApp) {
+    group('내 PC');
+    if (local) { toView(link('프로젝트', '▣', '#'), 'projects'); toView(link('알림', '◔', '#'), 'inbox'); }
+    else { link('프로젝트', '▣', new URL('../index.html', webRoot).href); link('알림', '◔', new URL('../index.html?view=inbox', webRoot).href); }
+  }
+  // One entry starts an analysis: the search box takes a keyword or a GitHub address. The landing page stays reachable from the logo.
+  group('GitHub 저장소');
+  link('내 분석', '▦', new URL('pages/myprojects.html', webRoot).href, currentPage === 'myprojects');
+  link('새 분석', '⌕', new URL('pages/search.html', webRoot).href, currentPage === 'search' || (!local && currentPage === 'index'));
+  // AI review by commit/PR lives under the repository's AI 분석 (its third tab), not as a top-level entry.
+  link('커뮤니티', '☷', new URL('pages/community.html', webRoot).href, currentPage === 'community');
   const settingsHref = () => { const url = new URL(pageUrl('settings')); if (currentPage === 'ai-review') url.searchParams.set('return', buildAiRoute(parseAiRoute(location.search))); return url.href; };
   // In the app, 설정 always opens the app's settings view (AI keys and models, editor; AD-33) from every screen —
   // the same place as 'API 키 저장하러 가기'. The web keeps its own settings page.
-  const inApp = location.protocol === 'gitviz:';
   const settingsLink = local ? toView(link('설정', '⚙', '#'), 'settings')
     : link('설정', '⚙', inApp ? SETTINGS_ENTRY_URL : settingsHref(), !inApp && currentPage === 'settings');
-  if (local) toView(link('프로젝트', '▣', '#'), 'projects');
-  else if (location.protocol === 'gitviz:') link('프로젝트', '▣', new URL('../index.html', webRoot).href);
+  settingsLink.classList.add('app-nav-settings');
   const repositoryNav = element('div', 'app-repository-nav'); nav.append(repositoryNav);
   let repositoryLinks = [];
   let repositoryId;
@@ -121,7 +129,7 @@ export function mountShell({ local = false, account = null } = {}) {
     if (!local) {
       if (state.repo !== repositoryId) buildRepositoryLinks();
       const banner = document.getElementById('analysis-context');
-      status.textContent = document.getElementById('load-error') ? '결과 조회 실패 · 본문에서 확인' : banner ? '저장 결과 조회됨 · 수집 범위는 본문 참조' : '원격 분석';
+      status.textContent = document.getElementById('load-error') ? '분석 결과를 불러오지 못했습니다' : banner ? '저장된 분석 결과를 보는 중' : '';
       if (!inApp) settingsLink.href = settingsHref();
       for (const a of repositoryLinks) a.href = pageUrl(a.dataset.shellPage);
     }

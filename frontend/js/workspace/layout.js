@@ -68,7 +68,7 @@ function chips() {
   set('ws-chip-changes', `변경 ${changes}`, changes ? 'warn' : 'ok');
   set('ws-chip-conflicts', `충돌 ${git.conflicts.length}`, git.conflicts.length ? 'error' : 'ok');
 }
-function syncProjectLabels() { $('ws-connect-project').textContent = projectName() || '선택 안 됨'; }
+function syncProjectLabels() { for (const id of ['ws-connect-project', 'ws-settings-project']) $(id).textContent = projectName() || '선택 안 됨'; $('ws-project-settings-message').textContent = ''; }
 
 /* ---------- "what to do next" ---------- */
 function todo() {
@@ -136,8 +136,8 @@ function tagEvidence() {
 function commands() {
   const out = [];
   if (ui.projectId) for (const [id, label] of TABS) out.push([`탭 이동: ${label}`, () => show('project', id, { focus: true })]);
-  // 알림 and 계정·연결 stay in the page but are hidden from navigation (owner decision 2026-11-01).
-  out.push(['프로젝트 목록', () => show('projects', undefined, { focus: true })], ['설정', () => show('settings', undefined, { focus: true })],
+  // 계정·연결 stays in the page but is hidden from navigation (AD-23 ④); 알림 is in the rail again since 2026-11-08.
+  out.push(['프로젝트 목록', () => show('projects', undefined, { focus: true })], ['알림', () => show('inbox', undefined, { focus: true })], ['설정', () => show('settings', undefined, { focus: true })],
     ['프로젝트 폴더 등록', () => $('register-project').click()]);
   for (const option of picker.options) if (option.value) out.push([`프로젝트 전환: ${option.textContent}`, () => choose(option.value)]);
   for (const [value, label] of [['light', '라이트'], ['dark', '다크']]) out.push([`테마: ${label}`, () => window.dispatchEvent(new CustomEvent('gitviz-theme-select', { detail: value }))]);

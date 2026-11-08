@@ -72,9 +72,12 @@ document.getElementById('validation-cancel').addEventListener('click', async () 
   try { await api.cancelValidation({ projectId: current.projectId, runId: current.runId }); }
   catch (error) { if (turn === generation) fail(error); }
 });
+// Editor controls sit in the overview's '이 프로젝트 설정'; their results are shown there, not in the tests tab.
+const settingsMessage = document.getElementById('ws-project-settings-message');
+const settingsFail = error => { settingsMessage.textContent = String(error?.message || error).replace(/^.*Error invoking remote method.*Error: /, ''); };
 document.getElementById('configure-editor').addEventListener('click', async () => {
-  try { const value = await api.configureEditor({ editorId: document.getElementById('editor-id').value }); if (value) message.textContent = `${value.editorId} 설정 완료`; }
-  catch (error) { fail(error); }
+  try { const value = await api.configureEditor({ editorId: document.getElementById('editor-id').value }); if (value) settingsMessage.textContent = `${value.editorId} 실행 파일을 설정했습니다.`; }
+  catch (error) { settingsFail(error); }
 });
 window.addEventListener('workspace-project-changed', () => document.getElementById('validation-plans').replaceChildren());
 
@@ -87,13 +90,13 @@ window.addEventListener('workspace-project-changed', async () => {
     if (turn !== generation || picker.value !== projectId) return;
     editorVersion = value.settings.editorId?.version || 1;
     document.getElementById('editor-id').value = value.settings.editorId?.value || 'vscode';
-  } catch (error) { if (turn === generation) fail(error); }
+  } catch (error) { if (turn === generation) settingsFail(error); }
 });
 document.getElementById('save-editor').addEventListener('click', async () => {
   const turn = generation; const projectId = picker.value;
   if (!projectId) return;
   try {
     const value = await api.setEditor({ projectId, editorId: document.getElementById('editor-id').value, expectedVersion: editorVersion, idempotencyKey: crypto.randomUUID() });
-    if (turn === generation) { editorVersion = value.settings.editorId.version; message.textContent = '프로젝트 기본 에디터를 저장했습니다.'; }
-  } catch (error) { if (turn === generation) fail(error); }
+    if (turn === generation) { editorVersion = value.settings.editorId.version; settingsMessage.textContent = '이 프로젝트의 에디터를 저장했습니다.'; }
+  } catch (error) { if (turn === generation) settingsFail(error); }
 });

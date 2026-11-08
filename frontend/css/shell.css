@@ -6,6 +6,8 @@
 .app-brand-mark { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, color-mix(in srgb, var(--ui-primary) 82%, #fff), var(--ui-primary) 55%, color-mix(in srgb, var(--ui-primary) 70%, #000)); color: var(--ui-on-primary); font-size: 15px; font-weight: var(--ui-bold); box-shadow: 0 1px 2px rgb(17 24 39 / 25%), inset 0 1px 0 rgb(255 255 255 / 30%); }
 .app-nav { overflow-y: auto; overflow-x: hidden; padding: 8px; scrollbar-width: thin; }
 .app-nav-group { margin: 22px 12px 6px; color: var(--ui-muted); font-size: 11px; font-weight: var(--ui-semibold); letter-spacing: .06em; }
+.app-nav > .app-nav-group:first-child { margin-top: 6px; }
+.app-nav-settings { margin-top: 14px; }
 .app-nav-link { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 8px 12px; margin-bottom: 2px; color: var(--ui-muted); text-decoration: none; border-radius: var(--ui-radius-sm); font-size: var(--ui-text-sm); font-weight: var(--ui-medium); transition: background var(--ui-fast) var(--ui-ease), color var(--ui-fast) var(--ui-ease); }
 .app-nav-icon { flex: 0 0 20px; text-align: center; font-size: 18px; transition: transform var(--ui-normal) var(--ui-ease); }
 .app-nav-link:hover .app-nav-icon { transform: scale(1.1); }

@@ -3,9 +3,10 @@ import { readWorkspaceEntry } from '/web/js/platform/workspace-navigation.js';
 const api = window.workspace;
 const picker = document.getElementById('project-picker');
 const entry = readWorkspaceEntry(location.href);
-if (entry) {
+if (entry && entry.repositoryId !== null) {
+  // The rail's 알림 entry carries no repository; only an entry from a remote repository needs the note.
   const notice = document.createElement('p');
-  notice.textContent = entry.repositoryId === null ? '로컬 통합 알림으로 이동했습니다.' :
+  notice.textContent =
     `원격 저장소 #${entry.repositoryId}${entry.snapshotId === null ? '' : ` · 저장 결과 #${entry.snapshotId}`}에서 이동했습니다. 로컬 프로젝트 연결은 별도로 확인해야 합니다.`;
   document.getElementById('inbox-detail')?.append(notice);
   document.getElementById('inbox-title')?.scrollIntoView({ block: 'nearest' });

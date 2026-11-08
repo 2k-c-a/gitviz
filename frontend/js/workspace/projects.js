@@ -62,8 +62,9 @@ if (api?.listProjects) {
   document.getElementById('save-project-settings').addEventListener('click', async () => {
     if (!project) return;
     const turn = generation; const value = project;
-    try { await api.updateSettings({ projectId: value.id, recentLimit: Number(recent.value), expectedVersion: value.settings.recentLimit.version, idempotencyKey: crypto.randomUUID() }); if (turn === generation) await selected(); }
-    catch (error) { if (turn === generation) note(error); }
+    const settingsMessage = document.getElementById('ws-project-settings-message');
+    try { await api.updateSettings({ projectId: value.id, recentLimit: Number(recent.value), expectedVersion: value.settings.recentLimit.version, idempotencyKey: crypto.randomUUID() }); if (turn === generation) { await selected(); settingsMessage.textContent = '최근 커밋 수를 저장했습니다.'; } }
+    catch (error) { if (turn === generation) { note(error); settingsMessage.textContent = document.getElementById('project-message').textContent; } }
   });
   document.getElementById('unregister-project').addEventListener('click', async () => {
     if (!project) return;
