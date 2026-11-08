@@ -21,7 +21,7 @@ OPERATIONS = (
     "workspace.validation.prepare", "workspace.validation.approve", "workspace.validation.start", "workspace.validation.get", "workspace.validation.cancel", "workspace.comparisons.create", "workspace.comparisons.get",
     "workspace.notifications.list", "workspace.notifications.markRead", "workspace.events.read",
     "workspace.projects.connectRemote", "workspace.remote.observeAnalysis", "workspace.remote.getAnalysis", "workspace.remote.connections", "workspace.reviews.cloudContext", "workspace.reviews.cloudExchange",
-    "workspace.files.tree", "workspace.files.locatePath",
+    "workspace.files.tree", "workspace.files.locatePath", "workspace.history.analyze",
 )
 SCHEMA_ROOT = (Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
                / "contracts" / "workspace" / "v1")

@@ -3816,6 +3816,38 @@
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
         },
         "operation": {
+          "const": "workspace.history.analyze"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "requestId",
+        "operation",
+        "projectId",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "operation": {
           "const": "workspace.files.locatePath"
         },
         "projectId": {

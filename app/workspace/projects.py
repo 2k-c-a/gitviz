@@ -11,6 +11,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
+from . import history as change_history
 from .git_service import LocalGit
 from .scoped_files import ScopeError, discover, identity, pinned_paths, read_scoped, relative_path, verify
 
@@ -158,6 +159,11 @@ class Projects:
     def status(self, project_id: str, recent_limit: int) -> dict[str, Any]:
         _, grant = self._get(project_id)
         return {"projectId": project_id, **(self.git or LocalGit()).status(grant, recent_limit)}
+
+    def history(self, project_id: str) -> dict[str, Any]:
+        """Change analysis of HEAD's history (frequent files, co-changed pairs, weekly timeline). Never reads file contents."""
+        _, grant = self._get(project_id)
+        return {'projectId': project_id, **change_history.analyze(self.git or LocalGit(), grant)}
 
     def tree(self, project_id: str, directory: str) -> dict[str, Any]:
         """One working-tree directory for the file picker. Names and sizes only; never reads file contents.

@@ -121,7 +121,7 @@ export function registerProjects(window: BrowserWindow, agent: Pick<Agent, 'call
     ['list-projects', 'workspace.projects.list'], ['get-project', 'workspace.projects.get'],
     ['update-settings', 'workspace.projects.updateSettings'], ['unregister-project', 'workspace.projects.unregister'], ['git-status', 'workspace.git.status'], ['set-editor', 'workspace.projects.setEditor'],
     ['review-preview', 'workspace.reviews.preview'], ['review-get', 'workspace.reviews.get'], ['review-list', 'workspace.reviews.list'], ['review-cancel', 'workspace.reviews.cancel'], ['review-feedback', 'workspace.reviews.feedback'],
-    ['capture-changes', 'workspace.changes.capture'], ['file-tree', 'workspace.files.tree'], ['preview-file', 'workspace.files.preview'], ['detect-validation', 'workspace.validation.detect'], ['plan-validation', 'workspace.validation.plan'],
+    ['capture-changes', 'workspace.changes.capture'], ['file-tree', 'workspace.files.tree'], ['change-history', 'workspace.history.analyze'], ['preview-file', 'workspace.files.preview'], ['detect-validation', 'workspace.validation.detect'], ['plan-validation', 'workspace.validation.plan'],
   ];
   for (const [name, operation] of methods) handle(`workspace:${name}`, async (...args) => {
     if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) throw new Error('INVALID_REQUEST');

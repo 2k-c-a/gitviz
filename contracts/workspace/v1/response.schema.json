@@ -109,11 +109,12 @@
                       "workspace.remote.connections",
                       "workspace.impact.historical",
                       "workspace.files.tree",
-                      "workspace.files.locatePath"
+                      "workspace.files.locatePath",
+                      "workspace.history.analyze"
                     ]
                   },
                   "uniqueItems": true,
-                  "maxItems": 56
+                  "maxItems": 57
                 },
                 "state": {
                   "const": "initializing"
@@ -310,6 +311,9 @@
             },
             {
               "$ref": "#/definitions/pathLocation"
+            },
+            {
+              "$ref": "#/definitions/changeHistory"
             }
           ]
         }
@@ -5575,6 +5579,248 @@
         "sourceHash",
         "line",
         "column"
+      ],
+      "additionalProperties": false
+    },
+    "changeHistory": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "windowStart": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "windowEnd": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "formulaVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "commitCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "authorCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "treeFileCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "largeChangeThreshold": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "excludedLargeCommits": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "coChangeUnits": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "fileCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "pairCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "files": {
+          "type": "array",
+          "maxItems": 30,
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "changeCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "churn": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "bugfixCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "authorCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "lastChangedAt": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "priority": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 1
+              },
+              "lowSupport": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "path",
+              "changeCount",
+              "churn",
+              "bugfixCount",
+              "authorCount",
+              "lastChangedAt",
+              "priority",
+              "lowSupport"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "pairs": {
+          "type": "array",
+          "maxItems": 30,
+          "items": {
+            "type": "object",
+            "properties": {
+              "fileA": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "fileB": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048
+              },
+              "coChangeCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "changeCountA": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "changeCountB": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "adjustedScore": {
+                "type": "number",
+                "minimum": 0
+              },
+              "lowSupport": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "fileA",
+              "fileB",
+              "coChangeCount",
+              "changeCountA",
+              "changeCountB",
+              "score",
+              "adjustedScore",
+              "lowSupport"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "timeline": {
+          "type": "array",
+          "maxItems": 60,
+          "items": {
+            "type": "object",
+            "properties": {
+              "weekStart": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+              },
+              "commits": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "authors": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "bugfix": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              }
+            },
+            "required": [
+              "weekStart",
+              "commits",
+              "authors",
+              "bugfix"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "projectId",
+        "windowStart",
+        "windowEnd",
+        "formulaVersion",
+        "commitCount",
+        "authorCount",
+        "treeFileCount",
+        "largeChangeThreshold",
+        "excludedLargeCommits",
+        "coChangeUnits",
+        "fileCount",
+        "pairCount",
+        "truncated",
+        "files",
+        "pairs",
+        "timeline"
       ],
       "additionalProperties": false
     }
