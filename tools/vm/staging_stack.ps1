@@ -75,20 +75,38 @@ function Server-Environment {
         VOICE_TURN_URLS = $u.VOICE_TURN_URLS; VOICE_TURN_SECRET = $u.VOICE_TURN_SECRET
     }
 }
-# PATH first, then the MSI install (winget Redis.Redis), then portable winget packages.
+# Redis 6+ is required: redis-py 8 opens every connection with HELLO, which older servers reject, so enqueueing an
+# analysis fails with 503 and the worker never connects. winget Redis.Redis is the archived MSOpenTech 3.0.504 build;
+# use winget taizod1024.redis-windows-fork instead. Candidates in order: PATH, the MSI install, portable winget packages.
+$minRedisMajor = 6
+function Get-RedisMajor([string]$Exe) {
+    $out = & $Exe --version 2>$null
+    if ("$out" -match 'v=(\d+)\.') { return [int]$Matches[1] }
+    return 0
+}
 function Find-Redis {
-    $onPath = (Get-Command redis-server.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
-    if ($onPath) { return $onPath }
-    $msi = Join-Path $env:ProgramFiles 'Redis\redis-server.exe'
-    if (Test-Path $msi) { return $msi }
-    (Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter redis-server.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+    $candidates = @(
+        (Get-Command redis-server.exe -CommandType Application -All -ErrorAction SilentlyContinue).Source
+        (Join-Path $env:ProgramFiles 'Redis\redis-server.exe')
+        (Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter redis-server.exe -ErrorAction SilentlyContinue).FullName
+    ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+    $tooOld = @()
+    foreach ($exe in $candidates) {
+        $major = Get-RedisMajor $exe
+        if ($major -ge $minRedisMajor) { return $exe }
+        $tooOld += "$exe (v$major)"
+    }
+    if ($tooOld) {
+        throw "Redis $minRedisMajor+ is required, found only: $($tooOld -join ', '). Install: winget install --id taizod1024.redis-windows-fork -e (and uninstall Redis.Redis 3.0)."
+    }
+    return $null
 }
 function Pg([string[]]$Arguments) { & (Join-Path $pgBin 'pg_ctl.exe') @Arguments; if ($LASTEXITCODE -ne 0) { throw "pg_ctl $($Arguments -join ' ') failed." } }
 
 switch ($Mode) {
     'Prepare' {
         foreach ($need in 'initdb.exe', 'pg_ctl.exe', 'createdb.exe') { if (-not $pgBin -or -not (Test-Path (Join-Path $pgBin $need))) { throw "PostgreSQL 16+ $need not found under $pgBase; nothing is installed." } }
-        $redis = Find-Redis; if (-not $redis) { throw "redis-server.exe not found on PATH, under $env:ProgramFiles\Redis or in winget packages." }
+        $redis = Find-Redis; if (-not $redis) { throw "redis-server.exe not found on PATH, under $env:ProgramFiles\Redis or in winget packages. Install Redis ${minRedisMajor}+: winget install --id taizod1024.redis-windows-fork -e" }
         foreach ($port in $pgPort, $redisPort) { if ((Is-Listening $port) -and -not (Test-Path (Join-Path $cluster 'postmaster.pid'))) { throw "Port $port is already in use." } }
         if (-not (Test-Path $generated)) {
             @("PG_PASSWORD=$(New-Hex 16)", "SESSION_SECRET_KEY=$(New-Hex 32)", "TOKEN_ENCRYPTION_KEY=$(New-Hex 32)", "DESKTOP_AUTH_RESPONSE_KEY=$(New-Hex 32)") | Set-Content -LiteralPath $generated -Encoding ascii

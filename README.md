@@ -64,7 +64,7 @@ npm --prefix desktop run package
 
 추가 준비물:
 
-- PostgreSQL 16 이상 (`C:\Program Files\PostgreSQL\<버전>\bin` 중 가장 높은 버전을 자동으로 쓴다. 스테이징 DB를 이미 만들었다면 그때 쓴 버전을 쓴다), winget으로 설치한 Redis(`redis-server.exe`)
+- PostgreSQL 16 이상 (`C:\Program Files\PostgreSQL\<버전>\bin` 중 가장 높은 버전을 자동으로 쓴다. 스테이징 DB를 이미 만들었다면 그때 쓴 버전을 쓴다), Redis 6 이상(`winget install --id taizod1024.redis-windows-fork -e`). winget의 `Redis.Redis`는 지원이 끝난 3.0 버전이라 분석 요청이 "큐에 등록하지 못했습니다"(503)로 실패하므로 설치돼 있으면 `winget uninstall --id Redis.Redis -e`로 지운다. 스테이징 스크립트는 6 미만 Redis만 있으면 멈추고 안내한다
 - GitHub OAuth App: Homepage URL `https://localhost:8443`, Authorization callback URL `https://localhost:8443/api/auth/callback`
 
 ```powershell
