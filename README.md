@@ -108,13 +108,44 @@ npm --prefix desktop run build; npm --prefix desktop run package
 - 음성 채팅의 다른 네트워크 사이 연결은 서버 환경변수 `VOICE_STUN_URLS`의 STUN 서버로 한다. 예시 설정과 스테이징은 공개 STUN(`stun.l.google.com`)을 쓴다. 이때 STUN 제공자에게 참여자의 공인 IP 주소가 보이지만 음성은 가지 않는다. 회사·학교 방화벽처럼 직접 연결이 막힌 곳까지 되게 하려면 `VOICE_TURN_URLS`·`VOICE_TURN_SECRET`로 TURN 서버(coturn)를 더한다([.env.example](.env.example)). 비우면 같은 네트워크 안에서만 연결된다.
 - 공동 편집은 앱에서만 된다. 공유한 사람(호스트) PC의 파일 하나(100KB 이하 텍스트)를 3명까지 함께 고치고, 저장은 호스트 앱이 자기 파일에 한다. 서버는 변경분을 전달만 하고 파일 내용을 저장하지 않는다.
 
+### 3-1. 여러 PC로 시연 (같은 네트워크 2~3대)
+
+커뮤니티(글·댓글·채팅·음성·공동 편집)는 서버를 거친다. 호스트 PC 한 대에서 3단계 서버를 켜고, 정식 인증서가 있는 HTTPS 터널(ngrok)로 다른 PC가 접속하게 한다. 서버는 그대로 `127.0.0.1`에서만 열리므로 방화벽 설정이 필요 없다. 음성은 같은 네트워크 안에서 PC끼리 직접 연결된다.
+
+1. ngrok 계정을 만들고 무료 고정 도메인(예: `demo-xxxx.ngrok-free.app`)을 받은 뒤, 호스트 PC에 ngrok을 설치하고 `ngrok config add-authtoken <토큰>`을 실행한다.
+2. GitHub에 시연용 OAuth 앱을 새로 만든다. Homepage URL은 `https://<도메인>`, Authorization callback URL은 `https://<도메인>/api/auth/callback`으로 한다. 기존 localhost용 앱은 그대로 둔다.
+3. `.validation\staging\staging.env`에 `PUBLIC_ORIGIN=https://<도메인>`을 넣고, `GITHUB_CLIENT_ID`·`GITHUB_CLIENT_SECRET`을 시연용 OAuth 앱 값으로 바꾼다. 시연이 끝나면 `PUBLIC_ORIGIN` 줄을 지우고 원래 값으로 되돌린다.
+4. 서버를 켜고(`pwsh tools/vm/staging_stack.ps1 -Mode Down` 후 `pwsh tools/dev/bootstrap.ps1 -Staging`) 터널을 연다: `ngrok http https://localhost:8443 --url=https://<도메인>`.
+5. 그 주소를 넣은 설치 파일을 만든다(인증서는 넣지 않는다): `$env:GITVIZ_BUILD_SERVER_ORIGIN='https://<도메인>'` → `npm --prefix desktop run build` → `npm --prefix desktop run make`. 만든 `GitVizWorkspaceSetup.exe`를 모든 PC(호스트 포함)에 설치한다.
+6. PC마다 다른 GitHub 계정으로 로그인한다. 호스트가 저장소를 분석하면 그 저장소의 커뮤니티가 생기고, 기여자가 아닌 계정은 호스트가 보낸 초대 링크로 들어온다.
+
+ngrok 무료 도메인은 브라우저로 처음 열 때 안내 페이지를 한 번 보여 준다(**Visit Site**를 누르면 계속된다). 시연 동안만 서버와 터널을 켜 두고, 끝나면 둘 다 끈다(`staging_stack.ps1 -Mode Down`, ngrok 창 닫기).
+
 ### 4. 설치 파일 만들기 (선택)
 
+설치 파일 하나(`GitVizWorkspaceSetup.exe`)에 앱 런타임(Electron·Node.js)과 로컬 작업 에이전트(Python 런타임·VC++/UCRT DLL 포함)가 모두 들어 있다. 사용하는 PC에 따로 있어야 하는 것은 Git for Windows 하나이며, 앱이 처음 실행될 때 검사하고 설치까지 해 준다(아래).
+
 ```powershell
-npm --prefix desktop run make   # build-output\desktop\make\squirrel.windows\x64\GitVizWorkspaceSetup.exe
+# 1) 에이전트 동결 → build-output\agent\dist\agent  (잠금 venv 준비: docs/deployment/BUILD_AND_RELEASE.md §3)
+.\.validation\venv-workspace\Scripts\python.exe -X utf8 -B tools\build\build_workspace_agent.py
+.\.validation\venv-workspace\Scripts\python.exe tools\build\audit_workspace_agent.py --directory build-output\agent\dist\agent --output <보고서 파일>
+# 2) 앱 빌드와 설치 파일 → build-output\desktop\make\squirrel.windows\x64\GitVizWorkspaceSetup.exe
+npm --prefix desktop run build
+npm --prefix desktop run make
+node desktop\scripts\audit-bundle.mjs build-output\desktop\GitVizWorkspace-win32-x64\resources\app.asar <보고서 파일>
+# 3) 배포 후보로 복사하고 해시를 남긴다 → build-output\release-candidates\<버전>\ (+ SHA256SUMS.txt)
 ```
 
-현재 앱(배포한 0.7.0, 다음 0.8.0)은 코드 서명이 없어 설치 때 Windows SmartScreen 경고가 나온다. 설치는 사용자별(`%LOCALAPPDATA%\GitVizWorkspace`)이고 설치본은 `gitviz-join://` 초대 링크를 연다. 설치본을 쓰는 PC에도 Git for Windows가 기본 경로에 있어야 로컬 프로젝트 기능이 동작한다([설치 가이드 §0](docs/deployment/INSTALLATION_GUIDE.md)). 앱 로그는 `%APPDATA%\gitviz-workspace\logs\app.log`에 남는다. 설치·업데이트 상태는 [Windows 데스크톱 안내](docs/operations/windows-desktop.md)를 따른다.
+서버 주소 없이 빌드한 설치본은 로컬 기능만 켜진다. 운영 서버에 연결되는 설치본은 `GITVIZ_BUILD_SERVER_ORIGIN=https://<서버>`를 설정하고 `build`부터 다시 한다([환경 아키텍처 §2.4](docs/architecture/ENVIRONMENT_ARCHITECTURE.md)).
+
+**설치와 첫 실행(사용자):**
+
+1. `GitVizWorkspaceSetup.exe`를 실행한다. 관리자 권한 없이 내 계정에 설치되고(`%LOCALAPPDATA%\GitVizWorkspace`), 바탕화면·시작 메뉴 바로가기가 생기며, 설치가 끝나면 앱이 바로 열린다. 제거는 Windows 설정 > 앱에서 한다(내 데이터는 남는다).
+2. 앱의 **시작하기 > 시스템 환경 확인**이 단계(시스템 환경 확인 → 의존성 검사 → 누락된 의존성 설치 → 준비 완료)를 보여 준다. 항목은 운영체제(Windows 10·11), 아키텍처(x64), 앱 런타임, 로컬 작업 엔진, Git for Windows(2.30 이상)이고, 상태는 정상 설치·미설치·버전 불일치·설치 필요로 표시된다.
+3. Git이 없거나 오래됐으면 **필요한 항목 설치**를 누른다. 공식 배포처(github.com/git-for-windows)의 고정 버전(2.56.0.windows.4)을 받아 크기와 SHA-256을 확인한 뒤, 관리자 권한 없이 내 계정(`%LOCALAPPDATA%\Programs\Git`)에 조용히 설치한다. 이미 정상인 Git은 다시 설치하지 않는다. 끝나면 **앱 다시 시작**을 누른다.
+4. 내려받기·설치가 실패하면 이유를 화면에 보여 주고, **공식 다운로드 페이지 열기**로 직접 설치할 수 있다. 검사·설치 결과(항목 상태와 오류 코드만, 경로·계정 없음)는 앱 로그에 남는다.
+
+현재 앱(배포한 0.7.0, 다음 0.8.0)은 코드 서명이 없어 설치 때 Windows SmartScreen 경고가 나온다. 설치본은 `gitviz-join://` 초대 링크를 연다. Git 설치 경로와 직접 설치 방법은 [설치 가이드 §0](docs/deployment/INSTALLATION_GUIDE.md)에 있다. 앱 로그는 `%APPDATA%\gitviz-workspace\logs\app.log`에 남는다. 설치·업데이트 상태는 [Windows 데스크톱 안내](docs/operations/windows-desktop.md)를 따른다.
 
 ### 앱 테스트
 

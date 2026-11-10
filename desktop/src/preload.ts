@@ -41,6 +41,15 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
 }));
 if (location.protocol === 'gitviz:' && location.host === 'app' && location.pathname === '/index.html') contextBridge.exposeInMainWorld('workspace', Object.freeze({
   exportDiagnostics: () => ipcRenderer.invoke('workspace:export-diagnostics'),
+  // System environment check and per-user Git install. Only the item id crosses; paths and download URLs stay in main.
+  checkDependencies: () => ipcRenderer.invoke('workspace:dependencies-check'),
+  installDependency: (options: unknown, listener: unknown) => {
+    ipcRenderer.removeAllListeners('workspace:dependencies-progress');
+    if (typeof listener === 'function') ipcRenderer.on('workspace:dependencies-progress', (_event, value: unknown) => { (listener as (value: unknown) => void)(value); });
+    return ipcRenderer.invoke('workspace:dependencies-install', options).finally(() => ipcRenderer.removeAllListeners('workspace:dependencies-progress'));
+  },
+  relaunchApp: () => ipcRenderer.invoke('workspace:dependencies-relaunch'),
+  openGitDownload: () => ipcRenderer.invoke('workspace:dependencies-open-download'),
   connectRemote: (options: unknown) => ipcRenderer.invoke('workspace:connect-remote', options),
   getRemoteConnection: (options: unknown) => ipcRenderer.invoke('workspace:remote-connection', options),
   openRemoteAnalysis: (options: unknown) => ipcRenderer.invoke('workspace:open-remote-analysis', options),
