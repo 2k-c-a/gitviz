@@ -1,5 +1,5 @@
 /* ── AI 리뷰 화면 ──
-   흐름: 키·모델(A) → PR 선택(B) → 파일 선택(C) → 미리보기·전송 동의(D) → 실행(E) → 결과·피드백(F).
+   흐름: 키 상태(A, 화면에는 모델 선택 없음 — 전송 동의 칸에서만 바꾼다) → PR 선택(B) → 파일 선택(C) → 미리보기·전송 동의(D) → 실행(E) → 결과·피드백(F).
    - 주소(?repo=&pr=&input=&job=&retry=&force=)가 유일한 기준이다. 저장된 값·기본 저장소를 쓰지 않는다.
    - 화면 이동마다 세대(guard)를 올려 이전 요청을 abort하고, 늦게 온 응답은 버린다. 응답의 repository_id가 주소와 다르면 그리지 않는다.
    - 모든 동적 문자열은 textContent로만 넣는다(innerHTML에 데이터를 넣지 않는다). 링크는 이 화면의 내부 주소만 만든다.
@@ -226,9 +226,23 @@ function currentProvider() {
   return providers.find((p) => p.id === shared.providerId || p.models.some((m) => m.provider === shared.providerId)) || providers[0];
 }
 
-/* 리뷰 모델 선택과 앱 키 상태. 키 입력·저장은 앱 설정 화면이 한다(서버는 키를 저장하지 않는다). */
+/* 커밋·PR 단위 분석 화면에는 모델 선택 영역을 두지 않는다. 앱 설정의 기본 모델 → 키가 저장된(또는 로컬) 모델 →
+   첫 허용 모델 순으로 고르고, 실행 직전 전송 동의 칸에서만 바꿀 수 있다. */
+function pickDefaultProfile() {
+  const allowed = selectableProviders().flatMap((p) => p.models).filter((m) => m.allowed);
+  if (allowed.some((m) => m.profile_id === shared.profileId)) return;
+  let preferred = null;
+  try { preferred = JSON.parse(localStorage.getItem('gitviz.workspace.ai') || '{}').profileId || null; } catch { /* 기본값 없음 */ }
+  const usable = (m) => m.execution_location === 'local' || !!shared.appKeys?.[m.provider];
+  const pick = allowed.find((m) => m.profile_id === preferred && usable(m)) || allowed.find(usable) || allowed[0] || null;
+  shared.profileId = pick?.profile_id || null;
+  shared.providerId = pick?.provider || null;
+}
+
+/* 리뷰 모델 선택과 앱 키 상태(설정 화면 전용). 키 입력·저장은 앱 설정 화면이 한다(서버는 키를 저장하지 않는다). */
 function renderKeys() {
   const root = $('ai-keys');
+  if (!settingsMode) { pickDefaultProfile(); mount(root); return; }
   const provider = currentProvider();
   if (!provider) return mount(root, h('div', { class: 'ai-card' }, h('h2', { text: '사용할 수 있는 AI 제공자가 없습니다' }), h('p', { class: 'ai-muted', text: '서버의 허용 모델 설정을 확인한 뒤 새로고침하세요.' })));
   const local = provider.models.every((m) => m.execution_location === 'local');
@@ -695,6 +709,8 @@ async function renderPreview(token) {
           onchange: () => { shared.profileId = m.profile_id; shared.providerId = m.provider; st.checked = false; renderKeys(); fetchPreview(); } }),
         h('span', { text: `${m.display_name || m.model} ($${m.input_price_per_mtok}/$${m.output_price_per_mtok})` })))) : null,
       blockers.length ? h('ul', { class: 'ai-blockers' }, blockers.map((b) => h('li', { text: b }))) : null,
+      t && t.requires_api_key !== false && shared.appKeys && !shared.appKeys[t.provider]
+        ? h('div', { class: 'ai-row' }, button('API 키 저장하러 가기', openKeys, { cls: 'btn-primary' })) : null,
       h('label', { class: 'ai-check' },
         h('input', { type: 'checkbox', id: 'ai-consent-check', checked: st.checked, disabled: !consent || st.busy,
           onchange: (ev) => { st.checked = ev.target.checked; updateExecutionButtons(); } }),
