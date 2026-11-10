@@ -2,7 +2,8 @@ import './profile';
 /** Actual sandbox pages with an in-process server transport fixture. No external OAuth/API. */
 import assert from 'node:assert/strict';
 import { app } from 'electron';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DesktopAuth } from '../src/auth';
 import { Remote, type Http } from '../src/remote';
@@ -22,6 +23,15 @@ const user = { id: uid, github_login: 'fixture', display_name: 'P03 Fixture', av
 const issued = { sessionToken: token, sessionId: uid, user, expiresAt: new Date(Date.now() + 300000).toISOString(), capabilities: ['remote-v1'], apiCapabilities: { desktopProtocol: 1, aiContract: '1.9' } };
 const snapshot = { id: 7, repository_id: 2, target_sha: 'a'.repeat(40), payload_sha256: 'b'.repeat(64), formula_version: 'v1', window_start: '2026-01-01T00:00:00Z', window_end: '2026-06-01T00:00:00Z', analyzed_at: '2026-06-01T00:00:00Z' };
 const repo = { id: 2, url: 'https://github.com/fixture/p03', name: 'P03 Fixture', status: 'done', default_branch: 'main', last_analyzed_at: snapshot.analyzed_at, latest_snapshot_id: 7 };
+const reportId = '22222222-2222-4222-8222-222222222222';
+const insight = (id: string, severity: string, title: string, extra: Record<string, unknown> = {}) => ({ id, category: 'overall', title, summary: `${title} 요약`, severity, confidence: 'medium',
+  evidence: [{ toolCallId: 'c1', tool: 'getProjectOverview', label: '변경 횟수', value: '3' }], generatedAt: '2026-06-01T00:00:00Z', ...extra });
+const insightReport = { id: reportId, repositoryId: 2, snapshotId: 7, status: 'succeeded', callCount: 4, createdAt: '2026-06-01T00:00:00Z', progress: [],
+  result: { schemaVersion: 1, generatedAt: '2026-06-01T00:05:00Z', notes: ['근거는 GitViz 값입니다.'], highlights: ['h1'],
+    basis: { snapshotId: 7, targetSha: 'a'.repeat(40), windowStart: '2026-01-01T00:00:00Z', windowEnd: '2026-06-01T00:00:00Z', formulaVersion: 'v1', model: 'fixture-local', promptVersion: 'p1', toolVersion: 't1', code: { requested: false } },
+    categories: [
+      { key: 'overall', label: '종합', limitations: ['표본이 적습니다'], insights: [insight('l1', 'low', '낮은 위험 항목'), insight('h1', 'high', '<b>높은</b> 위험 항목', { recommendation: '담당자를 늘리세요', relatedCommits: ['c'.repeat(40)] })] },
+      { key: 'collaboration', label: '협업', limitations: [], insights: [] }] } };
 const requests: string[] = [];
 const requestMethods: string[] = [];
 let unauthorized = false;
@@ -52,6 +62,10 @@ const http: Http = async (path, method, _body, givenToken) => {
   else if (p.endsWith('/risk-scores') || p.endsWith('/bus-factor') || p.endsWith('/coupling')) body = [];
   else if (p.endsWith('/snapshots')) body = { repository_id: 2, snapshots: [snapshot], next_before_id: null };
   else if (p === '/api/ai/v1/providers') body = { providers: [] };
+  else if (p === '/api/ai/v1/insights/models') body = { models: [{ profile_id: 'fixture-local', provider: 'ollama', display_name: 'Fixture local', execution_location: 'local', requires_api_key: false }] };
+  else if (p === '/api/ai/v1/insights/reports') body = { reports: [{ id: reportId, status: 'succeeded', createdAt: insightReport.createdAt }] };
+  else if (p === `/api/ai/v1/insights/reports/${reportId}`) body = insightReport;
+  else if (p === '/api/ai/v1/insights/conversations') body = { conversations: [] };
   else if (p === '/api/ai/v1/usage') body = { period_start: '2026-10-01', currency: 'USD', user_spent: '0', user_reserved: '0', user_limit: '20', user_remaining: '20', server_budget_enabled: true, uncertain_reservations: 0, daily_jobs_used: 0, daily_job_limit: 30 };
   else if (p === '/search/my-github-repositories') {
     const page = Number(url.searchParams.get('page'));
@@ -132,6 +146,23 @@ void app.whenReady().then(async () => {
     await wait(`document.getElementById('url-input')?.value === 'https://github.com/fixture-org/secret' && document.getElementById('job-modal')?.classList.contains('open') && document.getElementById('modal-repo')?.textContent.includes('secret')`);
     await window.loadURL('gitviz://app/web/pages/myprojects.html?tab=github');
     await wait(`document.getElementById('myproj-analyzed')?.hidden === true && document.getElementById('myproj-github-list')?.textContent.includes('fixture/p03')`);
+    phase = 'ai-insight-report';
+    await window.loadURL('gitviz://app/web/pages/ai-insights.html?repo=2&snapshot=7');
+    await wait(`document.querySelectorAll('#insight-auto .ins-tile').length===6 && document.querySelectorAll('#insight-auto .ins-card').length===2`);
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelector('#insight-auto .ins-card h4').textContent`), '<b>높은</b> 위험 항목', 'highest severity first; title is text, not markup');
+    assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('#insight-auto .ins-nav-item').length`), 2);
+    assert.match(await window.webContents.executeJavaScript(`document.querySelector('#insight-auto .ins-rec').textContent`), /담당자를 늘리세요/);
+    await window.webContents.executeJavaScript(`[...document.querySelectorAll('.ins-filter button')].find(b=>b.textContent==='높음 이상').click()`);
+    await wait(`document.querySelectorAll('#insight-auto .ins-card').length===1 && document.getElementById('insight-auto').textContent.includes('인사이트 1개를 숨겼습니다')`);
+    const downloads = mkdtempSync(join(tmpdir(), 'gitviz-report-'));
+    const saved = new Promise<string>(resolve => window.webContents.session.once('will-download', (_event, item) => {
+      const target = join(downloads, item.getFilename()); item.setSavePath(target); item.once('done', () => resolve(target));
+    }));
+    await window.webContents.executeJavaScript(`[...document.querySelectorAll('.ins-export button')].find(b=>b.textContent.startsWith('HTML')).click()`);
+    const html = readFileSync(await saved, 'utf8');
+    assert.match(html, /^<!doctype html>/); assert.match(html, /&lt;b&gt;높은&lt;\/b&gt; 위험 항목/); assert.doesNotMatch(html, /<script/i);
+    assert.match(html, /href="https:\/\/github\.com\/fixture\/p03\/commit\/c{40}"/, 'commit links point at the repository on GitHub');
+    rmSync(downloads, { recursive: true, force: true });
     phase = 'ai-analysis-tabs';
     // 커밋·PR 단위 분석(AI 리뷰)은 왼쪽 목록의 최상위 항목이 아니라 현재 저장소 AI 분석의 세 번째 탭이다.
     await window.loadURL('gitviz://app/web/pages/ai-insights.html?repo=2&snapshot=7');
@@ -231,7 +262,7 @@ void app.whenReady().then(async () => {
     assert.equal(await window.webContents.executeJavaScript(`document.getElementById('shell-theme').dataset.theme`), 'light');
     assert.equal(await window.webContents.executeJavaScript(`document.querySelectorAll('#project-picker').length`), 1);
     assert.equal(await window.webContents.executeJavaScript(`getComputedStyle(document.querySelector('.app-shell')).display`), 'grid');
-    if (process.env.GITVIZ_UI_REPORT) writeFileSync(process.env.GITVIZ_UI_REPORT, JSON.stringify({ status: 'passed', pages: 8, sizes: ['600x400', '900x640', '1280x800', '1920x1080'], fixtureOnly: true, checks: ['navigation-context', 'theme-chart-update', 'detail-responsive', 'modal-focus-escape-return', 'CSP-bridge', 'workspace-preserved'] }));
+    if (process.env.GITVIZ_UI_REPORT) writeFileSync(process.env.GITVIZ_UI_REPORT, JSON.stringify({ status: 'passed', pages: 8, sizes: ['600x400', '900x640', '1280x800', '1920x1080'], fixtureOnly: true, checks: ['navigation-context', 'theme-chart-update', 'detail-responsive', 'modal-focus-escape-return', 'CSP-bridge', 'workspace-preserved', 'insight-report-export'] }));
     process.stdout.write('PASS sandbox renderer: existing pages, shell navigation/context, responsive detail, theme/chart, modal keyboard, bridge/CSP, no default repo, 401 invalidation\n');
   } finally { unregisterHealth(); unregister(); window.destroy(); clearTimeout(deadline); }
 }).then(() => app.exit(0)).catch(error => {

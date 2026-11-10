@@ -32,12 +32,12 @@
 | 분석 지표 | 유지보수 점검 우선순위, BF80, 기여 분포, 공동 변경, 협업 관계 | [지표 정의](../contracts/metrics.md), [분석 계약](../contracts/analytics.md) |
 | AI 입력 | PR 또는 커밋을 선택하고 SHA·선택 파일·전송 자료를 고정 | [입력 서비스](../../app/services/ai/input_builder.py), [수집 계약](../contracts/collection.md) |
 | AI 생성 | summary/review 독립 실행, 전송·로컬 실행 확인, 결과·피드백·사용량 저장 | [생성 서비스](../../app/services/ai/generation_service.py), [AI API](../contracts/ai-api.md) |
-| AI 분석(인사이트) | 분석 개요의 [AI 분석] 버튼 → 자동 분석 리포트(6개 범주 카드)와 대화형 분석. 저장된 스냅샷을 읽기 전용 도구로 조회하고 근거를 서버가 검증한다. 실행마다 켜면 기준 커밋의 소스 코드도 읽고 줄 단위로 인용한다. 앱 전용이고, 앱 설정에 저장한 사용자 API key로 실행하며 서버는 key를 저장하지 않는다. 서버 `.env`의 AI 설정 없이 동작하고 하루 실행 한도가 없다([AD-32](../architecture/ARCHITECTURE_DECISIONS.md)). 실제 모델 품질은 시험하지 않았다(가짜 제공자로만 통합 시험) | [인사이트 서비스](../../app/services/ai/insight_service.py), [AI API](../contracts/ai-api.md) |
+| AI 분석(인사이트) | 분석 개요의 [AI 분석] 버튼 → 자동 분석 리포트(6개 범주 카드)와 대화형 분석. 저장된 스냅샷을 읽기 전용 도구로 조회하고 근거를 서버가 검증한다. 실행마다 켜면 기준 커밋의 소스 코드도 읽고 줄 단위로 인용한다. 앱 전용이고, 앱 설정에 저장한 사용자 API key로 실행하며 서버는 key를 저장하지 않는다. 서버 `.env`의 AI 설정 없이 동작하고 하루 실행 한도가 없다([AD-32](../architecture/ARCHITECTURE_DECISIONS.md)). 실제 모델 품질은 시험하지 않았다(가짜 제공자로만 통합 시험). 자동 분석 화면(2026-11-10)은 위험 수준별 개수·범주 이동·먼저 볼 인사이트를 맨 위에 두고, 범주 안을 위험 수준 순으로 정렬하며 위험 수준 필터를 둔다. 완료된 자동 분석은 HTML(인쇄해 PDF로 저장 가능)·Markdown 보고서로 내려받는다. 보고서는 저장된 결과만 옮기고 외부 자원·스크립트가 없는 단일 파일이다 | [인사이트 서비스](../../app/services/ai/insight_service.py), [AI API](../contracts/ai-api.md) |
 | S11 | 전체 변경 파일의 추가 검토 후보. 코드 지적과 별개인 스냅샷 근거 | [이력 서비스](../../app/services/ai/history_context.py) |
 | 제공자 | Anthropic·OpenAI·Gemini BYOK 및 같은 PC의 Ollama·LM Studio·KoboldCpp | [현재 profile 안내](../operations/providers.md) |
 | 결과 공유 | 현재 저장소 접근 권한으로 다른 작성자의 결과·판단·메모를 읽는 별도 GET 경로. 쓰기는 작성자 전용 | [공유 API](../../app/api/ai/shared.py), [미확정 정책 D01](../decisions/index.md#d01) |
 
-화면 배치(2026-11-04): AI 리뷰(커밋·PR 단위 분석)는 왼쪽 목록의 최상위 항목이 아니라 현재 저장소 "AI 분석"의 세 번째 탭이다(자동 분석·대화형 분석·커밋·PR 단위 분석). AI 리뷰·AI 분석은 앱 설정에 저장한 사용자 API key로 실행하고 서버에는 AI key·암호화 키 설정이 없다([AD-33](../architecture/ARCHITECTURE_DECISIONS.md)). 기능이 구현되어 있다는 사실은 실제 모델 품질·운영 배포·인증 E2E가 검증됐다는 뜻이 아니다. 커뮤니티 채팅·음성·공동 편집도 실제 여러 계정·여러 네트워크에서의 사용은 아직 시험하지 않았다. [현재 검증 상태](../validation/current-status.md)를 별도로 읽는다.
+화면 배치(2026-11-04): AI 리뷰(커밋·PR 단위 분석)는 왼쪽 목록의 최상위 항목이 아니라 현재 저장소 "AI 분석"의 세 번째 탭이다(자동 분석·대화형 분석·커밋·PR 단위 분석). 2026-11-10부터 커밋·PR 단위 분석 화면 위쪽의 리뷰 모델 선택 카드를 없앴다. 모델은 앱 설정의 기본 모델 → 키가 저장된(또는 로컬) 모델 순으로 정해지고, 실행 직전 전송 동의 칸에서만 바꾼다. 설정 화면의 모델·키 상태 카드는 그대로다. AI 리뷰·AI 분석은 앱 설정에 저장한 사용자 API key로 실행하고 서버에는 AI key·암호화 키 설정이 없다([AD-33](../architecture/ARCHITECTURE_DECISIONS.md)). 기능이 구현되어 있다는 사실은 실제 모델 품질·운영 배포·인증 E2E가 검증됐다는 뜻이 아니다. 커뮤니티 채팅·음성·공동 편집도 실제 여러 계정·여러 네트워크에서의 사용은 아직 시험하지 않았다. [현재 검증 상태](../validation/current-status.md)를 별도로 읽는다.
 
 ## 폐기·보류와 보존
 

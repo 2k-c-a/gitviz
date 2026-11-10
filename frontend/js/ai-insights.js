@@ -11,10 +11,12 @@ import { parseState } from './viz-state.js';
 import { pageUrl } from './ui/shell.js';
 import { SETTINGS_ENTRY_URL } from './platform/workspace-navigation.js';
 import { getRepoGithubInfo } from './github.js';
+import { SEVERITY_ORDER, sortInsights, severityCounts, basisRows, refCount, toMarkdown, toHtml, reportFileName, downloadText } from './ai-insight-report.js';
 
 const SEVERITY = { critical: ['심각', 'error'], high: ['높음', 'error'], medium: ['보통', 'warn'], low: ['낮음', 'info'], info: ['정보', 'info'] };
 const CONFIDENCE = { high: '신뢰도 높음', medium: '신뢰도 보통', low: '신뢰도 낮음' };
 const ACTIVE = ['queued', 'running'];
+const MIN_SEVERITY = [['info', '전체'], ['medium', '보통 이상'], ['high', '높음 이상']];
 const SUGGESTIONS = [
   '이 프로젝트에서 유지보수 우선순위가 가장 높은 파일은?',
   '최근 6개월 동안 가장 많이 기여한 개발자는 누구야?',
@@ -96,7 +98,7 @@ function main(page) {
   const { repo, snapshot } = parseState(location.search);
   const api = createAiClient();
   const state = { me: null, models: [], allModels: [], profileId: null, github: null, repoName: '',
-    includeCode: false, reports: [], report: null, conversations: [], conversation: null, sending: false };
+    includeCode: false, reports: [], report: null, minSeverity: 'info', openRefs: new Set(), conversations: [], conversation: null, sending: false };
   let reportPoller = null;
   let chatPoller = null;
 
@@ -133,7 +135,7 @@ function main(page) {
     return [group('근거 코드 (분석 기준 커밋)', code), group('관련 파일·디렉터리', files), group('관련 커밋', commits), group('관련 기여자', people)];
   }
   const evidenceList = (evidence) => h('ul', { class: 'ins-evidence' }, (evidence || []).map((e) =>
-    h('li', null, `${e.label}: `, h('b', { text: e.value }), ' ', h('span', { text: `· ${TOOL_LABEL[e.tool] || e.tool || ''} (${e.toolCallId})` }))));
+    h('li', { title: `${TOOL_LABEL[e.tool] || e.tool || ''} 조회 결과 (${e.toolCallId})` }, h('span', { class: 'ins-ev-label', text: e.label }), h('b', { text: e.value }))));
 
   /* ── 상단: 모델·전송 안내 ── */
   async function loadSetup() {
@@ -242,19 +244,32 @@ function main(page) {
   }
   function insightCard(item, targetSha) {
     const [sevText, sevTone] = SEVERITY[item.severity] || SEVERITY.info;
+    const refsTotal = refCount(item);
+    const refsBox = refsTotal ? h('details', { class: 'ins-refs-box', open: state.openRefs.has(item.id),
+      ontoggle: (ev) => { if (ev.target.open) state.openRefs.add(item.id); else state.openRefs.delete(item.id); } },
+      h('summary', { text: `관련 코드·파일·커밋·기여자 ${refsTotal}개` }), refs(item, targetSha)) : null;
     return h('article', { class: `ins-card sev-${item.severity}`, id: `insight-${item.id}` },
-      h('div', null, chip(`위험 수준 ${sevText}`, sevTone), chip(CONFIDENCE[item.confidence] || item.confidence, 'info')),
-      h('h4', { text: item.title }),
-      h('p', { text: item.summary }),
-      h('div', null, h('div', { class: 'ins-label', text: '근거 (GitViz 계산 값)' }), evidenceList(item.evidence)),
+      h('div', { class: 'ins-card-head' }, chip(sevText, sevTone, '위험 수준'), h('h4', { text: item.title }),
+        h('span', { class: 'ins-confidence', text: CONFIDENCE[item.confidence] || item.confidence || '' })),
+      h('p', { class: 'ins-summary', text: item.summary }),
+      item.recommendation ? h('div', { class: 'ins-rec' }, h('div', { class: 'ins-label', text: '추천 조치 (AI 의견)' }), h('p', { text: item.recommendation })) : null,
+      item.evidence?.length ? h('div', null, h('div', { class: 'ins-label', text: '근거 (GitViz 계산 값)' }), evidenceList(item.evidence)) : null,
       item.interpretation ? h('div', null, h('div', { class: 'ins-label', text: '해석 (AI 의견)' }), h('p', { text: item.interpretation })) : null,
-      item.recommendation ? h('div', null, h('div', { class: 'ins-label', text: '추천 (AI 의견)' }), h('p', { text: item.recommendation })) : null,
-      refs(item, targetSha));
+      refsBox);
   }
+  function exportReport(kind) {
+    const r = state.report;
+    if (!r || r.status !== 'succeeded') return;
+    const opts = { repoName: state.repoName || `저장소 #${repo}`, githubBase: state.github?.base || null };
+    if (kind === 'md') downloadText(reportFileName(opts.repoName, r, 'md'), toMarkdown(r, opts), 'text/markdown');
+    else downloadText(reportFileName(opts.repoName, r, 'html'), toHtml(r, opts), 'text/html');
+  }
+  const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   function renderAuto() {
     const box = $('insight-auto');
     const r = state.report;
     const running = r && ACTIVE.includes(r.status);
+    const done = r?.status === 'succeeded';
     const head = h('div', { class: 'ai-card' },
       h('div', { class: 'ai-row between' },
         h('h2', { text: 'AI 자동 분석' }),
@@ -263,28 +278,61 @@ function main(page) {
             state.reports.map((x) => h('option', { value: x.id, selected: x.id === r?.id }, `${fmtTime(x.createdAt)} · ${{ queued: '대기', running: '진행 중', succeeded: '완료', failed: '실패' }[x.status] || x.status}`))) : null,
           button(running ? '분석 진행 중…' : 'AI 자동 분석 시작', startReport, { cls: 'btn-primary', disabled: running || !canRun() }))),
       h('p', { class: 'ai-muted', text: '종합 · 기술부채·유지보수 위험 · 협업 · 변경 영향도 · 이상 징후 · 진화 6개 범주를 저장된 분석 결과로 점검합니다. 범주마다 서버가 정한 도구로 자료를 조회하고 AI가 해석합니다.' }),
+      done ? h('div', { class: 'ai-row ins-export', role: 'group', 'aria-label': '보고서로 내보내기' },
+        h('span', { class: 'ins-label', text: '보고서로 내보내기' }),
+        button('HTML (인쇄·PDF용)', () => exportReport('html'), { title: '브라우저로 열어 인쇄하면 PDF로 저장할 수 있습니다' }),
+        button('Markdown', () => exportReport('md'), { title: 'GitHub 이슈·위키·문서에 붙여 넣기 좋습니다' })) : null,
       h('div', { id: 'insight-auto-notice', 'aria-live': 'polite' }));
     if (!r) return mount(box, head, h('div', { class: 'ai-card ai-muted', text: '아직 자동 분석 결과가 없습니다.' }));
     if (running) return mount(box, head, h('div', { class: 'ai-card' }, h('h3', { text: '분석 진행 중' }), progressList(r.progress)));
     if (r.status === 'failed') return mount(box, head, banner('error', '자동 분석이 실패했습니다', failureText(r.errorCode)));
     const result = r.result || {};
     const b = result.basis || {};
-    const basis = h('p', { class: 'ins-basis' },
-      `분석 결과 #${b.snapshotId ?? '—'} · 기준 커밋 `, h('code', { text: (b.targetSha || '').slice(0, 10) || '—' }),
-      ` · 최근 180일(${fmtDay(b.windowStart)} ~ ${fmtDay(b.windowEnd)}) · 계산 버전 ${b.formulaVersion || '—'} · 모델 ${b.model || '—'} · 프롬프트 ${b.promptVersion || '—'} · 도구 ${b.toolVersion || '—'} · ${codeBasis(b.code)} · 생성 ${fmtTime(result.generatedAt)} · AI 호출 ${r.callCount ?? 0}회`);
-    const byId = new Map((result.categories || []).flatMap((c) => c.insights.map((i) => [i.id, i])));
+    const categories = (result.categories || []).map((c, n) => ({ ...c, anchor: `insight-cat-${c.key || n}`, insights: sortInsights(c.insights) }));
+    const counts = severityCounts(categories);
+    const total = Object.values(counts).reduce((x, y) => x + y, 0);
+    const minRank = SEVERITY_ORDER.indexOf(state.minSeverity);
+    const visible = (i) => SEVERITY_ORDER.indexOf(SEVERITY[i.severity] ? i.severity : 'info') <= minRank;
+
+    const tiles = h('div', { class: 'ins-tiles', role: 'list', 'aria-label': '위험 수준별 인사이트 수' },
+      h('div', { class: 'ins-tile', role: 'listitem' }, h('b', { text: total }), h('span', { text: '전체 인사이트' })),
+      SEVERITY_ORDER.map((sev) => h('div', { class: `ins-tile sev-${sev}${counts[sev] ? '' : ' zero'}`, role: 'listitem' }, h('b', { text: counts[sev] }), h('span', { text: SEVERITY[sev][0] }))));
+    const nav = h('nav', { class: 'ins-nav', 'aria-label': '범주로 이동' }, categories.map((c) => {
+      const top = c.insights[0];
+      return h('button', { type: 'button', class: 'ins-nav-item', onclick: () => scrollTo(c.anchor) },
+        h('span', { class: `ins-dot${top ? ` sev-${top.severity}` : ''}`, title: top ? `가장 높은 위험 수준: ${(SEVERITY[top.severity] || SEVERITY.info)[0]}` : '인사이트 없음' }),
+        h('span', { text: c.label }), h('span', { class: 'ins-nav-count', text: c.insights.length }));
+    }));
+    const byId = new Map(categories.flatMap((c) => c.insights.map((i) => [i.id, { ...i, categoryLabel: c.label }])));
     const highlights = (result.highlights || []).map((id) => byId.get(id)).filter(Boolean);
-    const sections = (result.categories || []).map((c) => h('section', { class: 'ins-category' },
-      h('h3', null, c.label, chip(`${c.insights.length}개`, 'info')),
-      c.insights.length ? h('div', { class: 'ins-cards' }, c.insights.map((i) => insightCard(i, b.targetSha)))
-        : h('p', { class: 'ai-muted', text: '근거가 확인된 인사이트가 없습니다. 지적이 없다는 것이 문제가 없다는 뜻은 아닙니다.' }),
-      c.limitations?.length ? h('ul', { class: 'ins-limits' }, c.limitations.map((t) => h('li', { text: t }))) : null));
-    mount(box, head,
-      h('div', { class: 'ai-card' }, basis, (result.notes || []).map((t) => h('p', { class: 'ai-muted', text: t })),
-        highlights.length ? h('div', null, h('h3', { text: '주요 인사이트' }), h('div', { class: 'ins-highlights' }, highlights.map((i) =>
-          h('button', { type: 'button', class: 'ins-highlight', onclick: () => document.getElementById(`insight-${i.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }) },
-            chip((SEVERITY[i.severity] || SEVERITY.info)[0], (SEVERITY[i.severity] || SEVERITY.info)[1]), h('span', { text: i.title }))))) : null),
-      sections);
+    const rows = basisRows(r);
+    const basisList = (list) => h('dl', { class: 'ins-basis-grid' }, list.map((row) => [h('dt', { text: row.label }), h('dd', null, row.code ? h('code', { text: row.value, title: b.targetSha || '' }) : row.value)]));
+    const summary = h('div', { class: 'ai-card ins-summary-card' },
+      h('h3', { text: '한눈에 보기' }), tiles, nav,
+      highlights.length ? h('div', { class: 'ins-highlights-box' }, h('div', { class: 'ins-label', text: '먼저 볼 인사이트' }),
+        h('ol', { class: 'ins-highlights' }, highlights.map((i) => h('li', null,
+          h('button', { type: 'button', class: 'ins-highlight', onclick: () => scrollTo(`insight-${i.id}`) },
+            chip((SEVERITY[i.severity] || SEVERITY.info)[0], (SEVERITY[i.severity] || SEVERITY.info)[1]), h('span', { class: 'ins-hl-title', text: i.title }),
+            h('span', { class: 'ins-hl-cat', text: i.categoryLabel })))))) : null,
+      h('div', { class: 'ins-basis' }, h('div', { class: 'ins-label', text: '분석 기준' }), basisList(rows.filter((x) => !x.technical)),
+        h('details', { class: 'ins-details' }, h('summary', { text: '기술 정보 (버전·호출 수)' }), basisList(rows.filter((x) => x.technical)))),
+      (result.notes || []).map((t) => h('p', { class: 'ai-muted', text: t })));
+    const filter = h('div', { class: 'ai-row ins-filter' }, h('span', { class: 'ins-label', text: '표시할 위험 수준' }),
+      h('div', { class: 'ai-tabs ui-tabs', role: 'group', 'aria-label': '표시할 위험 수준' }, MIN_SEVERITY.map(([value, label]) =>
+        h('button', { type: 'button', class: `ai-tab${state.minSeverity === value ? ' active' : ''}`, 'aria-pressed': String(state.minSeverity === value),
+          onclick: () => { state.minSeverity = value; renderAuto(); } }, label))));
+    const sections = categories.map((c) => {
+      const shown = c.insights.filter(visible);
+      const hidden = c.insights.length - shown.length;
+      return h('section', { class: 'ins-category', id: c.anchor },
+        h('h3', null, c.label, chip(`${c.insights.length}개`, 'info')),
+        !c.insights.length ? h('p', { class: 'ai-muted', text: '근거가 확인된 인사이트가 없습니다. 지적이 없다는 것이 문제가 없다는 뜻은 아닙니다.' })
+          : h('div', { class: 'ins-cards' }, shown.map((i) => insightCard(i, b.targetSha)),
+            hidden ? h('p', { class: 'ai-muted', text: `선택한 위험 수준보다 낮은 인사이트 ${hidden}개를 숨겼습니다.` }) : null),
+        c.limitations?.length ? h('details', { class: 'ins-details' }, h('summary', { text: `이 범주의 한계 ${c.limitations.length}개` }),
+          h('ul', { class: 'ins-limits' }, c.limitations.map((t) => h('li', { text: t })))) : null);
+    });
+    mount(box, head, summary, filter, sections);
   }
 
   /* ── 대화형 분석 ── */

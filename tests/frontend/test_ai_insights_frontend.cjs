@@ -118,6 +118,74 @@ test('문구: 단정 표현을 쓰지 않는다', () => {
   assert.doesNotMatch(source, /결함 확률(입니다|이다)|오류 없음/);
 });
 
+const SAMPLE_REPORT = {
+  id: U1, status: 'succeeded', callCount: 7, createdAt: '2026-11-10T01:00:00Z',
+  result: {
+    generatedAt: '2026-11-10T01:05:00Z',
+    basis: { snapshotId: 12, targetSha: 'a'.repeat(40), windowStart: '2026-05-14T00:00:00Z', windowEnd: '2026-11-10T00:00:00Z',
+      formulaVersion: 'gitviz-2026.10-priority-v3', model: 'fixture-model', promptVersion: 'p1', toolVersion: 't1', code: { requested: false } },
+    highlights: ['i2'],
+    notes: ['근거는 GitViz 값입니다.'],
+    categories: [
+      { key: 'overall', label: '종합', limitations: ['표본이 적음'], insights: [
+        { id: 'i1', title: '낮은 위험', summary: '요약 1', severity: 'low', confidence: 'high', evidence: [{ label: '변경', value: '3회', tool: 'getProjectOverview', toolCallId: 'c1' }] },
+        { id: 'i2', title: '<script>alert(1)</script> 높은 위험 | 표', summary: '요약 *2*', severity: 'high', confidence: 'medium',
+          recommendation: '테스트를 추가하세요', interpretation: '집중됨', evidence: [{ label: 'BF80', value: '1', tool: 'getOwnershipConcentration', toolCallId: 'c2' }],
+          relatedCode: [{ path: 'src/a b.js', startLine: 3, endLine: 5 }], relatedCommits: ['b'.repeat(40)], relatedFiles: ['src/'], relatedContributors: ['kim'] },
+        { id: 'i3', title: '보통', summary: '요약 3', severity: 'medium', confidence: 'low' },
+      ] },
+      { key: 'collab', label: '협업', insights: [] },
+    ],
+  },
+};
+
+test('자동 분석 리포트: 위험 수준→신뢰도 순 정렬과 개수', async () => {
+  const R = await js('ai-insight-report.js');
+  const sorted = R.sortInsights(SAMPLE_REPORT.result.categories[0].insights).map((i) => i.id);
+  assert.deepEqual(sorted, ['i2', 'i3', 'i1']);
+  assert.deepEqual(R.severityCounts(SAMPLE_REPORT.result.categories), { critical: 0, high: 1, medium: 1, low: 1, info: 0 });
+  assert.equal(R.refCount(SAMPLE_REPORT.result.categories[0].insights[1]), 4);
+  assert.ok(R.basisRows(SAMPLE_REPORT).some((r) => r.technical && r.value === '7회'));
+  assert.match(R.reportFileName('owner/repo name', SAMPLE_REPORT, 'md'), /^gitviz-ai-report-owner-repo-name-\d{8}\.md$/);
+});
+
+test('보고서 내보내기: Markdown은 범주·근거·추천을 담고 특수 문자를 이스케이프한다', async () => {
+  const R = await js('ai-insight-report.js');
+  const md = R.toMarkdown(SAMPLE_REPORT, { repoName: 'owner/repo', githubBase: 'https://github.com/owner/repo' });
+  assert.match(md, /^# owner\/repo · AI 자동 분석 보고서/);
+  assert.match(md, /## 종합 \(3개\)/);
+  assert.match(md, /## 협업 \(0개\)[\s\S]*지적이 없다는 것이 문제가 없다는 뜻은 아닙니다/);
+  assert.match(md, /\\<script\\>/);                                    // 원문 HTML이 그대로 들어가지 않는다
+  assert.match(md, /높은 위험 \\\| 표/);                               // 표 구분자 이스케이프
+  assert.match(md, /> \*\*추천 조치 \(AI 의견\)\*\* 테스트를 추가하세요/);
+  assert.match(md, /\(https:\/\/github\.com\/owner\/repo\/blob\/a{40}\/src\/a%20b\.js#L3-L5\)/);
+  assert.ok(md.indexOf('높은 위험') < md.indexOf('### 3. 낮은 위험'));    // 위험 순으로 번호를 붙인다
+});
+
+test('보고서 내보내기: HTML은 단일 파일이고 값을 이스케이프하며 GitHub 주소만 링크한다', async () => {
+  const R = await js('ai-insight-report.js');
+  const html = R.toHtml(SAMPLE_REPORT, { repoName: 'owner/repo', githubBase: 'https://github.com/owner/repo' });
+  assert.match(html, /^<!doctype html>/);
+  assert.doesNotMatch(html, /<script/i);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(html, /Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"/);
+  assert.doesNotMatch(html, /<(link|img|iframe)\b/i);
+  assert.match(html, /href="https:\/\/github\.com\/owner\/repo\/commit\/b{40}"/);
+  const unsafe = R.toHtml(SAMPLE_REPORT, { repoName: 'x', githubBase: 'javascript:alert(1)//github.com/a/b' });
+  assert.doesNotMatch(unsafe, /href=/);                                     // 검증되지 않은 주소는 링크로 만들지 않는다
+});
+
+test('화면 규칙: 자동 분석에 요약·범주 이동·위험 필터·내보내기가 있고, 커밋·PR 화면에는 모델 선택 카드가 없다', () => {
+  const source = read('frontend/js/ai-insights.js');
+  assert.match(source, /보고서로 내보내기/);
+  assert.match(source, /exportReport\('html'\)/);
+  assert.match(source, /exportReport\('md'\)/);
+  assert.match(source, /범주로 이동/);
+  assert.match(source, /표시할 위험 수준/);
+  const review = read('frontend/js/ai-review.js');
+  assert.match(review, /if \(!settingsMode\) \{ pickDefaultProfile\(\); mount\(root\); return; \}/);
+});
+
 (async () => {
   let failed = 0;
   for (const [name, fn] of tests) {

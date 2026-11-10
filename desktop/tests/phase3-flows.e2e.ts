@@ -370,11 +370,12 @@ void app.whenReady().then(async () => {
     await wait(`document.querySelectorAll('.ai-file input[type="checkbox"]').length>0`);
     await window.webContents.executeJavaScript(`document.querySelector('.ai-file input[type="checkbox"]').click()`); await clickText('미리보기 만들기');
     await wait(`!!document.getElementById('ai-consent-check')`);
+    assert.equal(await window.webContents.executeJavaScript(`!!document.querySelector('#ai-keys select, #ai-keys .ai-card')`), false, 'the review page has no model selection card');
     assert.equal(await window.webContents.executeJavaScript(`[...document.querySelectorAll('button')].find(e=>e.textContent==='코드 리뷰 생성').disabled`), true);
     assert.ok(await window.webContents.executeJavaScript(`document.querySelector('.ai-blockers').textContent.includes('앱 설정에서 openai API 키')`));
     assert.ok(await window.webContents.executeJavaScript(`!![...document.querySelectorAll('button')].find(e=>e.textContent==='API 키 저장하러 가기')`));
     appKeys.openai = 'fixture-test-value-0123456789';                           // saved through the app's own settings
-    await window.webContents.executeJavaScript(`location.reload()`); await wait(`!!document.getElementById('ai-consent-check') && document.getElementById('ai-keys').textContent.includes('앱에 키 저장됨')`);
+    await window.webContents.executeJavaScript(`location.reload()`); await wait(`!!document.getElementById('ai-consent-check') && document.querySelector('.ai-consent').textContent.includes('앱에 저장한 내 키')`);
     assert.equal(await window.webContents.executeJavaScript(`document.getElementById('ai-consent-check').checked`), false, 'reload requires fresh consent');
     assert.equal(await window.webContents.executeJavaScript(`document.body.textContent.includes(${JSON.stringify(appKeys.openai)})`), false, 'renderer never shows the key');
     await window.webContents.executeJavaScript(`document.getElementById('ai-consent-check').click()`); await clickText('코드 리뷰 생성');
