@@ -26,7 +26,7 @@ gitviz/
 │  ├─ forge.config.ts             (유지) outDir·extraResource 경로만 변경 (S9)
 │  └─ channel.json                (신규, R1) 빌드 시 고정되는 공개 채널 설정
 ├─ frontend/                     (유지) 웹 UI 정적 자원 + 데스크톱 복사 원본
-├─ migrations/                   (유지) Alembic 리비전(4차 당시 18개, 2026-11-05 기준 23개·단일 head `39b676ca36f2`), schema_20261002.py
+├─ migrations/                   (유지) Alembic 리비전(4차 당시 18개, 2026-11-07 기준 24개·단일 head `a6c8e0f2b4d7`), schema_20261002.py
 ├─ alembic.ini                   (유지)
 ├─ packaging/
 │  └─ agent/                      (신규, S4) 에이전트 동결 입력

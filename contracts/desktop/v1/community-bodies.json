@@ -383,5 +383,602 @@
     ],
     "title": "CollabRelayRequest",
     "type": "object"
+  },
+  "CreateEventRequest": {
+    "$defs": {
+      "EventAttachment": {
+        "additionalProperties": false,
+        "description": "A link to a file kept elsewhere (drive, GitHub, ...). The server stores no uploaded files.",
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "url": {
+            "maxLength": 500,
+            "pattern": "^https://[^\\s\\x00-\\x1f\\x7f]{1,490}$",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url"
+        ],
+        "title": "EventAttachment",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "title": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+        "title": "Title",
+        "type": "string"
+      },
+      "description": {
+        "default": "",
+        "maxLength": 10000,
+        "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+        "title": "Description",
+        "type": "string"
+      },
+      "event_type": {
+        "pattern": "^(meeting|team_meeting|tech_share|community_event|other|task|code_review|sprint|milestone|deploy|release)$",
+        "title": "Event Type",
+        "type": "string"
+      },
+      "status": {
+        "default": "planned",
+        "pattern": "^(planned|in_progress|done|cancelled)$",
+        "title": "Status",
+        "type": "string"
+      },
+      "starts_at": {
+        "format": "date-time",
+        "title": "Starts At",
+        "type": "string"
+      },
+      "ends_at": {
+        "format": "date-time",
+        "title": "Ends At",
+        "type": "string"
+      },
+      "all_day": {
+        "default": false,
+        "title": "All Day",
+        "type": "boolean"
+      },
+      "assignee_id": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Assignee Id"
+      },
+      "participant_ids": {
+        "items": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "maxItems": 30,
+        "title": "Participant Ids",
+        "type": "array"
+      },
+      "location": {
+        "anyOf": [
+          {
+            "maxLength": 200,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Location"
+      },
+      "meeting_url": {
+        "anyOf": [
+          {
+            "maxLength": 500,
+            "pattern": "^https://[^\\s\\x00-\\x1f\\x7f]{1,490}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Meeting Url"
+      },
+      "visibility": {
+        "default": "community",
+        "pattern": "^(community|participants)$",
+        "title": "Visibility",
+        "type": "string"
+      },
+      "reminder_minutes": {
+        "anyOf": [
+          {
+            "maximum": 10080,
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Reminder Minutes"
+      },
+      "recurrence": {
+        "default": "none",
+        "pattern": "^(none|daily|weekly|monthly)$",
+        "title": "Recurrence",
+        "type": "string"
+      },
+      "recurrence_until": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Recurrence Until"
+      },
+      "sprint_id": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Sprint Id"
+      },
+      "milestone_id": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Milestone Id"
+      },
+      "post_id": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Post Id"
+      },
+      "issue_numbers": {
+        "items": {
+          "type": "integer"
+        },
+        "maxItems": 10,
+        "title": "Issue Numbers",
+        "type": "array"
+      },
+      "pull_numbers": {
+        "items": {
+          "type": "integer"
+        },
+        "maxItems": 10,
+        "title": "Pull Numbers",
+        "type": "array"
+      },
+      "release_tag": {
+        "anyOf": [
+          {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Release Tag"
+      },
+      "goal": {
+        "anyOf": [
+          {
+            "maxLength": 2000,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Goal"
+      },
+      "version": {
+        "anyOf": [
+          {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Version"
+      },
+      "environment": {
+        "anyOf": [
+          {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Environment"
+      },
+      "attachments": {
+        "items": {
+          "$ref": "#/$defs/EventAttachment"
+        },
+        "maxItems": 10,
+        "title": "Attachments",
+        "type": "array"
+      }
+    },
+    "required": [
+      "title",
+      "event_type",
+      "starts_at",
+      "ends_at"
+    ],
+    "title": "CreateEventRequest",
+    "type": "object"
+  },
+  "UpdateEventRequest": {
+    "$defs": {
+      "EventAttachment": {
+        "additionalProperties": false,
+        "description": "A link to a file kept elsewhere (drive, GitHub, ...). The server stores no uploaded files.",
+        "properties": {
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "url": {
+            "maxLength": 500,
+            "pattern": "^https://[^\\s\\x00-\\x1f\\x7f]{1,490}$",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url"
+        ],
+        "title": "EventAttachment",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "properties": {
+      "title": {
+        "maxLength": 200,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+        "title": "Title",
+        "type": "string"
+      },
+      "description": {
+        "default": "",
+        "maxLength": 10000,
+        "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+        "title": "Description",
+        "type": "string"
+      },
+      "event_type": {
+        "pattern": "^(meeting|team_meeting|tech_share|community_event|other|task|code_review|sprint|milestone|deploy|release)$",
+        "title": "Event Type",
+        "type": "string"
+      },
+      "status": {
+        "default": "planned",
+        "pattern": "^(planned|in_progress|done|cancelled)$",
+        "title": "Status",
+        "type": "string"
+      },
+      "starts_at": {
+        "format": "date-time",
+        "title": "Starts At",
+        "type": "string"
+      },
+      "ends_at": {
+        "format": "date-time",
+        "title": "Ends At",
+        "type": "string"
+      },
+      "all_day": {
+        "default": false,
+        "title": "All Day",
+        "type": "boolean"
+      },
+      "assignee_id": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Assignee Id"
+      },
+      "participant_ids": {
+        "items": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "maxItems": 30,
+        "title": "Participant Ids",
+        "type": "array"
+      },
+      "location": {
+        "anyOf": [
+          {
+            "maxLength": 200,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Location"
+      },
+      "meeting_url": {
+        "anyOf": [
+          {
+            "maxLength": 500,
+            "pattern": "^https://[^\\s\\x00-\\x1f\\x7f]{1,490}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Meeting Url"
+      },
+      "visibility": {
+        "default": "community",
+        "pattern": "^(community|participants)$",
+        "title": "Visibility",
+        "type": "string"
+      },
+      "reminder_minutes": {
+        "anyOf": [
+          {
+            "maximum": 10080,
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Reminder Minutes"
+      },
+      "recurrence": {
+        "default": "none",
+        "pattern": "^(none|daily|weekly|monthly)$",
+        "title": "Recurrence",
+        "type": "string"
+      },
+      "recurrence_until": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Recurrence Until"
+      },
+      "sprint_id": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Sprint Id"
+      },
+      "milestone_id": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Milestone Id"
+      },
+      "post_id": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Post Id"
+      },
+      "issue_numbers": {
+        "items": {
+          "type": "integer"
+        },
+        "maxItems": 10,
+        "title": "Issue Numbers",
+        "type": "array"
+      },
+      "pull_numbers": {
+        "items": {
+          "type": "integer"
+        },
+        "maxItems": 10,
+        "title": "Pull Numbers",
+        "type": "array"
+      },
+      "release_tag": {
+        "anyOf": [
+          {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Release Tag"
+      },
+      "goal": {
+        "anyOf": [
+          {
+            "maxLength": 2000,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Goal"
+      },
+      "version": {
+        "anyOf": [
+          {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Version"
+      },
+      "environment": {
+        "anyOf": [
+          {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Environment"
+      },
+      "attachments": {
+        "items": {
+          "$ref": "#/$defs/EventAttachment"
+        },
+        "maxItems": 10,
+        "title": "Attachments",
+        "type": "array"
+      }
+    },
+    "required": [
+      "title",
+      "event_type",
+      "starts_at",
+      "ends_at"
+    ],
+    "title": "UpdateEventRequest",
+    "type": "object"
+  },
+  "EventResponseRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "response": {
+        "pattern": "^(accepted|declined|tentative)$",
+        "title": "Response",
+        "type": "string"
+      }
+    },
+    "required": [
+      "response"
+    ],
+    "title": "EventResponseRequest",
+    "type": "object"
   }
 }
