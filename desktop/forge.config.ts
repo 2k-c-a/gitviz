@@ -20,6 +20,8 @@ const notShipped = (path: string): boolean => release && (
 const config = {
   outDir: resolve(process.cwd(), '../build-output/desktop'),
   packagerConfig: { name: p05 ? 'GitVizWorkspaceP05Verify' : p04 ? 'GitVizWorkspaceP04Verify' : p03 ? 'GitVizWorkspaceP03Verify' : verification ? 'GitVizWorkspaceVerify' : 'GitVizWorkspace', executableName: p05 ? 'GitVizWorkspaceP05Verify' : p04 ? 'GitVizWorkspaceP04Verify' : p03 ? 'GitVizWorkspaceP03Verify' : verification ? 'GitVizWorkspaceVerify' : 'GitVizWorkspace', asar: true,
+    // App mark (the blue 'G' shown in the window's top-left): exe, taskbar and shortcut icon.
+    icon: resolve(process.cwd(), 'assets/icon.ico'),
     extraResource: [resolve(process.cwd(), '../build-output/agent/dist/agent')],
     ignore: (path: string) => path !== '' && (!/^\/(?:dist(?:\/|$)|node_modules(?:\/|$)|package\.json$)/.test(path.replaceAll('\\', '/')) || notShipped(path.replaceAll('\\', '/'))),
     afterCopy: (verification || p03 || p04 || p05) ? [async ({ buildPath }: { buildPath: string }) => {
@@ -32,7 +34,7 @@ const config = {
   },
   // Per-user install under %LocalAppData% (Q01): no MSI, no Squirrel auto-update. Signing only when both variables are provided.
   makers: [{ name: '@electron-forge/maker-squirrel', config: {
-    name: 'GitVizWorkspace', setupExe: 'GitVizWorkspaceSetup.exe', noMsi: true, authors: 'GitViz', description: 'GitViz Windows workspace',
+    name: 'GitVizWorkspace', setupExe: 'GitVizWorkspaceSetup.exe', noMsi: true, setupIcon: resolve(process.cwd(), 'assets/icon.ico'), authors: 'GitViz', description: 'GitViz Windows workspace',
     ...(process.env.GITVIZ_SIGN_PFX && process.env.GITVIZ_SIGN_PFX_PASSWORD ? { certificateFile: process.env.GITVIZ_SIGN_PFX, certificatePassword: process.env.GITVIZ_SIGN_PFX_PASSWORD } : {}),
   } }], publishers: [], plugins: [],
 };

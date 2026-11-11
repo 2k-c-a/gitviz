@@ -21,7 +21,7 @@ gitviz/
 │  ├─ database.py  main.py        (유지)
 │  └─ routers/                    (삭제) auth.py 이동 후 빈 패키지 제거 (S7)
 ├─ contracts/                    (유지) 프로세스 간 계약 JSON Schema. 공유 계약의 유일한 위치 (AD-03)
-├─ desktop/                      (유지) Electron 셸 (main/preload/ui/tests/scripts)
+├─ desktop/                      (유지) Electron 셸 (main/preload/ui/tests/scripts, assets: 앱 아이콘)
 │  ├─ src/  ui/  tests/  scripts/
 │  ├─ forge.config.ts             (유지) outDir·extraResource 경로만 변경 (S9)
 │  └─ channel.json                (신규, R1) 빌드 시 고정되는 공개 채널 설정
