@@ -72,7 +72,6 @@
 .app-detail #dd-body > div[style*='max-height'] { max-height: none !important; overflow-y: visible !important; }
 .app-detail #dd-body .dd-table { min-width: 0; }
 .app-detail .modal-title { font-size: var(--ui-text-lg); }
-.app-main .cx-tree-layout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
 .ui-repo-source { display: none; }
 .ui-page-title { margin: 0; font-size: var(--ui-text-xl); line-height: 1.4; font-weight: var(--ui-semibold); }
 .app-main .ui-page-header { padding-block: 10px; }
@@ -83,7 +82,7 @@
 .app-main .ctx-banner .ctx-details { margin: 0 0 0 auto; }
 .app-main .ctx-banner .ctx-details[open], .app-main .ctx-banner .ctx-legacy { flex-basis: 100%; }
 .app-main .metrics-4 > .metric-card { padding: 12px; }
-.app-main .network-svg, .app-main .coup-svg.cx-canvas { height: clamp(240px, 48dvh, 440px); }
+.app-main .network-svg { height: clamp(240px, 48dvh, 440px); }
 .activity-chart { position: relative; height: clamp(176px, 28dvh, 260px); }
 .activity-chart.activity-bands { height: clamp(300px, 46dvh, 440px); }
 .leg-release { font-size: 11px; line-height: 1; color: var(--ui-text); }
@@ -101,7 +100,6 @@
   .has-detail .app-main { display: none; }
   .app-detail.modal-overlay { grid-area: 2 / 2 / 3 / -1; }
   .app-main .metrics-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .app-main .cx-tree-layout { grid-template-columns: minmax(0, 1fr); }
   .app-main .col-2-1 { display: grid; grid-template-columns: minmax(0, 1fr); }
 }
 @media (800px <= width < 1280px) {
@@ -131,7 +129,7 @@
 /* Respond to the actual main width when a desktop detail panel takes space. */
 .app-main { container-name: workspace; container-type: inline-size; }
 @container workspace (width < 900px) {
-  .app-main .overview-grid, .app-main .cx-tree-layout { grid-template-columns: minmax(0, 1fr); }
+  .app-main .overview-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @container workspace (width < 700px) {
   .app-main .metrics-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }

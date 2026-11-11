@@ -18,7 +18,7 @@ const CONFIDENCE = { high: '신뢰도 높음', medium: '신뢰도 보통', low: 
 const ACTIVE = ['queued', 'running'];
 const MIN_SEVERITY = [['info', '전체'], ['medium', '보통 이상'], ['high', '높음 이상']];
 const SUGGESTIONS = [
-  '이 프로젝트에서 유지보수 우선순위가 가장 높은 파일은?',
+  '이 프로젝트에서 변경 집중도가 가장 높은 파일은?',
   '최근 6개월 동안 가장 많이 기여한 개발자는 누구야?',
   '최근 버그 수정이 늘어난 영역이 있어?',
   '한 사람에게 변경이 몰린 디렉터리는?',
@@ -435,7 +435,7 @@ function main(page) {
       h('div', { id: 'insight-chat-notice', 'aria-live': 'polite' }),
       h('div', { class: 'ins-chat' }, list, h('div', null, thread,
         h('div', { class: 'ins-compose' }, input, button(busy ? '답변 중…' : '보내기', () => ask(input.value), { cls: 'btn-primary', disabled: busy || !canRun() })),
-        h('p', { class: 'ai-muted', text: 'AI 답변은 참고 자료입니다. 공동 변경은 코드 의존성이, 유지보수 우선순위는 결함 확률이 아닙니다.' })))));
+        h('p', { class: 'ai-muted', text: 'AI 답변은 참고 자료입니다. 공동 변경은 코드 의존성이, 변경 집중도는 결함 확률이 아닙니다.' })))));
   }
 
   /* ── 탭·시작 ── */

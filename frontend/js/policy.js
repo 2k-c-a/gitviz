@@ -2,7 +2,7 @@
    화면 문구가 "지금 열려 있는 스냅샷의 실제 정책"을 가리키게 하는 단일 출처다.
    구버전 스냅샷을 열면 그 버전의 설명을, 신버전이면 새 정책의 설명을 보여준다. */
 
-export const FORMULA_V3 = 'gitviz-2026.10-priority-v3';   // 유지보수 점검 우선순위 (백분위 평균)
+export const FORMULA_V3 = 'gitviz-2026.10-priority-v3';   // 변경 집중도 (백분위 평균)
 export const FORMULA_V2 = 'gitviz-2026.10-snapshot-v2';   // 이전: Risk Score = 0.5·CurrentRisk + 0.5·StructuralRisk
 
 /* 표시 임계값 — 상위 퍼센트가 아니라 점수 값 자체에 대한 구분선이다 */
@@ -11,12 +11,12 @@ export const STRONG_COUPLING = 0.7;
 
 const PRIORITY = {
   kind: 'priority',
-  scoreName: '유지보수 점검 우선순위',
-  scoreShort: '점검 우선순위',
-  versionLabel: '점검 우선순위 (v3)',
-  leadText: '점검 우선순위는 변경 횟수·수정량·버그 수정 횟수의 백분위 평균으로 저장소 안에서 상대적으로 계산한 점수입니다. 결함 확률이 아니며 0도 안전을 뜻하지 않습니다.',
+  scoreName: '변경 집중도',
+  scoreShort: '변경 집중도',
+  versionLabel: '변경 집중도 (v3)',
+  leadText: '변경 집중도는 변경 횟수·수정량·버그 수정 횟수의 백분위 평균으로 저장소 안에서 상대적으로 계산한 점수입니다. 결함 확률이 아니며 0도 안전을 뜻하지 않습니다.',
   summaryText:
-    '점검 우선순위는 최근 180일 안에서 변경 횟수·수정량(추가+삭제 줄 수)·버그 수정 커밋 수를 파일 간 백분위(0~1)로 바꿔 평균한 상대 점수입니다. 결함 확률이 아니며, 0도 안전을 뜻하지 않습니다. 다른 저장소와 직접 비교할 수 없습니다.',
+    '변경 집중도는 최근 180일 안에서 변경 횟수·수정량(추가+삭제 줄 수)·버그 수정 커밋 수를 파일 간 백분위(0~1)로 바꿔 평균한 상대 점수입니다. 결함 확률이 아니며, 0도 안전을 뜻하지 않습니다. 다른 저장소와 직접 비교할 수 없습니다.',
   thresholdText:
     '색·배지의 0.7은 표시 임계값입니다. 상위 30%를 뜻하지 않으며, 구성 요소 백분위의 평균값 자체가 상위 퍼센트도 아닙니다.',
   hasComponents: true,
@@ -28,9 +28,9 @@ const LEGACY = {
   scoreName: 'Risk Score (이전 계산 버전)',
   scoreShort: 'Risk Score',
   versionLabel: '이전 버전 (v2)',
-  leadText: '이전 계산 버전(v2)의 Risk Score입니다. 새 정책(점검 우선순위)과 직접 비교할 수 없으며 결함 확률이 아닙니다.',
+  leadText: '이전 계산 버전(v2)의 Risk Score입니다. 새 정책(변경 집중도)과 직접 비교할 수 없으며 결함 확률이 아닙니다.',
   summaryText:
-    '이 결과는 이전 계산 버전(snapshot-v2)입니다. Risk Score = 0.5×CurrentRisk + 0.5×StructuralRisk이며, CurrentRisk는 파일의 마지막 refactor 분류 커밋 이후(없으면 첫 커밋 이후) 구간의 변경 빈도·수정량·Entropy·버그 비율·함께 수정으로, StructuralRisk는 전체 기간의 refactor·버그 수정·수정량 비율로 계산했습니다. BF·Entropy의 관측 구간도 마지막 refactor 커밋 이후입니다. 새 버전(점검 우선순위)과 직접 비교할 수 없으며 결함 확률이 아닙니다.',
+    '이 결과는 이전 계산 버전(snapshot-v2)입니다. Risk Score = 0.5×CurrentRisk + 0.5×StructuralRisk이며, CurrentRisk는 파일의 마지막 refactor 분류 커밋 이후(없으면 첫 커밋 이후) 구간의 변경 빈도·수정량·Entropy·버그 비율·함께 수정으로, StructuralRisk는 전체 기간의 refactor·버그 수정·수정량 비율로 계산했습니다. BF·Entropy의 관측 구간도 마지막 refactor 커밋 이후입니다. 새 버전(변경 집중도)과 직접 비교할 수 없으며 결함 확률이 아닙니다.',
   thresholdText: '색·배지의 0.7은 표시 임계값이며 상위 30%를 뜻하지 않습니다.',
   hasComponents: false,
   windowFixed: false,

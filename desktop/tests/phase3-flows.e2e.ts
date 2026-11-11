@@ -304,7 +304,7 @@ void app.whenReady().then(async () => {
     // 히트맵은 관측 구간(2026-01-01 목 ~ 2026-06-01 월, 151일) 전체: 6/1 주부터 1/1이 든 주까지 23주를 요청한다. 텍스트 보기는 없다.
     assert.equal(heatmapWeeksAsked, '23');
     assert.equal(await window.webContents.executeJavaScript(`JSON.stringify([document.getElementById('tl-heatmap-range').textContent, document.getElementById('act-heatmap').closest('.panel').textContent.includes('텍스트로 보기')])`), JSON.stringify(['최근 180일', false]));
-    // 결과 상단에는 '결과 조회 성공·일부만 수집·근거 제한적·점검 우선순위 (v3)' 같은 상태 칩을 두지 않는다. 확인할 항목은 '수집 범위·분석 기준' 안에 남는다.
+    // 결과 상단에는 '결과 조회 성공·일부만 수집·근거 제한적·변경 집중도 (v3)' 같은 상태 칩을 두지 않는다. 확인할 항목은 '수집 범위·분석 기준' 안에 남는다.
     assert.equal(await window.webContents.executeJavaScript(`JSON.stringify([document.querySelectorAll('#analysis-context .ctx-chip').length, /결과 조회 성공|근거 제한적|일부만 수집/.test(document.getElementById('analysis-context').textContent), document.querySelector('#analysis-context .ctx-details summary').textContent.startsWith('수집 범위·분석 기준'), [...document.querySelectorAll('#analysis-context .info-table .key')].map(e => e.textContent).filter(k => ['계산 버전', '표본 부족 기준', '수집 범위 주의'].includes(k)).length, !!document.querySelector('#analysis-context .info-table .key')])`), JSON.stringify([0, false, true, 0, true]));
     // 타임라인은 한 카드 안에 띠 3개(커밋 막대·활성 기여자 선·버그 수정 % 선)를 위아래로 쌓는다. 월 축은 하나, 세로 축은 띠마다 따로(범위·지표 선택 없음).
     await window.webContents.executeJavaScript(`window.closeDrilldown()`);

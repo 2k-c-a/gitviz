@@ -114,7 +114,7 @@ test('코드 열람: 기본은 꺼져 있고 켤 때 전송 범위를 알린다'
 test('문구: 단정 표현을 쓰지 않는다', () => {
   const source = read('frontend/js/ai-insights.js');
   assert.match(source, /지적이 없다는 것이 문제가 없다는 뜻은 아닙니다/);
-  assert.match(source, /공동 변경은 코드 의존성이, 유지보수 우선순위는 결함 확률이 아닙니다/);
+  assert.match(source, /공동 변경은 코드 의존성이, 변경 집중도는 결함 확률이 아닙니다/);
   assert.doesNotMatch(source, /결함 확률(입니다|이다)|오류 없음/);
 });
 

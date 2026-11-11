@@ -95,7 +95,7 @@ function render(value, projectId) {
   const files = $('history-files');
   if (!value.files.length) files.replaceChildren(node('p', '최근 180일 동안 바뀐 현재 파일이 없습니다.', 'ws-note'));
   else {
-    files.replaceChildren(table([['파일'], ['변경', true], ['변경 줄', true], ['버그 수정', true], ['작성자', true], ['마지막 변경'], ['점검 우선순위', true]],
+    files.replaceChildren(table([['파일'], ['변경', true], ['변경 줄', true], ['버그 수정', true], ['작성자', true], ['마지막 변경'], ['변경 집중도', true]],
       value.files.map(item => [fileButton(item.path, projectId), count(item.changeCount), count(item.churn), count(item.bugfixCount), count(item.authorCount), day(item.lastChangedAt),
         [document.createTextNode(item.priority === null ? '—' : String(Math.round(item.priority * 100))), ...(item.lowSupport ? [' ', chip('표본 적음', 'warn')] : [])]])));
     if (value.fileCount > value.files.length) files.append(node('p', `변경된 현재 파일 ${count(value.fileCount)}개 중 상위 ${value.files.length}개입니다.`, 'ws-note'));

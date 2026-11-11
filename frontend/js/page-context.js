@@ -53,7 +53,7 @@ export function renderContextBanner(data) {
     ...(a.evidence !== 'no_limits_found' ? a.evidenceReasons.map(r => `분석 근거: ${r}`) : []),
   ];
   const legacy = policy.kind !== 'priority'
-    ? `<div class="ctx-legacy">${policy.kind === 'legacy' ? '이전 계산 버전(v2)으로 저장된 결과입니다.' : '이 화면이 알지 못하는 계산 버전입니다.'} 최신 정책(점검 우선순위 v3)과 직접 비교할 수 없습니다.</div>`
+    ? `<div class="ctx-legacy">${policy.kind === 'legacy' ? '이전 계산 버전(v2)으로 저장된 결과입니다.' : '이 화면이 알지 못하는 계산 버전입니다.'} 최신 정책(변경 집중도 v3)과 직접 비교할 수 없습니다.</div>`
     : '';
 
   el.innerHTML = `
