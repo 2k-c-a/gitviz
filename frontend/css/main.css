@@ -338,6 +338,7 @@ button.sched-card-title:hover { background: none; color: var(--blue); text-decor
 .sched-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .sched-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
 .sched-people { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.sched-people-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .sched-attachments { display: flex; flex-direction: column; gap: 6px; }
 .sched-attachment { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 6px; }
 .sched-error { margin: 0; color: var(--red); font-size: 13px; }
