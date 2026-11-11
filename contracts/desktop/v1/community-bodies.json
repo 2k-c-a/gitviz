@@ -980,5 +980,54 @@
     ],
     "title": "EventResponseRequest",
     "type": "object"
+  },
+  "ChatReadRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "message_id": {
+        "minimum": 1,
+        "title": "Message Id",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "message_id"
+    ],
+    "title": "ChatReadRequest",
+    "type": "object"
+  },
+  "InvitesSeenRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "event_ids": {
+        "items": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "maxItems": 50,
+        "minItems": 1,
+        "title": "Event Ids",
+        "type": "array"
+      }
+    },
+    "required": [
+      "event_ids"
+    ],
+    "title": "InvitesSeenRequest",
+    "type": "object"
+  },
+  "NotificationSettingsRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "muted": {
+        "title": "Muted",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "muted"
+    ],
+    "title": "NotificationSettingsRequest",
+    "type": "object"
   }
 }

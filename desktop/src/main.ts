@@ -1,11 +1,11 @@
 import { app, dialog, safeStorage, shell, type BrowserWindow } from 'electron';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { getCACertificates, setDefaultCACertificates } from 'node:tls';
 import { DesktopAuth, SessionVault } from './auth';
 import { Remote, httpsClient } from './remote';
 import { RemoteContracts } from './remote-contracts';
-import { registerCollabFiles, registerCommunityLive, registerDesktop } from './desktop-ipc';
+import { registerCollabFiles, registerCommunityLive, registerCommunityNotifications, registerDesktop } from './desktop-ipc';
 import { CollabFiles } from './collab-files';
 import { CollabBundles } from './collab-bundle';
 import { Previews } from './collab-preview';
@@ -83,6 +83,8 @@ else {
   });
   app.on('window-all-closed', () => app.quit());
   void app.whenReady().then(async () => {
+    // Windows notifications need the same AppUserModelID as the Squirrel Start-menu shortcut (com.squirrel.<package>.<exe>).
+    if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? `com.squirrel.GitVizWorkspace.${basename(process.execPath, '.exe')}` : process.execPath);
     await serveAssets(join(__dirname, '../ui'));
     const contracts = new Contracts(join(__dirname, '../schema'));
     agent = new Agent(contracts, undefined, app.getVersion());
@@ -121,6 +123,7 @@ else {
       remote = new Remote(new RemoteContracts(bodies), http, auth.identity, auth.invalidate, aiKeys);
     }
     window.once('closed', registerDesktop(window, auth, remote, createUpdateService(app.getVersion(), DISABLED_UPDATE_POLICY), aiKeys));
+    window.once('closed', registerCommunityNotifications(window, remote, auth));
     const signedIn = auth;
     const pickCollabFile = async (defaultPath?: string) => {
       const picked = await dialog.showOpenDialog(window!, { title: '공동 편집할 파일 선택', properties: ['openFile'], ...(defaultPath ? { defaultPath } : {}) });

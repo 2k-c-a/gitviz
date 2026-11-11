@@ -123,6 +123,11 @@ Object.assign(endpoints, {
   updateCommunityEvent: community('PATCH', 'repositories/{repositoryId}/events/{eventId}', { ...repo, eventId: 'id' }, {}, 'UpdateEventRequest'),
   deleteCommunityEvent: community('DELETE', 'repositories/{repositoryId}/events/{eventId}', { ...repo, eventId: 'id' }),
   respondCommunityEvent: community('PUT', 'repositories/{repositoryId}/events/{eventId}/response', { ...repo, eventId: 'id' }, {}, 'EventResponseRequest'),
+  // Notifications (2026-11-11): main polls the summary; the chat screen moves the read position and toggles chat alerts.
+  communityNotifications: community('GET', 'notifications'),
+  communityInvitesSeen: community('POST', 'notifications/invites/seen', {}, {}, 'InvitesSeenRequest'),
+  markCommunityChatRead: community('PUT', 'repositories/{repositoryId}/chat/read', repo, {}, 'ChatReadRequest'),
+  communityNotificationSettings: community('PUT', 'repositories/{repositoryId}/notifications', repo, {}, 'NotificationSettingsRequest'),
 });
 
 export const UUID_PATTERN = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';

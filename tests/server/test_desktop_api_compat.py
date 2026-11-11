@@ -31,7 +31,13 @@ class Compatibility(unittest.TestCase):
         # 2026-11-03: '내 분석 프로젝트'에서 숨김(repository_access.hidden_at, nullable 컬럼 추가만).
         # 2026-11-04 (AD-33): AI 리뷰를 앱 전용 BYOK로 바꾸며 서버에 저장했던 key·코드 원문을 지운다(데이터 삭제만, 표·열 유지).
         # 2026-11-07: 커뮤니티 일정(community_events, community_event_participants) 표 추가만.
-        self.assertEqual(directory.get_heads(), ["a6c8e0f2b4d7"])
+        # 2026-11-11: 커뮤니티 알림(채팅 읽은 위치·채팅 알림 끄기·일정 초대 알림 시각) nullable/기본값 컬럼 추가만.
+        self.assertEqual(directory.get_heads(), ["b8d0f2a4c6e9"])
+        self.assertEqual(directory.get_revision("b8d0f2a4c6e9").down_revision, "a6c8e0f2b4d7")
+        notices = (ROOT / "migrations/versions/b8d0f2a4c6e9_community_notifications.py").read_text(encoding="utf8")
+        notice_upgrade, notice_downgrade = notices.split("def downgrade")
+        self.assertNotIn("DROP", notice_upgrade)
+        self.assertIn("raise RuntimeError", notice_downgrade)
         self.assertEqual(directory.get_revision("a6c8e0f2b4d7").down_revision, "39b676ca36f2")
         schedule = (ROOT / "migrations/versions/a6c8e0f2b4d7_community_events.py").read_text(encoding="utf8")
         self.assertNotIn("ALTER TABLE", schedule)

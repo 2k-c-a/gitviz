@@ -15,6 +15,13 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
       return ipcRenderer.invoke('desktop:community-subscribe', options);
     },
     unsubscribe: () => { ipcRenderer.removeAllListeners('desktop:community-event'); return ipcRenderer.invoke('desktop:community-unsubscribe'); },
+    // Notifications (2026-11-11): unread counts for the sidebar badge (no message text); refresh asks main to poll now.
+    onNotifications: (listener: unknown) => {
+      if (typeof listener !== 'function') return;
+      ipcRenderer.removeAllListeners('desktop:community-notifications');
+      ipcRenderer.on('desktop:community-notifications', (_event, value: unknown) => { (listener as (value: unknown) => void)(value); });
+    },
+    refreshNotifications: () => ipcRenderer.invoke('desktop:community-notifications-refresh'),
   }),
   // Co-editing (AD-29): the host's file is picked in a native dialog; the page sees a handle and text, never a path.
   collab: Object.freeze({

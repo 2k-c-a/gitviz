@@ -11,6 +11,7 @@ from app.api.ai.dependencies import require_csrf
 from app.api.auth import _get_session_user_id
 from app.core.database import get_db
 from app.schemas.community import (
+    ChatReadRequest,
     CollabRelayRequest,
     CollabSeatRequest,
     CreateChatMessageRequest,
@@ -20,6 +21,8 @@ from app.schemas.community import (
     CreateInviteRequest,
     EventResponseRequest,
     CreatePostRequest,
+    InvitesSeenRequest,
+    NotificationSettingsRequest,
     RedeemInviteRequest,
     TransferAdminRequest,
     UpdateCommentRequest,
@@ -33,6 +36,7 @@ from app.services import community as service
 from app.services import community_chat as chat
 from app.services import community_collab as collab
 from app.services import community_events as events
+from app.services import community_notifications as notifications
 from app.services import community_voice as voice
 
 router = APIRouter(prefix='/api/community/v1', tags=['community'], dependencies=[Depends(require_csrf)])
@@ -183,6 +187,28 @@ def delete_chat_message(repository_id: int, message_id: int, request: Request, r
     result = done(db, response)
     chat.publish(repository_id, 'deleted', {'id': message_id})
     return result
+
+
+# Notifications (2026-11-11): the app polls this summary and announces new chat and schedule invitations.
+@router.get('/notifications')
+def notification_summary(request: Request, response: Response, db=Depends(get_db)):
+    return done(db, response, notifications.summary(db, _get_session_user_id(request)))
+
+
+@router.post('/notifications/invites/seen')
+def notification_invites_seen(body: InvitesSeenRequest, request: Request, response: Response, db=Depends(get_db)):
+    return done(db, response, notifications.mark_invites_seen(db, _get_session_user_id(request), body.event_ids))
+
+
+@router.put('/repositories/{repository_id}/chat/read')
+def chat_read(repository_id: int, body: ChatReadRequest, request: Request, response: Response, db=Depends(get_db)):
+    return done(db, response, notifications.mark_chat_read(db, repository_id, _get_session_user_id(request), body.message_id))
+
+
+@router.put('/repositories/{repository_id}/notifications')
+def notification_settings(repository_id: int, body: NotificationSettingsRequest, request: Request, response: Response,
+                          db=Depends(get_db)):
+    return done(db, response, notifications.set_muted(db, repository_id, _get_session_user_id(request), body.muted))
 
 
 @router.get('/repositories/{repository_id}/voice')
