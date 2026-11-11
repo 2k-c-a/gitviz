@@ -36,7 +36,7 @@ let _failedFor = null;           // 실패 상태로 표시 중인 repoId (마�
 const PIPE_STEPS = [
   { key: 'collect',  num: '1', defaultSub: '대기 중...' },
   { key: 'identity', num: '2', defaultSub: '-' },
-  { key: 'derived',  num: '3', defaultSub: '점검 우선순위 · 주요 수정자 수 · 협업 중심성' },
+  { key: 'derived',  num: '3', defaultSub: '변경 집중도 · 주요 수정자 수 · 협업 중심성' },
   { key: 'snapshot', num: '4', defaultSub: '분석 결과 저장' },
 ];
 const PIPE_STAGE_ORDER = [...PIPE_STEPS.map(p => p.key), 'done'];
@@ -70,7 +70,7 @@ function _markPipelineAllDone(s) {
 
   _setPipeState('collect', 'done', parts.length ? parts.join(' · ') : '완료');
   _setPipeState('identity', 'done', contTotal ? `기여자 ${contTotal.toLocaleString()}명` : '완료');
-  _setPipeState('derived', 'done', '점검 우선순위 · 주요 수정자 수 · 협업 중심성');
+  _setPipeState('derived', 'done', '변경 집중도 · 주요 수정자 수 · 협업 중심성');
   _setPipeState('snapshot', 'done', '분석 결과 저장');
 }
 
@@ -384,7 +384,7 @@ function _renderStatus(s) {
   const subByKey = {
     collect: collectParts.length ? collectParts.join(' · ') : '수집 중...',
     identity: contTotal ? `기여자 ${contTotal.toLocaleString()}명` : '-',
-    derived: '점검 우선순위 · 주요 수정자 수 · 협업 중심성',
+    derived: '변경 집중도 · 주요 수정자 수 · 협업 중심성',
     snapshot: '분석 결과 저장',
   };
   PIPE_STEPS.forEach(({ key }, idx) => {

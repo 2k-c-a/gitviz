@@ -64,7 +64,7 @@ async function main() {
   /* ── 파일 상세 설명: 새 정책 문구, 점수 없음/0/낮음 구분 ── */
   const v3p = policy.policyOf('gitviz-2026.10-priority-v3');
   const explanation = dd.buildRiskExplanation({ maintenance_priority: 0.8, coupling_score: 1, coupled_file_count: 2, coupling_support: 3 }, { bus_factor: 1 }, v3p);
-  assert.ok(explanation.includes('점검 우선순위 0.80'));
+  assert.ok(explanation.includes('변경 집중도 0.80'));
   assert.ok(explanation.includes('표시 임계값(0.7) 이상'));
   assert.ok(explanation.includes('80%'), '한 명 집중 파일 설명');
   assert.ok(explanation.includes('결함 발생 확률이 아닌'));

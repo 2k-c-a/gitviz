@@ -1,7 +1,7 @@
 """AI 인사이트(자동·대화형 분석)가 쓰는 읽기 전용 분석 도구.
 
 - 모든 도구는 **한 저장소의 한 스냅샷**에 묶인다. 저장소 ID·기간은 스냅샷에서만 오고 AI가 바꿀 수 없다.
-- 계산된 지표(우선순위·BF80·공동 변경·협업 등)는 스냅샷 payload를 그대로 읽는다(재계산 없음).
+- 계산된 지표(변경 집중도·BF80·공동 변경·협업 등)는 스냅샷 payload를 그대로 읽는다(재계산 없음).
 - 커밋 단위 자료(변경 이력·관련 커밋·기간 비교)는 원본 테이블을 스냅샷과 같은 저장소·관측 구간
   [window_start, window_end)·기본 브랜치 커밋으로 제한해 SELECT만 한다. 사용자·AI 입력은 바인드 파라미터로만 쓴다.
 - 결과는 JSON으로 직렬화할 수 있는 dict다. 찾지 못한 대상은 예외 대신 {'error': 코드, 'message', 'candidates'}로 돌려준다.
@@ -751,7 +751,7 @@ TOOLS: dict[str, ToolSpec] = {t.name: t for t in (
     ToolSpec('getContributorCollaboration', 'get_contributor_collaboration', '한 기여자의 협업 상대(공동 수정·리뷰).', {'contributor': 'contributor', 'limit': 'limit'}),
     ToolSpec('getTopCollaborationPairs', 'get_top_collaboration_pairs', '협업 강도가 큰 기여자 쌍.', {'limit': 'limit'}),
     ToolSpec('getDirectoryStatistics', 'get_directory_statistics', '디렉터리별 커밋 수·비중·버그 수정·리팩터링·변경 줄 수·기여자 수. depth=경로 단계.', {'depth': 'depth', 'limit': 'limit'}),
-    ToolSpec('getFileChangeFrequency', 'get_file_change_frequency', '파일별 변경 횟수·변경량·버그 수정 수·유지보수 우선순위·BF80. sortBy=maintenance_priority|change_freq|churn|bugfix_count|bus_factor, directory로 범위 제한.', {'sortBy': 'sort_by', 'directory': 'directory', 'limit': 'limit'}),
+    ToolSpec('getFileChangeFrequency', 'get_file_change_frequency', '파일별 변경 횟수·변경량·버그 수정 수·변경 집중도(maintenance_priority)·BF80. sortBy=maintenance_priority|change_freq|churn|bugfix_count|bus_factor, directory로 범위 제한.', {'sortBy': 'sort_by', 'directory': 'directory', 'limit': 'limit'}),
     ToolSpec('getFileChangeHistory', 'get_file_change_history', '한 파일의 변경 이력: 월별 변경, 기여자, 최근 커밋.', {'path': 'path', 'limit': 'limit'}),
     ToolSpec('getCoChangedFiles', 'get_co_changed_files', '한 파일과 함께 변경된 파일·빈도·비율·연관 디렉터리(코드 의존성 아님).', {'path': 'path', 'limit': 'limit'}),
     ToolSpec('getTopCoupledPairs', 'get_top_coupled_pairs', '함께 변경되는 정도가 큰 파일 쌍.', {'limit': 'limit'}),

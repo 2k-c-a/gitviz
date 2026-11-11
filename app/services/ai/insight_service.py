@@ -519,7 +519,7 @@ def build_report(session: InsightRun, progress) -> dict:
             'basis': _basis(session, 'insight_report'), 'categories': categories,
             'highlights': [i['id'] for i in highlights],
             'notes': ['근거(evidence)는 GitViz가 계산한 값이고, 해석(interpretation)과 추천은 AI의 의견입니다.',
-                      '공동 변경은 코드 의존성이, 유지보수 우선순위는 결함 확률이, BF80은 실제 지식 인원이 아닙니다.']}
+                      '공동 변경은 코드 의존성이, 변경 집중도는 결함 확률이, BF80은 실제 지식 인원이 아닙니다.']}
 
 
 # ── 대화형 분석 ──────────────────────────────────────────────────────────

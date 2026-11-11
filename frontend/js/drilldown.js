@@ -159,7 +159,7 @@ export function buildRiskExplanation(extra, detail, policy = policyOf(null)) {
   return reasons.join(' · ');
 }
 
-/* ── 점검 우선순위 블록 ── */
+/* ── 변경 집중도 블록 ── */
 function priorityBlock({ policy, score, ev, row, extra, detail }) {
   const evMeta = evidenceOf(ev);
   const evTag = evMeta.label ? ` ${tag(evMeta.tone, evMeta.label)}` : '';
@@ -183,7 +183,7 @@ function priorityBlock({ policy, score, ev, row, extra, detail }) {
       ${line('수정량 (추가+삭제 줄)', row.churn != null ? `${num(row.churn)}줄` : '<span class="cx-na" title="수정량 계산 입력 누락">계산 입력 누락</span>', comp.churn)}
       ${line('버그 수정 커밋', row.bugfix_count != null ? `${num(row.bugfix_count)}회` : DASH, comp.bugfix_count)}
       </tbody></table>
-      <div class="dd-note">세 백분위의 평균이 점검 우선순위입니다. 평균값 자체는 상위 퍼센트가 아니라 저장소 안의 상대 위치입니다. 0도 안전을 뜻하지 않습니다. 버그 수정 횟수는 커밋 메시지 분류 기반의 약한 신호입니다.</div>`;
+      <div class="dd-note">세 백분위의 평균이 변경 집중도입니다. 평균값 자체는 상위 퍼센트가 아니라 저장소 안의 상대 위치입니다. 0도 안전을 뜻하지 않습니다. 버그 수정 횟수는 커밋 메시지 분류 기반의 약한 신호입니다.</div>`;
   } else if (policy.kind === 'legacy' && row && (row.current_risk != null || row.structural_risk != null)) {
     html += `<div class="dd-note">이전 계산 버전의 구성: CurrentRisk ${fmtScore(row.current_risk)} · StructuralRisk ${fmtScore(row.structural_risk)} (각 0.5 가중)</div>`;
   }

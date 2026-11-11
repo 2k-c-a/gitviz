@@ -4,14 +4,13 @@
     <script src="../js/ui/theme.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="../vendor/d3-7.8.5/d3.min.js"></script>
     <link rel="stylesheet" href="../css/index.css">
     <title>GitViz</title>
 </head>
 <body>
     <div id="navbar-container"></div>
     <div id="modal-container"></div>
-    <!-- ═══════════ CODE ANALYSIS (점검 우선순위 · 주요 수정자 수 · 함께 수정 통합) ═══════════ -->
+    <!-- ═══════════ CODE ANALYSIS (변경 집중도 · 주요 수정자 수 · 함께 수정 통합) ═══════════ -->
 <div class="page active" id="page-code-analysis">
   <div class="dash-head">
     <div><div class="dash-title js-repo-title">—</div><div class="dash-sub" id="cx-dash-sub">코드 분석 — 점수 · 주요 수정자 수 · 함께 수정 정도</div></div>
@@ -41,36 +40,13 @@
 
     <div class="p-note" id="cx-policy-note">지표 설명을 불러오는 중입니다.</div>
 
-    <!-- 디렉토리 트리 -->
+    <!-- 디렉토리 트리 (file-tree.js) -->
     <div class="panel mb-3.5">
       <div class="p-head mb-1.5">
         <div class="p-title">디렉토리 트리</div>
-        <div class="range-btns" id="cx-sort-toggle"></div>
       </div>
-      <div class="flex flex-wrap items-center gap-2 mb-3">
-        <button class="rbtn" id="cx-root-btn" title="펼친 폴더를 모두 접고 처음 상태로 되돌리기">⌂ 처음으로</button>
-        <button class="rbtn" id="cx-expand-btn" title="모든 폴더 펼치기">모두 펼치기</button>
-      </div>
-      <div class="p-note">폴더(큰 원)를 클릭하면 하위 폴더·파일이 펼쳐지고, 다시 클릭하면 접힙니다. 파일(작은 원)을 클릭하면 상세 정보를 볼 수 있고, 이름을 클릭하면 GitHub에서 해당 위치를 확인할 수 있습니다. 드래그로 화면을 옮기고, Ctrl+휠 또는 오른쪽 아래 버튼으로 확대·축소하세요.</div>
-
-      <div class="cx-tree-layout">
-        <div>
-          <div class="cx-canvas-wrap">
-            <svg class="coup-svg cx-canvas" id="cx-svg"></svg>
-            <div class="cx-zoom-ctrl">
-              <button id="cx-zoom-in" title="확대">+</button>
-              <button id="cx-zoom-out" title="축소">−</button>
-              <button id="cx-zoom-fit" title="화면에 맞추기">⤢</button>
-            </div>
-          </div>
-          <div class="legend mt-2.5" id="cx-legend"></div>
-        </div>
-        <div class="metric-card">
-          <div class="p-title mb-2.5">선택한 노드</div>
-          <div id="cx-detail-path" class="cx-detail-empty">노드에 마우스를 올려보세요</div>
-          <div id="cx-detail-metrics"></div>
-        </div>
-      </div>
+      <div class="p-note">폴더 줄을 누르면 펼치거나 접고, 파일 줄을 누르면 상세 정보를 엽니다. ⤢는 그 폴더만 보기, ↗는 GitHub에서 열기입니다. 폴더의 변경 집중도는 값이 있는 하위 파일의 평균이고, "변경 집중 파일"은 그 폴더 아래에서 변경 집중도가 0.7(표시 임계값) 이상인 파일 수입니다(상위 30%를 뜻하지 않음). 목록에 초점을 두고 화살표 키로 이동·펼치기·접기를 할 수 있습니다.</div>
+      <div id="cx-tree"></div>
     </div>
 
     <!-- 전체 파일 목록 -->
@@ -97,26 +73,6 @@
           <tbody id="cx-list-tbody"></tbody>
         </table>
       </div>
-    </div>
-
-    <!-- 기여 분포 -->
-    <div class="panel mb-3.5">
-      <div class="p-head mb-1.5">
-        <div class="p-title">기여 분포 (주요 수정자 수)</div>
-        <div class="text-xs text-muted-foreground">최근 180일의 파일 변경 기여 집중도</div>
-      </div>
-      <div class="p-note">주요 수정자 수는 최근 180일에서 파일 변경 커밋의 80%를 차지하는 최소 기여자 수입니다(식별된 기여 기준). 1은 한 명에게 관측 변경 기여가 집중됐다는 뜻이며 실제 지식 보유 인원이 아닙니다. 기여 분산도가 높다고 위험하다는 뜻은 아니어서 색을 붙이지 않았습니다. 기여자가 1명이면 정규화 기여 분산도는 0, 식별된 기여가 없으면 값이 없습니다(—).</div>
-      <div id="cx-bf-body"><div class="cx-empty">불러오는 중...</div></div>
-    </div>
-
-    <!-- 함께 수정 -->
-    <div class="panel">
-      <div class="p-head mb-1.5">
-        <div class="p-title">함께 수정 (함께 변경된 파일 후보)</div>
-        <div class="range-btns" id="cx-cp-toggle"></div>
-      </div>
-      <div class="p-note">함께 수정 정도 = 함께 수정 횟수 ÷ min(두 파일의 변경 횟수)입니다. A → B는 A가 바뀐 변경 중 B도 함께 바뀐 과거 비율이고 B → A는 그 반대입니다. 미래 영향 확률이나 실제 의존성(import)이 아니며, 함께 수정 2건 이상인 쌍만 후보가 됩니다. 기본 정렬은 함께 수정 정도·함께 수정 횟수이고, IDF 보정은 자주 바뀌는 파일의 비중을 낮추는 실험 정렬로, 직접 선택해야 적용됩니다. 선택은 주소에 저장되어 탭을 옮기거나 뒤로 가도 유지됩니다.</div>
-      <div id="cx-cp-body"><div class="cx-empty">불러오는 중...</div></div>
     </div>
   </div>
 </div>
