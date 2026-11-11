@@ -136,7 +136,7 @@ class CommunityTests(unittest.TestCase):
         # A later analyzer is not the first one and is not a contributor.
         self.assertEqual(self.code(self.as_('later').get('/api/community/v1/repositories/1')), 'INVITE_REQUIRED')
         view = self.as_('contrib').get('/api/community/v1/repositories/1').json()
-        self.assertEqual(view['me'], {'role': 'member', 'joined_via': 'contributor'})
+        self.assertEqual(view['me'], {'role': 'member', 'joined_via': 'contributor', 'chat_muted': False})
         self.assertEqual(view['admin']['github_login'], 'Owner')
         self.assertEqual(view['member_count'], 2)
         self.assertEqual(self.as_('owner').get('/api/community/v1/repositories/1').json()['me']['role'], 'admin')

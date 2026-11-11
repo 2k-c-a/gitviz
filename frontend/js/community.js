@@ -474,7 +474,20 @@ async function renderChat(target) {
   const bar = element('div', 'ui-toolbar community-chat-bar');
   const status = element('p', 'p-sub community-chat-status', '연결하는 중…'); status.setAttribute('role', 'status');
   const reconnect = button('다시 연결', 'btn-secondary', () => connect()); reconnect.hidden = true;
-  bar.append(status, reconnect);
+  // 채팅 알림(2026-11-11): 앱이 새 메시지를 Windows 알림으로 알려 준다. 이 커뮤니티만 끌 수 있다(일정 초대 알림은 그대로).
+  let muted = !!view.me.chat_muted;
+  const muteLabel = () => (muted ? '채팅 알림 켜기' : '채팅 알림 끄기');
+  const mute = button(muteLabel(), 'btn-secondary community-chat-mute', async () => {
+    mute.disabled = true;
+    try {
+      muted = (await api('PUT', repoPath('/notifications'), { muted: !muted })).muted; view.me.chat_muted = muted;
+      mute.textContent = muteLabel(); mute.setAttribute('aria-pressed', String(muted));
+      void globalThis.desktop?.community?.refreshNotifications?.().catch?.(() => {});
+    } catch (error) { message.textContent = error.message; }
+    finally { mute.disabled = false; }
+  });
+  mute.setAttribute('aria-pressed', String(muted));
+  bar.append(status, reconnect, mute);
   const older = button('이전 메시지', 'btn-secondary community-chat-older', () => loadPage(older.dataset.before)); older.hidden = true;
   const log = element('div', 'community-chat-log'); log.setAttribute('role', 'log'); log.setAttribute('aria-label', '채팅 메시지'); log.tabIndex = 0;
   const empty = element('p', 'p-sub community-chat-empty', '아직 메시지가 없습니다. 먼저 인사해 보세요.'); empty.hidden = true;
@@ -518,6 +531,22 @@ async function renderChat(target) {
     if (stick && !after) log.scrollTop = log.scrollHeight;
   }
   function drop(id) { rows.get(id)?.remove(); rows.delete(id); empty.hidden = rows.size > 0; }
+  // 읽은 위치: 화면에 보이는 가장 최근 메시지까지 읽은 것으로 서버에 알린다(앞으로만 움직인다). 알림 배지·Windows 알림이 이 값을 쓴다.
+  let readSent = 0; let readTimer = null;
+  function markRead() {
+    if (run !== generation) { document.removeEventListener('visibilitychange', markRead); return; }
+    if (document.visibilityState !== 'visible' || readTimer) return;
+    readTimer = setTimeout(async () => {
+      readTimer = null;
+      const latest = Math.max(0, ...rows.keys());
+      if (run !== generation || latest <= readSent) return;
+      try {
+        await api('PUT', repoPath('/chat/read'), { message_id: latest }); readSent = latest;
+        void globalThis.desktop?.community?.refreshNotifications?.().catch?.(() => {});
+      } catch { /* 다음 메시지나 화면 복귀 때 다시 보낸다 */ }
+    }, 800);
+  }
+  document.addEventListener('visibilitychange', markRead);
   function people(list) {
     if (!Array.isArray(list)) return;
     online.replaceChildren(...list.map(user => element('li', 'community-member-name', who(user))));
@@ -548,7 +577,7 @@ async function renderChat(target) {
       // 다시 연결됐다면 끊긴 사이의 메시지를 채운다.
       if (ready) void loadPage();
       ready = true;
-    } else if (type === 'message') add(data);
+    } else if (type === 'message') { add(data); markRead(); }
     else if (type === 'deleted') drop(data.id);
     else if (type === 'presence') people(data.online);
     else if (type === 'status') {
@@ -580,6 +609,7 @@ async function renderChat(target) {
   });
   await loadPage();
   if (run !== generation) return;
+  markRead();
   live.listen(onEvent);
 }
 

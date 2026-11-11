@@ -1,8 +1,9 @@
 """Community request bodies. Exported to contracts/desktop/v1/community-bodies.json for the desktop allowlist."""
 from datetime import datetime, timedelta
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 # No control characters except line breaks and tabs in multi-line text; titles stay on one line.
 _LINE = r'^[^\x00-\x1f\x7f]*$'
@@ -187,3 +188,19 @@ class UpdateEventRequest(CreateEventRequest):
 class EventResponseRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     response: str = Field(pattern=r'^(accepted|declined|tentative)$')
+
+
+# Notifications (2026-11-11). The app polls one summary; these mark what the member has seen and mute a community.
+class ChatReadRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    message_id: int = Field(ge=1)
+
+
+class InvitesSeenRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    event_ids: list[Annotated[int, Field(ge=1)]] = Field(min_length=1, max_length=50)
+
+
+class NotificationSettingsRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    muted: StrictBool

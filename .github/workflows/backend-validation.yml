@@ -52,6 +52,7 @@ jobs:
       - run: python tests/server/test_my_github_repositories.py
       - run: python tests/server/test_collab_network.py
       - run: node tests/frontend/test_metric_display.cjs
+      - run: python tests/server/test_community_notifications.py
       - run: node tests/frontend/test_motion.cjs
       - run: python tests/server/test_ai_contracts.py
       - run: python tests/server/test_ai_security.py

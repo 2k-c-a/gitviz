@@ -131,7 +131,7 @@ def community_view(db, repository_id, member):
     count = db.scalar(select(func.count()).select_from(CommunityMember).where(
         CommunityMember.repository_id == repository_id, CommunityMember.status == 'active'))
     return {'repository': {'id': repo.id, 'name': repo.name, 'url': repo.url},
-            'me': {'role': member.role, 'joined_via': member.joined_via},
+            'me': {'role': member.role, 'joined_via': member.joined_via, 'chat_muted': bool(member.notifications_muted)},
             'admin': user_view(db.get(User, admin.user_id)) if admin else None, 'member_count': count}
 
 

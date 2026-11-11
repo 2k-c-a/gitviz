@@ -93,7 +93,20 @@ export function mountShell({ local = false, account = null } = {}) {
   link('내 분석', '▦', new URL('pages/myprojects.html', webRoot).href, currentPage === 'myprojects');
   link('새 분석', '⌕', new URL('pages/search.html', webRoot).href, currentPage === 'search' || (!local && currentPage === 'index'));
   // AI review by commit/PR lives under the repository's AI 분석 (its third tab), not as a top-level entry.
-  link('커뮤니티', '☷', new URL('pages/community.html', webRoot).href, currentPage === 'community');
+  const communityLink = link('커뮤니티', '☷', new URL('pages/community.html', webRoot).href, currentPage === 'community');
+  // 앱 전용 알림 배지(2026-11-11): 안 읽은 채팅(알림 끈 커뮤니티 제외)과 새 일정 초대 수. 앱 메인이 숫자만 보내 준다.
+  const community = globalThis.desktop?.community;
+  if (community?.onNotifications && community.refreshNotifications) {
+    const badge = element('span', 'app-nav-badge'); badge.hidden = true; badge.setAttribute('aria-hidden', 'true');
+    communityLink.append(badge);
+    const showBadge = value => {
+      const total = Number.isSafeInteger(value?.unreadTotal) && value.unreadTotal > 0 ? value.unreadTotal : 0;
+      badge.hidden = !total; badge.textContent = total > 99 ? '99+' : String(total);
+      communityLink.setAttribute('aria-label', total ? `커뮤니티, 새 알림 ${total}개` : '커뮤니티');
+    };
+    community.onNotifications(showBadge);
+    Promise.resolve(community.refreshNotifications()).then(showBadge, () => {});
+  }
   const settingsHref = () => { const url = new URL(pageUrl('settings')); if (currentPage === 'ai-review') url.searchParams.set('return', buildAiRoute(parseAiRoute(location.search))); return url.href; };
   // In the app, 설정 always opens the app's settings view (AI keys and models, editor; AD-33) from every screen —
   // the same place as 'API 키 저장하러 가기'. The web keeps its own settings page.

@@ -1,4 +1,4 @@
-import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
+import { ipcMain, Notification, type BrowserWindow, type IpcMainInvokeEvent } from 'electron';
 import { trustedSender } from './ipc';
 import { errorCode, log } from './app-log';
 import type { DesktopAuth } from './auth';
@@ -7,6 +7,7 @@ import type { CollabFiles } from './collab-files';
 import type { Previews } from './collab-preview';
 import type { CollabRunner } from './collab-run';
 import type { CommunityLive, LiveEvent } from './community-live';
+import { badgeOf, CommunityNotifier, communityUrl, showsChat, type NotificationSummary } from './community-notifications';
 import type { Remote } from './remote';
 import type { AiKeyVault } from './secrets';
 import type { UpdateService } from './update';
@@ -56,6 +57,47 @@ export function registerCommunityLive(window: BrowserWindow, create: ((emit: (ev
     live?.unsubscribe();
     if (!window.isDestroyed()) window.webContents.off('did-start-navigation', navigate);
     ipcMain.removeHandler('desktop:community-subscribe'); ipcMain.removeHandler('desktop:community-unsubscribe');
+  };
+}
+
+/** Community notifications (2026-11-11): Windows notifications for new chat and schedule invitations on any screen,
+ *  and unread counts (no text) for the sidebar badge. Clicking a notification opens that community's tab. */
+export function registerCommunityNotifications(window: BrowserWindow, remote: Remote | null, auth: DesktopAuth | null): () => void {
+  let last: NotificationSummary | null = null;
+  const toasts = new Set<Notification>();  // Keep a reference until closed, or the click handler is collected.
+  const send = (): void => { if (!window.isDestroyed()) window.webContents.send('desktop:community-notifications', badgeOf(last)); };
+  const open = (repositoryId: number, tab: 'chat' | 'schedule'): void => {
+    if (window.isDestroyed()) return;
+    if (window.isMinimized()) window.restore();
+    window.show(); window.focus();
+    void window.loadURL(communityUrl(repositoryId, tab)).catch(() => {});
+  };
+  const notifier = remote && auth && Notification.isSupported() ? new CommunityNotifier({
+    request: value => remote.request(value),
+    account: () => auth.identity()?.generation ?? null,
+    viewingChat: repositoryId => !window.isDestroyed() && window.isFocused() && !window.isMinimized()
+      && showsChat(window.webContents.getURL(), repositoryId),
+    publish: summary => { last = summary; send(); },
+    show: toast => {
+      const notification = new Notification({ title: toast.title, body: toast.body });
+      toasts.add(notification);
+      notification.on('click', () => { toasts.delete(notification); open(toast.repositoryId, toast.tab); });
+      notification.on('close', () => toasts.delete(notification));
+      notification.show();
+    },
+  }) : null;
+  if (notifier) log('info', 'community-notifications', { enabled: true });
+  notifier?.start();
+  ipcMain.handle('desktop:community-notifications-refresh', (event, ...args: unknown[]) => {
+    if (!trustedSender(event, window) || args.length) throw new Error('ACCESS_DENIED');
+    notifier?.refresh();
+    return badgeOf(last);
+  });
+  window.webContents.on('did-finish-load', send);
+  return () => {
+    notifier?.stop(); toasts.clear();
+    ipcMain.removeHandler('desktop:community-notifications-refresh');
+    if (!window.isDestroyed()) window.webContents.off('did-finish-load', send);
   };
 }
 

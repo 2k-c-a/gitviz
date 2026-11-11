@@ -33,6 +33,9 @@ class CommunityMember(Base):
     status = Column(String(12), nullable=False, server_default='active')
     joined_via = Column(String(12), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    # Notifications (2026-11-11): the last chat message this member has seen, and whether the app stays quiet for this community.
+    chat_read_id = Column(Integer)
+    notifications_muted = Column(Boolean, nullable=False, default=False, server_default='false')
     __table_args__ = (
         UniqueConstraint('repository_id', 'user_id', name='uq_community_member'),
         CheckConstraint("role IN ('admin','member')", name='ck_community_member_role'),
@@ -143,6 +146,8 @@ class CommunityEventParticipant(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
     response = Column(String(10), nullable=False, server_default='pending')
     responded_at = Column(DateTime(timezone=True))
+    # Set once the participant's app has shown the "you were added" notification (2026-11-11).
+    notified_at = Column(DateTime(timezone=True))
     __table_args__ = (
         CheckConstraint("response IN ('pending','accepted','declined','tentative')", name='ck_community_event_response'),
         Index('ix_community_event_participants_user', 'user_id'),
