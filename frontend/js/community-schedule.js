@@ -6,6 +6,19 @@ import { fmtDateTime } from './fmt.js';
    개발 연동은 서버가 수집한 PR·릴리스와 이 커뮤니티의 스프린트·마일스톤 일정을 쓴다. 이슈는 번호와 GitHub 링크만 둔다.
    사용자 글은 모두 textContent로만 그린다. 시각은 이 PC의 시간대로 보여 준다. */
 
+/* 참여자 전원 선택 버튼의 상태. 서버 계약(participant_ids maxItems 30)을 넘는 전원 선택은 막는다. */
+export const MAX_PARTICIPANTS = 30;
+export function participantSelection(total, checked, max = MAX_PARTICIPANTS) {
+  const all = total > 0 && checked >= total;
+  return {
+    label: all ? '전원 해제' : '전원 선택',
+    selectAll: !all,
+    disabled: total === 0 || (!all && total > max),
+    summary: `참여자 ${checked}/${total}명 선택`,
+    note: total > max ? `참여자는 최대 ${max}명까지 지정할 수 있어 전원 선택을 쓸 수 없습니다.` : '',
+  };
+}
+
 export const TYPES = {
   meeting: { label: '회의', group: 'meeting', tone: 'general' },
   team_meeting: { label: '팀 미팅', group: 'meeting', tone: 'general' },
@@ -536,6 +549,22 @@ export function renderSchedule(target, ctx) {
       const label = element('label', 'sched-check'); const box = element('input'); box.type = 'checkbox'; box.value = member.id; box.checked = chosen.has(member.id);
       label.append(box, element('span', '', who(member))); people.append(label);
     }
+    const peopleBar = element('div', 'sched-people-bar');
+    const peopleCount = element('span', 'p-sub'); peopleCount.setAttribute('aria-live', 'polite');
+    const peopleNote = element('span', 'p-sub');
+    const boxes = () => [...people.querySelectorAll('input[type=checkbox]')];
+    const syncPeople = () => {
+      const view = participantSelection(boxes().length, boxes().filter(b => b.checked).length);
+      toggleAll.textContent = view.label; toggleAll.disabled = view.disabled;
+      peopleCount.textContent = view.summary; peopleNote.textContent = view.note; peopleNote.hidden = !view.note;
+    };
+    const toggleAll = button('전원 선택', 'btn-secondary', () => {
+      const { selectAll } = participantSelection(boxes().length, boxes().filter(b => b.checked).length);
+      for (const b of boxes()) b.checked = selectAll;
+      syncPeople();
+    });
+    people.addEventListener('change', syncPeople);
+    peopleBar.append(toggleAll, peopleCount, peopleNote); syncPeople();
     const responsesNote = element('p', 'p-sub', '참석 여부는 참여자가 일정 상세에서 직접 답합니다. 기존 참여자의 응답은 수정해도 유지됩니다.');
 
     // 개발 프로세스 연동
@@ -586,7 +615,7 @@ export function renderSchedule(target, ctx) {
     const actions = element('div', 'ui-toolbar sched-actions'); actions.append(submit, button('취소', 'btn-secondary', close));
     form.replaceChildren(
       fieldset('기본 정보', titleWrap, descWrap, grid(typeWrap, statusWrap), allDayWrap, grid(startWrap, endWrap), goalWrap, grid(versionWrap, envWrap)),
-      fieldset('참여자 정보', assigneeWrap, element('span', 'sched-label', '참여자'), people, responsesNote),
+      fieldset('참여자 정보', assigneeWrap, element('span', 'sched-label', '참여자'), peopleBar, people, responsesNote),
       fieldset('개발 프로세스 연동', element('p', 'p-sub', `연결 프로젝트: ${view.repository.name || view.repository.url}`), grid(sprintWrap, milestoneWrap), pullWrap, pullExtraWrap, issueWrap, issueNote, releaseWrap),
       fieldset('추가 설정', grid(locationWrap, meetingWrap), attachWrap, grid(reminderWrap, recurWrap), reminderNote, untilWrap, element('span', 'sched-label', '공개 범위'), visibility),
       message, actions);
