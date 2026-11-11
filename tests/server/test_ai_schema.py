@@ -27,7 +27,7 @@ from app.core.database import Base  # noqa: E402
 import app.models  # noqa: E402,F401
 from app.models import AIInput, AIJob, PRRevision  # noqa: E402
 
-HEAD = '39b676ca36f2'  # 2026-11-04 (AD-33): server-stored AI keys and code payloads purged, on top of repository_access.hidden_at
+HEAD = 'b8d0f2a4c6e9'  # 2026-11-11 (AD-36): community notification state, on top of community events (AD-35) and the AD-33 purge
 AI_HEAD = 'a9d2f4c6e8b0'  # Historical AI-only downgrade excludes preserved desktop auth tables.
 PREVIOUS = 'a1b2c3d4e5f6'
 AI_TABLES = ['pr_revisions', 'ai_inputs', 'ai_input_files', 'ai_jobs', 'ai_attempts', 'ai_results', 'ai_findings',
