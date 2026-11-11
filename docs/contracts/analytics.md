@@ -10,7 +10,7 @@
 |---|---|---|
 | 계산 버전 | `gitviz-2026.10-priority-v3` | [지표 정책](../../app/services/metric_policy.py) |
 | 기본 기간 | `[T-180일,T)`. 명시한 구간은 별도 적용 | [스냅샷 파라미터](../../app/services/analysis_snapshots.py) |
-| 점검 우선순위 | change_freq·churn·bugfix_count 백분위 평균. 결측을 0으로 보정하지 않음 | [analytics](../../app/api/analytics.py) |
+| 변경 집중도(이전 표기 점검 우선순위) | change_freq·churn·bugfix_count 백분위 평균. 결측을 0으로 보정하지 않음 | [analytics](../../app/api/analytics.py) |
 | BF80 | 식별된 변경 기여의 누적 80% 최소 인원. 미식별 분모 별도 표시 | [analytics](../../app/api/analytics.py) |
 | 큰 변경 | `changed_file_count >= max(15, ceil(0.1*N))`. N은 목표 트리 대용 | [정책](../../app/services/metric_policy.py), [snapshot](../../app/services/analysis_snapshots.py) |
 | 공동 변경 | 대칭 결합도와 양방향 동반 비율을 구분. 전체 후보 정렬 후 limit 적용 여부 확인 | [analytics](../../app/api/analytics.py) |
