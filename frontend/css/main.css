@@ -168,7 +168,10 @@
 .community-form input, .community-form textarea, .community-comment-form textarea { width: 100%; box-sizing: border-box; font: inherit; }
 .community-post-title { padding: 0; border: 0; background: none; color: var(--text); font-weight: 600; font-size: 14px; text-align: left; cursor: pointer; }
 .community-post-title:hover { color: var(--blue); }
-.community-post-snippet { margin: 4px 0; color: var(--text2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 4.5em; overflow: hidden; }
+.community-post-card { cursor: pointer; display: flex; align-items: center; gap: 12px; }
+.community-post-card > .community-post-title { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.community-post-card > .p-sub { flex: none; margin: 0; white-space: nowrap; }
+.community-post-card:hover { border-color: var(--blue); }
 .community-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; margin: 10px 0; }
 .community-comment { border-top: 1px solid var(--border); padding: 8px 0; }
 .community-members, .community-invites { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }

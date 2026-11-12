@@ -3,6 +3,7 @@ import { parseState, nextQuery } from '../viz-state.js';
 import { element, createIcon, enhanceTooltips, observeActions } from './components.js';
 import { SETTINGS_ENTRY_URL } from '../platform/workspace-navigation.js';
 import './motion.js';
+import { enhanceHelpTips } from './help-tips.js';
 
 const webRoot = new URL('../../', import.meta.url);
 const pages = { overview: '분석 개요', network: '협업 네트워크', 'code-analysis': '파일 분석', history: '분석 이력', 'ai-insights': 'AI 분석', 'ai-review': 'AI 분석' };
@@ -175,5 +176,6 @@ export function mountShell({ local = false, account = null } = {}) {
   const updateSidebar = () => { sidebar.inert = narrow.matches && !root.classList.contains('nav-open'); };
   new MutationObserver(updateSidebar).observe(root, { attributes: true, attributeFilter: ['class'] }); narrow.addEventListener('change', updateSidebar); updateSidebar();
   enhanceTooltips();
+  enhanceHelpTips();
   document.dispatchEvent(new Event('gitviz-shell-ready'));
 }
