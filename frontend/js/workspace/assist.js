@@ -19,6 +19,7 @@ const TONE = { critical: 'error', high: 'error', medium: 'warn', low: 'ok', unkn
 const FAILURES = {
   PRECONDITION_FAILED: 'AI가 만든 수정안이 지금 파일 내용과 정확히 맞지 않아 쓸 수 없습니다. 다시 실행하면 새 수정안을 받습니다.',
   PATCH_INVALID: 'AI가 만든 수정안의 형식이 올바르지 않아 쓸 수 없습니다. 다시 실행해 보세요.',
+  PATCH_NO_CHANGE: '이 지적은 이미 고쳐져 있어 바꿀 내용이 없습니다. 다른 카드로 넘어가세요.',
   OUTPUT_INVALID: 'AI 응답 형식이 올바르지 않습니다. 다시 실행해 보세요.',
   PATCH_TOO_LARGE: '수정 범위가 너무 큽니다(한 번에 120줄까지). 파일을 줄이거나 목적을 좁혀 다시 실행하세요.',
   PATCH_SCOPE_UNSUPPORTED: '이 파일은 AI 리팩토링으로 고칠 수 없는 종류입니다(설정·의존성 파일 등).',
@@ -202,6 +203,11 @@ async function refactor(context, purpose, { again = false } = {}) {
     const { run, reused } = await startRun(current, 'refactor', purpose, { again });
     const value = await finish(current, run, mine);
     if (!value || mine !== turn) return;
+    if (value.errorCode === 'PATCH_NO_CHANGE') {
+      // Typically an earlier card's fix already covered this one; asking again would only cost money.
+      idle(); const box = node('div', undefined, 'ws-banner ws-banner-info');
+      box.append(node('span', explain('PATCH_NO_CHANGE'))); holder.replaceChildren(box); return;
+    }
     if (value.status !== 'succeeded' || !value.refactor) {
       idle(); const box = node('div', undefined, 'ws-banner ws-banner-warn');
       box.append(node('span', explain(value.errorCode || value.status)), button('다시 실행 (비용이 다시 듭니다)', retry));

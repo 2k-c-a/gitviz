@@ -140,7 +140,7 @@ def apply_patch_bytes(path: str, original: bytes, patch: str) -> bytes:
     # rewrite) is measured by the lines that differ, not by the length of its patch text.
     changed = changed_line_count(source, output)
     if not changed:
-        raise ScopeError('PATCH_INVALID')
+        raise ScopeError('PATCH_NO_CHANGE')  # e.g. the issue was already fixed by an earlier apply.
     if changed > MAX_CHANGED_LINES or (len(source) > 30 and changed > max(12, len(source) // 2)):
         raise ScopeError('PATCH_TOO_LARGE')
     rendered = '\n'.join(output) + ('\n' if output and final_newline else '')
@@ -148,6 +148,8 @@ def apply_patch_bytes(path: str, original: bytes, patch: str) -> bytes:
         rendered = rendered.replace('\n', '\r\n')
     target = (('\ufeff' if bom else '') + rendered).encode()
     validate_encoding(path, target)
-    if target == original or not output or ai_core.exclusion(path, original, target):
+    if target == original:
+        raise ScopeError('PATCH_NO_CHANGE')
+    if not output or ai_core.exclusion(path, original, target):
         raise ScopeError('PATCH_INVALID')
     return target

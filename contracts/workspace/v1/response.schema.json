@@ -395,6 +395,7 @@
                 "HISTORY_MAPPING_REQUIRED",
                 "PATCH_SCOPE_UNSUPPORTED",
                 "PATCH_INVALID",
+                "PATCH_NO_CHANGE",
                 "PATCH_ENCODING_UNSUPPORTED",
                 "PATCH_TOO_LARGE",
                 "AMBIGUOUS_FACETS",

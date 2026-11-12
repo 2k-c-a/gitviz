@@ -45,8 +45,8 @@ class PatchRules(unittest.TestCase):
         most = '--- a/db.py\n+++ b/db.py\n@@ -1,60 +1,60 @@\n' + ''.join(f'-{line}\n' for line in lines) + ''.join(f'+{line} x\n' for line in lines)
         with self.assertRaises(ScopeError):
             apply_patch_bytes('db.py', original, most)
-        # A patch that changes nothing is invalid, not "too large".
-        with self.assertRaisesRegex(ScopeError, 'PATCH_INVALID'):
+        # A patch that changes nothing (e.g. the issue was already fixed) says so, rather than "too large".
+        with self.assertRaisesRegex(ScopeError, 'PATCH_NO_CHANGE'):
             apply_patch_bytes('db.py', original, '--- a/db.py\n+++ b/db.py\n@@ -1,1 +1,1 @@\n-line 1\n+line 1\n')
 
     def test_located_hunks_stay_exact_ordered_and_unambiguous(self) -> None:
