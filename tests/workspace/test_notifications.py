@@ -146,7 +146,8 @@ class InboxStoreTests(unittest.TestCase):
         source = self.emit(self.first, 'validation', 'failed')
         self.emit(self.second, 'validation', 'succeeded')
         item = next(entry for entry in self.page()['items'] if entry['projectId'] == self.first)
-        delete = lambda project, version, key=None: self.inbox.delete(project, {'notificationId': item['notificationId'], 'expectedVersion': version}, key or uid())
+        def delete(project: str, version: int, key: str | None = None) -> dict[str, Any]:
+            return self.inbox.delete(project, {'notificationId': item['notificationId'], 'expectedVersion': version}, key or uid())
         with self.assertRaisesRegex(ScopeError, 'RESOURCE_NOT_FOUND'):
             delete(self.second, 1)  # Another project's ID cannot delete it.
         with self.assertRaisesRegex(ScopeError, 'CONFLICT'):
