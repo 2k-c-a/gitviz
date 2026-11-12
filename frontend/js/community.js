@@ -207,8 +207,9 @@ async function renderPosts(target) {
       for (const item of page.posts) {
         const card = element('article', 'panel community-post-card');
         const link = button(item.title, 'community-post-title', () => go({ post: item.id }));
-        card.append(link, element('p', 'community-post-snippet', item.body),
-          element('p', 'p-sub', `${who(item.author)} · ${fmtDateTime(item.created_at)} · 댓글 ${item.comment_count}`));
+        // 목록에는 제목·작성자·작성 시간·댓글 수만 보인다. 내용은 글을 눌러 연 화면에서만 보인다.
+        card.append(link, element('p', 'p-sub', `${who(item.author)} · ${fmtDateTime(item.created_at)} · 댓글 ${item.comment_count}`));
+        card.addEventListener('click', event => { if (!event.target.closest('button, a')) link.click(); });
         list.append(card);
       }
       more.hidden = !page.next_before; more.dataset.before = page.next_before ?? '';
