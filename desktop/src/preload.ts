@@ -107,6 +107,7 @@ if (location.protocol === 'gitviz:' && location.host === 'app' && location.pathn
   planValidation: (options: unknown) => ipcRenderer.invoke('workspace:plan-validation', options),
   listNotifications: (options: unknown) => ipcRenderer.invoke('workspace:list-notifications', options),
   markNotificationRead: (options: unknown) => ipcRenderer.invoke('workspace:mark-notification-read', options),
+  deleteNotification: (options: unknown) => ipcRenderer.invoke('workspace:delete-notification', options),
   // The listener receives only the cloned signal object, never the IPC event or sender.
   subscribeEvents: (options: unknown, listener: unknown) => {
     if (typeof listener !== 'function') return Promise.reject(new Error('INVALID_REQUEST'));

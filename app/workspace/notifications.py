@@ -107,3 +107,15 @@ class Notifications:
             return {'notificationId': payload['notificationId']}
         self.projects.mutate(project, 'notifications.markRead', key, payload, action)
         return self.get(project, payload['notificationId'])
+
+    def delete(self, project: str, payload: dict[str, Any], key: str) -> dict[str, Any]:
+        """Removes one inbox entry. The event, its source run/proposal and later notifications are untouched."""
+        def action() -> dict[str, Any]:
+            row = self.db.execute('SELECT version FROM notification WHERE project_id=? AND id=?', (project, payload['notificationId'])).fetchone()
+            if row is None:
+                raise ScopeError('RESOURCE_NOT_FOUND')  # Includes another project's notification ID.
+            if row[0] != payload['expectedVersion']:
+                raise ScopeError('CONFLICT')
+            self.db.execute('DELETE FROM notification WHERE id=?', (payload['notificationId'],))
+            return {'notificationId': payload['notificationId'], 'deleted': True}
+        return self.projects.mutate(project, 'notifications.delete', key, payload, action)

@@ -100,6 +100,7 @@
                       "workspace.projects.setEditor",
                       "workspace.notifications.list",
                       "workspace.notifications.markRead",
+                      "workspace.notifications.delete",
                       "workspace.events.read",
                       "workspace.projects.connectRemote",
                       "workspace.remote.observeAnalysis",
@@ -114,7 +115,7 @@
                     ]
                   },
                   "uniqueItems": true,
-                  "maxItems": 57
+                  "maxItems": 58
                 },
                 "state": {
                   "const": "initializing"
@@ -281,6 +282,9 @@
             },
             {
               "$ref": "#/definitions/notificationList"
+            },
+            {
+              "$ref": "#/definitions/notificationDeleted"
             },
             {
               "$ref": "#/definitions/eventBatch"
@@ -5821,6 +5825,23 @@
         "files",
         "pairs",
         "timeline"
+      ],
+      "additionalProperties": false
+    },
+    "notificationDeleted": {
+      "type": "object",
+      "properties": {
+        "notificationId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "deleted": {
+          "const": true
+        }
+      },
+      "required": [
+        "notificationId",
+        "deleted"
       ],
       "additionalProperties": false
     }

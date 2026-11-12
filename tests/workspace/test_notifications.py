@@ -142,6 +142,31 @@ class InboxStoreTests(unittest.TestCase):
             self.mark(self.first, item, 1, False)  # Stale version.
         self.assertIsNone(self.mark(self.first, item, 2, False)['readAt'])
 
+    def test_delete_removes_only_the_inbox_entry_with_cas_and_project_scope(self) -> None:
+        source = self.emit(self.first, 'validation', 'failed')
+        self.emit(self.second, 'validation', 'succeeded')
+        item = next(entry for entry in self.page()['items'] if entry['projectId'] == self.first)
+        delete = lambda project, version, key=None: self.inbox.delete(project, {'notificationId': item['notificationId'], 'expectedVersion': version}, key or uid())
+        with self.assertRaisesRegex(ScopeError, 'RESOURCE_NOT_FOUND'):
+            delete(self.second, 1)  # Another project's ID cannot delete it.
+        with self.assertRaisesRegex(ScopeError, 'CONFLICT'):
+            delete(self.first, 2)  # Stale version.
+        key = uid()
+        result = delete(self.first, 1, key)
+        validate('response', {'protocolVersion': 1, 'requestId': uid(), 'ok': True, 'result': result})
+        self.assertEqual(result, {'notificationId': item['notificationId'], 'deleted': True})
+        self.assertEqual(delete(self.first, 1, key), result)  # Same key and body replays.
+        self.assertEqual([entry['projectId'] for entry in self.page()['items']], [self.second])
+        # The event stays; a later revision of the same source still notifies.
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM workspace_event WHERE source_id=?', (source,)).fetchone()[0], 1)
+        self.emit(self.first, 'validation', 'failed', source_id=source, revision=2)
+        self.assertEqual(len(self.page({**ALL, 'projectIds': [self.first]})['items']), 1)
+        validate('request', {'protocolVersion': 1, 'requestId': uid(), 'operation': 'workspace.notifications.delete', 'projectId': self.first,
+                             'idempotencyKey': uid(), 'payload': {'notificationId': uid(), 'expectedVersion': 1}})
+        with self.assertRaises(Exception):  # delete must name the owning project and carries no other fields.
+            validate('request', {'protocolVersion': 1, 'requestId': uid(), 'operation': 'workspace.notifications.delete',
+                                 'idempotencyKey': uid(), 'payload': {'notificationId': uid(), 'expectedVersion': 1, 'read': True}})
+
     def test_cursor_is_stable_bound_to_filters_and_rejects_tampering(self) -> None:
         for _ in range(5):
             self.emit(self.first, 'validation', 'succeeded')
