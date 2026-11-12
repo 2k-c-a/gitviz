@@ -77,6 +77,7 @@ void app.whenReady().then(async () => {
     await wait(`document.querySelectorAll('#change-selection input').length>=2`);
     phase = 'one-click-refactor';
     // Selecting files and pressing AI 리팩토링 captures, previews, starts and turns the result into a proposal.
+    await evaluate(`window.__snapshots=[];window.addEventListener('workspace-snapshot-changed',event=>{if(event.detail)window.__snapshots.push(event.detail)})`);
     await evaluate(`for(const item of document.querySelectorAll('#change-selection input'))if(['app.py','app.ts'].includes(item.dataset.path))item.checked=true;document.getElementById('quick-refactor').click()`);
     // 2026-11-12: the result stays in the 파일 tab as a diff card (assist.js); the advanced proposal view gets the same proposal.
     await wait(`!!document.querySelector('#assist .ws-assist-proposal .ws-diff-add') && document.getElementById('proposal-view').textContent.includes('pending')`);
@@ -116,6 +117,13 @@ void app.whenReady().then(async () => {
     nativeConsent = true; await evaluate(`document.querySelectorAll('#proposal-view button')[3].click()`);
     await wait(`document.querySelector('#proposal-view h3')?.textContent.startsWith('restored')`);
     assert.deepEqual(await hashes(root), applied);
+    phase = 'second-fix-after-apply';
+    // A second card from the same review still holds the pre-apply snapshot; its fix must re-read the applied file.
+    await evaluate(`document.getElementById('proposal-view').replaceChildren();window.dispatchEvent(new CustomEvent('workspace-assist',{detail:{kind:'refactor',snapshot:window.__snapshots[0]}}))`);
+    await wait(`!!document.querySelector('#assist .ws-assist-proposal .ws-diff-add') && document.getElementById('proposal-view').textContent.includes('pending')`);
+    assert.equal(await evaluate(`!document.querySelector('#assist .ws-banner-warn')`), true);
+    await evaluate(`[...document.querySelectorAll('#assist .ws-assist-proposal button')].find(button=>button.textContent==='거절').click()`);
+    await wait(`document.querySelector('#assist .ws-assist-proposal').textContent.includes('거절했습니다')`);
     process.stdout.write('PASS P06 real renderer/main/source agent, refactor generation/one-button apply/auto before-after comparison/recovery, Python/TS worker evidence, index and external-change preservation\n');
 
   } finally { const diagnostic = await readFile(join(directory, 'p06-fixture-apply-error.json'), 'utf8').catch(() => ''); if (diagnostic) process.stderr.write(diagnostic + '\n'); validation(); impact(); proposals(); health(); projects(); window.destroy(); await agent.stop(); clearTimeout(deadline); await rm(temporary, { recursive: true, force: true }); }

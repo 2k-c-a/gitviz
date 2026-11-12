@@ -196,8 +196,11 @@ async function refactor(context, purpose, { again = false } = {}) {
   busy('AI가 수정안을 만들고 있습니다… 보통 30초~1분 걸립니다.');
   const retry = () => refactor(context, purpose, { again: true });
   try {
-    const { run, reused } = await startRun(context, 'refactor', purpose, { again });
-    const value = await finish(context, run, mine);
+    // Another card may have been applied since the review; the fix must start from the file as it is now.
+    const current = await freshSnapshot(context);
+    if (mine !== turn) return;
+    const { run, reused } = await startRun(current, 'refactor', purpose, { again });
+    const value = await finish(current, run, mine);
     if (!value || mine !== turn) return;
     if (value.status !== 'succeeded' || !value.refactor) {
       idle(); const box = node('div', undefined, 'ws-banner ws-banner-warn');
@@ -215,6 +218,15 @@ async function refactor(context, purpose, { again = false } = {}) {
     box.append(node('span', explain(code(error))), button('다시 실행 (비용이 다시 듭니다)', retry));
     holder.replaceChildren(box);
   }
+}
+
+/** Re-reads the reviewed files whole so a refactor never starts from content that an earlier apply replaced. */
+async function freshSnapshot(context) {
+  const paths = [...new Set(context.snapshot.files.filter(file => file.state === 'read').map(file => file.path))];
+  if (!paths.length) return context;
+  const snapshot = await api.captureChanges({ projectId: context.projectId, items: paths.map(path => ({ facet: 'selected', path })),
+    includeUntracked: false, idempotencyKey: crypto.randomUUID() });
+  return { projectId: context.projectId, snapshot };
 }
 
 function diffView(change) {
