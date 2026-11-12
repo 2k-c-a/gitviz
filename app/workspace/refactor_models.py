@@ -6,7 +6,7 @@ from typing import Any, Literal
 from pydantic import Field, ValidationError
 
 from .contracts import ProtocolError, decode
-from .patches import MAX_FILES, apply_patch_bytes
+from .patches import MAX_FILES, apply_patch_bytes, minimal_patch
 from .review_models import StrictModel
 from .scoped_files import ScopeError
 from .snapshots import image_hash
@@ -62,6 +62,10 @@ def validate_refactor(raw: bytes, sent: list[dict[str, Any]]) -> dict[str, Any]:
         # otherwise exact patch. The patch itself is still checked line by line against that preimage below.
         change['preimageHash'] = source['preimageHash']
         target = apply_patch_bytes(change['path'], original, change['patch'])
+        # Keep only the lines that really change, so the proposal shows (and later re-applies) a minimal exact diff.
+        change['patch'] = minimal_patch(change['path'], original, target)
+        if apply_patch_bytes(change['path'], original, change['patch']) != target:
+            raise ScopeError('PATCH_INVALID')
         changed_lines += sum(line.startswith(('+', '-')) for line in change['patch'].split('\n')[2:])
         if changed_lines > 120:
             raise ScopeError('PATCH_TOO_LARGE')

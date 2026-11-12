@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import codecs
+import difflib
 import io
 import tokenize
 from pathlib import PurePosixPath
@@ -36,6 +37,26 @@ def writable_path(path: str) -> str:
             or name.startswith(('.env', 'requirements')) or name.endswith(('.cmd', '.bat', '.ps1'))):
         raise ScopeError('PATCH_SCOPE_UNSUPPORTED')
     return path
+
+
+def changed_line_count(before: list[str], after: list[str]) -> int:
+    """Removed plus added lines of the minimal line diff between two texts."""
+    matcher = difflib.SequenceMatcher(a=before, b=after, autojunk=False)
+    return sum((i2 - i1) + (j2 - j1) for tag, i1, i2, j1, j2 in matcher.get_opcodes() if tag != 'equal')
+
+
+def _lines(content: bytes) -> list[str]:
+    text = content.decode('utf-8')
+    text = text[1:] if text.startswith('\ufeff') else text
+    normalized = text.replace('\r\n', '\n')
+    lines = normalized.split('\n')
+    return lines[:-1] if normalized.endswith('\n') else lines
+
+
+def minimal_patch(path: str, original: bytes, target: bytes) -> str:
+    """Exact LF unified diff (3 context lines) from original to target, for display and for re-applying."""
+    hunks = difflib.unified_diff(_lines(original), _lines(target), fromfile='a/' + path, tofile='b/' + path, lineterm='', n=3)
+    return '\n'.join(hunks) + '\n'
 
 
 def locate(source: list[str], old: list[str], cursor: int, stated: int) -> int:
@@ -112,13 +133,16 @@ def apply_patch_bytes(path: str, original: bytes, patch: str) -> bytes:
                 cursor += 1
             if kind in ' +':
                 output.append(content)
-            if kind in '+-':
-                changed += 1
-    if not hunks or not changed or changed > MAX_CHANGED_LINES:
-        raise ScopeError('PATCH_TOO_LARGE')
-    if len(source) > 30 and changed > max(12, len(source) // 2):
-        raise ScopeError('PATCH_TOO_LARGE')
+    if not hunks:
+        raise ScopeError('PATCH_INVALID')
     output.extend(source[cursor:])
+    # Size limits apply to what really changes: a model that deletes and re-adds identical lines (a whole-file
+    # rewrite) is measured by the lines that differ, not by the length of its patch text.
+    changed = changed_line_count(source, output)
+    if not changed:
+        raise ScopeError('PATCH_INVALID')
+    if changed > MAX_CHANGED_LINES or (len(source) > 30 and changed > max(12, len(source) // 2)):
+        raise ScopeError('PATCH_TOO_LARGE')
     rendered = '\n'.join(output) + ('\n' if output and final_newline else '')
     if crlf:
         rendered = rendered.replace('\n', '\r\n')

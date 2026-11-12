@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.workspace.patches import apply_patch_bytes, writable_path
+from app.workspace.patches import apply_patch_bytes, minimal_patch, writable_path
 from app.workspace.scoped_files import ScopeError
 from app.workspace.write_files import LockedFile
 
@@ -27,6 +27,27 @@ class PatchRules(unittest.TestCase):
             with self.subTest(header=header):
                 patch = f'--- a/db.py\n+++ b/db.py\n{header}\n line 20\n-q = f"SELECT \'{{u}}\'"\n+q = "SELECT ?"\n end\n'
                 self.assertEqual(apply_patch_bytes('db.py', original, patch), expected)
+
+    def test_whole_file_rewrite_is_measured_and_minimized_by_real_changes(self) -> None:
+        lines = [f'line {n}' for n in range(1, 61)]
+        original = ('\r\n'.join(lines) + '\r\n').encode()
+        target_lines = [*lines]
+        target_lines[9] = 'line 10 fixed'
+        target_lines[49] = 'line 50 fixed'
+        # The model deletes and re-adds all 60 lines although only two differ.
+        rewrite = '--- a/db.py\n+++ b/db.py\n@@ -1,60 +1,60 @@\n' + ''.join(f'-{line}\n' for line in lines) + ''.join(f'+{line}\n' for line in target_lines)
+        expected = ('\r\n'.join(target_lines) + '\r\n').encode()
+        self.assertEqual(apply_patch_bytes('db.py', original, rewrite), expected)
+        minimal = minimal_patch('db.py', original, expected)
+        self.assertEqual(sum(line[:1] in '+-' for line in minimal.split('\n')[2:] if line), 4)
+        self.assertEqual(apply_patch_bytes('db.py', original, minimal), expected)
+        # A rewrite that really changes most of the file is still refused.
+        most = '--- a/db.py\n+++ b/db.py\n@@ -1,60 +1,60 @@\n' + ''.join(f'-{line}\n' for line in lines) + ''.join(f'+{line} x\n' for line in lines)
+        with self.assertRaises(ScopeError):
+            apply_patch_bytes('db.py', original, most)
+        # A patch that changes nothing is invalid, not "too large".
+        with self.assertRaisesRegex(ScopeError, 'PATCH_INVALID'):
+            apply_patch_bytes('db.py', original, '--- a/db.py\n+++ b/db.py\n@@ -1,1 +1,1 @@\n-line 1\n+line 1\n')
 
     def test_located_hunks_stay_exact_ordered_and_unambiguous(self) -> None:
         original = b'a = 1\nb = 2\nx = 0\nb = 2\nc = 3\n'
