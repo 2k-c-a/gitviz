@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ko">
-<head><script src="web/js/ui/theme.js"></script><script type="module" src="web/js/ui/workspace-shell.js"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitViz Workspace</title><link rel="stylesheet" href="styles.css"><script defer src="status.js"></script><script type="module" src="projects.js"></script><script type="module" src="desktop-auth.js"></script><script type="module" src="changes.js"></script><script type="module" src="review.js"></script><script type="module" src="proposal.js"></script><script type="module" src="impact.js"></script><script type="module" src="validation.js"></script><script type="module" src="comparison.js"></script><script type="module" src="inbox.js"></script><script type="module" src="change-history.js"></script><script type="module" src="layout.js"></script><script type="module" src="dependencies.js"></script></head>
+<head><script src="web/js/ui/theme.js"></script><script type="module" src="web/js/ui/workspace-shell.js"></script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitViz Workspace</title><link rel="stylesheet" href="styles.css"><script defer src="status.js"></script><script type="module" src="projects.js"></script><script type="module" src="desktop-auth.js"></script><script type="module" src="changes.js"></script><script type="module" src="assist.js"></script><script type="module" src="review.js"></script><script type="module" src="proposal.js"></script><script type="module" src="impact.js"></script><script type="module" src="validation.js"></script><script type="module" src="comparison.js"></script><script type="module" src="inbox.js"></script><script type="module" src="change-history.js"></script><script type="module" src="layout.js"></script><script type="module" src="dependencies.js"></script></head>
 <body><main>
 <!-- Information architecture: views (start / projects / project tabs / inbox / account / settings). Every control keeps its original id; layout.js only decides what is shown. -->
 <div id="ws-health" class="ws-banner ws-banner-warn" role="alert" hidden><span id="ws-health-text"></span><span class="ws-grow"></span><button type="button" id="ws-health-retry">다시 확인</button><button type="button" id="ws-health-diagnostics">진단 정보 저장</button></div>
@@ -46,9 +46,10 @@
 <button type="button" role="tab" id="ws-tab-overview" data-tab="overview" aria-controls="ws-panel-overview">개요</button>
 <button type="button" role="tab" id="ws-tab-history" data-tab="history" aria-controls="ws-panel-history">변경 분석</button>
 <button type="button" role="tab" id="ws-tab-changes" data-tab="changes" aria-controls="ws-panel-changes">파일</button>
-<button type="button" role="tab" id="ws-tab-ai" data-tab="ai" aria-controls="ws-panel-ai">AI 점검</button>
-<button type="button" role="tab" id="ws-tab-proposals" data-tab="proposals" aria-controls="ws-panel-proposals">개선 제안</button>
-<button type="button" role="tab" id="ws-tab-verify" data-tab="verify" aria-controls="ws-panel-verify">검증</button>
+<button type="button" role="tab" id="ws-tab-ai" data-tab="ai" data-advanced aria-controls="ws-panel-ai" hidden>AI 점검</button>
+<button type="button" role="tab" id="ws-tab-proposals" data-tab="proposals" data-advanced aria-controls="ws-panel-proposals" hidden>개선 제안</button>
+<button type="button" role="tab" id="ws-tab-verify" data-tab="verify" data-advanced aria-controls="ws-panel-verify" hidden>검증</button>
+<button type="button" id="ws-advanced-toggle" class="ws-advanced-toggle" aria-pressed="false" title="AI 점검·개선 제안·검증 단계를 따로 보는 고급 탭을 보이거나 숨깁니다">고급</button>
 </div>
 </div>
 
@@ -76,7 +77,7 @@
 
 <div class="ws-tab-panel" role="tabpanel" id="ws-panel-changes" data-tab-panel="changes" aria-labelledby="ws-tab-changes" tabindex="-1" hidden>
 <h1>파일</h1>
-<p class="ws-note">파일을 체크하고 &lsquo;AI 리뷰&rsquo; 또는 &lsquo;AI 리팩토링&rsquo;을 누르면 바로 실행됩니다. 변경이 없어도 파일을 골라 점검할 수 있습니다.</p>
+<p class="ws-note">파일을 체크하고 &lsquo;AI 리뷰&rsquo;를 누르면 지적이 이 화면 아래에 나옵니다. 지적마다 &lsquo;이 문제 고치기&rsquo;로 수정안을 받고, &lsquo;적용&rsquo;하면 적용 전후 테스트와 영향 범위까지 이어서 확인합니다.</p>
 <details class="ws-more"><summary>자세히</summary><p class="ws-note">모델과 목적은 설정에서 바꿉니다. 변경된 파일에서 고르면 바뀐 부분을, 전체 파일에서 고르면 현재 파일 전체를 그 시점의 사본으로 저장해 점검·검증·비교의 기준으로 씁니다. 바이너리, 큰 파일, 비밀 값이 들어 있는 것으로 보이는 내용은 제외됩니다. 조회와 담기는 읽기 전용이고, 파일 적용과 프로젝트 검증은 별도 승인 후에만 실행됩니다. 외부 Git 메타데이터는 확인 후에만 읽으며, 서브모듈 안쪽 상태는 보여 주지 않습니다.</p></details>
 <div class="ws-panel"><div class="ws-toolbar"><button type="button" id="reload-changes" data-risk="read">새로고침</button><label class="ws-inline"><input id="include-untracked" type="checkbox"> 선택한 새 파일(Git 미추적) 포함</label></div>
 <h2>변경된 파일</h2>
@@ -85,6 +86,7 @@
 <p class="ws-note">파일 이름을 누르면 에디터로 열립니다(개요 탭의 &lsquo;이 프로젝트 설정&rsquo;). Git이 무시하는 파일은 보이지 않습니다.</p>
 <div id="file-tree" class="ws-tree" role="tree" aria-label="프로젝트 파일"></div>
 <div class="ws-actionbar"><button type="button" id="quick-review" class="btn-primary" data-risk="send">AI 리뷰</button><button type="button" id="quick-refactor" class="btn-primary" data-risk="send">AI 리팩토링</button><button type="button" id="capture-changes" data-risk="read">점검 대상으로만 담기</button><span id="capture-message" class="ws-message" role="status"></span></div>
+<section id="assist" class="ws-assist" aria-label="AI 리뷰·리팩토링 결과" hidden></section>
 <div id="capture-result"></div><pre id="fixed-preview"></pre></div>
 </div>
 

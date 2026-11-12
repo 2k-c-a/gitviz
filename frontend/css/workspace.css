@@ -70,6 +70,48 @@
 .ws-tabs > button:hover { color: var(--ui-text); background: none; }
 .ws-tabs > button[aria-selected='true'] { color: var(--ui-accent); border-bottom-color: var(--ui-accent); font-weight: var(--ui-semibold); }
 .ws-tabs > button[data-alert='true'] { color: var(--ui-warning); }
+.ws-tabs > .ws-advanced-toggle { margin-left: auto; color: var(--ui-muted); font-size: var(--ui-text-xs); }
+.ws-tabs > .ws-advanced-toggle[aria-pressed='true'] { color: var(--ui-accent); }
+.ws-tabs > button[hidden] { display: none; }
+
+/* 파일 탭의 AI 리뷰·리팩토링 결과 (assist.js) */
+.ws-assist { margin-top: 14px; }
+.ws-assist[hidden] { display: none; }
+.ws-assist > .ws-message[data-busy='true']::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 8px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -1px; animation: ws-spin .8s linear infinite; }
+@keyframes ws-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ws-assist > .ws-message[data-busy='true']::before { animation: none; } }
+.ws-assist-body { display: flex; flex-direction: column; gap: 12px; }
+.ws-assist-card { padding: 14px 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); overflow-wrap: anywhere; }
+.ws-assist-card h3 { margin: 0 0 8px; font-size: var(--ui-text-md, 15px); }
+.ws-assist-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ws-assist-row { margin: 4px 0; line-height: 1.6; }
+.ws-assist-label { display: inline-block; min-width: 72px; margin-right: 8px; color: var(--ui-muted); font-size: var(--ui-text-xs); font-weight: var(--ui-semibold); }
+.ws-assist-where { margin: 10px 0 2px; color: var(--ui-muted); font-family: var(--ui-mono); font-size: var(--ui-text-xs); }
+.ws-assist-code { margin: 0; padding: 10px 12px; background: var(--ui-raised); border-radius: var(--ui-radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow: auto; font-family: var(--ui-mono); font-size: var(--ui-text-xs); }
+.ws-assist-code > span { display: block; }
+.ws-diff-add { background: var(--ui-success-soft); color: var(--ui-success); }
+.ws-diff-del { background: var(--ui-error-soft); color: var(--ui-error); }
+.ws-diff-hunk { color: var(--ui-info); }
+.ws-assist-verdict { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.ws-assist-verdict button { min-height: 28px; padding: 2px 10px; font-size: var(--ui-text-xs); }
+.ws-assist-verdict button[aria-pressed='true'] { border-color: var(--ui-accent); color: var(--ui-accent); background: var(--ui-accent-soft); }
+.ws-assist-hint { color: var(--ui-muted); font-size: var(--ui-text-xs); }
+.ws-assist-empty { margin: 0; color: var(--ui-muted); }
+.ws-assist-steps { margin: 4px 0 0; padding-left: 20px; }
+.ws-assist-steps > li { margin: 3px 0; color: var(--ui-muted); }
+.ws-assist-steps > li[data-state='run'] { color: var(--ui-text); font-weight: var(--ui-semibold); }
+.ws-assist-steps > li[data-state='run']::after { content: ' …'; }
+.ws-assist-steps > li[data-state='done'] { color: var(--ui-success); }
+.ws-assist-steps > li[data-state='fail'] { color: var(--ui-error); }
+.ws-assist-summary { border-color: var(--ui-accent); }
+.ws-assist-tests, .ws-assist-impact { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 10px 0; }
+.ws-assist-impact { align-items: flex-start; flex-direction: column; }
+.ws-assist-arrow { color: var(--ui-muted); }
+.ws-assist-good { color: var(--ui-success); font-weight: var(--ui-semibold); }
+.ws-assist-bad { color: var(--ui-error); font-weight: var(--ui-semibold); }
+.ws-assist-callers { margin: 0; padding-left: 20px; }
+.ws-assist-callers > li { margin: 3px 0; }
+.ws-assist-callers code { margin-left: 8px; padding: 1px 6px; border-radius: var(--ui-radius-sm); background: var(--ui-raised); font-family: var(--ui-mono); font-size: var(--ui-text-xs); }
 
 .ws-todo { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin: 12px 0; padding: 12px 16px; border: 1px solid var(--ui-accent); border-radius: var(--ui-radius-md); background: var(--ui-accent-soft); }
 .ws-todo strong { font-size: var(--ui-text-lg); }

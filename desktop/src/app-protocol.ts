@@ -22,6 +22,7 @@ const assets: Record<string, { file: string; mime: string }> = {
   '/ai-settings.js': { file: 'ai-settings.js', mime: 'text/javascript; charset=utf-8' },
   '/auto-compare.js': { file: 'auto-compare.js', mime: 'text/javascript; charset=utf-8' },
   '/dependencies.js': { file: 'dependencies.js', mime: 'text/javascript; charset=utf-8' },
+  '/assist.js': { file: 'assist.js', mime: 'text/javascript; charset=utf-8' },
 };
 const documents = new Set(['/index.html', '/web/index.html', ...['overview', 'timeline', 'network', 'code-analysis', 'search', 'myprojects', 'history', 'ai-insights', 'ai-review', 'settings', 'community'].map(name => `/web/pages/${name}.html`)]);
 export function isAppDocument(value: string): boolean {
