@@ -5831,6 +5831,10 @@
     "notificationDeleted": {
       "type": "object",
       "properties": {
+        "projectId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
         "notificationId": {
           "type": "string",
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
@@ -5840,6 +5844,7 @@
         }
       },
       "required": [
+        "projectId",
         "notificationId",
         "deleted"
       ],

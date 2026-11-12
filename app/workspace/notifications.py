@@ -117,5 +117,6 @@ class Notifications:
             if row[0] != payload['expectedVersion']:
                 raise ScopeError('CONFLICT')
             self.db.execute('DELETE FROM notification WHERE id=?', (payload['notificationId'],))
-            return {'notificationId': payload['notificationId'], 'deleted': True}
+            # main checks that a project-scoped answer names the same project.
+            return {'projectId': project, 'notificationId': payload['notificationId'], 'deleted': True}
         return self.projects.mutate(project, 'notifications.delete', key, payload, action)

@@ -155,7 +155,7 @@ class InboxStoreTests(unittest.TestCase):
         key = uid()
         result = delete(self.first, 1, key)
         validate('response', {'protocolVersion': 1, 'requestId': uid(), 'ok': True, 'result': result})
-        self.assertEqual(result, {'notificationId': item['notificationId'], 'deleted': True})
+        self.assertEqual(result, {'projectId': self.first, 'notificationId': item['notificationId'], 'deleted': True})
         self.assertEqual(delete(self.first, 1, key), result)  # Same key and body replays.
         self.assertEqual([entry['projectId'] for entry in self.page()['items']], [self.second])
         # The event stays; a later revision of the same source still notifies.

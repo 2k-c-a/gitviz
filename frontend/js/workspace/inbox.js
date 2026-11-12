@@ -96,9 +96,17 @@ if (api?.listNotifications) {
   for (const element of [filterProject, filterSource, filterSeverity, filterRead]) element.addEventListener('change', () => { cursor = null; void load(); });
   document.getElementById('inbox-refresh').addEventListener('click', () => { syncProjects(); void load(); });
   more.addEventListener('click', () => { void load(true); });
+  // The app shows no page dialogs (window.confirm is not used anywhere), so the button asks for a second press instead.
+  let armed = null;
+  const disarm = () => { clearTimeout(armed); armed = null; deleteAll.textContent = '보이는 알림 모두 삭제'; delete deleteAll.dataset.armed; };
   deleteAll.addEventListener('click', async () => {
     const items = [...shown];
-    if (!items.length || !window.confirm(`지금 목록에 보이는 알림 ${items.length}건을 삭제할까요? 알림만 지워지고 리뷰·제안 같은 원래 기록은 남습니다.`)) return;
+    if (!items.length) return;
+    if (!armed) {
+      deleteAll.textContent = `한 번 더 누르면 ${items.length}건 삭제 (리뷰·제안 기록은 남음)`; deleteAll.dataset.armed = 'true';
+      armed = setTimeout(disarm, 5000); return;
+    }
+    disarm();
     deleteAll.disabled = true; let failed = 0;
     for (const item of items) {
       try { await api.deleteNotification({ projectId: item.projectId, notificationId: item.notificationId, expectedVersion: item.version, idempotencyKey: crypto.randomUUID() }); }
