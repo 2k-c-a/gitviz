@@ -20,6 +20,29 @@ class PatchRules(unittest.TestCase):
                         original = bom + b'x = 1' + eol + b'print(x)' + final
                         self.assertEqual(apply_patch_bytes('app.py', original, patch), bom + b'x = 2' + eol + b'print(x)' + final)
 
+    def test_wrong_line_numbers_and_counts_are_located_by_exact_content(self) -> None:
+        original = b''.join(f'line {n}\r\n'.encode() for n in range(1, 21)) + b'q = f"SELECT \'{u}\'"\r\nend\r\n'
+        expected = original.replace(b'q = f"SELECT \'{u}\'"', b'q = "SELECT ?"')
+        for header in ['@@ -5,3 +5,3 @@', '@@ -30,9 +30,1 @@', '@@ -21 +21 @@ def find_user']:
+            with self.subTest(header=header):
+                patch = f'--- a/db.py\n+++ b/db.py\n{header}\n line 20\n-q = f"SELECT \'{{u}}\'"\n+q = "SELECT ?"\n end\n'
+                self.assertEqual(apply_patch_bytes('db.py', original, patch), expected)
+
+    def test_located_hunks_stay_exact_ordered_and_unambiguous(self) -> None:
+        original = b'a = 1\nb = 2\nx = 0\nb = 2\nc = 3\n'
+        # Context that does not occur exactly is still refused (no fuzz, no whitespace tolerance).
+        for patch in ['--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-a  = 1\n+a = 9\n',
+                      '--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-a = 1 \n+a = 9\n']:
+            with self.subTest(patch=patch), self.assertRaises(ScopeError):
+                apply_patch_bytes('a.py', original, patch)
+        # Two equally near matches are refused rather than guessed.
+        with self.assertRaises(ScopeError):
+            apply_patch_bytes('a.py', original, '--- a/a.py\n+++ b/a.py\n@@ -3 +3 @@\n-b = 2\n+b = 5\n')
+        # The stated line wins when it matches; a later hunk cannot move before an earlier one.
+        self.assertEqual(apply_patch_bytes('a.py', original, '--- a/a.py\n+++ b/a.py\n@@ -4 +4 @@\n-b = 2\n+b = 5\n'), b'a = 1\nb = 2\nx = 0\nb = 5\nc = 3\n')
+        with self.assertRaises(ScopeError):
+            apply_patch_bytes('a.py', original, '--- a/a.py\n+++ b/a.py\n@@ -5 +5 @@\n-c = 3\n+c = 4\n@@ -1 +1 @@\n-a = 1\n+a = 2\n')
+
     def test_fuzzy_header_scope_delete_and_configuration_changes_rejected(self) -> None:
         for path in ['../x.py', '/x.py', '.git/config', '.github/workflows/x.yml', 'package.json',
                      'a.ps1', '.gitviz-workspace-forged.pending', 'a/CON.txt']:

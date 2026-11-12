@@ -56,8 +56,11 @@ def validate_refactor(raw: bytes, sent: list[dict[str, Any]]) -> dict[str, Any]:
             raise ScopeError('OUTPUT_INVALID')
         paths.add(change['path'].casefold())
         original = source['source'].encode()
-        if image_hash(original) != change['preimageHash'] or change['preimageHash'] != source['preimageHash']:
+        if image_hash(original) != source['preimageHash']:
             raise ScopeError('PRECONDITION_FAILED')
+        # The app already holds the exact preimage it sent; a model that mistypes the 64-hex echo must not void an
+        # otherwise exact patch. The patch itself is still checked line by line against that preimage below.
+        change['preimageHash'] = source['preimageHash']
         target = apply_patch_bytes(change['path'], original, change['patch'])
         changed_lines += sum(line.startswith(('+', '-')) for line in change['patch'].split('\n')[2:])
         if changed_lines > 120:

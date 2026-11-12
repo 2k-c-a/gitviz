@@ -38,6 +38,24 @@ def writable_path(path: str) -> str:
     return path
 
 
+def locate(source: list[str], old: list[str], cursor: int, stated: int) -> int:
+    """Start index of `old` in `source` at or after `cursor`: the stated line if it matches, else the single nearest match."""
+    if not old:
+        if not cursor <= stated <= len(source):
+            raise ScopeError('PATCH_INVALID')
+        return stated
+    if cursor <= stated and source[stated:stated + len(old)] == old:
+        return stated
+    found = [index for index in range(cursor, len(source) - len(old) + 1) if source[index:index + len(old)] == old]
+    if not found:
+        raise ScopeError('PRECONDITION_FAILED')
+    best = min(abs(index - stated) for index in found)
+    nearest = [index for index in found if abs(index - stated) == best]
+    if len(nearest) != 1:
+        raise ScopeError('PRECONDITION_FAILED')  # Two equally close places: refuse rather than guess.
+    return nearest[0]
+
+
 def apply_patch_bytes(path: str, original: bytes, patch: str) -> bytes:
     writable_path(path)
     validate_encoding(path, original)
@@ -72,35 +90,30 @@ def apply_patch_bytes(path: str, original: bytes, patch: str) -> bytes:
         if match is None:
             raise ScopeError('PATCH_INVALID')
         old_start, old_count = int(match[1]), int(match[2] or '1')
-        new_start, new_count = int(match[3]), int(match[4] or '1')
-        position = old_start - 1 if old_count else old_start
-        if position < cursor or position > len(source):
-            raise ScopeError('PATCH_INVALID')
-        output.extend(source[cursor:position])
-        if (new_start - 1 if new_count else new_start) != len(output):
-            raise ScopeError('PATCH_INVALID')
-        cursor = position
-        old_seen = new_seen = 0
         at += 1
         hunks += 1
+        body: list[tuple[str, str]] = []
         while at < len(lines) and not lines[at].startswith('@@ '):
             value = lines[at]
             if not value or value[0] not in ' +-':
                 raise ScopeError('PATCH_INVALID')
-            kind, content = value[0], value[1:]
+            body.append((value[0], value[1:]))
+            at += 1
+        old = [content for kind, content in body if kind in ' -']
+        # Models count lines in text that carries no line numbers, so the @@ numbers are a hint only (as with
+        # `git apply`, an offset is allowed but no fuzz): the context and removed lines must occur exactly, once
+        # nearest to the hint, after the previous hunk. Header counts are recomputed from the hunk body.
+        stated = old_start - 1 if old_count else old_start
+        position = locate(source, old, cursor, stated)
+        output.extend(source[cursor:position])
+        cursor = position
+        for kind, content in body:
             if kind in ' -':
-                if cursor >= len(source) or source[cursor] != content:
-                    raise ScopeError('PRECONDITION_FAILED')
                 cursor += 1
-                old_seen += 1
             if kind in ' +':
                 output.append(content)
-                new_seen += 1
             if kind in '+-':
                 changed += 1
-            at += 1
-        if old_seen != old_count or new_seen != new_count:
-            raise ScopeError('PATCH_INVALID')
     if not hunks or not changed or changed > MAX_CHANGED_LINES:
         raise ScopeError('PATCH_TOO_LARGE')
     if len(source) > 30 and changed > max(12, len(source) // 2):
