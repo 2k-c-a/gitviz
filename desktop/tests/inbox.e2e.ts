@@ -40,7 +40,7 @@ void app.whenReady().then(async () => {
   const window = createWindow(false);
   const health = registerHealth(window, () => agent.health());
   const projects = registerProjects(window, agent, contracts, { select: async () => root, confirm: async () => true });
-  const notifications = registerNotifications(window, agent, contracts);
+  let notifications = registerNotifications(window, agent, contracts);
   const evaluate = (source: string) => window.webContents.executeJavaScript(source);
   async function wait(source: string, attempts = 300): Promise<void> {
     for (let i = 0; i < attempts; i++) { if (await evaluate(source)) return; await new Promise(resolve => setTimeout(resolve, 50)); }
@@ -96,6 +96,17 @@ void app.whenReady().then(async () => {
     const again = await agent.call('workspace.notifications.list', { filters: ALL, cursor: null, limit: 30 });
     const kept = (again.items as { notificationId: string; readAt: number | null; count: number }[]);
     assert.deepEqual(kept.map(entry => [entry.notificationId, entry.readAt !== null, entry.count]), [[item.notificationId, true, 1]]);
+    phase = 'delete';
+    notifications = registerNotifications(window, agent, contracts);
+    await evaluate(`document.getElementById('inbox-read').value='all';document.getElementById('inbox-read').dispatchEvent(new Event('change'))`);
+    await wait(`document.querySelectorAll('#inbox-list li').length===1 && !document.getElementById('inbox-delete-all').hidden`);
+    // The first press only arms the button; the second deletes what is shown.
+    await evaluate(`document.getElementById('inbox-delete-all').click()`);
+    assert.equal(await evaluate(`document.querySelectorAll('#inbox-list li').length===1 && document.getElementById('inbox-delete-all').dataset.armed==='true'`), true);
+    await evaluate(`document.getElementById('inbox-delete-all').click()`);
+    await wait(`document.getElementById('inbox-message').textContent==='표시할 알림이 없습니다.' && document.getElementById('inbox-delete-all').hidden`);
+    assert.equal(((await agent.call('workspace.notifications.list', { filters: ALL, cursor: null, limit: 30 })).items as unknown[]).length, 0);
+    assert.equal(await evaluate(`workspace.getHealth().then(value=>value.state)`), 'ready', 'the agent stays up after deleting');
     process.stdout.write('PASS P08a real renderer/main relay/source agent: pushed refresh, text-only inbox, navigation, read CAS, forged project, restart persistence\n');
   } finally { health(); projects(); notifications(); window.destroy(); await agent.stop(); clearTimeout(deadline); await rm(temporary, { recursive: true, force: true }); }
 }).then(() => app.exit(0)).catch(error => { process.stderr.write(`FAIL P08 (${phase}): ${error instanceof Error ? error.message.slice(0, 160) : 'assertion'}\n`); app.exit(1); });

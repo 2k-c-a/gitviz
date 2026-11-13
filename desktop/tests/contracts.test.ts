@@ -24,3 +24,10 @@ test('stream framing handles arbitrary split/coalescing and truncated EOF', () =
   reader.push(Buffer.from('{'));
   assert.throws(() => reader.finish());
 });
+test('notification delete result is checked against its own definition', () => {
+  // A missing per-operation mapping makes main reject a valid answer and restart the agent.
+  const id = '00000000-0000-4000-8000-000000000001';
+  assert.doesNotThrow(() => contracts.result('workspace.notifications.delete', { projectId: id, notificationId: id, deleted: true }));
+  // main also requires the answer to name the request's project, so projectId is part of the shape.
+  assert.throws(() => contracts.result('workspace.notifications.delete', { notificationId: id, deleted: true }));
+});

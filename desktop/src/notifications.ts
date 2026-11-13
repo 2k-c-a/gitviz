@@ -88,6 +88,8 @@ export function registerNotifications(window: BrowserWindow, agent: Pick<Agent, 
   handle('workspace:list-notifications', ['filters', 'cursor', 'limit'], value => request('workspace.notifications.list', value)());
   handle('workspace:mark-notification-read', ['projectId', 'idempotencyKey', 'notificationId', 'expectedVersion', 'read'],
     value => request('workspace.notifications.markRead', value)());
+  handle('workspace:delete-notification', ['projectId', 'idempotencyKey', 'notificationId', 'expectedVersion'],
+    value => request('workspace.notifications.delete', value)());
   handle('workspace:events-subscribe', ['afterSequence'], async value => {
     request('workspace.events.read', { afterSequence: value.afterSequence, limit: 50, projectIds: null });  // Shape check only.
     return { subscribed: await relay.subscribe(Number(value.afterSequence)) };

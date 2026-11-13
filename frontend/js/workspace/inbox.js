@@ -6,6 +6,8 @@ const message = document.getElementById('inbox-message');
 const detail = document.getElementById('inbox-detail');
 const unread = document.getElementById('inbox-unread');
 const more = document.getElementById('inbox-more');
+const deleteAll = document.getElementById('inbox-delete-all');
+let shown = [];
 const filterProject = document.getElementById('inbox-project');
 const filterSource = document.getElementById('inbox-source');
 const filterSeverity = document.getElementById('inbox-severity');
@@ -65,7 +67,15 @@ function row(item) {
     try { await api.markNotificationRead({ projectId: item.projectId, notificationId: item.notificationId, expectedVersion: item.version, read: !item.readAt, idempotencyKey: crypto.randomUUID() }); if (turn === generation) await load(); }
     catch (error) { if (turn === generation) { fail(error); await load(); } }
   });
-  entry.append(open, toggle);
+  // Deleting removes only the inbox entry; the review, proposal or run it points to stays.
+  const remove = node('button', '삭제');
+  remove.type = 'button';
+  remove.addEventListener('click', async () => {
+    const turn = generation; remove.disabled = true;
+    try { await api.deleteNotification({ projectId: item.projectId, notificationId: item.notificationId, expectedVersion: item.version, idempotencyKey: crypto.randomUUID() }); if (turn === generation) await load(); }
+    catch (error) { if (turn === generation) { fail(error); await load(); } }
+  });
+  entry.append(open, toggle, remove);
   return entry;
 }
 async function load(append = false) {
@@ -73,8 +83,9 @@ async function load(append = false) {
   try {
     const page = await api.listNotifications({ filters: filters(), cursor: append ? cursor : null, limit: 30 });
     if (turn !== generation) return;
-    if (!append) { list.replaceChildren(); message.textContent = page.items.length ? '' : '표시할 알림이 없습니다.'; }
+    if (!append) { list.replaceChildren(); shown = []; message.textContent = page.items.length ? '' : '표시할 알림이 없습니다.'; }
     for (const item of page.items) list.append(row(item));
+    shown.push(...page.items); deleteAll.hidden = !shown.length;
     cursor = page.nextCursor; more.hidden = !cursor;
     unread.textContent = `읽지 않은 알림 ${page.unreadCount}건`;
   } catch (error) { if (turn === generation) fail(error); }
@@ -85,6 +96,25 @@ if (api?.listNotifications) {
   for (const element of [filterProject, filterSource, filterSeverity, filterRead]) element.addEventListener('change', () => { cursor = null; void load(); });
   document.getElementById('inbox-refresh').addEventListener('click', () => { syncProjects(); void load(); });
   more.addEventListener('click', () => { void load(true); });
+  // The app shows no page dialogs (window.confirm is not used anywhere), so the button asks for a second press instead.
+  let armed = null;
+  const disarm = () => { clearTimeout(armed); armed = null; deleteAll.textContent = '보이는 알림 모두 삭제'; delete deleteAll.dataset.armed; };
+  deleteAll.addEventListener('click', async () => {
+    const items = [...shown];
+    if (!items.length) return;
+    if (!armed) {
+      deleteAll.textContent = `한 번 더 누르면 ${items.length}건 삭제 (리뷰·제안 기록은 남음)`; deleteAll.dataset.armed = 'true';
+      armed = setTimeout(disarm, 5000); return;
+    }
+    disarm();
+    deleteAll.disabled = true; let failed = 0;
+    for (const item of items) {
+      try { await api.deleteNotification({ projectId: item.projectId, notificationId: item.notificationId, expectedVersion: item.version, idempotencyKey: crypto.randomUUID() }); }
+      catch { failed++; }
+    }
+    deleteAll.disabled = false; cursor = null; await load();
+    if (failed) message.textContent = `${failed}건은 그사이 바뀌어 삭제하지 않았습니다. 다시 시도하세요.`;
+  });
   window.addEventListener('workspace-project-changed', syncProjects);
   void (async () => {
     for (let attempt = 0; attempt < 30; attempt++) {

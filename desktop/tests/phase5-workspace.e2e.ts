@@ -107,6 +107,13 @@ void app.whenReady().then(async () => {
     await evaluate(`document.getElementById('ws-todo-action').click()`);
     await wait(visible('[data-tab-panel="changes"]'));
     await check('todo action opens changes', `${visible('[data-tab-panel="changes"]')} && !${visible('[data-tab-panel="overview"]')}`);
+    // 2026-11-12: review/refactor run inline in the 파일 tab; the step-by-step tabs sit behind 고급.
+    await check('the inline review/refactor module is served and mounted', `!!document.querySelector('#assist .ws-assist-body')`);
+    await check('advanced step tabs are hidden by default', `!${visible('#ws-tab-ai')} && !${visible('#ws-tab-proposals')} && !${visible('#ws-tab-verify')} && document.getElementById('ws-advanced-toggle').getAttribute('aria-pressed')==='false'`);
+    await key3('4');
+    await check('Ctrl+4 does not open a hidden tab', `${visible('[data-tab-panel="changes"]')} && !${visible('[data-tab-panel="ai"]')}`);
+    await evaluate(`document.getElementById('ws-advanced-toggle').click()`);
+    await check('the 고급 toggle reveals the step tabs', `${visible('#ws-tab-ai')} && ${visible('#ws-tab-proposals')} && ${visible('#ws-tab-verify')} && document.getElementById('ws-advanced-toggle').getAttribute('aria-pressed')==='true'`);
     await key3('4');
     await check('Ctrl+4 opens AI review with the no-target notice', `${visible('[data-tab-panel="ai"]')} && ${visible('#ws-panel-ai .ws-need-snapshot')} && document.querySelector('[data-step-button="2"]').disabled`);
     await evaluate(`document.getElementById('ws-tab-ai').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))`);

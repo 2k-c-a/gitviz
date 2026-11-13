@@ -148,6 +148,9 @@ class Dispatcher:
                 elif op == 'workspace.notifications.markRead':
                     assert self.notifications is not None
                     result = self.notifications.mark_read(request['projectId'], payload, request['idempotencyKey'])
+                elif op == 'workspace.notifications.delete':
+                    assert self.notifications is not None
+                    result = self.notifications.delete(request['projectId'], payload, request['idempotencyKey'])
                 elif op == 'workspace.events.read':
                     result = events.read(projects.connection, payload)
                 elif op == 'workspace.impact.historical':

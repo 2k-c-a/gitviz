@@ -10,8 +10,20 @@ const picker = $('project-picker');
 // 2026-11-07: 변경 분석 탭 추가, 테스트·린트·전후 비교·영향 범위는 검증 탭 하나의 세 구역으로 합쳤다.
 const TABS = [['overview', '개요'], ['history', '변경 분석'], ['changes', '파일'], ['ai', 'AI 점검'], ['proposals', '개선 제안'], ['verify', '검증']];
 const TAB_IDS = TABS.map(([id]) => id);
+// 2026-11-12: AI 리뷰·리팩토링 결과는 파일 탭 안에서 이어진다(assist.js). 단계별 세 탭은 '고급'을 켤 때만 보인다.
+const ADVANCED = new Set(['ai', 'proposals', 'verify']);
+const ADVANCED_KEY = 'gitviz.workspace.advanced';
 const VIEW_TITLE = { start: '시작하기', projects: '프로젝트', inbox: '알림', account: '계정·연결', settings: '설정' };
-const ui = { view: 'projects', tab: 'overview', auto: true, projectId: '', listed: false };
+const ui = { view: 'projects', tab: 'overview', auto: true, projectId: '', listed: false, advanced: false };
+try { ui.advanced = localStorage.getItem(ADVANCED_KEY) === 'true'; } catch { /* Per-viewer convenience only. */ }
+const visibleTabs = () => TAB_IDS.filter(id => ui.advanced || !ADVANCED.has(id));
+function setAdvanced(on) {
+  ui.advanced = on;
+  try { localStorage.setItem(ADVANCED_KEY, String(on)); } catch { /* Per-viewer convenience only. */ }
+  for (const button of main.querySelectorAll('[data-advanced]')) button.hidden = !on;
+  $('ws-advanced-toggle').setAttribute('aria-pressed', String(on));
+  if (!on && ADVANCED.has(ui.tab) && ui.view === 'project') show('project', 'changes');
+}
 const data = { git: null, current: null, ids: new Set(), recovery: 0, review: 'idle', step: 1 };
 
 function node(tag, text, className) { const element = document.createElement(tag); if (text !== undefined) element.textContent = text; if (className) element.className = className; return element; }
@@ -80,8 +92,8 @@ function todo() {
   else if (data.recovery) item = ['복구가 필요한 제안이 있습니다.', '파일이 일부만 바뀌었을 수 있습니다. 먼저 복구하세요.', '복구 목록 보기', () => show('project', 'proposals', { focus: true })];
   else if (!git && error) item = ['프로젝트 정보를 읽지 못했습니다.', error, '다시 시도', () => picker.dispatchEvent(new Event('change'))];
   else if (!git) item = ['Git 상태를 읽는 중입니다.', '잠시 기다려 주세요.', null];
-  else if (data.review === 'result') item = ['AI 점검 결과가 있습니다.', '지적을 확인하고 맞는지 직접 판정하세요.', '결과 보기', () => { setStep(4); show('project', 'ai', { focus: true }); }];
-  else if (data.current) item = ['점검 대상이 준비됐습니다.', 'AI 점검을 시작하거나 테스트·린트를 실행해 보세요.', 'AI 점검 시작', () => show('project', 'ai', { focus: true })];
+  else if (data.review === 'result' && ui.advanced) item = ['AI 점검 결과가 있습니다.', '지적을 확인하고 맞는지 직접 판정하세요.', '결과 보기', () => { setStep(4); show('project', 'ai', { focus: true }); }];
+  else if (data.current) item = ['점검 대상이 준비됐습니다.', '파일 탭에서 AI 리뷰를 누르면 지적이 바로 아래에 나옵니다.', '파일 탭으로', () => show('project', 'changes', { focus: true })];
   else if (changes) item = [`변경 ${changes}개가 있습니다.`, '점검할 파일을 고르세요.', '파일 보기', () => show('project', 'changes', { focus: true })];
   else item = ['변경이 없습니다.', '변경이 없어도 파일 탭에서 파일을 골라 AI 리뷰·리팩토링을 할 수 있습니다.', '파일 고르기', () => show('project', 'changes', { focus: true })];
   $('ws-todo-title').textContent = item[0]; $('ws-todo-text').textContent = item[1];
@@ -136,7 +148,8 @@ function tagEvidence() {
 /* ---------- command palette ---------- */
 function commands() {
   const out = [];
-  if (ui.projectId) for (const [id, label] of TABS) out.push([`탭 이동: ${label}`, () => show('project', id, { focus: true })]);
+  if (ui.projectId) for (const [id, label] of TABS) if (visibleTabs().includes(id)) out.push([`탭 이동: ${label}`, () => show('project', id, { focus: true })]);
+  out.push([ui.advanced ? '고급 탭 숨기기' : '고급 탭 보이기 (AI 점검·개선 제안·검증)', () => setAdvanced(!ui.advanced)]);
   // 계정·연결 stays in the page but is hidden from navigation (AD-23 ④); 알림 is in the rail again since 2026-11-08.
   out.push(['프로젝트 목록', () => show('projects', undefined, { focus: true })], ['알림', () => show('inbox', undefined, { focus: true })], ['설정', () => show('settings', undefined, { focus: true })],
     ['프로젝트 폴더 등록', () => $('register-project').click()]);
@@ -191,17 +204,19 @@ $('ws-start-register').addEventListener('click', () => $('register-project').cli
 $('ws-health-retry').addEventListener('click', () => $('refresh').click());
 $('ws-health-diagnostics').addEventListener('click', () => $('export-diagnostics').click());
 main.querySelector('.ws-tabs').addEventListener('keydown', event => {
-  const index = TAB_IDS.indexOf(ui.tab);
-  const next = { ArrowRight: (index + 1) % TAB_IDS.length, ArrowLeft: (index + TAB_IDS.length - 1) % TAB_IDS.length, Home: 0, End: TAB_IDS.length - 1 }[event.key];
+  if (!event.target.closest?.('[data-tab]')) return;
+  const tabs = visibleTabs(); const index = Math.max(0, tabs.indexOf(ui.tab));
+  const next = { ArrowRight: (index + 1) % tabs.length, ArrowLeft: (index + tabs.length - 1) % tabs.length, Home: 0, End: tabs.length - 1 }[event.key];
   if (next === undefined) return;
-  event.preventDefault(); show('project', TAB_IDS[next]); $(`ws-tab-${TAB_IDS[next]}`).focus();
+  event.preventDefault(); show('project', tabs[next]); $(`ws-tab-${tabs[next]}`).focus();
 });
+$('ws-advanced-toggle').addEventListener('click', () => setAdvanced(!ui.advanced));
 document.addEventListener('keydown', event => {
   if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
   const key = event.key.toLowerCase();
   if (key === 'k') { event.preventDefault(); openPalette(); }
   else if (key === 'o') { event.preventDefault(); $('register-project').click(); }
-  else if (/^[1-9]$/.test(key) && Number(key) <= TAB_IDS.length && picker.value) { event.preventDefault(); show('project', TAB_IDS[Number(key) - 1], { focus: true }); }
+  else if (/^[1-9]$/.test(key) && Number(key) <= visibleTabs().length && picker.value) { event.preventDefault(); show('project', visibleTabs()[Number(key) - 1], { focus: true }); }
 });
 window.addEventListener('workspace-project-changed', event => {
   const id = event.detail?.projectId ?? ''; const changed = id !== ui.projectId; ui.projectId = id;
@@ -217,6 +232,8 @@ window.addEventListener('workspace-snapshot-changed', event => {
 });
 window.addEventListener('workspace-open-target', event => {
   const tab = { review: 'ai', validation: 'verify', proposal: 'proposals' }[event.detail.kind];
+  // A notification opens a specific run or proposal; reveal the advanced tab that holds it.
+  if (tab && !ui.advanced) setAdvanced(true);
   if (event.detail.kind === 'review') data.step = 4;
   if (tab) show('project', tab, { focus: false });
   stepper();
@@ -265,6 +282,6 @@ watch($('status'), () => {
 });
 
 const entry = readWorkspaceEntry(location.href);
-syncReviewFields(); renderProjects(); syncProjectLabels(); syncState();
+syncReviewFields(); renderProjects(); syncProjectLabels(); syncState(); setAdvanced(ui.advanced);
 const settingsEntry = !entry && isSettingsEntry(location.href);
 show(entry ? 'inbox' : settingsEntry ? 'settings' : 'projects', 'overview', { user: !!entry || settingsEntry });

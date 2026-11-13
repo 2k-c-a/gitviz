@@ -19,7 +19,7 @@ OPERATIONS = (
     "workspace.proposals.create", "workspace.proposals.get", "workspace.proposals.reject", "workspace.proposals.requestRevision", "workspace.proposals.approve", "workspace.proposals.apply", "workspace.proposals.recoveryPlan", "workspace.proposals.approveRecovery", "workspace.proposals.recover", "workspace.impact.prepare", "workspace.impact.read", "workspace.impact.append", "workspace.impact.finish", "workspace.impact.get", "workspace.impact.historical",
     "workspace.projects.setEditor", "workspace.impact.release", "workspace.files.locate", "workspace.proposals.listRecovery",
     "workspace.validation.prepare", "workspace.validation.approve", "workspace.validation.start", "workspace.validation.get", "workspace.validation.cancel", "workspace.comparisons.create", "workspace.comparisons.get",
-    "workspace.notifications.list", "workspace.notifications.markRead", "workspace.events.read",
+    "workspace.notifications.list", "workspace.notifications.markRead", "workspace.notifications.delete", "workspace.events.read",
     "workspace.projects.connectRemote", "workspace.remote.observeAnalysis", "workspace.remote.getAnalysis", "workspace.remote.connections", "workspace.reviews.cloudContext", "workspace.reviews.cloudExchange",
     "workspace.files.tree", "workspace.files.locatePath", "workspace.history.analyze",
 )

@@ -39,15 +39,23 @@ def refactor_output(user: str) -> dict[str, Any]:
 
 
 class RefactorValidatorTests(unittest.TestCase):
-    def test_target_hash_is_calculated_and_forged_preimage_rejected(self) -> None:
+    def test_target_hash_is_calculated_and_echoed_preimage_is_replaced_by_the_sent_one(self) -> None:
         source = b'x = 1\r\nprint(x)\r\n'
         file = {'fileId': uid(), 'facet': 'selected', 'path': 'a.py', 'source': source.decode(), 'preimageHash': hashlib.sha256(source).hexdigest()}
         raw = refactor_output(json.dumps({'purpose': 'fixture', 'files': [file]}))
         checked = validate_refactor(json.dumps(raw).encode(), [file])
         self.assertEqual(checked['changes'][0]['targetHash'], hashlib.sha256(b'x = 7\r\nprint(x)\r\n').hexdigest())
+        # A mistyped echo is replaced by the preimage the app sent; the patch is still validated against it.
         raw['changes'][0]['preimageHash'] = '0' * 64
+        checked = validate_refactor(json.dumps(raw).encode(), [file])
+        self.assertEqual(checked['changes'][0]['preimageHash'], file['preimageHash'])
+        # A patch whose context does not match the sent source is still rejected.
+        raw['changes'][0]['patch'] = raw['changes'][0]['patch'].replace('-x = 1', '-x = 5')
         with self.assertRaises(ScopeError):
             validate_refactor(json.dumps(raw).encode(), [file])
+        # A source that no longer matches its own preimage is rejected.
+        with self.assertRaises(ScopeError):
+            validate_refactor(json.dumps(refactor_output(json.dumps({'purpose': 'fixture', 'files': [file]}))).encode(), [{**file, 'preimageHash': '0' * 64}])
 
 
 class ApplyFixture(WorkspaceFixture):

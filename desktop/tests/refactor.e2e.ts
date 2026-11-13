@@ -77,17 +77,20 @@ void app.whenReady().then(async () => {
     await wait(`document.querySelectorAll('#change-selection input').length>=2`);
     phase = 'one-click-refactor';
     // Selecting files and pressing AI 리팩토링 captures, previews, starts and turns the result into a proposal.
+    await evaluate(`window.__snapshots=[];window.addEventListener('workspace-snapshot-changed',event=>{if(event.detail)window.__snapshots.push(event.detail)})`);
     await evaluate(`for(const item of document.querySelectorAll('#change-selection input'))if(['app.py','app.ts'].includes(item.dataset.path))item.checked=true;document.getElementById('quick-refactor').click()`);
-    await wait(`document.getElementById('proposal-view').textContent.includes('pending')`);
-    assert.equal(await evaluate(`document.getElementById('review-kind').value==='refactor' && document.getElementById('review-preview-meta').textContent.includes('user-pc') && !document.getElementById('ws-panel-proposals').hidden`), true);
+    // 2026-11-12: the result stays in the 파일 tab as a diff card (assist.js); the advanced proposal view gets the same proposal.
+    await wait(`!!document.querySelector('#assist .ws-assist-proposal .ws-diff-add') && document.getElementById('proposal-view').textContent.includes('pending')`);
+    // The flow no longer jumps to the advanced proposals tab.
+    assert.equal(await evaluate(`document.getElementById('ws-panel-proposals').hidden`), true);
     assert.deepEqual(await hashes(root), before);
     await assert.rejects(evaluate(`workspace.applyProposal({projectId:${JSON.stringify(project.id)},proposalId:crypto.randomUUID(),approvalId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID()})`), /APPROVAL_REQUIRED/);
     // Owner decision (2026-11-01): the single 적용 button approves and applies without a native prompt.
-    phase = 'apply'; await evaluate(`document.querySelectorAll('#proposal-view button')[0].click()`);
+    phase = 'apply'; await evaluate(`document.querySelector('#assist .ws-assist-proposal button.btn-primary').click()`);
     await wait(`document.querySelector('#proposal-view h3')?.textContent.startsWith('applied')`);
     phase = 'auto-compare';
-    await wait(`/탭에서 확인|만들지 못했/.test(document.getElementById('proposal-message').textContent)`);
-    assert.equal(await evaluate(`document.getElementById('proposal-message').textContent.includes('탭에서 확인') && document.getElementById('comparison-view').childElementCount>0`), true);
+    await wait(`!!document.querySelector('#assist .ws-assist-summary')`);
+    assert.equal(await evaluate(`document.getElementById('comparison-view').childElementCount>0 && document.querySelector('#assist .ws-assist-summary').textContent.includes('영향 범위')`), true);
     const applied = await hashes(root); assert.equal(before['.git/index'], applied['.git/index']);
     assert.notEqual(before['app.py'], applied['app.py']); assert.notEqual(before['app.ts'], applied['app.ts']);
     phase = 'impact'; await evaluate(`document.getElementById('analyze-impact').click()`);
@@ -99,7 +102,8 @@ void app.whenReady().then(async () => {
     await wait(`document.querySelectorAll('#change-selection input').length>=2`);
     await evaluate(`for(const item of document.querySelectorAll('#change-selection input'))if(['app.py','app.ts'].includes(item.dataset.path))item.checked=true;document.getElementById('capture-changes').click()`);
     await wait(`document.getElementById('capture-message').textContent==='선택한 입력을 고정했습니다.'`);
-    await evaluate(`document.getElementById('review-purpose').value='interrupt fixture';document.getElementById('review-purpose').dispatchEvent(new Event('input'));document.getElementById('review-preview').click()`);
+    // The advanced AI 점검 form keeps its own kind; the inline flow no longer flips it, so pick refactor here.
+    await evaluate(`document.getElementById('review-kind').value='refactor';document.getElementById('review-kind').dispatchEvent(new Event('change'));document.getElementById('review-purpose').value='interrupt fixture';document.getElementById('review-purpose').dispatchEvent(new Event('input'));document.getElementById('review-preview').click()`);
     await wait(`document.getElementById('review-preview-meta').textContent.includes('user-pc')`);
     await evaluate(`document.getElementById('review-consent').click();document.getElementById('review-start').click()`);
     await wait(`document.getElementById('review-result').textContent.includes('succeeded')`);
@@ -113,6 +117,13 @@ void app.whenReady().then(async () => {
     nativeConsent = true; await evaluate(`document.querySelectorAll('#proposal-view button')[3].click()`);
     await wait(`document.querySelector('#proposal-view h3')?.textContent.startsWith('restored')`);
     assert.deepEqual(await hashes(root), applied);
+    phase = 'second-fix-after-apply';
+    // A second card from the same review still holds the pre-apply snapshot; its fix must re-read the applied file.
+    await evaluate(`document.getElementById('proposal-view').replaceChildren();window.dispatchEvent(new CustomEvent('workspace-assist',{detail:{kind:'refactor',snapshot:window.__snapshots[0]}}))`);
+    await wait(`!!document.querySelector('#assist .ws-assist-proposal .ws-diff-add') && document.getElementById('proposal-view').textContent.includes('pending')`);
+    assert.equal(await evaluate(`!document.querySelector('#assist .ws-banner-warn')`), true);
+    await evaluate(`[...document.querySelectorAll('#assist .ws-assist-proposal button')].find(button=>button.textContent==='거절').click()`);
+    await wait(`document.querySelector('#assist .ws-assist-proposal').textContent.includes('거절했습니다')`);
     process.stdout.write('PASS P06 real renderer/main/source agent, refactor generation/one-button apply/auto before-after comparison/recovery, Python/TS worker evidence, index and external-change preservation\n');
 
   } finally { const diagnostic = await readFile(join(directory, 'p06-fixture-apply-error.json'), 'utf8').catch(() => ''); if (diagnostic) process.stderr.write(diagnostic + '\n'); validation(); impact(); proposals(); health(); projects(); window.destroy(); await agent.stop(); clearTimeout(deadline); await rm(temporary, { recursive: true, force: true }); }

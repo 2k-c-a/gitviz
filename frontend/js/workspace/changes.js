@@ -169,7 +169,8 @@ async function capture() {
 document.getElementById('capture-changes').addEventListener('click', () => { void capture(); });
 for (const [id, kind] of [['quick-review', 'review'], ['quick-refactor', 'refactor']]) document.getElementById(id).addEventListener('click', async () => {
   const value = await capture();
-  if (value) window.dispatchEvent(new CustomEvent('workspace-quick-ai', { detail: { kind, snapshotId: value.snapshotId } }));
+  // The 파일 tab shows review/refactor results inline (assist.js); the advanced AI 점검 tab keeps its step-by-step flow.
+  if (value) window.dispatchEvent(new CustomEvent('workspace-assist', { detail: { kind, snapshot: value } }));
 });
 document.getElementById('detect-validation').addEventListener('click', async () => {
   const projectId = picker.value; const turn = generation;
