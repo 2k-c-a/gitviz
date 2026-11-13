@@ -154,7 +154,7 @@ PowerPoint 1개(15 MB, 캡스톤 발표). `.gitignore`의 `/outputs/`로 제외.
 
 ### 3.13 `.github/`
 
-워크플로 3개: `backend-validation.yml`(문서 검사 + Postgres/Redis 서비스 컨테이너로 백엔드 테스트 약 37단계 + AI 큐 통합), `windows-desktop.yml`(경로 필터 + 고정 픽스처 검증, Windows 러너), `windows-release.yml`(수동 실행, 서명 없는 설치 프로그램 빌드, 게시 없음). 경로를 직접 적으므로 폴더 이동의 1차 영향 지점이다.
+워크플로 3개: `backend-validation.yml`(문서 검사 + Postgres/Redis 서비스 컨테이너로 백엔드 테스트 약 37단계 + AI 큐 통합), `windows-desktop.yml`(경로 필터 + 고정 픽스처 검증, Windows 러너), `windows-release.yml`(수동 실행 또는 `v*` 태그, 서명 없는 설치 프로그램 빌드, 태그면 초안 Release 생성). 경로를 직접 적으므로 폴더 이동의 1차 영향 지점이다.
 
 ### 3.14 `.claude/`, `.validation/`, `.ruff_cache/`
 

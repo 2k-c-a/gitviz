@@ -14,7 +14,7 @@ export class Agent {
   private stopping = false;
   private exit: Promise<void> = Promise.resolve();
   // appVersion comes from app.getVersion() (desktop/package.json); the agent reports its own version in the handshake reply.
-  constructor(private readonly contracts: Contracts, private readonly launch: typeof spawn = spawn, private readonly appVersion = '0.8.0') {}
+  constructor(private readonly contracts: Contracts, private readonly launch: typeof spawn = spawn, private readonly appVersion = '1.0.0') {}
   health(): Health { return structuredClone(this.state); }
 
   async start(executable: string, dataDirectory: string, key: () => Promise<Buffer>): Promise<void> {
