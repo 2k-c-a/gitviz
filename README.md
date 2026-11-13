@@ -145,7 +145,9 @@ node desktop\scripts\audit-bundle.mjs build-output\desktop\GitVizWorkspace-win32
 3. Git이 없거나 오래됐으면 **필요한 항목 설치**를 누른다. 공식 배포처(github.com/git-for-windows)의 고정 버전(2.56.0.windows.4)을 받아 크기와 SHA-256을 확인한 뒤, 관리자 권한 없이 내 계정(`%LOCALAPPDATA%\Programs\Git`)에 조용히 설치한다. 이미 정상인 Git은 다시 설치하지 않는다. 끝나면 **앱 다시 시작**을 누른다.
 4. 내려받기·설치가 실패하면 이유를 화면에 보여 주고, **공식 다운로드 페이지 열기**로 직접 설치할 수 있다. 검사·설치 결과(항목 상태와 오류 코드만, 경로·계정 없음)는 앱 로그에 남는다.
 
-현재 앱(배포한 0.7.0, 다음 0.8.0)은 코드 서명이 없어 설치 때 Windows SmartScreen 경고가 나온다. 설치본은 `gitviz-join://` 초대 링크를 연다. Git 설치 경로와 직접 설치 방법은 [설치 가이드 §0](docs/deployment/INSTALLATION_GUIDE.md)에 있다. 앱 로그는 `%APPDATA%\gitviz-workspace\logs\app.log`에 남는다. 설치·업데이트 상태는 [Windows 데스크톱 안내](docs/operations/windows-desktop.md)를 따른다.
+**내려받기:** 설치 파일은 [GitHub Releases](https://github.com/2k-c-a/gitviz/releases/latest)에 올린다(1.0.0부터). `v<버전>` 태그를 푸시하면 `windows-release.yml`이 검증·빌드한 뒤 초안 Release를 만들고, 확인 후 게시한다([Windows 데스크톱 안내](docs/operations/windows-desktop.md#github-releases-배포)).
+
+현재 앱(1.0.0)은 코드 서명이 없어 설치 때 Windows SmartScreen 경고가 나온다. 설치본은 `gitviz-join://` 초대 링크를 연다. Git 설치 경로와 직접 설치 방법은 [설치 가이드 §0](docs/deployment/INSTALLATION_GUIDE.md)에 있다. 앱 로그는 `%APPDATA%\gitviz-workspace\logs\app.log`에 남는다. 설치·업데이트 상태는 [Windows 데스크톱 안내](docs/operations/windows-desktop.md)를 따른다.
 
 ### 앱 테스트
 

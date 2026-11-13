@@ -5,7 +5,7 @@
 ## 현재 상태 (2026-11-02)
 
 - 대상은 Windows 11 x64, 사용자별 설치(`%LocalAppData%`, 관리자 권한 불필요)다. 업데이트는 서명 확인 후 **수동**이며 자동 다운로드·설치·삭제는 하지 않는다. Squirrel의 자동 업데이트(`Update.exe`)는 사용하지 않는다.
-- 공개 신뢰 서명 인증서와 publisher는 없다. 배포용 설치 파일은 아직 제공하지 않는다.
+- 공개 신뢰 서명 인증서와 publisher는 없다. 1.0.0부터 서명 없는 설치 파일을 [GitHub Releases](https://github.com/2k-c-a/gitviz/releases)로 배포한다(2026-11-13 소유자 결정, 아래 [GitHub Releases 배포](#github-releases-배포)).
 - maker-squirrel `8.0.1`을 설치했고(`npm run make`), 서명 없는 설치기와 자체 서명 개발 설치기를 로컬에서 빌드했다.
 - 서명 없는 설치기의 설치·실행·0.7.0→0.7.1 업그레이드·제거는 clean VM(표준 사용자)에서 확인했다(`tools/vm/test_installer_vm.ps1`, [기록](../migration/validation/p10-partial-2026-10-28.md)). 개발 PC에는 설치하지 않았다.
 - 제거 뒤 설치 폴더에 파일이 남던 문제는 고쳤다(대화형·무인 제거 모두, [K-05](../deployment/KNOWN_ISSUES.md)). 사용자 데이터(`%APPDATA%\gitviz-workspace`)는 제거 후에도 보존된다. 0.7.0은 서명 없는 배포이며 판정은 [최종 배포 판정](../deployment/FINAL_RELEASE_REVIEW_0.7.0.md)을 따른다.
@@ -28,7 +28,22 @@ npm --prefix desktop run make      # build-output/desktop/make/squirrel.windows/
 
 ## 앱 연결 상태
 
-렌더러에는 읽기 전용 `desktop.update.status()`만 노출된다. 릴리스 위치가 설정되기 전에는 항상 `unconfigured`를 반환하며 네트워크 조회·다운로드·설치를 하지 않는다. `.github/workflows/windows-release.yml`은 수동 실행 전용 초안으로, 서명 없는 설치기·nupkg·RELEASES·패키지 zip·`manifest.json`·SHA-256을 워크플로 artifact(보관 7일)로만 올리고 릴리스를 게시하지 않는다. 릴리스 게시와 `manifest.json`의 URL 유효화는 수동 작업이다.
+렌더러에는 읽기 전용 `desktop.update.status()`만 노출된다. 릴리스 위치가 설정되기 전에는 항상 `unconfigured`를 반환하며 네트워크 조회·다운로드·설치를 하지 않는다. 앱 안 업데이트 확인은 1.0.0에서도 꺼져 있다(릴리스 위치 미설정, 서명 확인 단계 때문에 서명 없는 설치기는 통과하지 않는다).
+
+## GitHub Releases 배포
+
+`.github/workflows/windows-release.yml`이 전체 픽스처 검증을 통과한 뒤 서명 없는 설치기·nupkg·RELEASES·패키지 zip·`manifest.json`·`SHA256SUMS.txt`를 만든다.
+
+- **수동 실행(workflow_dispatch):** 워크플로 artifact(보관 7일)로만 올린다.
+- **태그 푸시:** `desktop/package.json`의 버전과 같은 `v<버전>` 태그(예: `v1.0.0`)를 푸시하면, 같은 파일로 **초안(draft) Release**를 만든다. 태그와 버전이 다르면 빌드 전에 실패한다. 쓰기 권한(`contents: write`)은 프로젝트 코드를 실행하지 않는 `release` 작업에만 준다.
+- 초안의 파일과 설명을 확인한 뒤 GitHub에서 **Publish release**를 누르면 공개된다. 공개해야 `releases/latest`와 `manifest.json`의 URL이 유효해진다.
+- CI 빌드는 `GITVIZ_BUILD_SERVER_ORIGIN` 없이 만들므로 로컬 기능만 켜진 설치본이다. 서버에 연결되는 설치본은 주소를 넣어 직접 빌드한다([README](../../README.md)).
+
+```powershell
+# 버전을 올려 main에 병합한 뒤
+git tag v1.0.0 origin/main
+git push origin v1.0.0
+```
 
 ## 업데이트 검증 규칙
 

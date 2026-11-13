@@ -1,9 +1,13 @@
-name: Windows desktop release (DRAFT, unsigned, no publishing)
-# Draft: manual trigger only. It builds an unsigned Squirrel installer and package and uploads them as a workflow artifact.
-# It never creates a GitHub Release, signs, or calls an external service. Signing and release publishing are
-# intentionally absent until a certificate and release location are decided and approved.
+name: Windows desktop release (unsigned)
+# Builds the unsigned Squirrel installer and package after the full fixture gate.
+# - Manual run (workflow_dispatch): uploads the files as a workflow artifact only (7 days).
+# - Pushing a tag v<desktop/package.json version> (e.g. v1.0.0): also creates a DRAFT GitHub Release with the files.
+#   A maintainer reviews the draft and publishes it by hand. No code signing (owner decision, 2026-11-13).
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 permissions:
   contents: read
 jobs:
@@ -14,6 +18,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Tag must match the app version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = (Get-Content desktop/package.json -Raw | ConvertFrom-Json).version
+          if ('${{ github.ref_name }}' -ne "v$version") { throw "Tag ${{ github.ref_name }} does not match desktop/package.json version $version." }
       - uses: actions/setup-node@v4
         with:
           node-version: '24.20.0'
@@ -60,7 +70,7 @@ jobs:
           Copy-Item "$make/*" $out
           $version = (Get-Content desktop/package.json -Raw | ConvertFrom-Json).version
           $setupItem = Get-Item (Join-Path $out 'GitVizWorkspaceSetup.exe')
-          # Same shape desktop/src/update.ts parses; the URL is only valid once a release with this tag is published manually.
+          # Same shape desktop/src/update.ts parses; the URL is valid once the release with this tag is published.
           [ordered]@{ version = $version; assetName = $setupItem.Name; sha256 = (Get-FileHash $setupItem.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); size = $setupItem.Length; url = "https://github.com/${{ github.repository }}/releases/download/v$version/$($setupItem.Name)" } | ConvertTo-Json | Set-Content (Join-Path $out 'manifest.json') -Encoding utf8
           Get-ChildItem $out -File | Where-Object Name -ne 'manifest.json' | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" } | Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii
       - name: Upload unsigned package artifact
@@ -78,3 +88,40 @@ jobs:
           path: ${{ runner.temp }}/gitviz-evidence
           if-no-files-found: ignore
           retention-days: 7
+
+  release:
+    # Only for tag pushes. Write access is limited to this job, which runs no project code.
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-unsigned-package
+          path: release-files
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cat > notes.md <<'EOF'
+          ## 설치
+
+          1. 아래 **Assets**에서 `GitVizWorkspaceSetup.exe`를 받아 실행합니다. 관리자 권한 없이 내 계정에 설치되고, 끝나면 앱이 바로 열립니다.
+          2. 코드 서명이 없는 설치 파일이라 **"Windows의 PC 보호"** 창이 뜰 수 있습니다. **추가 정보 → 실행**을 누르면 설치됩니다.
+          3. 받은 파일이 맞는지 확인하려면 PowerShell에서 `Get-FileHash .\GitVizWorkspaceSetup.exe`의 값을 `SHA256SUMS.txt`와 비교합니다.
+
+          Git for Windows가 없으면 앱의 **시작하기 > 시스템 환경 확인**에서 설치할 수 있습니다.
+
+          | 파일 | 설명 |
+          |---|---|
+          | `GitVizWorkspaceSetup.exe` | 설치 파일 (Windows 10/11 x64) |
+          | `GitVizWorkspace-win32-x64-unsigned.zip` | 설치 없이 실행하는 압축본 |
+          | `*.nupkg`, `RELEASES`, `manifest.json` | 업데이트용 파일 |
+          | `SHA256SUMS.txt` | 파일별 SHA-256 |
+          EOF
+          gh release create "$TAG" release-files/* --draft --verify-tag --title "GitViz Workspace $TAG" --notes-file notes.md
