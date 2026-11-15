@@ -3,6 +3,8 @@ name: Windows desktop release (unsigned)
 # - Manual run (workflow_dispatch): uploads the files as a workflow artifact only (7 days).
 # - Pushing a tag v<desktop/package.json version> (e.g. v1.0.0): also creates a DRAFT GitHub Release with the files.
 #   A maintainer reviews the draft and publishes it by hand. No code signing (owner decision, 2026-11-13).
+# - Repository variable GITVIZ_SERVER_ORIGIN (a bare https:// origin) is embedded as the sign-in server, so installs can sign
+#   in and use server features. Tag builds require it; manual runs without it make a local-only package.
 on:
   workflow_dispatch:
   push:
@@ -47,6 +49,23 @@ jobs:
         env:
           GITVIZ_CI_GOLDEN_SCHEMA: '1'
         run: ./tools/validation/validate_workspace_windows.ps1 -Node (Get-Command node.exe).Source -EvidenceDirectory "$env:RUNNER_TEMP/gitviz-evidence"
+      - name: Embed the sign-in server origin
+        shell: pwsh
+        env:
+          GITVIZ_BUILD_SERVER_ORIGIN: ${{ vars.GITVIZ_SERVER_ORIGIN }}
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          if (-not $env:GITVIZ_BUILD_SERVER_ORIGIN) {
+            if ($env:IS_TAG -eq 'true') { throw 'Set the repository variable GITVIZ_SERVER_ORIGIN before tagging a release.' }
+            Write-Host 'GITVIZ_SERVER_ORIGIN is not set: local-only package.'
+            exit 0
+          }
+          # The gate built dist without an origin; rebuild so dist/config/server.json carries it into app.asar.
+          npm --prefix desktop run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $embedded = (Get-Content desktop/dist/config/server.json -Raw | ConvertFrom-Json).origin
+          if ($embedded -ne $env:GITVIZ_BUILD_SERVER_ORIGIN) { throw "dist/config/server.json has '$embedded'." }
+          Write-Host "Embedded server origin: $embedded"
       - name: Make installer and package (unsigned)
         shell: pwsh
         run: |
@@ -116,6 +135,8 @@ jobs:
           3. 받은 파일이 맞는지 확인하려면 PowerShell에서 `Get-FileHash .\GitVizWorkspaceSetup.exe`의 값을 `SHA256SUMS.txt`와 비교합니다.
 
           Git for Windows가 없으면 앱의 **시작하기 > 시스템 환경 확인**에서 설치할 수 있습니다.
+
+          **로그인과 서버 기능:** 오른쪽 위 계정 메뉴에서 GitHub로 로그인하면 저장소 분석·커뮤니티·AI 분석을 쓸 수 있습니다. 이 기능들은 GitViz 서버가 켜져 있을 때만 동작하고, 내 PC 프로젝트 기능은 서버 없이도 동작합니다. 로그인할 때 브라우저에 ngrok 안내 화면이 나오면 **Visit Site**를 누릅니다.
 
           | 파일 | 설명 |
           |---|---|
