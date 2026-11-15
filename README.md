@@ -119,7 +119,38 @@ npm --prefix desktop run build; npm --prefix desktop run package
 5. 그 주소를 넣은 설치 파일을 만든다(인증서는 넣지 않는다): `$env:GITVIZ_BUILD_SERVER_ORIGIN='https://<도메인>'` → `npm --prefix desktop run build` → `npm --prefix desktop run make`. 만든 `GitVizWorkspaceSetup.exe`를 모든 PC(호스트 포함)에 설치한다.
 6. PC마다 다른 GitHub 계정으로 로그인한다. 호스트가 저장소를 분석하면 그 저장소의 커뮤니티가 생기고, 기여자가 아닌 계정은 호스트가 보낸 초대 링크로 들어온다.
 
-ngrok 무료 도메인은 브라우저로 처음 열 때 안내 페이지를 한 번 보여 준다(**Visit Site**를 누르면 계속된다). 시연 동안만 서버와 터널을 켜 두고, 끝나면 둘 다 끈다(`staging_stack.ps1 -Mode Down`, ngrok 창 닫기).
+ngrok 무료 도메인은 브라우저로 처음 열 때 안내 페이지를 한 번 보여 준다(**Visit Site**를 누르면 계속된다). 시연 동안만 서버와 터널을 켜 두고, 끝나면 둘 다 끈다(`staging_stack.ps1 -Mode Down`, ngrok 창 닫기). 배포판(1.0.1~)이 쓰는 서버라면 끄지 않는다(3-2).
+
+### 3-2. 배포판의 서버 켜기·옮기기 (1.0.1부터)
+
+[GitHub Releases](https://github.com/2k-c-a/gitviz/releases/latest)의 설치 파일에는 로그인 서버 주소로 저장소 변수 `GITVIZ_SERVER_ORIGIN`(현재 `https://curvy-calculate-dedicator.ngrok-free.dev`)이 들어 있다. 이 주소의 서버는 3-1과 같은 구성(호스트 PC의 3단계 서버 + ngrok 고정 도메인)이다. 설치한 앱의 로그인·저장소 분석·커뮤니티·AI 분석은 **호스트 PC에서 서버와 ngrok이 켜져 있을 때만** 된다. 내 PC 프로젝트 기능은 서버 없이 된다.
+
+**호스트 PC에서 켜기** (3단계 준비와 `staging.env`의 `PUBLIC_ORIGIN`·시연용 OAuth 값이 이미 있는 PC):
+
+```powershell
+pwsh tools/vm/staging_stack.ps1 -Mode Up       # API (https://localhost:8443)
+pwsh tools/vm/staging_stack.ps1 -Mode Worker   # 저장소 분석 작업 처리
+ngrok http https://localhost:8443 --url=https://curvy-calculate-dedicator.ngrok-free.dev
+pwsh tools/vm/staging_stack.ps1 -Mode Status   # 상태 확인
+```
+
+끌 때는 `-Mode Down`을 실행하고 ngrok 창을 닫는다. PC를 다시 켜면 위 세 명령을 다시 실행한다.
+
+**다른 PC로 옮기기** (호스트 PC를 쓸 수 없을 때). 소스 코드만으로는 부족하고, Git에 없는 다음 세 가지가 필요하다.
+
+1. **ngrok 계정:** 고정 도메인은 그 도메인을 받은 ngrok 계정에 묶여 있다. 새 PC에서 같은 계정의 authtoken으로 `ngrok config add-authtoken <토큰>`을 실행해야 같은 주소를 쓸 수 있다. 한 도메인은 한 번에 한 PC에서만 열 수 있다.
+2. **GitHub OAuth 앱 값:** callback이 `https://<도메인>/api/auth/callback`인 시연용 OAuth 앱의 Client ID와 Client secret. secret을 잃었으면 GitHub의 OAuth 앱 설정에서 새로 만든다.
+3. **데이터(선택):** DB와 비밀키는 호스트 PC(로컬 PostgreSQL, `.validation\staging\`)에만 있다. 새 PC는 빈 DB로 시작한다. 사용자는 다시 로그인하고 저장소는 다시 분석해야 하며, 커뮤니티 글·채팅·일정은 옮겨지지 않는다.
+
+새 PC에서는 3단계의 준비(PostgreSQL·Redis·`.venv`·`-Mode Prepare`)를 한 뒤 `.validation\staging\staging.env`에 다음을 적고, 위의 켜기 명령을 실행한다.
+
+```text
+PUBLIC_ORIGIN=https://curvy-calculate-dedicator.ngrok-free.dev
+GITHUB_CLIENT_ID=<시연용 OAuth 앱>
+GITHUB_CLIENT_SECRET=<시연용 OAuth 앱>
+```
+
+**도메인을 바꿀 때:** 설치 파일에 주소가 들어 있으므로 이미 설치한 앱은 새 주소로 갈 수 없다. 저장소 변수 `GITVIZ_SERVER_ORIGIN`을 새 주소로 바꾸고, OAuth 앱의 URL도 새 주소로 바꾼 뒤, 버전을 올려 `v<버전>` 태그로 새로 배포한다([Windows 데스크톱 안내](docs/operations/windows-desktop.md#github-releases-배포)).
 
 ### 4. 설치 파일 만들기 (선택)
 
