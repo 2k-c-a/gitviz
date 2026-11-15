@@ -35,14 +35,14 @@ npm --prefix desktop run make      # build-output/desktop/make/squirrel.windows/
 `.github/workflows/windows-release.yml`이 전체 픽스처 검증을 통과한 뒤 서명 없는 설치기·nupkg·RELEASES·패키지 zip·`manifest.json`·`SHA256SUMS.txt`를 만든다.
 
 - **수동 실행(workflow_dispatch):** 워크플로 artifact(보관 7일)로만 올린다.
-- **태그 푸시:** `desktop/package.json`의 버전과 같은 `v<버전>` 태그(예: `v1.0.1`)를 푸시하면, 같은 파일로 **초안(draft) Release**를 만든다. 태그와 버전이 다르면 빌드 전에 실패한다. 쓰기 권한(`contents: write`)은 프로젝트 코드를 실행하지 않는 `release` 작업에만 준다.
+- **태그 푸시:** `desktop/package.json`의 버전과 같은 `v<버전>` 태그(예: `v1.0.2`)를 푸시하면, 같은 파일로 **초안(draft) Release**를 만든다. 태그와 버전이 다르면 빌드 전에 실패한다. 쓰기 권한(`contents: write`)은 프로젝트 코드를 실행하지 않는 `release` 작업에만 준다.
 - 초안의 파일과 설명을 확인한 뒤 GitHub에서 **Publish release**를 누르면 공개된다. 공개해야 `releases/latest`와 `manifest.json`의 URL이 유효해진다.
 - **서버 주소:** 저장소 변수 `GITVIZ_SERVER_ORIGIN`(`https://` 원점만)을 `GITVIZ_BUILD_SERVER_ORIGIN`으로 넣어 다시 빌드하므로, 설치본이 그 서버로 로그인한다(1.0.1부터, 2026-11-15 소유자 결정). 태그 빌드는 이 변수가 없으면 실패하고, 수동 실행은 변수가 없으면 로컬 기능만 켜진 설치본을 만든다. 1.0.1의 서버는 개발 PC의 스테이징(`tools/vm/staging_stack.ps1`)을 ngrok 고정 도메인으로 연 것이라, 그 PC와 ngrok이 켜져 있을 때만 서버 기능이 동작한다. 주소가 바뀌면 다시 빌드해야 한다.
 
 ```powershell
 # 버전을 올려 main에 병합한 뒤
-git tag v1.0.1 origin/main
-git push origin v1.0.1
+git tag v1.0.2 origin/main
+git push origin v1.0.2
 ```
 
 ## 업데이트 검증 규칙

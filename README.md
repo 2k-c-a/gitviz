@@ -191,7 +191,7 @@ node desktop\scripts\audit-bundle.mjs build-output\desktop\GitVizWorkspace-win32
 
 **내려받기:** 설치 파일은 [GitHub Releases](https://github.com/2k-c-a/gitviz/releases/latest)에 올린다(1.0.0부터). `v<버전>` 태그를 푸시하면 `windows-release.yml`이 검증·빌드한 뒤 초안 Release를 만들고, 확인 후 게시한다([Windows 데스크톱 안내](docs/operations/windows-desktop.md#github-releases-배포)). 1.0.1부터 설치본에 로그인 서버 주소(저장소 변수 `GITVIZ_SERVER_ORIGIN`)가 들어가, 서버가 켜져 있으면 로그인·저장소 분석·커뮤니티·AI 분석을 쓸 수 있다.
 
-현재 앱(1.0.1)은 코드 서명이 없어 설치 때 Windows SmartScreen 경고가 나온다. 설치본은 `gitviz-join://` 초대 링크를 연다. Git 설치 경로와 직접 설치 방법은 [설치 가이드 §0](docs/deployment/INSTALLATION_GUIDE.md)에 있다. 앱 로그는 `%APPDATA%\gitviz-workspace\logs\app.log`에 남는다. 설치·업데이트 상태는 [Windows 데스크톱 안내](docs/operations/windows-desktop.md)를 따른다.
+현재 앱(1.0.2)은 코드 서명이 없어 설치 때 Windows SmartScreen 경고가 나온다. 설치본은 `gitviz-join://` 초대 링크를 연다. Git 설치 경로와 직접 설치 방법은 [설치 가이드 §0](docs/deployment/INSTALLATION_GUIDE.md)에 있다. 앱 로그는 `%APPDATA%\gitviz-workspace\logs\app.log`에 남는다. 설치·업데이트 상태는 [Windows 데스크톱 안내](docs/operations/windows-desktop.md)를 따른다.
 
 ### 앱 테스트
 

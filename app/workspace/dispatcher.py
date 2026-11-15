@@ -113,7 +113,7 @@ class Dispatcher:
             reject_links(self.directory)
             self.directory.mkdir(parents=True, exist_ok=True)
             self.secure(self.directory)
-            result = {"agentVersion": "1.0.1", "protocolVersion": 1,
+            result = {"agentVersion": "1.0.2", "protocolVersion": 1,
                       "localSchemaRange": {"min": SCHEMA_VERSION, "max": SCHEMA_VERSION}, "capabilities": list(OPERATIONS), "state": "initializing"}
         elif not self.negotiated:
             return {**response, "ok": False, "error": {"code": "UNSUPPORTED_PROTOCOL", "message": "초기화가 필요합니다.", "retryable": False, "details": {}}}
