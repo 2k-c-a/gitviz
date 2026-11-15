@@ -103,7 +103,7 @@ npm --prefix desktop run build; npm --prefix desktop run package
 
 앱 오른쪽 위 **로그인**을 누르면 브라우저에서 GitHub 로그인 후 앱으로 자동으로 돌아온다. 상태 확인은 `-Mode Status`, 종료는 `-Mode Down`.
 
-- `GITVIZ_SERVER_ORIGIN`은 빌드에 서버 주소를 넣지 않은 앱에서만 쓰인다. 배포용 앱은 `$env:GITVIZ_BUILD_SERVER_ORIGIN = 'https://<서버 주소>'`로 빌드하면 그 주소가 앱에 들어간다.
+- `GITVIZ_SERVER_ORIGIN`이 있으면 빌드에 넣은 서버 주소보다 우선한다(설치본 포함, 1.0.2부터. 3-2의 "서버 주소 바꾸기"). 배포용 앱은 `$env:GITVIZ_BUILD_SERVER_ORIGIN = 'https://<서버 주소>'`로 빌드하면 그 주소가 기본값으로 들어간다.
 - `GITVIZ_BUILD_SERVER_CA`(인증서 넣기)는 `localhost`·`127.0.0.1` 서버 주소에만 쓸 수 있고, 인증서가 그 주소를 가리켜야 한다. 배포용 앱에는 넣지 않는다.
 - 음성 채팅의 다른 네트워크 사이 연결은 서버 환경변수 `VOICE_STUN_URLS`의 STUN 서버로 한다. 예시 설정과 스테이징은 공개 STUN(`stun.l.google.com`)을 쓴다. 이때 STUN 제공자에게 참여자의 공인 IP 주소가 보이지만 음성은 가지 않는다. 회사·학교 방화벽처럼 직접 연결이 막힌 곳까지 되게 하려면 `VOICE_TURN_URLS`·`VOICE_TURN_SECRET`로 TURN 서버(coturn)를 더한다([.env.example](.env.example)). 비우면 같은 네트워크 안에서만 연결된다.
 - 공동 편집은 앱에서만 된다. 공유한 사람(호스트) PC의 파일 하나(100KB 이하 텍스트)를 3명까지 함께 고치고, 저장은 호스트 앱이 자기 파일에 한다. 서버는 변경분을 전달만 하고 파일 내용을 저장하지 않는다.
@@ -119,7 +119,51 @@ npm --prefix desktop run build; npm --prefix desktop run package
 5. 그 주소를 넣은 설치 파일을 만든다(인증서는 넣지 않는다): `$env:GITVIZ_BUILD_SERVER_ORIGIN='https://<도메인>'` → `npm --prefix desktop run build` → `npm --prefix desktop run make`. 만든 `GitVizWorkspaceSetup.exe`를 모든 PC(호스트 포함)에 설치한다.
 6. PC마다 다른 GitHub 계정으로 로그인한다. 호스트가 저장소를 분석하면 그 저장소의 커뮤니티가 생기고, 기여자가 아닌 계정은 호스트가 보낸 초대 링크로 들어온다.
 
-ngrok 무료 도메인은 브라우저로 처음 열 때 안내 페이지를 한 번 보여 준다(**Visit Site**를 누르면 계속된다). 시연 동안만 서버와 터널을 켜 두고, 끝나면 둘 다 끈다(`staging_stack.ps1 -Mode Down`, ngrok 창 닫기).
+ngrok 무료 도메인은 브라우저로 처음 열 때 안내 페이지를 한 번 보여 준다(**Visit Site**를 누르면 계속된다). 시연 동안만 서버와 터널을 켜 두고, 끝나면 둘 다 끈다(`staging_stack.ps1 -Mode Down`, ngrok 창 닫기). 배포판(1.0.1~)이 쓰는 서버라면 끄지 않는다(3-2).
+
+### 3-2. 배포판의 서버 켜기·옮기기 (1.0.1부터)
+
+[GitHub Releases](https://github.com/2k-c-a/gitviz/releases/latest)의 설치 파일에는 로그인 서버 주소로 저장소 변수 `GITVIZ_SERVER_ORIGIN`(현재 `https://curvy-calculate-dedicator.ngrok-free.dev`)이 들어 있다. 이 주소의 서버는 3-1과 같은 구성(호스트 PC의 3단계 서버 + ngrok 고정 도메인)이다. 설치한 앱의 로그인·저장소 분석·커뮤니티·AI 분석은 **호스트 PC에서 서버와 ngrok이 켜져 있을 때만** 된다. 내 PC 프로젝트 기능은 서버 없이 된다.
+
+**호스트 PC에서 켜기** (3단계 준비와 `staging.env`의 `PUBLIC_ORIGIN`·시연용 OAuth 값이 이미 있는 PC):
+
+```powershell
+pwsh tools/vm/staging_stack.ps1 -Mode Up       # API (https://localhost:8443)
+pwsh tools/vm/staging_stack.ps1 -Mode Worker   # 저장소 분석 작업 처리
+ngrok http https://localhost:8443 --url=https://curvy-calculate-dedicator.ngrok-free.dev
+pwsh tools/vm/staging_stack.ps1 -Mode Status   # 상태 확인
+```
+
+끌 때는 `-Mode Down`을 실행하고 ngrok 창을 닫는다. PC를 다시 켜면 위 세 명령을 다시 실행한다.
+
+**다른 PC로 옮기기** (호스트 PC를 쓸 수 없을 때). 소스 코드만으로는 부족하고, Git에 없는 다음 세 가지가 필요하다.
+
+1. **ngrok 계정:** 고정 도메인은 그 도메인을 받은 ngrok 계정에 묶여 있다. 새 PC에서 같은 계정의 authtoken으로 `ngrok config add-authtoken <토큰>`을 실행해야 같은 주소를 쓸 수 있다. 한 도메인은 한 번에 한 PC에서만 열 수 있다.
+2. **GitHub OAuth 앱 값:** callback이 `https://<도메인>/api/auth/callback`인 시연용 OAuth 앱의 Client ID와 Client secret. secret을 잃었으면 GitHub의 OAuth 앱 설정에서 새로 만든다.
+3. **데이터(선택):** DB와 비밀키는 호스트 PC(로컬 PostgreSQL, `.validation\staging\`)에만 있다. 새 PC는 빈 DB로 시작한다. 사용자는 다시 로그인하고 저장소는 다시 분석해야 하며, 커뮤니티 글·채팅·일정은 옮겨지지 않는다.
+
+새 PC에서는 3단계의 준비(PostgreSQL·Redis·`.venv`·`-Mode Prepare`)를 한 뒤 `.validation\staging\staging.env`에 다음을 적고, 위의 켜기 명령을 실행한다.
+
+```text
+PUBLIC_ORIGIN=https://curvy-calculate-dedicator.ngrok-free.dev
+GITHUB_CLIENT_ID=<시연용 OAuth 앱>
+GITHUB_CLIENT_SECRET=<시연용 OAuth 앱>
+```
+
+**서버 주소 바꾸기 (앱 쪽, 1.0.2부터):** 다른 사람이 자기 ngrok 도메인·OAuth 앱으로 서버를 열었다면, 설치한 앱을 다시 설치하지 않고 그 서버에 연결할 수 있다. 앱을 쓰는 PC마다 사용자 환경변수를 만들고 앱을 완전히 껐다 다시 켠다.
+
+```powershell
+# 새 서버 주소 (https://로 시작, 끝에 / 없이)
+[Environment]::SetEnvironmentVariable('GITVIZ_SERVER_ORIGIN', 'https://<새 도메인>', 'User')
+# 기본 서버로 되돌리기
+[Environment]::SetEnvironmentVariable('GITVIZ_SERVER_ORIGIN', $null, 'User')
+```
+
+- 바꾼 주소를 쓰는 동안 계정 메뉴의 로그인 상태에 "(기본 서버가 아닌 https://… 에 연결됨)"이 표시된다. 형식이 틀린 값(`http://`, 경로 포함 등)은 무시하고 기본 서버를 쓴다.
+- 로그인·코드·AI 키가 그 서버로 가므로 믿을 수 있는 주소만 넣는다. 서버가 바뀌면 다시 로그인해야 하고, 이전 서버의 분석·커뮤니티 데이터는 보이지 않는다.
+- 1.0.1 설치본은 이 변수를 무시한다. 1.0.2 이상으로 업데이트해야 한다.
+
+**기본 주소를 바꿀 때 (배포 쪽):** 새로 설치하는 사람의 기본 서버를 바꾸려면 저장소 변수 `GITVIZ_SERVER_ORIGIN`을 새 주소로 바꾸고, OAuth 앱의 URL도 새 주소로 바꾼 뒤, 버전을 올려 `v<버전>` 태그로 새로 배포한다([Windows 데스크톱 안내](docs/operations/windows-desktop.md#github-releases-배포)).
 
 ### 4. 설치 파일 만들기 (선택)
 

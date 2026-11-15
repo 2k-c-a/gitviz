@@ -162,7 +162,7 @@ npm --prefix desktop start          # = electron .
 |---|---|---|
 | `GITVIZ_USER_DATA_DIR` | `userData`/`sessionData`를 지정 폴더로. 기본값 `%LOCALAPPDATA%\GitViz-Dev\` | 무시 |
 | `GITVIZ_AGENT_COMMAND` | 에이전트를 `python -m app.workspace` 같은 명령으로 실행 | 무시 |
-| `GITVIZ_SERVER_ORIGIN` | 개발 서버의 HTTPS 원점 | 내장 원점이 있으면 무시, 없으면 사용(스테이징 VM) |
+| `GITVIZ_SERVER_ORIGIN` | 앱이 쓸 서버의 HTTPS 원점 | 설치본·개발 실행 모두 내장 원점보다 우선, 쓰는 동안 앱에 주소 표시(AD-37) |
 | `GITVIZ_BUILD_SERVER_ORIGIN` | (빌드 시) 앱에 내장할 서버 HTTPS 원점. `https://도메인[:포트]` 형식만 허용 | 설치본이 이 값을 사용 |
 
 ## 8. 디버깅
