@@ -10,15 +10,14 @@ test('only bare https origins are accepted', () => {
   assert.equal(validOrigin('https://localhost:8443'), 'https://localhost:8443');
   for (const value of ['http://gitviz.example', 'https://gitviz.example/', 'https://gitviz.example/api', 'https://user:pw@gitviz.example', 'https://gitviz.example?x=1', 'gitviz.example', '', null, 42]) assert.equal(validOrigin(value), null, String(value));
 });
-test('embedded origin wins in a package; environment overrides only in development or when nothing is embedded', () => {
-  const embedded = 'https://gitviz.example', other = 'https://attacker.example';
-  assert.equal(serverOrigin(true, embedded, other), embedded);
-  assert.equal(serverOrigin(true, embedded, undefined), embedded);
-  assert.equal(serverOrigin(false, embedded, other), other);
-  assert.equal(serverOrigin(false, embedded, 'http://bad'), embedded);
-  assert.equal(serverOrigin(true, null, 'https://localhost:8443'), 'https://localhost:8443');
-  assert.equal(serverOrigin(true, null, 'not a url'), null);
-  assert.equal(serverOrigin(true, null, undefined), null);
+test('a valid GITVIZ_SERVER_ORIGIN replaces the embedded origin; anything else keeps it', () => {
+  const embedded = 'https://gitviz.example', other = 'https://other-host.example';
+  assert.equal(serverOrigin(embedded, other), other);
+  assert.equal(serverOrigin(embedded, undefined), embedded);
+  for (const bad of ['http://bad.example', 'https://other-host.example/', 'https://u:p@other-host.example', 'not a url', '']) assert.equal(serverOrigin(embedded, bad), embedded, bad);
+  assert.equal(serverOrigin(null, 'https://localhost:8443'), 'https://localhost:8443');
+  assert.equal(serverOrigin(null, 'not a url'), null);
+  assert.equal(serverOrigin(null, undefined), null);
 });
 test('embedded config file is read defensively', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'gitviz-origin-'));

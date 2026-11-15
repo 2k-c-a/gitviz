@@ -8,7 +8,9 @@ import { rejectLinks, type ProtectedStorage } from './secrets';
 type User = { id: string; github_login: string; display_name: string | null };
 interface Session { sessionToken: string; sessionId: string; user: User; expiresAt: string; capabilities: string[]; apiCapabilities: { desktopProtocol: number; aiContract: string }; pendingRevocation?: boolean }
 interface Flow { flowId: string; verifier: string; pollSecret: string; key: string; displayCode: string; expires: number; nextPoll: number; listener: Server; code?: string }
-export interface AuthState { state: 'signed-out' | 'pending' | 'authenticated' | 'revoke-pending'; user?: User; expiresAt?: string; displayCode?: string; pollAfterMs?: number }
+export interface AuthState { state: 'signed-out' | 'pending' | 'authenticated' | 'revoke-pending'; user?: User; expiresAt?: string; displayCode?: string; pollAfterMs?: number;
+  /** Present only when GITVIZ_SERVER_ORIGIN replaced the embedded server, so the user can see where sign-in goes. */
+  server?: string }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DONE = '<!doctype html><html lang="ko"><meta charset="utf-8"><title>GitViz</title><p>로그인했습니다. 이 창을 닫고 GitViz 앱으로 돌아가세요.</p></html>';
 // RFC 8252 loopback: the browser brings the one-time code back to this machine only. 127.0.0.1, random port, one GET.
@@ -71,7 +73,7 @@ export class DesktopAuth {
   private generation = 0;
   private busy = false;
   constructor(private readonly origin: string, private readonly http: Http, private readonly openBrowser: (url: string) => Promise<void>,
-    private readonly vault: Pick<SessionVault, 'read' | 'write'>) {}
+    private readonly vault: Pick<SessionVault, 'read' | 'write'>, private readonly customServer = false) {}
   identity = (): { token: string; generation: number } | null => {
     if (this.active && Date.parse(this.active.expiresAt) > Date.now()) return { token: this.active.sessionToken, generation: this.generation };
     if (this.active) this.invalidate();
@@ -80,10 +82,11 @@ export class DesktopAuth {
   invalidate = (): void => { this.active = null; this.end(); this.generation++; void this.vault.write(null).catch(() => {}); };
   private end(): void { this.flow?.listener.close(); this.flow = null; }
   private view(): AuthState {
-    if (this.revoking) return { state: 'revoke-pending' };
-    if (this.active && this.identity()) return { state: 'authenticated', user: this.active.user, expiresAt: this.active.expiresAt };
-    if (this.flow) return { state: 'pending', displayCode: this.flow.displayCode, pollAfterMs: Math.max(0, this.flow.nextPoll - Date.now()) };
-    return { state: 'signed-out' };
+    const server = this.customServer ? { server: this.origin } : {};
+    if (this.revoking) return { state: 'revoke-pending', ...server };
+    if (this.active && this.identity()) return { state: 'authenticated', user: this.active.user, expiresAt: this.active.expiresAt, ...server };
+    if (this.flow) return { state: 'pending', displayCode: this.flow.displayCode, pollAfterMs: Math.max(0, this.flow.nextPoll - Date.now()), ...server };
+    return { state: 'signed-out', ...server };
   }
   private async exclusively<T>(action: () => Promise<T>): Promise<T> {
     if (this.busy) throw new Error('BUSY'); this.busy = true;

@@ -152,6 +152,13 @@ test('offline logout quarantines encrypted session across restart and prevents a
   assert.deepEqual(methods, ['GET', 'DELETE', 'DELETE', 'DELETE']);
 });
 
+test('auth status names the server only when GITVIZ_SERVER_ORIGIN replaced the embedded one', async () => {
+  const http: Http = async () => { throw new Error('UNEXPECTED_REQUEST'); };
+  const vault = { read: async () => null, write: async () => {} };
+  assert.deepEqual(await new DesktopAuth('https://server.test', http, async () => {}, vault).status(), { state: 'signed-out' });
+  assert.deepEqual(await new DesktopAuth('https://other-host.test', http, async () => {}, vault, true).status(), { state: 'signed-out', server: 'https://other-host.test' });
+});
+
 test('a page that loads many panels at once gets every response: 8 in flight, the rest wait in order, BUSY only past the queue', async () => {
   let inFlight = 0, peak = 0;
   const gates: (() => void)[] = [];

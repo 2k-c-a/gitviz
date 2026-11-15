@@ -99,10 +99,12 @@ else {
     window.once('closed', registerValidation(window, agent, contracts));
     window.once('closed', registerEditor(window, agent, contracts, directory));
     window.once('closed', registerNotifications(window, agent, contracts));
-    // Deployment-controlled HTTPS origin only (embedded at build time, see server-origin.ts); never taken from renderer input.
+    // HTTPS origin embedded at build time, or the user's GITVIZ_SERVER_ORIGIN (see server-origin.ts); never taken from renderer input.
     const serverConfig = join(__dirname, '../config/server.json');
     const embeddedOrigin = readEmbeddedOrigin(serverConfig);
-    const origin = serverOrigin(app.isPackaged, embeddedOrigin, process.env.GITVIZ_SERVER_ORIGIN);
+    const origin = serverOrigin(embeddedOrigin, process.env.GITVIZ_SERVER_ORIGIN);
+    const customServer = origin !== null && origin !== embeddedOrigin;
+    log('info', 'server-origin', { configured: origin !== null, custom: customServer });
     // A local staging build also trusts its own server's self-signed certificate, so it works when started from Explorer.
     const certificate = origin && origin === embeddedOrigin ? readEmbeddedCertificate(serverConfig, origin) : null;
     if (certificate) setDefaultCACertificates([...getCACertificates('default'), certificate]);
@@ -118,7 +120,7 @@ else {
       auth = new DesktopAuth(origin, http, url => shell.openExternal(url), new SessionVault(join(directory, 'desktop-session.dpapi'), origin, {
         available: () => safeStorage.isAsyncEncryptionAvailable(), encrypt: value => safeStorage.encryptStringAsync(value),
         decrypt: async value => (await safeStorage.decryptStringAsync(value)).result,
-      }));
+      }), customServer);
       const bodies = JSON.parse(readFileSync(join(__dirname, '../schema/ai-bodies.json'), 'utf8')) as Record<string, Record<string, unknown>>;
       remote = new Remote(new RemoteContracts(bodies), http, auth.identity, auth.invalidate, aiKeys);
     }

@@ -7,6 +7,8 @@ async function refresh() {
     notice.textContent = state.state === 'authenticated' ? `원격 계정: ${state.user.github_login}`
       : state.state === 'pending' ? '브라우저에서 GitHub로 로그인하면 앱이 자동으로 로그인됩니다.'
       : state.state === 'revoke-pending' ? '이 PC에서는 로그아웃했습니다. 서버 세션 종료는 다시 시도하세요.' : '원격 계정에 로그인하지 않았습니다.';
+    // GITVIZ_SERVER_ORIGIN replaced the server built into the app: sign-in, code and AI keys go there, so always say so.
+    if (state.server) notice.textContent += ` (기본 서버가 아닌 ${state.server}에 연결됨)`;
     logout.disabled = !['authenticated', 'revoke-pending', 'pending'].includes(state.state);
     login.disabled = false;
   } catch (error) {

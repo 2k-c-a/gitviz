@@ -39,12 +39,11 @@ export function readEmbeddedCertificate(file: string, origin: string | null): st
 }
 
 /**
- * Server used for sign-in and remote analysis.
- * An embedded origin is authoritative in a packaged app, so an environment variable cannot redirect sign-in.
- * Development runs may override it; a package built without one keeps the GITVIZ_SERVER_ORIGIN variable (staging VM).
+ * Server used for sign-in and remote analysis: a valid GITVIZ_SERVER_ORIGIN when set, else the embedded origin.
+ * Installed apps honour the variable too (owner decision 2026-11-15), so another host can serve an existing install. Because
+ * a changed server receives sign-in, code and AI keys, the app shows any non-embedded server it uses (AuthState.server).
+ * An invalid value is ignored.
  */
-export function serverOrigin(packaged: boolean, embedded: string | null, override: string | undefined): string | null {
-  const fromEnvironment = validOrigin(override);
-  if (embedded && packaged) return embedded;
-  return fromEnvironment ?? embedded;
+export function serverOrigin(embedded: string | null, override: string | undefined): string | null {
+  return validOrigin(override) ?? embedded;
 }
