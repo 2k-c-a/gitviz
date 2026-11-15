@@ -28,6 +28,18 @@ class PatchRules(unittest.TestCase):
                 patch = f'--- a/db.py\n+++ b/db.py\n{header}\n line 20\n-q = f"SELECT \'{{u}}\'"\n+q = "SELECT ?"\n end\n'
                 self.assertEqual(apply_patch_bytes('db.py', original, patch), expected)
 
+    def test_blank_context_line_without_its_space_is_a_blank_context_line(self) -> None:
+        original = b'def a():\r\n    return 1\r\n\r\n\r\ndef b(items):\r\n    return 2 / len(items)\r\n'
+        expected = original.replace(b'def b(items):\r\n', b'def b(items):\r\n    if not items:\r\n        return 0\r\n')
+        for blank in [' ', '']:
+            with self.subTest(blank=repr(blank)):
+                patch = (f'--- a/a.py\n+++ b/a.py\n@@ -2,5 +2,7 @@\n     return 1\n{blank}\n{blank}\n def b(items):\n'
+                         '+    if not items:\n+        return 0\n     return 2 / len(items)\n')
+                self.assertEqual(apply_patch_bytes('a.py', original, patch), expected)
+        # It still has to match: an empty patch line never stands in for a non-blank source line.
+        with self.assertRaises(ScopeError):
+            apply_patch_bytes('a.py', original, '--- a/a.py\n+++ b/a.py\n@@ -1,2 +1,2 @@\n def a():\n\n-x\n+y\n')
+
     def test_whole_file_rewrite_is_measured_and_minimized_by_real_changes(self) -> None:
         lines = [f'line {n}' for n in range(1, 61)]
         original = ('\r\n'.join(lines) + '\r\n').encode()

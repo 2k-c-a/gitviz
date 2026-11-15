@@ -115,8 +115,10 @@ def apply_patch_bytes(path: str, original: bytes, patch: str) -> bytes:
         hunks += 1
         body: list[tuple[str, str]] = []
         while at < len(lines) and not lines[at].startswith('@@ '):
-            value = lines[at]
-            if not value or value[0] not in ' +-':
+            # A blank context line whose single space was stripped (editors, models) is still that blank line, as
+            # `git apply` and GNU patch read it; its content must still match the source exactly.
+            value = lines[at] or ' '
+            if value[0] not in ' +-':
                 raise ScopeError('PATCH_INVALID')
             body.append((value[0], value[1:]))
             at += 1
